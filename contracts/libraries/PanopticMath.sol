@@ -43,10 +43,10 @@ library PanopticMath {
     uint256 internal constant BITMASK_UINT88 = 0xFFFFFFFFFFFFFFFFFFFFFF;
     uint256 internal constant BITMASK_UINT22 = 0x3FFFFF;
 
-    int256 constant EMA_PERIOD_10MINS = 600; // 600 seconds
-    int256 constant EMA_PERIOD_1H = 3600; // 600 seconds
-    int256 constant EMA_PERIOD_8H = 28800; // 600 seconds
-    int256 constant EMA_PERIOD_1D = 86400; // 600 seconds
+    int256 constant EMA_PERIOD_SPOT = 180; // 3 minutes
+    int256 constant EMA_PERIOD_FAST = 600; // 10 minutes
+    int256 constant EMA_PERIOD_SLOW = 3600; // 1h minutes
+    int256 constant EMA_PERIOD_EONS = 21600; // 6h minutes
 
     /*//////////////////////////////////////////////////////////////
                               UTILITIES
@@ -278,9 +278,9 @@ library PanopticMath {
     /// @param univ3pool The Uniswap pool to get the observations from
     /// @param oraclePackIn The packed structure representing the sorted 8-slot queue of internal median observations
     /// @return currentTick The current tick in the Uniswap pool
-    /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
-    /// @return slowOracleTick The slow oracle tick computed with the method specified in `SLOW_ORACLE_UNISWAP_MODE`
-    /// @return latestObservation The latest observation from the Uniswap pool (price at the end of the last block)
+    /// @return spotEMATick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
+    /// @return medianTick The slow oracle tick computed with the method specified in `SLOW_ORACLE_UNISWAP_MODE`
+    /// @return latestTick The latest observation from the Uniswap pool (price at the end of the last block)
     /// @return oraclePack The updated value for `s_oraclePack` (0 if not enough time has passed since last observation or if `SLOW_ORACLE_UNISWAP_MODE` is true)
     function getOracleTicks(
         IUniswapV3Pool univ3pool,
@@ -290,22 +290,22 @@ library PanopticMath {
         view
         returns (
             int24 currentTick,
-            int24 fastOracleTick,
-            int24 slowOracleTick,
-            int24 latestObservation,
+            int24 spotEMATick,
+            int24 medianTick,
+            int24 latestTick,
             uint256 oraclePack
         )
     {
         (, currentTick, , , , , ) = univ3pool.slot0();
 
-        (slowOracleTick, oraclePack) = computeInternalMedian(oraclePackIn, currentTick);
+        (medianTick, oraclePack) = computeInternalMedian(oraclePackIn, currentTick);
 
-        // Extract the 10-minute EMA from the lowest 22 bits of the packed EMAs value and assign it as the fast oracle price.
+        // Extract the spote EMA from the lowest 22 bits of the packed EMAs value and assign it as the fast oracle price.
         uint256 EMAs = (oraclePack >> 120) & BITMASK_UINT88;
-        fastOracleTick = int22toInt24(EMAs & BITMASK_UINT22);
+        spotEMATick = int22toInt24(EMAs & BITMASK_UINT22);
 
         // Reconstruct the absolute tick of the last observation by adding the reference tick (bits 96-119) to the latest residual (bits 0-11).
-        latestObservation = int24(uint24(oraclePack >> 96)) + int12toInt24(oraclePack % 2 ** 12);
+        latestTick = int24(uint24(oraclePack >> 96)) + int12toInt24(oraclePack % 2 ** 12);
     }
 
     /// @notice Returns the median of the last `cardinality` average prices over `period` observations from `univ3pool`.
@@ -352,10 +352,10 @@ library PanopticMath {
             }
 
             // the `ticks` array descends from the most recent Uniswap observation prior to the sort
-            int24 latestObservation = int24(ticks[0]);
+            int24 latestTick = int24(ticks[0]);
 
             // get the median of the `ticks` array (assuming `cardinality` is odd)
-            return (int24(Math.sort(ticks)[cardinality / 2]), latestObservation);
+            return (int24(Math.sort(ticks)[cardinality / 2]), latestTick);
         }
     }
 
@@ -602,31 +602,31 @@ library PanopticMath {
             uint256 EMAs = (oraclePack >> 120) & BITMASK_UINT88;
 
             // Update 1-day EMA (bits 87-66)
-            int24 EMA1D = int22toInt24((EMAs >> 66) & BITMASK_UINT22);
-            if (timeDelta > (3 * EMA_PERIOD_1D) / 4) timeDelta = (3 * EMA_PERIOD_1D) / 4;
-            EMA1D = int24(EMA1D + (timeDelta * (newTick - EMA1D)) / EMA_PERIOD_1D);
+            int24 eonsEMA = int22toInt24((EMAs >> 66) & BITMASK_UINT22);
+            if (timeDelta > (3 * EMA_PERIOD_EONS) / 4) timeDelta = (3 * EMA_PERIOD_EONS) / 4;
+            eonsEMA = int24(eonsEMA + (timeDelta * (newTick - eonsEMA)) / EMA_PERIOD_EONS);
 
             // Update 8-hour EMA (bits 65-44)
-            int24 EMA8H = int22toInt24((EMAs >> 44) & BITMASK_UINT22);
-            if (timeDelta > (3 * EMA_PERIOD_8H) / 4) timeDelta = (3 * EMA_PERIOD_8H) / 4;
-            EMA8H = int24(EMA8H + (timeDelta * (newTick - EMA8H)) / EMA_PERIOD_8H);
+            int24 slowEMA = int22toInt24((EMAs >> 44) & BITMASK_UINT22);
+            if (timeDelta > (3 * EMA_PERIOD_SLOW) / 4) timeDelta = (3 * EMA_PERIOD_SLOW) / 4;
+            slowEMA = int24(slowEMA + (timeDelta * (newTick - slowEMA)) / EMA_PERIOD_SLOW);
 
             // Update 1-hour EMA (bits 43-22)
-            int24 EMA1H = int22toInt24((EMAs >> 22) & BITMASK_UINT22);
-            if (timeDelta > (3 * EMA_PERIOD_1H) / 4) timeDelta = (3 * EMA_PERIOD_1H) / 4;
-            EMA1H = int24(EMA1H + (timeDelta * (newTick - EMA1H)) / EMA_PERIOD_1H);
+            int24 fastEMA = int22toInt24((EMAs >> 22) & BITMASK_UINT22);
+            if (timeDelta > (3 * EMA_PERIOD_FAST) / 4) timeDelta = (3 * EMA_PERIOD_FAST) / 4;
+            fastEMA = int24(fastEMA + (timeDelta * (newTick - fastEMA)) / EMA_PERIOD_FAST);
 
             // Update 10-minute EMA (bits 21-0)
-            int24 EMA10m = int22toInt24(EMAs & BITMASK_UINT22);
-            if (timeDelta > (3 * EMA_PERIOD_10MINS) / 4) timeDelta = (3 * EMA_PERIOD_10MINS) / 4;
-            EMA10m = int24(EMA10m + (timeDelta * (newTick - EMA10m)) / EMA_PERIOD_10MINS);
+            int24 spotEMA = int22toInt24(EMAs & BITMASK_UINT22);
+            if (timeDelta > (3 * EMA_PERIOD_SPOT) / 4) timeDelta = (3 * EMA_PERIOD_SPOT) / 4;
+            spotEMA = int24(spotEMA + (timeDelta * (newTick - spotEMA)) / EMA_PERIOD_SPOT);
 
             // Pack updated EMAs back into 88-bit format
             updatedEMAs =
-                (uint256(uint24(EMA10m)) & BITMASK_UINT22) +
-                ((uint256(uint24(EMA1H)) & BITMASK_UINT22) << 22) +
-                ((uint256(uint24(EMA8H)) & BITMASK_UINT22) << 44) +
-                ((uint256(uint24(EMA1D)) & BITMASK_UINT22) << 66);
+                (uint256(uint24(spotEMA)) & BITMASK_UINT22) +
+                ((uint256(uint24(fastEMA)) & BITMASK_UINT22) << 22) +
+                ((uint256(uint24(slowEMA)) & BITMASK_UINT22) << 44) +
+                ((uint256(uint24(eonsEMA)) & BITMASK_UINT22) << 66);
         }
     }
 
@@ -640,19 +640,19 @@ library PanopticMath {
     /// @return The blended time-weighted average price, represented as an int24 tick.
     function twapEMA(uint256 oraclePack) external pure returns (int24) {
         // Extract current EMAs from oraclePack
-        (int24 EMA1D, int24 EMA8H, int24 EMA1H, ) = getEMAs(oraclePack);
+        (int24 eonsEMA, int24 slowEMA, int24 fastEMA, ) = getEMAs(oraclePack);
 
-        return (6 * EMA1H + 3 * EMA8H + EMA1D) / 10;
+        return (6 * fastEMA + 3 * slowEMA + eonsEMA) / 10;
     }
 
     function getEMAs(
         uint256 oraclePack
-    ) internal pure returns (int24 EMA1D, int24 EMA8H, int24 EMA1H, int24 EMA10m) {
+    ) internal pure returns (int24 eonsEMA, int24 slowEMA, int24 fastEMA, int24 spotEMA) {
         uint256 EMAs = (oraclePack >> 120) & BITMASK_UINT88;
-        EMA1D = int22toInt24((EMAs >> 66) & BITMASK_UINT22);
-        EMA8H = int22toInt24((EMAs >> 44) & BITMASK_UINT22);
-        EMA1H = int22toInt24((EMAs >> 22) & BITMASK_UINT22);
-        EMA10m = int22toInt24(EMAs & BITMASK_UINT22);
+        eonsEMA = int22toInt24((EMAs >> 66) & BITMASK_UINT22);
+        slowEMA = int22toInt24((EMAs >> 44) & BITMASK_UINT22);
+        fastEMA = int22toInt24((EMAs >> 22) & BITMASK_UINT22);
+        spotEMA = int22toInt24(EMAs & BITMASK_UINT22);
     }
 
     /// @notice Computes the TWAP of a Uniswap V3 pool using data from its oracle.

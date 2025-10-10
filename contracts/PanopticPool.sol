@@ -123,7 +123,7 @@ contract PanopticPool is Multicall {
     /// @dev Mitigates manipulation of the currentTick that causes positions to be liquidated at a less favorable price.
     int256 internal constant MAX_TWAP_DELTA_LIQUIDATION = 513;
 
-    /// @notice The maximum allowed delta (~2%) between the lastObservedTick and the slowOracleTick/fastOracleTick during forceExercise/settleLongPremium.
+    /// @notice The maximum allowed delta (~2%) between the latestTick and the medianTick/spotTick during forceExercise/settleLongPremium.
     /// @dev Ensures token substitution between two accounts is settled safely at a price close to market.
     int256 internal constant MAX_TICK_DELTA_SUBSTITUTION = 203;
 
@@ -161,7 +161,7 @@ contract PanopticPool is Multicall {
     /// @notice Stores a sorted set of 8 price observations used to compute the internal median oracle price.
     // The data for the last 8 interactions is stored as such:
     //
-    //    timestamp      orderMap      10mins ema   60mins ema    8h ema       1day ema     reference        r7          r6                     r0
+    //    timestamp      orderMap      spotEMA      fastEMA       slowEMA      eonsEMA      reference         r7           r6                      r0
     // |<- 24 bits ->|<- 24 bits ->|<- 22 bits ->|>- 22 bits ->|<- 22 bits >|<- 22 bits ->|<- 24 bits ->|<- 12bits ->|<- 12 bits ->|<- ... ->|<- 12 bits ->|
     //
     // LAST UPDATED BLOCK TIMESTAMP (22 bits) -> 22 bits (use 28 bits for the timestamp and truncate the lower 6 bits to create a 64s epoch-based timekeeping)
@@ -234,7 +234,7 @@ contract PanopticPool is Multicall {
 
     /// @notice Tracks the position size of a tokenId for a given user, and the pool utilizations and oracle tick values at the time of last mint.
     //    <-- 24 bits --> <-- 24 bits --> <-- 24 bits --> <-- 24 bits --> <-- 16 bits --> <-- 16 bits --> <-- 128 bits -->
-    //   lastObservedTick  slowOracleTick  fastOracleTick   currentTick     utilization1    utilization0    positionSize
+    //   latestTick         medianTick       spotTick       currentTick     utilization1    utilization0    positionSize
     mapping(address account => mapping(TokenId tokenId => PositionBalance positionBalance))
         internal s_positionBalance;
 
@@ -291,13 +291,13 @@ contract PanopticPool is Multicall {
                 // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
                 // see comment on s_oraclePack initialization for format of this magic number
                 (uint256(0xf590a60000000000000000000000000000800e00200e00200e00000000)) +
-                // EMA1D at bits 207-186
+                // eonsEMA at bits 207-186
                 (uint256(uint24(currentTick) & 0x3FFFFF) << 186) +
-                // EMA8H at bits 185-164
+                // slowEMA at bits 185-164
                 (uint256(uint24(currentTick) & 0x3FFFFF) << 164) +
-                // EMA1H at bits 163-142
+                // fastEMA at bits 163-142
                 (uint256(uint24(currentTick) & 0x3FFFFF) << 142) +
-                // EMA10m at bits 141-120
+                // spotEMA at bits 141-120
                 (uint256(uint24(currentTick) & 0x3FFFFF) << 120) +
                 // store currentTick as the reference tick at bits 119-96
                 (uint256(uint24(currentTick)) << 96);
@@ -818,17 +818,17 @@ contract PanopticPool is Multicall {
     ) internal view returns (uint256) {
         (
             int24 currentTick,
-            int24 fastOracleTick,
-            int24 slowOracleTick,
-            int24 lastObservedTick,
+            int24 spotTick,
+            int24 medianTick,
+            int24 latestTick,
             uint256 oraclePack
         ) = PanopticMath.getOracleTicks(s_univ3pool, s_oraclePack);
 
         uint96 tickData = PositionBalanceLibrary.packTickData(
             currentTick,
-            fastOracleTick,
-            slowOracleTick,
-            lastObservedTick
+            spotTick,
+            medianTick,
+            latestTick
         );
 
         _checkSolvency(user, positionIdList, tickData, buffer, usePremiaAsCollateral);
@@ -854,34 +854,34 @@ contract PanopticPool is Multicall {
 
         (
             int24 currentTick,
-            int24 fastOracleTick,
-            int24 slowOracleTick,
-            int24 lastObservedTick
+            int24 spotTick,
+            int24 medianTick,
+            int24 latestTick
         ) = PositionBalanceLibrary.unpackTickData(tickData);
 
         int24[] memory atTicks;
         // Fall back to a conservative approach if there's high deviation between internal ticks:
-        // Check solvency at the slowOracleTick, currentTick, and lastObservedTick instead of just the fastOracleTick.
+        // Check solvency at the medianTick, currentTick, and latestTick instead of just the spotTick.
         // Deviation is measured as the magnitude of a 3D vector:
-        // (fastOracleTick - slowOracleTick, lastObservedTick - slowOracleTick, currentTick - slowOracleTick)
+        // (spotTick - medianTick, latestTick - medianTick, currentTick - medianTick)
         // This approach is more conservative than checking each tick difference individually,
         // as the Euclidean norm is always greater than or equal to the maximum of the individual differences.
         if (
-            int256(fastOracleTick - slowOracleTick) ** 2 +
-                int256(lastObservedTick - slowOracleTick) ** 2 +
-                int256(currentTick - slowOracleTick) ** 2 >
+            int256(spotTick - medianTick) ** 2 +
+                int256(latestTick - medianTick) ** 2 +
+                int256(currentTick - medianTick) ** 2 >
             MAX_TICKS_DELTA ** 2
         ) {
             // High deviation detected; check against all four ticks.
             atTicks = new int24[](4);
-            atTicks[0] = fastOracleTick;
-            atTicks[1] = slowOracleTick;
-            atTicks[2] = lastObservedTick;
+            atTicks[0] = spotTick;
+            atTicks[1] = medianTick;
+            atTicks[2] = latestTick;
             atTicks[3] = currentTick;
         } else {
-            // Normal operation; check against the fast oracle tick = 10 mins EMA.
+            // Normal operation; check against the spot tick = 10 mins EMA.
             atTicks = new int24[](1);
-            atTicks[0] = fastOracleTick;
+            atTicks[0] = spotTick;
         }
 
         uint256 solvent = _checkSolvencyAtTicks(
@@ -936,9 +936,9 @@ contract PanopticPool is Multicall {
             _validatePositionList(account, positionIdListTo);
 
             // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
-            int24 fastOracleTick;
-            int24 lastObservedTick;
-            (currentTick, fastOracleTick, , lastObservedTick, ) = PanopticMath.getOracleTicks(
+            int24 spotTick;
+            int24 latestTick;
+            (currentTick, spotTick, , latestTick, ) = PanopticMath.getOracleTicks(
                 s_univ3pool,
                 s_oraclePack
             );
@@ -948,11 +948,11 @@ contract PanopticPool is Multicall {
                     revert Errors.StaleOracle();
             }
 
-            // Ensure the account is insolvent at twapTick (in place of slowOracleTick), currentTick, fastOracleTick, and lastObservedTick
+            // Ensure the account is insolvent at twapTick (in place of medianTick), currentTick, spotTick, and latestTick
             int24[] memory atTicks = new int24[](4);
-            atTicks[0] = fastOracleTick;
+            atTicks[0] = spotTick;
             atTicks[1] = twapTick;
-            atTicks[2] = lastObservedTick;
+            atTicks[2] = latestTick;
             atTicks[3] = currentTick;
 
             solvent = _checkSolvencyAtTicks(
@@ -1396,24 +1396,24 @@ contract PanopticPool is Multicall {
 
     /// @notice Checks for significant oracle deviation to determine if Safe Mode should be active.
     /// @dev Safe Mode is triggered if EITHER of two conditions are met:
-    ///      1. "External Shock": The live spot price deviates too far from the responsive 10-minute EMA.
-    ///      2. "Internal Disagreement": The 10-minute EMA deviates too far from the more stable 1-hour EMA, indicating high volatility.
+    ///      1. "External Shock": The live spot price deviates too far from the responsive spot EMA .
+    ///      2. "Internal Disagreement": The fast EMA deviates too far from the more stable slow EMA, indicating high volatility.
     /// @return Whether the protocol should be in Safe Mode.
     function isSafeMode() public view returns (bool) {
         int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
         uint256 oraclePack = s_oraclePack;
 
         // Extract the relevant EMAs from oraclePack
-        (, , int24 EMA1H, int24 EMA10m) = PanopticMath.getEMAs(oraclePack);
+        (, int24 slowEMA, int24 fastEMA, int24 spotEMA) = PanopticMath.getEMAs(oraclePack);
 
-        // Condition 1: Check for a sudden deviation of the spot price from the fast-moving EMA.
+        // Condition 1: Check for a sudden deviation of the spot price from the spot EMA.
         // This is your primary defense against a flash crash or single-block manipulation.
-        bool externalShock = Math.abs(currentTick - EMA10m) > MAX_TICKS_DELTA;
+        bool externalShock = Math.abs(currentTick - spotEMA) > MAX_TICKS_DELTA;
 
         // Condition 2: Check for high internal volatility by comparing the fast and slow EMAs.
-        // If the 10m EMA is moving much faster than the 1h EMA, it signals an unstable market.
+        // If the spot EMA is moving much faster than the fast EMA, it signals an unstable market.
         // We use a smaller threshold here (e.g., half of the main delta) to be more sensitive to internal stress.
-        bool internalDisagreement = Math.abs(EMA10m - EMA1H) > (MAX_TICKS_DELTA / 2);
+        bool internalDisagreement = Math.abs(spotEMA - fastEMA) > (MAX_TICKS_DELTA / 2);
 
         return externalShock || internalDisagreement;
     }
@@ -1511,23 +1511,25 @@ contract PanopticPool is Multicall {
 
     /// @notice Computes and returns all oracle ticks.
     /// @return currentTick The current tick in the Uniswap pool
-    /// @return fastOracleTick The fast oracle tick, sourced from the internal 10-minute EMA.
-    /// @return slowOracleTick The slow oracle tick, calculated as the median of the 8 stored price points in the internal oracle.
-    /// @return latestObservation The reconstructed absolute tick of the latest observation stored in the internal oracle.
+    /// @return spotTick The fast oracle tick, sourced from the internal 10-minute EMA.
+    /// @return medianTick The slow oracle tick, calculated as the median of the 8 stored price points in the internal oracle.
+    /// @return latestTick The reconstructed absolute tick of the latest observation stored in the internal oracle.
     /// @return oraclePack The current value of the 8-slot internal observation queue (`s_oraclePack`)
     function getOracleTicks()
         external
         view
         returns (
             int24 currentTick,
-            int24 fastOracleTick,
-            int24 slowOracleTick,
-            int24 latestObservation,
+            int24 spotTick,
+            int24 medianTick,
+            int24 latestTick,
             uint256 oraclePack
         )
     {
-        (currentTick, fastOracleTick, slowOracleTick, latestObservation, ) = PanopticMath
-            .getOracleTicks(s_univ3pool, s_oraclePack);
+        (currentTick, spotTick, medianTick, latestTick, ) = PanopticMath.getOracleTicks(
+            s_univ3pool,
+            s_oraclePack
+        );
         oraclePack = s_oraclePack;
     }
 
