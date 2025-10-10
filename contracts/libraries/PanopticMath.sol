@@ -284,9 +284,10 @@ library PanopticMath {
     /// @return oraclePack The updated value for `s_oraclePack` (0 if not enough time has passed since last observation or if `SLOW_ORACLE_UNISWAP_MODE` is true)
     function getOracleTicks(
         IUniswapV3Pool univ3pool,
-        uint256 oraclePackIn
+        uint256 oraclePackIn,
+        uint96 EMAperiods
     )
-        external
+        internal
         view
         returns (
             int24 currentTick,
@@ -298,7 +299,7 @@ library PanopticMath {
     {
         (, currentTick, , , , , ) = univ3pool.slot0();
 
-        (medianTick, oraclePack) = computeInternalMedian(oraclePackIn, currentTick);
+        (medianTick, oraclePack) = computeInternalMedian(oraclePackIn, currentTick, EMAperiods);
 
         // Extract the spote EMA from the lowest 22 bits of the packed EMAs value and assign it as the fast oracle price.
         uint256 EMAs = (oraclePack >> 120) & BITMASK_UINT88;
@@ -409,7 +410,8 @@ library PanopticMath {
     /// @return updatedOraclePack The updated 8-slot queue of ticks with the latest observation inserted if the last entry is at least `period` seconds old (returns 0 otherwise)
     function computeInternalMedian(
         uint256 oraclePack,
-        int24 currentTick
+        int24 currentTick,
+        uint96 EMAperiods
     ) public view returns (int24 medianTick, uint256 updatedOraclePack) {
         unchecked {
             // return the average of the rank 3 and 4 values
@@ -432,7 +434,8 @@ library PanopticMath {
                     oraclePack,
                     clampedTick,
                     currentEpoch,
-                    timeDelta
+                    timeDelta,
+                    EMAperiods
                 );
             }
         }
@@ -457,7 +460,8 @@ library PanopticMath {
         uint256 oraclePack,
         int24 newTick,
         uint256 currentEpoch,
-        int256 timeDelta
+        int256 timeDelta,
+        uint96 EMAperiods
     ) internal pure returns (uint256 updatedMedianData) {
         unchecked {
             int24 referenceTick = int24(uint24(oraclePack >> 96));
@@ -500,7 +504,7 @@ library PanopticMath {
                 }
             }
 
-            uint256 EMAs = updateEMAs(oraclePack, timeDelta, newTick);
+            uint256 EMAs = updateEMAs(oraclePack, timeDelta, newTick, EMAperiods);
 
             updatedMedianData =
                 (currentEpoch << 232) +
@@ -595,9 +599,15 @@ library PanopticMath {
     function updateEMAs(
         uint256 oraclePack,
         int256 timeDelta,
-        int24 newTick
+        int24 newTick,
+        uint96 EMAperiods
     ) internal pure returns (uint256 updatedEMAs) {
         unchecked {
+            int256 EMA_PERIOD_SPOT = int24(uint24(EMAperiods));
+            int256 EMA_PERIOD_FAST = int24(uint24(EMAperiods >> 24));
+            int256 EMA_PERIOD_SLOW = int24(uint24(EMAperiods >> 48));
+            int256 EMA_PERIOD_EONS = int24(uint24(EMAperiods >> 72));
+
             // Extract current EMAs from oraclePack (88 bits starting at bit 120)
             uint256 EMAs = (oraclePack >> 120) & BITMASK_UINT88;
 

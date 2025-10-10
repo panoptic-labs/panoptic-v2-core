@@ -508,7 +508,7 @@ contract PanopticPool is Multicall {
         );
         int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
 
-        (, uint256 oraclePack) = PanopticMath.computeInternalMedian(s_oraclePack, currentTick);
+        (, uint256 oraclePack) = PanopticMath.computeInternalMedian(s_oraclePack, currentTick, 0);
 
         if (oraclePack != 0) s_oraclePack = oraclePack;
     }
@@ -829,7 +829,7 @@ contract PanopticPool is Multicall {
             int24 medianTick,
             int24 latestTick,
             uint256 oraclePack
-        ) = PanopticMath.getOracleTicks(s_univ3pool, s_oraclePack);
+        ) = s_riskEngine.getOracleTicks(s_univ3pool, s_oraclePack);
 
         uint96 tickData = PositionBalanceLibrary.packTickData(
             currentTick,
@@ -945,7 +945,7 @@ contract PanopticPool is Multicall {
             // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
             int24 spotTick;
             int24 latestTick;
-            (currentTick, spotTick, , latestTick, ) = PanopticMath.getOracleTicks(
+            (currentTick, spotTick, , latestTick, ) = s_riskEngine.getOracleTicks(
                 s_univ3pool,
                 s_oraclePack
             );
@@ -1543,7 +1543,7 @@ contract PanopticPool is Multicall {
             uint256 oraclePack
         )
     {
-        (currentTick, spotTick, medianTick, latestTick, ) = PanopticMath.getOracleTicks(
+        (currentTick, spotTick, medianTick, latestTick, ) = s_riskEngine.getOracleTicks(
             s_univ3pool,
             s_oraclePack
         );

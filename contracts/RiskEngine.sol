@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 // Interfaces
 import {PanopticPool} from "./PanopticPool.sol";
 import {CollateralTracker} from "./CollateralTracker.sol";
+import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
 import {ERC20Minimal} from "@tokens/ERC20Minimal.sol";
 import {Multicall} from "@base/Multicall.sol";
@@ -44,6 +45,13 @@ contract RiskEngine {
     /// @notice Decimals for computation (1 millitick (1/1000th of a basis point) precision: 1e-7 = 0.00001%).
     /// @dev uint type for composability with unsigned integer based mathematical operations.
     uint256 internal constant DECIMALS = 10_000_000;
+
+    //int256 constant EMA_PERIOD_SPOT = 180; // 3 minutes
+    //int256 constant EMA_PERIOD_FAST = 600; // 10 minutes
+    //int256 constant EMA_PERIOD_SLOW = 3600; // 1h minutes
+    //int256 constant EMA_PERIOD_EONS = 21600; // 6h minutes
+
+    uint96 constant EMAperiods = uint96(180 + (600 << 24) + (3600 << 48) + (21600 << 72));
 
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS
@@ -417,6 +425,38 @@ contract RiskEngine {
                 )
             );
         }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                     ORACLE LOGIC
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Computes and returns all oracle ticks.
+    /// @return currentTick The current tick in the Uniswap pool
+    /// @return spotTick The fast oracle tick, sourced from the internal 10-minute EMA.
+    /// @return medianTick The slow oracle tick, calculated as the median of the 8 stored price points in the internal oracle.
+    /// @return latestTick The reconstructed absolute tick of the latest observation stored in the internal oracle.
+    /// @return oraclePack The current value of the 8-slot internal observation queue (`s_oraclePack`)
+    function getOracleTicks(
+        IUniswapV3Pool univ3pool,
+        uint256 _oraclePack
+    )
+        external
+        view
+        returns (
+            int24 currentTick,
+            int24 spotTick,
+            int24 medianTick,
+            int24 latestTick,
+            uint256 oraclePack
+        )
+    {
+        (currentTick, spotTick, medianTick, latestTick, ) = PanopticMath.getOracleTicks(
+            univ3pool,
+            _oraclePack,
+            EMAperiods
+        );
+        oraclePack = _oraclePack;
     }
 
     /*//////////////////////////////////////////////////////////////
