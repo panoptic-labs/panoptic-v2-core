@@ -823,13 +823,10 @@ contract PanopticPool is Multicall {
         uint256 buffer,
         bool usePremiaAsCollateral
     ) internal view returns (uint256) {
-        (
-            int24 currentTick,
-            int24 spotTick,
-            int24 medianTick,
-            int24 latestTick,
-            uint256 oraclePack
-        ) = s_riskEngine.getOracleTicks(s_univ3pool, s_oraclePack);
+        int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
+
+        (int24 spotTick, int24 medianTick, int24 latestTick, uint256 oraclePack) = s_riskEngine
+            .getOracleTicks(currentTick, s_oraclePack);
 
         uint96 tickData = PositionBalanceLibrary.packTickData(
             currentTick,
@@ -933,7 +930,7 @@ contract PanopticPool is Multicall {
     ) external {
         // Assert the account we are liquidating is actually insolvent
         int24 twapTick = getTWAP();
-        int24 currentTick;
+        int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
 
         TokenId tokenId;
 
@@ -945,10 +942,7 @@ contract PanopticPool is Multicall {
             // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
             int24 spotTick;
             int24 latestTick;
-            (currentTick, spotTick, , latestTick, ) = s_riskEngine.getOracleTicks(
-                s_univ3pool,
-                s_oraclePack
-            );
+            (spotTick, , latestTick, ) = s_riskEngine.getOracleTicks(currentTick, s_oraclePack);
 
             unchecked {
                 if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
@@ -1543,8 +1537,10 @@ contract PanopticPool is Multicall {
             uint256 oraclePack
         )
     {
-        (currentTick, spotTick, medianTick, latestTick, ) = s_riskEngine.getOracleTicks(
-            s_univ3pool,
+        currentTick = SFPM.getCurrentTick(s_univ3pool);
+
+        (spotTick, medianTick, latestTick, ) = s_riskEngine.getOracleTicks(
+            currentTick,
             s_oraclePack
         );
         oraclePack = s_oraclePack;

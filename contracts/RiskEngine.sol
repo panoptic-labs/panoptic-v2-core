@@ -3,7 +3,6 @@ pragma solidity ^0.8.24;
 // Interfaces
 import {PanopticPool} from "./PanopticPool.sol";
 import {CollateralTracker} from "./CollateralTracker.sol";
-import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
 import {ERC20Minimal} from "@tokens/ERC20Minimal.sol";
 import {Multicall} from "@base/Multicall.sol";
@@ -432,27 +431,22 @@ contract RiskEngine {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Computes and returns all oracle ticks.
-    /// @return currentTick The current tick in the Uniswap pool
+    /// @param currentTick The current tick in the Uniswap pool
+    /// @param _oraclePack The packed `s_oraclePack` storage slot containing the oracle's state,
     /// @return spotTick The fast oracle tick, sourced from the internal 10-minute EMA.
     /// @return medianTick The slow oracle tick, calculated as the median of the 8 stored price points in the internal oracle.
     /// @return latestTick The reconstructed absolute tick of the latest observation stored in the internal oracle.
     /// @return oraclePack The current value of the 8-slot internal observation queue (`s_oraclePack`)
     function getOracleTicks(
-        IUniswapV3Pool univ3pool,
+        int24 currentTick,
         uint256 _oraclePack
     )
         external
         view
-        returns (
-            int24 currentTick,
-            int24 spotTick,
-            int24 medianTick,
-            int24 latestTick,
-            uint256 oraclePack
-        )
+        returns (int24 spotTick, int24 medianTick, int24 latestTick, uint256 oraclePack)
     {
-        (currentTick, spotTick, medianTick, latestTick, ) = PanopticMath.getOracleTicks(
-            univ3pool,
+        (spotTick, medianTick, latestTick, ) = PanopticMath.getOracleTicks(
+            currentTick,
             _oraclePack,
             EMAperiods
         );

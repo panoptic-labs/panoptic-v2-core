@@ -275,38 +275,30 @@ library PanopticMath {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Computes various oracle prices corresponding to a Uniswap pool.
-    /// @param univ3pool The Uniswap pool to get the observations from
+    /// @param currentTick The current tick in the Uniswap pool
     /// @param oraclePackIn The packed structure representing the sorted 8-slot queue of internal median observations
-    /// @return currentTick The current tick in the Uniswap pool
     /// @return spotEMATick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
     /// @return medianTick The slow oracle tick computed with the method specified in `SLOW_ORACLE_UNISWAP_MODE`
     /// @return latestTick The latest observation from the Uniswap pool (price at the end of the last block)
     /// @return oraclePack The updated value for `s_oraclePack` (0 if not enough time has passed since last observation or if `SLOW_ORACLE_UNISWAP_MODE` is true)
     function getOracleTicks(
-        IUniswapV3Pool univ3pool,
+        int24 currentTick,
         uint256 oraclePackIn,
         uint96 EMAperiods
     )
         internal
         view
-        returns (
-            int24 currentTick,
-            int24 spotEMATick,
-            int24 medianTick,
-            int24 latestTick,
-            uint256 oraclePack
-        )
+        returns (int24 spotEMATick, int24 medianTick, int24 latestTick, uint256 oraclePack)
     {
-        (, currentTick, , , , , ) = univ3pool.slot0();
-
-        (medianTick, oraclePack) = computeInternalMedian(oraclePackIn, currentTick, EMAperiods);
-
         // Extract the spote EMA from the lowest 22 bits of the packed EMAs value and assign it as the fast oracle price.
         uint256 EMAs = (oraclePack >> 120) & BITMASK_UINT88;
         spotEMATick = int22toInt24(EMAs & BITMASK_UINT22);
 
         // Reconstruct the absolute tick of the last observation by adding the reference tick (bits 96-119) to the latest residual (bits 0-11).
         latestTick = int24(uint24(oraclePack >> 96)) + int12toInt24(oraclePack % 2 ** 12);
+
+        // finally, get the median tick
+        (medianTick, oraclePack) = computeInternalMedian(oraclePackIn, currentTick, EMAperiods);
     }
 
     /// @notice Returns the median of the last `cardinality` average prices over `period` observations from `univ3pool`.
