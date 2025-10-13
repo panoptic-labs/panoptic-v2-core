@@ -97,7 +97,7 @@ contract RiskEngine {
 
     /// @notice Target utilization (scaled by WAD).
     /// @dev Target utilization = 90%.
-    int256 public constant TARGET_UTILIZATION = 0.9 ether;
+    int256 public constant TARGET_UTILIZATION = 2 ether / int256(3);
 
     /// @notice Initial rate at target per second (scaled by WAD).
     /// @dev Initial rate at target = 4% (rate between 1% and 16%).
@@ -1057,22 +1057,22 @@ contract RiskEngine {
 
     function interestRate(
         uint256 utilization,
-        uint256 adaptiveIRMState
+        uint256 interestRateAccumulator
     ) external view returns (uint128) {
-        (uint256 avgRate, ) = _borrowRate(utilization, adaptiveIRMState);
+        (uint256 avgRate, ) = _borrowRate(utilization, interestRateAccumulator);
         return uint128(avgRate);
         //return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
     }
 
     function updateInterestRate(
         uint256 utilization,
-        uint256 adaptiveIRMState
+        uint256 interestRateAccumulator
     ) external returns (uint128, uint256) {
-        (uint256 avgRate, int256 endRateAtTarget) = _borrowRate(utilization, adaptiveIRMState);
-        return (
-            uint128(avgRate),
-            uint256(uint128((block.timestamp << 96) + uint96(uint256(endRateAtTarget))))
+        (uint256 avgRate, int256 endRateAtTarget) = _borrowRate(
+            utilization,
+            interestRateAccumulator
         );
+        return (uint128(avgRate), uint256(endRateAtTarget));
         //return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
     }
 
@@ -1080,7 +1080,7 @@ contract RiskEngine {
     /// @dev Assumes that the inputs `marketParams` and `id` match.
     function _borrowRate(
         uint256 utilization,
-        uint256 adaptiveIRMState
+        uint256 interestRateAccumulator
     ) internal view returns (uint256, int256) {
         // Safe "unchecked" cast because the utilization is smaller than 1 (scaled by WAD).
 
@@ -1089,8 +1089,8 @@ contract RiskEngine {
             ? WAD - TARGET_UTILIZATION
             : TARGET_UTILIZATION;
         int256 err = Math.wDivToZero(_utilization - TARGET_UTILIZATION, errNormFactor);
-        int256 startRateAtTarget = int256(adaptiveIRMState % 2 ** 96);
-        uint256 previousTime = uint32(adaptiveIRMState >> 96);
+        int256 startRateAtTarget = int256(uint256((interestRateAccumulator >> 112) % 2 ** 38));
+        uint256 previousTime = uint32(interestRateAccumulator >> 80);
 
         int256 avgRateAtTarget;
         int256 endRateAtTarget;
