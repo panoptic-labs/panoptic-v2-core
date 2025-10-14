@@ -731,10 +731,12 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     //   It that position is burnt, then we remove a mix of the two tokens and swap one of them so that the user receives only one.
     /// @param univ3pool The Uniswap pool in which to swap.
     /// @param itmAmounts How much to swap (i.e. how many tokens are ITM)
+    /// @param asset The asset of the first leg of the tokenId (determines which token to swap into)
     /// @return totalSwapped The token deltas swapped in the AMM
     function swapInAMM(
         IUniswapV3Pool univ3pool,
-        LeftRightSigned itmAmounts
+        LeftRightSigned itmAmounts,
+        uint256 asset
     ) internal returns (LeftRightSigned totalSwapped) {
         bool zeroForOne; // The direction of the swap, true for token0 to token1, false for token1 to token0
         int256 swapAmount; // The amount of token0 or token1 to swap
@@ -765,37 +767,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             if ((itm0 != 0) && (itm1 != 0)) {
                 (uint160 sqrtPriceX96, , , , , , ) = _univ3pool.slot0();
 
-                // implement a single "netting" swap. Thank you @danrobinson for this puzzle/idea
-                // NOTE: negative ITM amounts denote a surplus of tokens (burning liquidity), while positive amounts denote a shortage of tokens (minting liquidity)
-                // compute the approximate delta of token0 that should be resolved in the swap at the current tick
-                // we do this by flipping the signs on the token1 ITM amount converting+deducting it against the token0 ITM amount
-                // couple examples (price = 2 1/0):
-                //  - 100 surplus 0, 100 surplus 1 (itm0 = -100, itm1 = -100)
-                //    normal swap 0: 100 0 => 200 1
-                //    normal swap 1: 100 1 => 50 0
-                //    final swap amounts: 50 0 => 100 1
-                //    netting swap: net0 = -100 - (-100/2) = -50, ZF1 = true, 50 0 => 100 1
-                // - 100 surplus 0, 100 shortage 1 (itm0 = -100, itm1 = 100)
-                //    normal swap 0: 100 0 => 200 1
-                //    normal swap 1: 50 0 => 100 1
-                //    final swap amounts: 150 0 => 300 1
-                //    netting swap: net0 = -100 - (100/2) = -150, ZF1 = true, 150 0 => 300 1
-                // - 100 shortage 0, 100 surplus 1 (itm0 = 100, itm1 = -100)
-                //    normal swap 0: 200 1 => 100 0
-                //    normal swap 1: 100 1 => 50 0
-                //    final swap amounts: 300 1 => 150 0
-                //    netting swap: net0 = 100 - (-100/2) = 150, ZF1 = false, 300 1 => 150 0
-                // - 100 shortage 0, 100 shortage 1 (itm0 = 100, itm1 = 100)
-                //    normal swap 0: 200 1 => 100 0
-                //    normal swap 1: 50 0 => 100 1
-                //    final swap amounts: 100 1 => 50 0
-                //    netting swap: net0 = 100 - (100/2) = 50, ZF1 = false, 100 1 => 50 0
-                // - = Net surplus of token0
-                // + = Net shortage of token0
-                int256 net0 = itm0 - PanopticMath.convert1to0(itm1, sqrtPriceX96);
-
-                zeroForOne = net0 < 0;
-                swapAmount = -net0;
+                // ensure the tokens are swapped from the correct asset.
+                if (asset == 0) {
+                    zeroForOne = itm0 < 0;
+                    swapAmount = -itm0;
+                } else {
+                    zeroForOne = itm1 > 0;
+                    swapAmount = -itm1;
+                }
             } else if (itm0 != 0) {
                 zeroForOne = itm0 < 0;
                 swapAmount = -itm0;
@@ -942,7 +921,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         if (tickLimitLow > tickLimitHigh) {
             // if the in-the-money amount is not zero (i.e. positions were minted ITM) and the user did provide tick limits LOW > HIGH, then swap necessary amounts
             if ((LeftRightSigned.unwrap(itmAmounts) != 0)) {
-                totalMoved = swapInAMM(poolData.pool, itmAmounts).add(totalMoved);
+                totalMoved = swapInAMM(poolData.pool, itmAmounts, tokenId.asset(0)).add(totalMoved);
             }
 
             (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
