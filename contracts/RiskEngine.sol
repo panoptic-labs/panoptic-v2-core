@@ -1064,8 +1064,12 @@ contract RiskEngine {
             poolUtilization
         );
 
-        // return the max of the requirement between a loan and the option position
-        return Math.max(_required, requiredPartner);
+        if (tokenId.isLong(index) == 0) {
+            return _required + requiredPartner;
+        } else {
+            // return the max of the requirement between a loan and the long option position
+            return Math.max(_required, requiredPartner);
+        }
     }
 
     function _computeCreditOptionComposite(
