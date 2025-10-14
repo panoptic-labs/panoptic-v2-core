@@ -931,7 +931,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         (, int24 currentTick, , , , , ) = poolData.pool.slot0();
 
         if ((currentTick >= tickLimitHigh) || (currentTick <= tickLimitLow))
-            revert Errors.PriceBoundFail();
+            revert Errors.PriceBoundFail(currentTick);
     }
 
     /// @notice Create the position in the AMM for a specific leg in the tokenId.
@@ -981,7 +981,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
             // 0-liquidity interactions are asymmetrical in Uniswap (burning 0 liquidity is permitted and functions as a poke, but minting is prohibited)
             // thus, we prohibit all 0-liquidity chunks to prevent users from creating positions that cannot be closed
-            if (chunkLiquidity == 0) revert Errors.ZeroLiquidity();
+            if (chunkLiquidity == 0) revert Errors.ChunkHasZeroLiquidity();
 
             if (isLong == 0) {
                 // selling/short: so move from msg.sender *to* uniswap
@@ -1002,7 +1002,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                     // what the account that owns the liquidity in uniswap has (startingLiquidity)
                     // we must ensure that an account can only move its own liquidity out of uniswap
                     // so we revert in this case
-                    revert Errors.NotEnoughLiquidity();
+                    revert Errors.NotEnoughLiquidityToBuy();
                 } else {
                     // startingLiquidity is >= chunkLiquidity, so no possible underflow
                     unchecked {

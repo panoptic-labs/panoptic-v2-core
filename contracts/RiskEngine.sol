@@ -49,11 +49,11 @@ contract RiskEngine {
                             RISK PARAMETERS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Required collateral ratios for selling options, represented as percentage * 10_000.
+    /// @notice Required collateral ratios for selling options, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 20% -> 0.2 * 10_000_000 = 2_000_000.
     uint256 immutable SELLER_COLLATERAL_RATIO;
 
-    /// @notice Required collateral ratios for buying options, represented as percentage * 10_000.
+    /// @notice Required collateral ratios for buying options, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 10% -> 0.1 * 10_000_000 = 1_000_000.
     uint256 immutable BUYER_COLLATERAL_RATIO;
 
@@ -61,36 +61,43 @@ contract RiskEngine {
     uint256 immutable FORCE_EXERCISE_COST;
 
     // Targets a pool utilization (balance between buying and selling)
-    /// @notice Target pool utilization below which buying+selling is optimal, represented as percentage * 10_000.
+    /// @notice Target pool utilization below which buying+selling is optimal, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 50% -> 0.5 * 10_000_000 = 5_000_000.
     uint256 immutable TARGET_POOL_UTIL;
 
-    /// @notice Pool utilization above which selling is 100% collateral backed, represented as percentage * 10_000.
+    /// @notice Pool utilization above which selling is 100% collateral backed, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 90% -> 0.9 * 10_000_000 = 9_000_000.
     uint256 immutable SATURATED_POOL_UTIL;
+
+    uint256 immutable CROSS_BUFFER_0;
+    uint256 immutable CROSS_BUFFER_1;
 
     /*//////////////////////////////////////////////////////////////
                   INITIALIZATION & PARAMETER SETTINGS
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Set immutable parameters for the Collateral Tracker.
-    /// @param _sellerCollateralRatio Required collateral ratio for selling options, represented as percentage * 10_000
-    /// @param _buyerCollateralRatio Required collateral ratio for buying options, represented as percentage * 10_000
+    /// @param _sellerCollateralRatio Required collateral ratio for selling options, fraction of 1, scaled by 10_000_000
+    /// @param _buyerCollateralRatio Required collateral ratio for buying options, fraction of 1, scaled by 10_000_000
     /// @param _forceExerciseCost Basal cost (in bps of notional) to force exercise an out-of-range position
-    /// @param _targetPoolUtilization Target pool utilization below which buying+selling is optimal, represented as percentage * 10_000
-    /// @param _saturatedPoolUtilization Pool utilization above which selling is 100% collateral backed, represented as percentage * 10_000
+    /// @param _targetPoolUtilization Target pool utilization below which buying+selling is optimal, fraction of 1, scaled by 10_000_000
+    /// @param _saturatedPoolUtilization Pool utilization above which selling is 100% collateral backed, fraction of 1, scaled by 10_000_000
     constructor(
         uint256 _sellerCollateralRatio,
         uint256 _buyerCollateralRatio,
         uint256 _forceExerciseCost,
         uint256 _targetPoolUtilization,
-        uint256 _saturatedPoolUtilization
+        uint256 _saturatedPoolUtilization,
+        uint256 _crossBuffer0,
+        uint256 _crossBuffer1
     ) {
         SELLER_COLLATERAL_RATIO = _sellerCollateralRatio;
         BUYER_COLLATERAL_RATIO = _buyerCollateralRatio;
         FORCE_EXERCISE_COST = _forceExerciseCost;
         TARGET_POOL_UTIL = _targetPoolUtilization;
         SATURATED_POOL_UTIL = _saturatedPoolUtilization;
+        CROSS_BUFFER_0 = _crossBuffer0;
+        CROSS_BUFFER_1 = _crossBuffer1;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -423,19 +430,75 @@ contract RiskEngine {
                      HEALTH AND COLLATERAL TRACKING
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Get the collateral status/margin details of an account/user.
-    /// @dev NOTE: It's up to the caller to confirm from the returned result that the account has enough collateral.
-    /// @dev This can be used to check the health: how many tokens a user has compared to the margin threshold.
-    /// @param user The account to check collateral/margin health for
-    /// @param atTick The tick at which to evaluate the account's positions
-    /// @param positionBalanceArray The list of all open positions held by the `optionOwner`, stored as `[[tokenId, balance/poolUtilizationAtMint], ...]`
-    /// @param shortPremia The total amount of premium (prorated by available settled tokens) owed to the short legs of `user`
-    /// @param longPremia The total amount of premium owed by the long legs of `user`
-    /// @param ct0 The Address of the CollateralTracker for token0
-    /// @param ct1 The Address of the CollateralTracker for token1
-    /// @return tokenData0 Information collected for the token0 about the health of the account
-    /// @return tokenData1 Information collected for the token1 about the health of the account
-    /// The collateral balance of the user is in the right slot and the threshold for margin call is in the left slot.
+    function isAccountSolvent(
+        address user,
+        int24 atTick,
+        uint256[2][] memory positionBalanceArray,
+        LeftRightUnsigned shortPremia,
+        LeftRightUnsigned longPremia,
+        CollateralTracker ct0,
+        CollateralTracker ct1,
+        uint256 buffer
+    ) external view returns (bool) {
+        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = _getMargin(
+            user,
+            atTick,
+            positionBalanceArray,
+            shortPremia,
+            longPremia,
+            ct0,
+            ct1
+        );
+        uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
+
+        uint256 maintReq0 = Math.mulDivRoundingUp(tokenData0.leftSlot(), buffer, DECIMALS);
+        uint256 maintReq1 = Math.mulDivRoundingUp(tokenData1.leftSlot(), buffer, DECIMALS);
+
+        uint256 bal0 = tokenData0.rightSlot();
+        uint256 bal1 = tokenData1.rightSlot();
+
+        uint256 scaledSurplusToken0 = Math.mulDiv(
+            bal0 > maintReq0 ? bal0 - maintReq0 : 0,
+            CROSS_BUFFER_0,
+            DECIMALS
+        );
+        uint256 scaledSurplusToken1 = Math.mulDiv(
+            bal1 > maintReq1 ? bal1 - maintReq1 : 0,
+            CROSS_BUFFER_1,
+            DECIMALS
+        );
+
+        if (sqrtPriceX96 < Constants.FP96) {
+            bool isSolvent0 = bal0 + PanopticMath.convert1to0(scaledSurplusToken1, sqrtPriceX96) >=
+                maintReq0;
+            bool isSolvent1 = PanopticMath.convert1to0(bal1, sqrtPriceX96) + scaledSurplusToken0 >=
+                PanopticMath.convert1to0RoundingUp(maintReq1, sqrtPriceX96);
+            return isSolvent0 && isSolvent1;
+        } else {
+            bool isSolvent0 = PanopticMath.convert0to1(bal0, sqrtPriceX96) + scaledSurplusToken1 >=
+                PanopticMath.convert0to1RoundingUp(maintReq0, sqrtPriceX96);
+            bool isSolvent1 = bal1 + PanopticMath.convert0to1(scaledSurplusToken0, sqrtPriceX96) >=
+                maintReq1;
+            return isSolvent0 && isSolvent1;
+        }
+    }
+
+    /// @notice Compute margin inputs for a user at a given tick.
+    /// @dev Purely informational: does not make a solvency decision.
+    ///      Returns per-asset maintenance requirement (left slot) and available balance including settled premia (right slot).
+    ///      Units:
+    ///        - Requirements are in raw token units
+    ///        - Balances are in raw token units
+    ///        - Ratios elsewhere in the engine use DECIMALS = 10_000_000
+    /// @param user Account to evaluate
+    /// @param atTick Tick at which exposures are valued
+    /// @param positionBalanceArray Array of [tokenId, balanceOrUtilAtMint] for all open positions of `user`
+    /// @param shortPremia Total short premia owed to `user` (right slot = token0 credit, left slot = token1 credit)
+    /// @param longPremia Total long premia owed by `user`   (right slot = token0 debit,  left slot = token1 debit)
+    /// @param ct0 CollateralTracker for token0
+    /// @param ct1 CollateralTracker for token1
+    /// @return tokenData0 LeftRightUnsigned for token0 with left = maintenance requirement, right = available balance
+    /// @return tokenData1 LeftRightUnsigned for token1 with left = maintenance requirement, right = available balance
     function getMargin(
         address user,
         int24 atTick,
@@ -445,13 +508,40 @@ contract RiskEngine {
         CollateralTracker ct0,
         CollateralTracker ct1
     ) external view returns (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) {
+        return _getMargin(user, atTick, positionBalanceArray, shortPremia, longPremia, ct0, ct1);
+    }
+
+    /// @notice Internal workhorse for margin computation.
+    /// @dev Aggregates balances, accrued interest, and per-position requirements to produce
+    ///      LeftRightUnsigned pairs for token0 and token1 where:
+    ///        - left slot = total maintenance requirement in that token
+    ///        - right slot = total available balance in that token including settled short premia
+    ///      Caller is responsible for any cross-asset conversion, haircuts, and final solvency logic.
+    /// @param user Account to evaluate
+    /// @param atTick Tick at which exposures are valued
+    /// @param positionBalanceArray Array of [tokenId, balanceOrUtilAtMint] for all open positions of `user`
+    /// @param shortPremia Total short premia owed to `user` (right slot = token0 credit, left slot = token1 credit)
+    /// @param longPremia Total long premia owed by `user`   (right slot = token0 debit,  left slot = token1 debit)
+    /// @param ct0 CollateralTracker for token0
+    /// @param ct1 CollateralTracker for token1
+    /// @return tokenData0 LeftRightUnsigned for token0 with left = maintenance requirement, right = available balance
+    /// @return tokenData1 LeftRightUnsigned for token1 with left = maintenance requirement, right = available balance
+    function _getMargin(
+        address user,
+        int24 atTick,
+        uint256[2][] memory positionBalanceArray,
+        LeftRightUnsigned shortPremia,
+        LeftRightUnsigned longPremia,
+        CollateralTracker ct0,
+        CollateralTracker ct1
+    ) internal view returns (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) {
         {
             uint256 balance0 = ct0.assetsOf(user) + shortPremia.rightSlot();
             uint256 owedInterest0 = ct0.owedInterest(user);
             uint256 requirement0 = positionBalanceArray.length > 0
                 ? (_getTotalRequiredCollateral(atTick, positionBalanceArray, true) +
                     longPremia.rightSlot() +
-                    owedInterest0).toUint128()
+                    owedInterest0)
                 : 0;
             tokenData0 = LeftRightUnsigned.wrap(balance0.toUint128()).addToLeftSlot(
                 requirement0.toUint128()
@@ -463,7 +553,7 @@ contract RiskEngine {
             uint256 requirement1 = positionBalanceArray.length > 0
                 ? (_getTotalRequiredCollateral(atTick, positionBalanceArray, false) +
                     longPremia.leftSlot() +
-                    owedInterest1).toUint128()
+                    owedInterest1)
                 : 0;
             tokenData1 = LeftRightUnsigned.wrap(balance1.toUint128()).addToLeftSlot(
                 requirement1.toUint128()
