@@ -598,13 +598,6 @@ contract RiskEngine {
         uint128 amountMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();
 
         uint256 isLong = tokenId.isLong(index);
-
-        // required collateral is at least 1
-        required = 1;
-
-        // start with base requirement, which is based on isLong value
-        required += _getRequiredCollateralAtUtilization(amountMoved, isLong, poolUtilization);
-
         unchecked {
             // if the width is 0, then this is a loan/credit
             if (tokenId.width(index) == 0) {
@@ -620,19 +613,22 @@ contract RiskEngine {
                     // this is not netted against other legs unless it has a partner
                     required = 0;
                 }
-            } else if (isLong == 0) {
-                // if position is short, check whether the position is out-the-money
+            } else {
+                // required collateral is at least 1
+                required = 1;
 
-                (int24 tickLower, int24 tickUpper) = tokenId.asTicks(index);
+                // start with base requirement, which is based on isLong value
+                required += _getRequiredCollateralAtUtilization(
+                    amountMoved,
+                    isLong,
+                    poolUtilization
+                );
 
-                // compute the collateral requirement as a fixed amount that doesn't depend on price
-                if (
-                    ((atTick >= tickUpper) && (tokenType == 1)) || // strike OTM when price >= upperTick for tokenType=1
-                    ((atTick < tickLower) && (tokenType == 0)) // strike OTM when price < lowerTick for tokenType=0
-                ) {
-                    // position is out-of-the-money, collateral requirement = SCR * amountMoved
-                    required;
-                } else {
+                if (isLong == 0) {
+                    // if position is short, check whether the position is out-the-money
+
+                    (int24 tickLower, int24 tickUpper) = tokenId.asTicks(index);
+
                     int24 strike = tokenId.strike(index);
                     // if position is ITM or ATM, then the collateral requirement depends on price:
 
@@ -651,55 +647,39 @@ contract RiskEngine {
                             Math.max24(2 * (strike - atTick), Constants.MIN_V3POOL_TICK)
                         ); // calls -> strike/price
 
-                    // compute the collateral requirement depending on whether the position is ITM & out-of-range or ITM and in-range:
+                    // Following Reg-T guidelines, the collateral requirement is the max of:
+                    //    - 10% of the notional value at the strike price
+                    //    - 20% of the underlying price MINUS the out-the-money amount
+                    // Note that  between the LP position's range, we over-estimate the capital composition.
 
-                    /// ITM and out-of-range
-                    if (
-                        ((atTick < tickLower) && (tokenType == 1)) || // strike ITM but out of range price < lowerTick for tokenType=1
-                        ((atTick >= tickUpper) && (tokenType == 0)) // strike ITM but out of range when price >= upperTick for tokenType=0
-                    ) {
-                        /*
-                                    Short put BPR = 100% - (price/strike) + SCR
+                    uint256 r0 = required;
 
-                           BUYING
-                           POWER
-                           REQUIREMENT
-                         
-                                         ^               .         .
-                                         |        <- ITM . <-ATM-> . OTM ->
-                           100% + SCR% - |--__           .    .    .
-                                  100% - | . .¯¯--__     .    .    .
-                                         |    .     ¯¯--__    .    .
-                                   SCR - |    .          .¯¯--__________
-                                         |    .          .    .    .
-                                         +----+----------+----+----+--->   current
-                                         0   Liqui-     Pa  strike Pb       price
-                                             dation
-                                             price = SCR*strike                                         
-                         */
+                    uint256 r1;
+                    {
+                        uint256 c0 = amountMoved + Math.mulDiv96RoundingUp(2 * required, ratio);
+                        uint256 c1 = Math.mulDiv96RoundingUp(amountMoved, ratio);
 
-                        uint256 c2 = Constants.FP96 - ratio;
+                        r1 = c0 > c1 ? c0 - c1 : 0;
+                    }
+                    uint256 r2;
 
-                        // compute the tokens required
-                        // position is in-the-money, collateral requirement = amountMoved*(1-ratio) + SCR*amountMoved
-                        required += Math.mulDiv96RoundingUp(amountMoved, c2);
-                    } else {
+                    if ((atTick < tickUpper) && (atTick >= tickLower)) {
                         // position is in-range (ie. current tick is between upper+lower tick): we draw a line between the
                         // collateral requirement at the lowerTick and the one at the upperTick. We use that interpolation as
                         // the collateral requirement when in-range, which always over-estimates the amount of token required
                         // Specifically:
                         //  required = amountMoved * (scaleFactor - ratio) / (scaleFactor + 1) + sellCollateralRatio*amountMoved
-                        uint160 scaleFactor = Math.getSqrtRatioAtTick(
-                            (tickUpper - strike) + (strike - tickLower)
-                        );
-                        uint256 c3 = Math.mulDivRoundingUp(
-                            amountMoved,
-                            scaleFactor - ratio,
-                            scaleFactor + Constants.FP96
-                        );
-
-                        required += c3;
+                        uint160 scaleFactor = Math.getSqrtRatioAtTick(tickUpper - tickLower);
+                        r2 =
+                            Math.mulDivRoundingUp(
+                                amountMoved,
+                                scaleFactor - ratio,
+                                scaleFactor + Constants.FP96
+                            ) +
+                            required;
                     }
+
+                    required = Math.max(Math.max(r2, r1), r0);
                 }
             }
         }
