@@ -1347,23 +1347,17 @@ contract PanopticPool is Multicall {
         LeftRightUnsigned longPremium,
         uint256 buffer
     ) internal view returns (bool) {
-        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = s_riskEngine.getMargin(
-            account,
-            atTick,
-            positionBalanceArray,
-            shortPremium,
-            longPremium,
-            s_collateralToken0,
-            s_collateralToken1
-        );
-        (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.getCrossBalances(
-            tokenData0,
-            tokenData1,
-            Math.getSqrtRatioAtTick(atTick)
-        );
-
-        // compare balance and required tokens, can use unsafe div because denominator is always nonzero
-        return balanceCross >= Math.mulDivRoundingUp(thresholdCross, buffer, 10_000);
+        return
+            s_riskEngine.isAccountSolvent(
+                account,
+                atTick,
+                positionBalanceArray,
+                shortPremium,
+                longPremium,
+                s_collateralToken0,
+                s_collateralToken1,
+                buffer
+            );
     }
 
     /// @notice Checks whether the current tick has deviated too much from the previouslyt stored ticks. Computed in the RiskEngine

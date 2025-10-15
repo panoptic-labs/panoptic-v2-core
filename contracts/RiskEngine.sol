@@ -427,6 +427,35 @@ contract RiskEngine {
                      HEALTH AND COLLATERAL TRACKING
     //////////////////////////////////////////////////////////////*/
 
+    function isAccountSolvent(
+        address user,
+        int24 atTick,
+        uint256[2][] memory positionBalanceArray,
+        LeftRightUnsigned shortPremia,
+        LeftRightUnsigned longPremia,
+        CollateralTracker ct0,
+        CollateralTracker ct1,
+        uint256 buffer
+    ) external view returns (bool) {
+        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = this.getMargin(
+            user,
+            atTick,
+            positionBalanceArray,
+            shortPremia,
+            longPremia,
+            ct0,
+            ct1
+        );
+        (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.getCrossBalances(
+            tokenData0,
+            tokenData1,
+            Math.getSqrtRatioAtTick(atTick)
+        );
+
+        // compare balance and required tokens, can use unsafe div because denominator is always nonzero
+        return balanceCross >= Math.mulDivRoundingUp(thresholdCross, buffer, 10_000);
+    }
+
     function isSafeMode(int24 currentTick, uint256 medianData) external pure returns (bool) {
         unchecked {
             // If ticks have recently deviated more than +/- ~10%, enforce covered mints
