@@ -4198,7 +4198,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
 
         // revert because positionIdList has tokenId with no leg
-        vm.expectRevert(Errors.ZeroLegs.selector);
+        vm.expectRevert(Errors.TokenIdHasZeroLegs.selector);
         collateralToken0.withdraw(assets0, Bob, Bob, spoofList, true);
 
         positionIdList.push(tokenId_noLeg);
@@ -4210,7 +4210,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                         uint256(keccak256(abi.encode(positionIdList[1])))
                 )
         );
-        vm.expectRevert(Errors.ZeroLegs.selector);
+        vm.expectRevert(Errors.TokenIdHasZeroLegs.selector);
         collateralToken0.withdraw(assets0, Bob, Bob, positionIdList, true);
 
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
@@ -4451,8 +4451,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         panopticPool.setPositionsHash(Bob, spoofHash);
 
         console2.log("bur");
-        // 2. Assert & 3. Act: Expect a revert when withdrawing with the spoofed list. Fails before the position fingerprint with ZeroLiquidity at mint
-        vm.expectRevert(Errors.ZeroLiquidity.selector);
+        // 2. Assert & 3. Act: Expect a revert when withdrawing with the spoofed list. Fails before the position fingerprint with ChunkHasZeroLiquidity at mint
+        vm.expectRevert(Errors.ChunkHasZeroLiquidity.selector);
         burnOptions(
             panopticPool,
             spoofList,
@@ -4541,7 +4541,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         panopticPool.setPositionsHash(Bob, spoofHash);
 
         console2.log("burn");
-        // 2. Assert & 3. Act: Expect a revert when withdrawing with the spoofed list. Fails before the position fingerprint with ZeroLiquidity at mint
+        // 2. Assert & 3. Act: Expect a revert when withdrawing with the spoofed list. Fails before the position fingerprint with ChunkHasZeroLiquidity at mint
         vm.expectRevert(Errors.WrongPoolId.selector);
         burnOptions(
             panopticPool,
@@ -4648,7 +4648,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 assets0 = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
 
         // 2. Assert & 3. Act: Expect a revert because the tokenId is invalid.
-        vm.expectRevert(Errors.ZeroLegs.selector);
+        vm.expectRevert(Errors.TokenIdHasZeroLegs.selector);
         collateralToken0.withdraw(assets0, Bob, Bob, invalidList, true);
     }
 

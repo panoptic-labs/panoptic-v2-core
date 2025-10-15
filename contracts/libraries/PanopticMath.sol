@@ -149,7 +149,7 @@ library PanopticMath {
 
         // increment the upper 8 bits (leg counter) if addFlag=true, decrement otherwise
         uint8 numberOfLegs = uint8(tokenId.countLegs());
-        if (numberOfLegs == 0) revert Errors.ZeroLegs();
+        if (numberOfLegs == 0) revert Errors.TokenIdHasZeroLegs();
 
         // unchecked, so reverts if overflow
         uint256 newLegCount = addFlag

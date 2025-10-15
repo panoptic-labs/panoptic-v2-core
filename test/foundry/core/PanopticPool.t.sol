@@ -4724,7 +4724,7 @@ contract PanopticPoolTest is PositionUtils {
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
-        vm.expectRevert(Errors.ZeroLiquidity.selector);
+        vm.expectRevert(Errors.ChunkHasZeroLiquidity.selector);
         mintOptions(
             pp,
             posIdList,
