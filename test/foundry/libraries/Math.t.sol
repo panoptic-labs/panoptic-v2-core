@@ -370,6 +370,130 @@ contract MathTest is Test {
         assertEq(uniV3Result, returnedResult);
     }
 
+    function test_wTaylorCompounded_maxLimits() public {
+        // Test with very small nx values where approximation should be nearly exact
+
+        ///  MAX_RATE_AT_TARGET = 8.0 ether / int256(365 days) = 253678335870;
+        ///  MAX deltaTime per Block = 12s
+        uint256 x1 = 253678335870; //
+        uint256 n1 = 12; //
+        uint256 result1 = Math.wTaylorCompounded(x1, n1);
+        uint256 expected1 = 3044144663838; //= (exp(12*253678335870/1e18)-1)*1e18
+
+        // After 1 term, result is exacte
+        assertEq(result1, expected1); // 0.0001% tolerance
+
+        // update every block for 1 year
+
+        uint256 borrowIndex = 1e18;
+        for (uint256 i; i < (365 * 24 * 3600) / 12; i++) {
+            uint256 rawInterest = Math.wTaylorCompounded(x1, n1);
+            borrowIndex = Math.mulDivWadRoundingUp(borrowIndex, 1e18 + rawInterest);
+        }
+        assertLt(borrowIndex, 2980957987505564024832); // in Python: Decimal(1*10**18*(1 + 3044144663838/10**18)**(365*24*3600/12)) = 2980957987505564024832, less than because exponential argument > WAD
+        assertEq(borrowIndex, 2980957987023695398473); // this is the actual value
+
+        // update every block until it is larger than 2**80
+        uint256 iterations;
+        borrowIndex = 1e18;
+        while (borrowIndex < 2 ** 80) {
+            uint256 rawInterest = Math.wTaylorCompounded(x1, n1);
+            borrowIndex = Math.mulDivWadRoundingUp(borrowIndex, 1e18 + rawInterest);
+            iterations++;
+        }
+        assertEq(iterations, 4600723, "Update at every block"); // Overflow after 4600723/365/243600*12 = 1.75years at the max possible rate if the price is updated at every block
+
+        // update every block until it is larger than 2**80
+        iterations = 0;
+        borrowIndex = 1e18;
+        n1 = 12 * 5;
+        while (borrowIndex < 2 ** 80) {
+            uint256 rawInterest = Math.wTaylorCompounded(x1, n1);
+            borrowIndex = Math.mulDivWadRoundingUp(borrowIndex, 1e18 + rawInterest);
+            iterations++;
+        }
+        assertEq(iterations, 920145, "Update every 1min"); // Overflow after 920145/365/24/3600*5*12 = 1.75years at the max possible rate if the price is updated at every block
+
+        // update every block until it is larger than 2**80
+        iterations = 0;
+        borrowIndex = 1e18;
+        n1 = 12 * 5 * 60;
+        while (borrowIndex < 2 ** 80) {
+            uint256 rawInterest = Math.wTaylorCompounded(x1, n1);
+            borrowIndex = Math.mulDivWadRoundingUp(borrowIndex, 1e18 + rawInterest);
+            iterations++;
+        }
+        assertEq(iterations, 15336, "Update every 1h"); // Overflow after = 15336/365/24*3600*5*12*60 = 1.75years at the max possible rate if the price is updated at every block
+
+        // update every block until it is larger than 2**80
+        iterations = 0;
+        borrowIndex = 1e18;
+        n1 = 12 * 5 * 60 * 24;
+        while (borrowIndex < 2 ** 80) {
+            uint256 rawInterest = Math.wTaylorCompounded(x1, n1);
+            borrowIndex = Math.mulDivWadRoundingUp(borrowIndex, 1e18 + rawInterest);
+            iterations++;
+        }
+        assertEq(iterations, 639, "Update every 1d"); // Overflow after 639/365 = 1.75years at the max possible rate if the price is updated at every block
+
+        // update every block until it is larger than 2**80
+        iterations = 0;
+        borrowIndex = 1e18;
+        n1 = 12 * 5 * 60 * 24 * 30;
+        while (borrowIndex < 2 ** 80) {
+            uint256 rawInterest = Math.wTaylorCompounded(x1, n1);
+            borrowIndex = Math.mulDivWadRoundingUp(borrowIndex, 1e18 + rawInterest);
+            iterations++;
+        }
+        assertEq(iterations, 22, "Update every month"); // Overflow after 22/12 = 1.83years at the max possible rate if the price is updated at every block
+
+        // update every block until it is larger than 2**80
+        iterations = 0;
+        borrowIndex = 1e18;
+        n1 = 12 * 5 * 60 * 24 * 30 * 6;
+        while (borrowIndex < 2 ** 80) {
+            uint256 rawInterest = Math.wTaylorCompounded(x1, n1);
+            borrowIndex = Math.mulDivWadRoundingUp(borrowIndex, 1e18 + rawInterest);
+            iterations++;
+        }
+        assertEq(iterations, 5, "Update every 6 months"); // Overflow after 5/12*6 = 2.5years at the max possible rate if the price is updated at every block
+
+        // update every block until it is larger than 2**80
+        iterations = 0;
+        borrowIndex = 1e18;
+        n1 = 12 * 5 * 60 * 24 * 365;
+        while (borrowIndex < 2 ** 80) {
+            uint256 rawInterest = Math.wTaylorCompounded(x1, n1);
+            borrowIndex = Math.mulDivWadRoundingUp(borrowIndex, 1e18 + rawInterest);
+            iterations++;
+        }
+        assertEq(iterations, 3, "Update every year"); // Overflow after 3years at the max possible rate if the price is updated at every block
+    }
+
+    function test_wTaylorCompounded_minLimits() public {
+        // Test with very small nx values where approximation should be nearly exact
+
+        ///  MIN_RATE_AT_TARGET = 0.001 ether / int256(365 days) = 31709792;
+        ///  MAX deltaTime per Block = 12s
+        uint256 x1 = 31709792; //
+        uint256 n1 = 12; //
+        uint256 result1 = Math.wTaylorCompounded(x1, n1);
+        uint256 expected1 = 380517504; //= (exp(12*31709792/1e18)-1)*1e18
+
+        // After 1 term, result is exacte
+        assertEq(result1, expected1); // 0.0001% tolerance
+
+        // update every block for 1 year
+
+        uint256 borrowIndex = 1e18;
+        for (uint256 i; i < (365 * 24 * 3600) / 12; i++) {
+            uint256 rawInterest = Math.wTaylorCompounded(x1, n1);
+            borrowIndex = Math.mulDivWadRoundingUp(borrowIndex, 1e18 + rawInterest);
+        }
+        assertGt(borrowIndex, 1001000499881267328); // in Python: Decimal(1*10**18*(1 + 380517504/10**18)**(365*24*3600/12)) = 2980957987505564024832, greater because exponential argument < WAD
+        assertEq(borrowIndex, 1001000500168344949); // this is the actual value
+    }
+
     function test_wTaylorCompounded_SmallValues() public {
         // Test with very small nx values where approximation should be nearly exact
 

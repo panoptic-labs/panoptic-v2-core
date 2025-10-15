@@ -37,6 +37,13 @@ import {TokenId} from "@types/TokenId.sol";
 contract RiskEngine {
     using Math for uint256;
 
+    /// @notice Emitted when a borrow rate is updated.
+    event BorrowRateUpdated(
+        address indexed collateralToken,
+        uint256 avgBorrowRate,
+        uint256 rateAtTarget
+    );
+
     /*//////////////////////////////////////////////////////////////
                                CONSTANTS
     //////////////////////////////////////////////////////////////*/
@@ -54,6 +61,9 @@ contract RiskEngine {
     /// @notice The maximum allowed cumulative delta between the fast & slow oracle tick, the current & slow oracle tick, and the last-observed & slow oracle tick.
     /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
     int256 internal constant MAX_TICKS_DELTA = 953;
+
+    /// @notice Decimals for WAD calculations.
+    int256 internal constant WAD = 1e18;
 
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS
@@ -81,6 +91,36 @@ contract RiskEngine {
 
     uint256 immutable CROSS_BUFFER_0;
     uint256 immutable CROSS_BUFFER_1;
+
+    /*//////////////////////////////////////////////////////////////
+                            IRM PARAMETERS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Curve steepness (scaled by WAD).
+    /// @dev Curve steepness = 4.
+    int256 public constant CURVE_STEEPNESS = 4 ether;
+
+    /// @notice Minimum rate at target per second (scaled by WAD).
+    /// @dev Minimum rate at target = 0.1% (minimum rate = 0.025%).
+    int256 public constant MIN_RATE_AT_TARGET = 0.001 ether / int256(365 days);
+
+    /// @notice Maximum rate at target per second (scaled by WAD).
+    /// @dev Maximum rate at target = 200% (maximum rate = 800%).
+    int256 public constant MAX_RATE_AT_TARGET = 2.0 ether / int256(365 days);
+
+    /// @notice Target utilization (scaled by WAD).
+    /// @dev Target utilization = 90%.
+    int256 public constant TARGET_UTILIZATION = 2 ether / int256(3);
+
+    /// @notice Initial rate at target per second (scaled by WAD).
+    /// @dev Initial rate at target = 4% (rate between 1% and 16%).
+    int256 public constant INITIAL_RATE_AT_TARGET = 0.04 ether / int256(365 days);
+
+    /// @notice Adjustment speed per second (scaled by WAD).
+    /// @dev The speed is per second, so the rate moves at a speed of ADJUSTMENT_SPEED * err each second (while being
+    /// continuously compounded).
+    /// @dev Adjustment speed = 50/year.
+    int256 public constant ADJUSTMENT_SPEED = 50 ether / int256(365 days);
 
     /*//////////////////////////////////////////////////////////////
                   INITIALIZATION & PARAMETER SETTINGS
@@ -1237,5 +1277,121 @@ contract RiskEngine {
                     (BUYER_COLLATERAL_RATIO * (SATURATED_POOL_UTIL - utilization)) /
                     (SATURATED_POOL_UTIL - TARGET_POOL_UTIL)) / 2; // do the division by 2 at the end after all addition and multiplication; b/c y1 = buyCollateralRatio / 2
         }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                  ADAPTIVE INTEREST RATE MODEL
+    //////////////////////////////////////////////////////////////*/
+
+    function interestRate(uint256 utilization) external returns (uint128) {
+        return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
+    }
+
+    function interestRate(
+        uint256 utilization,
+        uint256 interestRateAccumulator
+    ) external view returns (uint128) {
+        (uint256 avgRate, ) = _borrowRate(utilization, interestRateAccumulator);
+        return uint128(avgRate);
+        //return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
+    }
+
+    function updateInterestRate(
+        uint256 utilization,
+        uint256 interestRateAccumulator
+    ) external returns (uint128, uint256) {
+        (uint256 avgRate, int256 endRateAtTarget) = _borrowRate(
+            utilization,
+            interestRateAccumulator
+        );
+        return (uint128(avgRate), uint256(endRateAtTarget));
+        //return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
+    }
+
+    /// @dev Returns avgRate and endRateAtTarget.
+    /// @dev Assumes that the inputs `marketParams` and `id` match.
+    function _borrowRate(
+        uint256 utilization,
+        uint256 interestRateAccumulator
+    ) internal view returns (uint256, int256) {
+        // Safe "unchecked" cast because the utilization is smaller than 1 (scaled by WAD).
+
+        int256 _utilization = int256(utilization);
+        int256 errNormFactor = int256(_utilization) > TARGET_UTILIZATION
+            ? WAD - TARGET_UTILIZATION
+            : TARGET_UTILIZATION;
+        int256 err = Math.wDivToZero(_utilization - TARGET_UTILIZATION, errNormFactor);
+        int256 startRateAtTarget = int256(uint256((interestRateAccumulator >> 112) % 2 ** 38));
+        uint256 previousTime = uint32(interestRateAccumulator >> 80);
+
+        int256 avgRateAtTarget;
+        int256 endRateAtTarget;
+
+        if (startRateAtTarget == 0) {
+            // First interaction.
+            avgRateAtTarget = INITIAL_RATE_AT_TARGET;
+            endRateAtTarget = INITIAL_RATE_AT_TARGET;
+        } else {
+            // The speed is assumed constant between two updates, but it is in fact not constant because of interest.
+            // So the rate is always underestimated.
+            int256 speed = Math.wMulToZero(ADJUSTMENT_SPEED, err);
+            // Safe "unchecked" cast because block.timestamp - market.lastUpdate <= block.timestamp <= type(int256).max.
+            int256 elapsed = int256(block.timestamp - previousTime);
+            int256 linearAdaptation = speed * elapsed;
+
+            if (linearAdaptation == 0) {
+                // If linearAdaptation == 0, avgRateAtTarget = endRateAtTarget = startRateAtTarget;
+                avgRateAtTarget = startRateAtTarget;
+                endRateAtTarget = startRateAtTarget;
+            } else {
+                // Formula of the average rate that should be returned to Morpho Blue:
+                // avg = 1/T * ∫_0^T curve(startRateAtTarget*exp(speed*x), err) dx
+                // The integral is approximated with the trapezoidal rule:
+                // avg ~= 1/T * Σ_i=1^N [curve(f((i-1) * T/N), err) + curve(f(i * T/N), err)] / 2 * T/N
+                // Where f(x) = startRateAtTarget*exp(speed*x)
+                // avg ~= Σ_i=1^N [curve(f((i-1) * T/N), err) + curve(f(i * T/N), err)] / (2 * N)
+                // As curve is linear in its first argument:
+                // avg ~= curve([Σ_i=1^N [f((i-1) * T/N) + f(i * T/N)] / (2 * N), err)
+                // avg ~= curve([(f(0) + f(T))/2 + Σ_i=1^(N-1) f(i * T/N)] / N, err)
+                // avg ~= curve([(startRateAtTarget + endRateAtTarget)/2 + Σ_i=1^(N-1) f(i * T/N)] / N, err)
+                // With N = 2:
+                // avg ~= curve([(startRateAtTarget + endRateAtTarget)/2 + startRateAtTarget*exp(speed*T/2)] / 2, err)
+                // avg ~= curve([startRateAtTarget + endRateAtTarget + 2*startRateAtTarget*exp(speed*T/2)] / 4, err)
+                endRateAtTarget = _newRateAtTarget(startRateAtTarget, linearAdaptation);
+                int256 midRateAtTarget = _newRateAtTarget(startRateAtTarget, linearAdaptation / 2);
+                avgRateAtTarget = (startRateAtTarget + endRateAtTarget + 2 * midRateAtTarget) / 4;
+            }
+        }
+
+        // Safe "unchecked" cast because avgRateAtTarget >= 0.
+        return (uint256(_curve(avgRateAtTarget, err)), endRateAtTarget);
+    }
+
+    /// @dev Returns the rate for a given `_rateAtTarget` and an `err`.
+    /// The formula of the curve is the following:
+    /// r = ((1-1/C)*err + 1) * rateAtTarget if err < 0
+    ///     ((C-1)*err + 1) * rateAtTarget else.
+    function _curve(int256 _rateAtTarget, int256 err) private pure returns (int256) {
+        // Non negative because 1 - 1/C >= 0, C - 1 >= 0.
+        int256 coeff = err < 0
+            ? WAD - Math.wDivToZero(WAD, CURVE_STEEPNESS)
+            : CURVE_STEEPNESS - WAD;
+        // Non negative if _rateAtTarget >= 0 because if err < 0, coeff <= 1.
+        return Math.wMulToZero(Math.wMulToZero(coeff, err) + WAD, _rateAtTarget);
+    }
+
+    /// @dev Returns the new rate at target, for a given `startRateAtTarget` and a given `linearAdaptation`.
+    /// The formula is: max(min(startRateAtTarget * exp(linearAdaptation), maxRateAtTarget), minRateAtTarget).
+    function _newRateAtTarget(
+        int256 startRateAtTarget,
+        int256 linearAdaptation
+    ) private pure returns (int256) {
+        // Non negative because MIN_RATE_AT_TARGET > 0.
+        return
+            Math.bound(
+                Math.wMulToZero(startRateAtTarget, Math.wExp(linearAdaptation)),
+                MIN_RATE_AT_TARGET,
+                MAX_RATE_AT_TARGET
+            );
     }
 }
