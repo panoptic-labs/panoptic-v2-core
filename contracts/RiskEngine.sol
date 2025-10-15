@@ -725,6 +725,7 @@ contract RiskEngine {
                     longPremia.rightSlot() +
                     owedInterest0)
                 : 0;
+
             tokenData0 = LeftRightUnsigned.wrap(balance0.toUint128()).addToLeftSlot(
                 requirement0.toUint128()
             );
@@ -869,28 +870,37 @@ contract RiskEngine {
         uint128 amountMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();
 
         uint256 isLong = tokenId.isLong(index);
-
-        // required collateral is at least 1
-        required = 1;
-
-        // start with base requirement, which is based on isLong value
-        required += _getRequiredCollateralAtUtilization(amountMoved, isLong, poolUtilization);
-
-        // if the position is long, required tokens do not depend on price
         unchecked {
-            if (isLong == 0) {
-                // if position is short, check whether the position is out-the-money
-
-                (int24 tickLower, int24 tickUpper) = tokenId.asTicks(index);
-
-                // compute the collateral requirement as a fixed amount that doesn't depend on price
-                if (
-                    ((atTick >= tickUpper) && (tokenType == 1)) || // strike OTM when price >= upperTick for tokenType=1
-                    ((atTick < tickLower) && (tokenType == 0)) // strike OTM when price < lowerTick for tokenType=0
-                ) {
-                    // position is out-of-the-money, collateral requirement = SCR * amountMoved
-                    required;
+            // if the width is 0, then this is a loan/credit
+            if (tokenId.width(index) == 0) {
+                if (isLong == 0) {
+                    // buying power requirement for a Loan position is 100% + sellCollateralRatio(utilization = 0)
+                    required = Math.mulDivRoundingUp(
+                        amountMoved,
+                        SELLER_COLLATERAL_RATIO + DECIMALS,
+                        DECIMALS
+                    );
                 } else {
+                    // buying power requirement for a Credit position is 0
+                    // this is not netted against other legs unless it has a partner
+                    required = 0;
+                }
+            } else {
+                // required collateral is at least 1
+                required = 1;
+
+                // start with base requirement, which is based on isLong value
+                required += _getRequiredCollateralAtUtilization(
+                    amountMoved,
+                    isLong,
+                    poolUtilization
+                );
+
+                if (isLong == 0) {
+                    // if position is short, check whether the position is out-the-money
+
+                    (int24 tickLower, int24 tickUpper) = tokenId.asTicks(index);
+
                     int24 strike = tokenId.strike(index);
                     // if position is ITM or ATM, then the collateral requirement depends on price:
 
@@ -909,55 +919,39 @@ contract RiskEngine {
                             Math.max24(2 * (strike - atTick), Constants.MIN_V3POOL_TICK)
                         ); // calls -> strike/price
 
-                    // compute the collateral requirement depending on whether the position is ITM & out-of-range or ITM and in-range:
+                    // Following Reg-T guidelines, the collateral requirement is the max of:
+                    //    - 10% of the notional value at the strike price
+                    //    - 20% of the underlying price MINUS the out-the-money amount
+                    // Note that  between the LP position's range, we over-estimate the capital composition.
 
-                    /// ITM and out-of-range
-                    if (
-                        ((atTick < tickLower) && (tokenType == 1)) || // strike ITM but out of range price < lowerTick for tokenType=1
-                        ((atTick >= tickUpper) && (tokenType == 0)) // strike ITM but out of range when price >= upperTick for tokenType=0
-                    ) {
-                        /*
-                                    Short put BPR = 100% - (price/strike) + SCR
+                    uint256 r0 = required;
 
-                           BUYING
-                           POWER
-                           REQUIREMENT
-                         
-                                         ^               .         .
-                                         |        <- ITM . <-ATM-> . OTM ->
-                           100% + SCR% - |--__           .    .    .
-                                  100% - | . .¯¯--__     .    .    .
-                                         |    .     ¯¯--__    .    .
-                                   SCR - |    .          .¯¯--__________
-                                         |    .          .    .    .
-                                         +----+----------+----+----+--->   current
-                                         0   Liqui-     Pa  strike Pb       price
-                                             dation
-                                             price = SCR*strike                                         
-                         */
+                    uint256 r1;
+                    {
+                        uint256 c0 = amountMoved + Math.mulDiv96RoundingUp(2 * required, ratio);
+                        uint256 c1 = Math.mulDiv96RoundingUp(amountMoved, ratio);
 
-                        uint256 c2 = Constants.FP96 - ratio;
+                        r1 = c0 > c1 ? c0 - c1 : 0;
+                    }
+                    uint256 r2;
 
-                        // compute the tokens required
-                        // position is in-the-money, collateral requirement = amountMoved*(1-ratio) + SCR*amountMoved
-                        required += Math.mulDiv96RoundingUp(amountMoved, c2);
-                    } else {
+                    if ((atTick < tickUpper) && (atTick >= tickLower)) {
                         // position is in-range (ie. current tick is between upper+lower tick): we draw a line between the
                         // collateral requirement at the lowerTick and the one at the upperTick. We use that interpolation as
                         // the collateral requirement when in-range, which always over-estimates the amount of token required
                         // Specifically:
                         //  required = amountMoved * (scaleFactor - ratio) / (scaleFactor + 1) + sellCollateralRatio*amountMoved
-                        uint160 scaleFactor = Math.getSqrtRatioAtTick(
-                            (tickUpper - strike) + (strike - tickLower)
-                        );
-                        uint256 c3 = Math.mulDivRoundingUp(
-                            amountMoved,
-                            scaleFactor - ratio,
-                            scaleFactor + Constants.FP96
-                        );
-
-                        required += c3;
+                        uint160 scaleFactor = Math.getSqrtRatioAtTick(tickUpper - tickLower);
+                        r2 =
+                            Math.mulDivRoundingUp(
+                                amountMoved,
+                                scaleFactor - ratio,
+                                scaleFactor + Constants.FP96
+                            ) +
+                            required;
                     }
+
+                    required = Math.max(Math.max(r2, r1), r0);
                 }
             }
         }
@@ -980,24 +974,150 @@ contract RiskEngine {
         uint128 positionSize,
         int24 atTick,
         int16 poolUtilization
-    ) internal view returns (uint256 required) {
+    ) internal view returns (uint256) {
         // extract partner index (associated with another liquidity chunk)
         uint256 partnerIndex = tokenId.riskPartner(index);
 
-        uint256 isLong = tokenId.isLong(index);
-        if (isLong != tokenId.isLong(partnerIndex)) {
-            if (isLong == 1) {
-                required = _computeSpread(
-                    tokenId,
-                    positionSize,
-                    index,
-                    partnerIndex,
-                    poolUtilization
-                );
+        // In the following, we check whether the risk partner of this leg is itself
+        // or another leg in this position.
+        // Handles case where riskPartner(i) != i ==> leg i has a risk partner that is another leg
+        // @dev In summary, the allowed risk partners:
+        //
+        // PURE OPTIONS
+        // -Short Strangles/Straddles (short put + short call) = each leg's basic requirement is 50% less
+        // -Vertical Spreads and Calendar Spreads (short put + long put) or (short call + long call) = requirement is max loss
+        // -Synthetic Stocks (short put + long call) or (short call + long put) = requirement is short leg only
+        //
+        // FUNDED OPTIONS
+        // -Prepaid long option (long put or call + credit) "Purchases pre-pays for the cost of the option" = requirement is max(long - credit, 1)
+        // -Upfront short option (short put or call + loan) "Upfront payment to seller" = requirement is max(loan, short option)
+        // -Option-protected loan (long put or call + loan) "Get a loan with an embedded long option for capital protection" = requirement is max(loan, short option)
+        // -Cash-Secured Option (short put or call + credit) "Allocate collateral to that specific option" = requirement is max(short - credit, 1)
+        //
+        // TOKEN TRANSFERS
+        // - Delayed Swap (credit at one strike, loan at another; different amounts = effective swap) = requirement is max(loan0 - convert1to0(credit), 1) or max(loan1 - convert0to1(credit), 1)
+        {
+            // only proceed if the partners have the same asset
+            if (tokenId.asset(partnerIndex) == tokenId.asset(index)) {
+                // witdh of associated legs, true if greater than 0 (ie. it is an option leg)
+                bool _width = tokenId.width(index) > 0;
+                bool widthP = tokenId.width(partnerIndex) > 0;
+                // long/short status of associated legs
+                uint256 _isLong = tokenId.isLong(index);
+                uint256 isLongP = tokenId.isLong(partnerIndex);
+
+                // token type status of associated legs (call/put)
+                uint256 _tokenType = tokenId.tokenType(index);
+                uint256 tokenTypeP = tokenId.tokenType(partnerIndex);
+
+                // if both legs are options
+                if (_width && widthP) {
+                    if (_tokenType != tokenTypeP) {
+                        if (_isLong == 0 && isLongP == 0) {
+                            // STRANGLES: different token types, both short
+                            return
+                                _computeStrangle(
+                                    tokenId,
+                                    index,
+                                    positionSize,
+                                    atTick,
+                                    poolUtilization
+                                );
+                        } else if (_isLong != isLongP) {
+                            // SYNTHETIC STOCK: different token types, one is long and the other is short
+                            return
+                                // return the collateral requirement of the short leg only, the long leg is free!
+                                _isLong == 0
+                                    ? _getRequiredCollateralSingleLegNoPartner(
+                                        tokenId,
+                                        index,
+                                        positionSize,
+                                        atTick,
+                                        poolUtilization
+                                    )
+                                    : 0;
+                        }
+                    } else {
+                        if (_isLong != isLongP) {
+                            // SPREADS: same token type, one is long and the other is short
+                            return
+                                // only return the requirement once for the first leg it encounters
+                                index < partnerIndex
+                                    ? _computeSpread(
+                                        tokenId,
+                                        positionSize,
+                                        index,
+                                        partnerIndex,
+                                        poolUtilization
+                                    )
+                                    : 0;
+                        }
+                    }
+                } else if (_width != widthP) {
+                    if (_tokenType == tokenTypeP) {
+                        if (isLongP == 1) {
+                            // CASH-SECURED OPTION
+                            // PREPAID LONG OPTION
+                            // only compute it once for the option leg
+                            return
+                                _width
+                                    ? _computeCreditOptionComposite(
+                                        tokenId,
+                                        positionSize,
+                                        index,
+                                        partnerIndex,
+                                        atTick,
+                                        poolUtilization
+                                    )
+                                    : 0;
+                        } else {
+                            // OPTION-PROTECTED LOAN
+                            // UPFRONT SHORT OPTION
+                            // only compute it once for the option leg
+                            return
+                                _width
+                                    ? _computeLoanOptionComposite(
+                                        tokenId,
+                                        positionSize,
+                                        index,
+                                        partnerIndex,
+                                        atTick,
+                                        poolUtilization
+                                    )
+                                    : 0;
+                        }
+                    }
+                } else {
+                    if (_tokenType != tokenTypeP) {
+                        // TOKEN TRANSFERS
+                        if (_isLong != isLongP) {
+                            // DELAYED SWAP
+                            // only compute it once for the loan side
+                            return
+                                _isLong == 0
+                                    ? _computeDelayedSwap(
+                                        tokenId,
+                                        positionSize,
+                                        index,
+                                        partnerIndex,
+                                        atTick
+                                    )
+                                    : 0;
+                        }
+                    }
+                }
             }
-        } else {
-            required = _computeStrangle(tokenId, index, positionSize, atTick, poolUtilization);
         }
+
+        // otherwise, not a list of allowed strategies. Return the single-leg collateral requirement
+        return
+            _getRequiredCollateralSingleLegNoPartner(
+                tokenId,
+                index,
+                positionSize,
+                atTick,
+                poolUtilization
+            );
     }
 
     /// @notice Get the base collateral requirement for a position of notional value `amount` at the current Panoptic pool `utilization` level.
@@ -1050,8 +1170,32 @@ contract RiskEngine {
         uint256 partnerIndex,
         int16 poolUtilization
     ) internal view returns (uint256 spreadRequirement) {
+        spreadRequirement = 1;
         // compute the total amount of funds moved for the position's current leg
         LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index);
+
+        {
+            // This is a CALENDAR SPREAD adjustment, where the collateral requirement is the max loss of the position
+            // real formula is contractSize * (1/(sqrt(r1)+1) - 1/(sqrt(r2)+1))
+            // Taylor expand to get a rough approximation of: contractSize * ∆width * tickSpacing / 40000
+            // This is strictly larger than the real one, so OK to use that for a collateral requirement.
+            int24 deltaWidth = tokenId.width(index) - tokenId.width(partnerIndex);
+
+            // TODO check if same strike and same width is allowed
+            if (deltaWidth < 0) deltaWidth = -deltaWidth;
+
+            if (tokenId.tokenType(index) == 0) {
+                spreadRequirement +=
+                    (amountsMoved.rightSlot() *
+                        uint256(int256(deltaWidth * tokenId.tickSpacing()))) /
+                    80000;
+            } else {
+                spreadRequirement +=
+                    (amountsMoved.leftSlot() *
+                        uint256(int256(deltaWidth * tokenId.tickSpacing()))) /
+                    80000;
+            }
+        }
 
         // compute the total amount of funds moved for the position's partner leg
         LeftRightUnsigned amountsMovedPartner = PanopticMath.getAmountsMoved(
@@ -1060,11 +1204,11 @@ contract RiskEngine {
             partnerIndex
         );
 
-        uint128 movedRight = amountsMoved.rightSlot();
-        uint128 movedLeft = amountsMoved.leftSlot();
+        uint128 moved0 = amountsMoved.rightSlot();
+        uint128 moved1 = amountsMoved.leftSlot();
 
-        uint128 movedPartnerRight = amountsMovedPartner.rightSlot();
-        uint128 movedPartnerLeft = amountsMovedPartner.leftSlot();
+        uint128 moved0Partner = amountsMovedPartner.rightSlot();
+        uint128 moved1Partner = amountsMovedPartner.leftSlot();
 
         uint256 tokenType = tokenId.tokenType(index);
 
@@ -1076,13 +1220,13 @@ contract RiskEngine {
             unchecked {
                 // always take the absolute values of the difference of amounts moved
                 if (tokenType == 0) {
-                    spreadRequirement = movedRight < movedPartnerRight
-                        ? movedPartnerRight - movedRight
-                        : movedRight - movedPartnerRight;
+                    spreadRequirement += moved0 < moved0Partner
+                        ? moved0Partner - moved0
+                        : moved0 - moved0Partner;
                 } else {
-                    spreadRequirement = movedLeft < movedPartnerLeft
-                        ? movedPartnerLeft - movedLeft
-                        : movedLeft - movedPartnerLeft;
+                    spreadRequirement += moved1 < moved1Partner
+                        ? moved1Partner - moved1
+                        : moved1 - moved1Partner;
                 }
             }
         } else {
@@ -1091,34 +1235,21 @@ contract RiskEngine {
                 uint256 notionalP;
                 uint128 contracts;
                 if (tokenType == 1) {
-                    notional = movedRight;
-                    notionalP = movedPartnerRight;
-                    contracts = movedLeft;
+                    notional = moved0;
+                    notionalP = moved0Partner;
+                    contracts = moved1;
                 } else {
-                    notional = movedLeft;
-                    notionalP = movedPartnerLeft;
-                    contracts = movedRight;
+                    notional = moved1;
+                    notionalP = moved1Partner;
+                    contracts = moved0;
                 }
-                // the required amount is the amount of contracts multiplied by (notional1 - notional2)/min(notional1, notional2)
+                // the required amount is the amount of contracts multiplied by (notional1 - notional2)/max(notional1, notional2)
                 // can use unsafe because denominator is always nonzero
-                spreadRequirement = (notional < notionalP)
-                    ? Math.unsafeDivRoundingUp((notionalP - notional) * contracts, notional)
-                    : Math.unsafeDivRoundingUp((notional - notionalP) * contracts, notionalP);
+                spreadRequirement += (notional < notionalP)
+                    ? Math.unsafeDivRoundingUp((notionalP - notional) * contracts, notionalP)
+                    : Math.unsafeDivRoundingUp((notional - notionalP) * contracts, notional);
             }
         }
-
-        // calculate the spread requirement as max(max_loss, long_leg_col_req)
-        // narrower spreads will be very capital efficient (up to only ~5% of non-partnered CR!), but
-        // wider spreads (an uncommon position w/ high max loss) may not benefit from risk partnering
-        // TODO: check this assumption, allow very small collateral requirements since force exercise can work while in-range
-        spreadRequirement = Math.max(
-            spreadRequirement,
-            _getRequiredCollateralAtUtilization(
-                tokenType == 0 ? movedRight : movedLeft,
-                1,
-                poolUtilization
-            )
-        );
     }
 
     /// @notice Calculate the required amount of collateral for a strangle leg.
@@ -1170,6 +1301,107 @@ contract RiskEngine {
                     atTick,
                     poolUtilization
                 );
+        }
+    }
+
+    function _computeLoanOptionComposite(
+        TokenId tokenId,
+        uint128 positionSize,
+        uint256 index,
+        uint256 partnerIndex,
+        int24 atTick,
+        int16 poolUtilization
+    ) internal view returns (uint256) {
+        uint256 _required = _getRequiredCollateralSingleLegNoPartner(
+            tokenId,
+            index,
+            positionSize,
+            atTick,
+            poolUtilization
+        );
+        uint256 requiredPartner = _getRequiredCollateralSingleLegNoPartner(
+            tokenId,
+            partnerIndex,
+            positionSize,
+            atTick,
+            poolUtilization
+        );
+
+        if (tokenId.isLong(index) == 0) {
+            return _required + requiredPartner;
+        } else {
+            // return the max of the requirement between a loan and the long option position
+            return Math.max(_required, requiredPartner);
+        }
+    }
+
+    function _computeCreditOptionComposite(
+        TokenId tokenId,
+        uint128 positionSize,
+        uint256 index,
+        uint256 partnerIndex,
+        int24 atTick,
+        int16 poolUtilization
+    ) internal view returns (uint256) {
+        // can only be called when partnerIndex is the credit
+        // required amount for short option leg
+        uint256 _required = _getRequiredCollateralSingleLegNoPartner(
+            tokenId,
+            index,
+            positionSize,
+            atTick,
+            poolUtilization
+        );
+
+        // amount moved in the credit leg
+        LeftRightUnsigned amountsMovedCredit = PanopticMath.getAmountsMoved(
+            tokenId,
+            positionSize,
+            partnerIndex
+        );
+
+        // get correct
+        uint128 amountMoved = tokenId.tokenType(partnerIndex) == 0
+            ? amountsMovedCredit.rightSlot()
+            : amountsMovedCredit.leftSlot();
+
+        if (_required > amountMoved) {
+            return _required - amountMoved;
+        } else {
+            return 0;
+        }
+    }
+
+    function _computeDelayedSwap(
+        TokenId tokenId,
+        uint128 positionSize,
+        uint256 index,
+        uint256 partnerIndex,
+        int24 atTick
+    ) internal view returns (uint256) {
+        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index);
+
+        LeftRightUnsigned amountsMovedP = PanopticMath.getAmountsMoved(
+            tokenId,
+            positionSize,
+            partnerIndex
+        );
+
+        uint256 loanAmount = tokenId.tokenType(index) == 0
+            ? amountsMoved.rightSlot()
+            : amountsMoved.leftSlot();
+        uint256 creditAmount = tokenId.tokenType(partnerIndex) == 0
+            ? amountsMovedP.rightSlot()
+            : amountsMovedP.leftSlot();
+
+        uint256 convertedCredit = tokenId.tokenType(partnerIndex) == 0
+            ? PanopticMath.convert0to1RoundingUp(creditAmount, Math.getSqrtRatioAtTick(atTick))
+            : PanopticMath.convert1to0RoundingUp(creditAmount, Math.getSqrtRatioAtTick(atTick));
+
+        if (loanAmount > convertedCredit) {
+            return loanAmount - convertedCredit;
+        } else {
+            return 0;
         }
     }
 

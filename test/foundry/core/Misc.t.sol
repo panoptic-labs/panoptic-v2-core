@@ -150,8 +150,11 @@ contract Misctest is Test, PositionUtils {
     int24 slowOracleTick;
     int24 fastOracleTick;
     int24 lastObservedTick;
+    int24 $strike;
 
     uint256 oraclePack;
+    uint64 $poolId;
+    uint256 medianData;
 
     uint256 assetsBefore0;
     uint256 assetsBefore1;
@@ -5201,7 +5204,7 @@ contract Misctest is Test, PositionUtils {
 
                 {
                     uint256 asset = x % 2;
-                    uint256 tokenType;
+                    uint256 tokenType = (x >> 1) % 2;
                     uint64 _poolId = poolId;
                     $tokenIdLong = TokenId.wrap(0).addPoolId(_poolId).addLeg(
                         0,
@@ -5223,7 +5226,7 @@ contract Misctest is Test, PositionUtils {
                     (, currentTick, , , , , ) = uniPool.slot0();
 
                     (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = re.getMargin(
-                        Bob,
+                        Alice,
                         currentTick,
                         positionBalanceArray,
                         LeftRightUnsigned.wrap(0),
@@ -5299,6 +5302,200 @@ contract Misctest is Test, PositionUtils {
                         console2.log("AccountInsolvent at strike:", strike);
                     } else if (receivedSelector == Errors.PositionTooLarge.selector) {
                         console2.log("PositionTooLarge at strike:", strike);
+                        // Position size exceeds protocol limits
+                    } else {
+                        // Unexpected error
+                        console2.logBytes4(receivedSelector);
+                        console2.logBytes(reason);
+                        revert(string(abi.encodePacked("Unexpected error")));
+                    }
+                }
+            }
+        }
+    }
+
+    function test_Fuzz_NotionalReverts_spreads(uint128 positionSizeSeed, uint8 x) public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+        $poolId = PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing());
+        uint256 n;
+        {
+            int24 minTick;
+            {
+                minTick = (-887272 / uniPool.tickSpacing() + 1) * uniPool.tickSpacing();
+                int24 maxTick = (887272 / uniPool.tickSpacing()) * uniPool.tickSpacing();
+                n = uint256(uint24(maxTick - minTick)) / uint24(1000 * uniPool.tickSpacing());
+            }
+        }
+        vm.startPrank(Bob);
+        uint128 positionSize = uint128(_boundLog(positionSizeSeed, 64, 128));
+        uint256 asset = x % 2;
+        uint256 tokenType = (x >> 1) % 2;
+
+        for (uint256 i = 0; i < n; ++i) {
+            // mint OTM position
+            $strike = int24(-887270 + int256(i + 1) * 1000 * uniPool.tickSpacing());
+
+            $tokenIdShort = TokenId.wrap(0).addPoolId($poolId).addLeg(
+                0,
+                100,
+                asset,
+                0,
+                tokenType,
+                0,
+                $strike,
+                2
+            );
+            uint128[] memory sizeList = new uint128[](1);
+            uint64[] memory spreadList = new uint64[](1);
+            TokenId[] memory mintList = new TokenId[](1);
+            int24[2][] memory tickLimits = new int24[2][](1);
+
+            sizeList[0] = positionSize;
+            spreadList[0] = type(uint64).max;
+            mintList[0] = $tokenIdShort;
+            tickLimits[0][0] = int24(-887272);
+            tickLimits[0][1] = int24(887272);
+
+            // Try to mint and check if it reverts
+            try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+                // SUCCESS CASE - mintOptions didn't revert
+
+                // Alice Buys
+                vm.startPrank(Alice);
+
+                {
+                    uint256 _asset = asset;
+                    uint256 _tokenType = tokenType;
+                    $tokenIdLong = TokenId
+                        .wrap(0)
+                        .addPoolId($poolId)
+                        .addLeg(0, 89, _asset, 1, _tokenType, 1, $strike, 2)
+                        .addLeg(
+                            1,
+                            89,
+                            _asset,
+                            0,
+                            _tokenType,
+                            0,
+                            $strike + uniPool.tickSpacing(),
+                            2
+                        );
+                }
+                mintList[0] = $tokenIdLong;
+                try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+                    console2.log("");
+                    console2.log("Found non-reverting strike:", $strike);
+                    (, , uint256[2][] memory positionBalanceArray) = pp
+                        .getAccumulatedFeesAndPositionsData(Alice, false, mintList);
+
+                    (, currentTick, , , , , ) = uniPool.slot0();
+
+                    {
+                        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = re.getMargin(
+                            Alice,
+                            currentTick,
+                            positionBalanceArray,
+                            LeftRightUnsigned.wrap(0),
+                            LeftRightUnsigned.wrap(0),
+                            ct0,
+                            ct1
+                        );
+
+                        console2.log("positionSize", positionSize);
+
+                        console2.log("req0", tokenData0.leftSlot());
+                        console2.log("req1", tokenData1.leftSlot());
+                        (uint256 balanceCross, uint256 requiredCross) = PanopticMath
+                            .getCrossBalances(
+                                tokenData0,
+                                tokenData1,
+                                Math.getSqrtRatioAtTick(currentTick)
+                            );
+
+                        assertTrue(requiredCross > 0, "zero collateral requirement");
+                        assertTrue(requiredCross <= balanceCross, "account is solvent");
+
+                        (int256 iamount0, int256 iamount1) = ph.getPortfolioValue(
+                            pp,
+                            Alice,
+                            $strike - uniPool.tickSpacing() * 2,
+                            mintList
+                        );
+                        (iamount0, iamount1) = ph.getPortfolioValue(
+                            pp,
+                            Alice,
+                            $strike + uniPool.tickSpacing() * 2,
+                            mintList
+                        );
+
+                        console2.log("");
+                    }
+
+                    burnOptions(
+                        pp,
+                        mintList,
+                        new TokenId[](0),
+                        int24(-887272),
+                        int24(887272),
+                        true
+                    );
+                } catch (bytes memory reason) {
+                    if (reason.length >= 4) {
+                        bytes4 receivedSelector = bytes4(reason);
+                        if (receivedSelector == Errors.NotEnoughLiquidity.selector) {
+                            console2.log("LONG: NotEnoughLiquidity at strike:", $strike);
+                        } else if (
+                            receivedSelector == Errors.EffectiveLiquidityAboveThreshold.selector
+                        ) {
+                            console2.log(
+                                "LONG: EffectiveLiquidityAboveThreshold at strike:",
+                                $strike
+                            );
+                        } else if (receivedSelector == Errors.NotEnoughTokens.selector) {
+                            console2.log("SPREAD: NotEnoughTokens at strike:", $strike);
+                        } else if (receivedSelector == Errors.ZeroCollateralRequirement.selector) {
+                            console2.log("SPREAD: ZeroCollateralRequirement at strike:", $strike);
+                        } else if (receivedSelector == Errors.ZeroLiquidity.selector) {
+                            console2.log("SPREAD: ZeroLiquidity at strike:", $strike);
+                        } else if (receivedSelector == Errors.NetLiquidityZero.selector) {
+                            console2.log("SPREAD: NetLiquidityZero at strike:", $strike);
+                        } else if (receivedSelector == Errors.PositionTooLarge.selector) {
+                            console2.log("SPREAD: PositionTooLarge at strike:", $strike);
+                        } else {
+                            // Unexpected error
+                            console2.logBytes4(receivedSelector);
+                            console2.logBytes(reason);
+                            revert(string(abi.encodePacked("Unexpected error")));
+                        }
+                    }
+                }
+
+                vm.startPrank(Bob);
+                mintList[0] = $tokenIdShort;
+                burnOptions(pp, mintList, new TokenId[](0), int24(-887272), int24(887272), true);
+            } catch (bytes memory reason) {
+                if (reason.length >= 4) {
+                    bytes4 receivedSelector = bytes4(reason);
+
+                    if (receivedSelector == Errors.ZeroLiquidity.selector) {
+                        console2.log("ZeroLiquidity at strike:", $strike);
+                    } else if (receivedSelector == Errors.InvalidTickBound.selector) {
+                        console2.log("InvalidTickBound at strike:", $strike);
+                    } else if (receivedSelector == 0x08c379a0) {
+                        console2.log("Uniswap constraint at strike:", $strike);
+                    } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
+                        console2.log("LiquidityTooHigh at strike:", $strike);
+                    } else if (receivedSelector == Errors.NotEnoughLiquidity.selector) {
+                        console2.log("NotEnoughLiquidity at strike:", $strike);
+                    } else if (receivedSelector == Errors.AccountInsolvent.selector) {
+                        console2.log("AccountInsolvent at strike:", $strike);
+                    } else if (receivedSelector == Errors.PositionTooLarge.selector) {
+                        console2.log("PositionTooLarge at strike:", $strike);
                         // Position size exceeds protocol limits
                     } else {
                         // Unexpected error

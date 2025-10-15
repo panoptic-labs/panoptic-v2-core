@@ -485,8 +485,6 @@ library TokenIdLibrary {
                     }
                 }
 
-                // The width cannot be 0; the minimum is 1
-                if ((self.width(i) == 0)) revert Errors.InvalidTokenIdParameter(5);
                 // Strike cannot be MIN_TICK or MAX_TICK
                 if (
                     (self.strike(i) == Constants.MIN_V3POOL_TICK) ||
@@ -495,37 +493,11 @@ library TokenIdLibrary {
 
                 // In the following, we check whether the risk partner of this leg is itself
                 // or another leg in this position.
-                // Handles case where riskPartner(i) != i ==> leg i has a risk partner that is another leg
                 uint256 riskPartnerIndex = self.riskPartner(i);
                 if (riskPartnerIndex != i) {
                     // Ensures that risk partners are mutual
                     if (self.riskPartner(riskPartnerIndex) != i)
                         revert Errors.InvalidTokenIdParameter(3);
-
-                    // Ensures that risk partners have 1) the same asset, and 2) the same ratio
-                    if (
-                        (self.asset(riskPartnerIndex) != self.asset(i)) ||
-                        (self.optionRatio(riskPartnerIndex) != self.optionRatio(i))
-                    ) revert Errors.InvalidTokenIdParameter(3);
-
-                    // long/short status of associated legs
-                    uint256 _isLong = self.isLong(i);
-                    uint256 isLongP = self.isLong(riskPartnerIndex);
-
-                    // token type status of associated legs (call/put)
-                    uint256 _tokenType = self.tokenType(i);
-                    uint256 tokenTypeP = self.tokenType(riskPartnerIndex);
-
-                    // if the position is the same i.e both long calls, short puts etc.
-                    // then this is a regular position, not a defined risk position
-                    if ((_isLong == isLongP) && (_tokenType == tokenTypeP))
-                        revert Errors.InvalidTokenIdParameter(4);
-
-                    // if the two token long-types and the tokenTypes are both different (one is a short call, the other a long put, e.g.), this is a synthetic position
-                    // A synthetic long or short is more capital efficient than each leg separated because the long+short premia accumulate proportionally
-                    // unlike short strangles, long strangles also cannot be partnered, because there is no reduction in risk (both legs can earn premia simultaneously)
-                    if (((_isLong != isLongP) || _isLong == 1) && (_tokenType != tokenTypeP))
-                        revert Errors.InvalidTokenIdParameter(5);
                 }
             }
         }

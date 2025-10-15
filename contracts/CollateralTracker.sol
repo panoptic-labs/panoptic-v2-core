@@ -1076,7 +1076,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             if (isCreation) {
                 {
                     int256 intrinsicValue = int256(swappedAmount) - (shortAmount - longAmount);
-
                     // the swap commission is paid on the intrinsic value (if a swap occurred; users who mint covered options with their own collateral do not pay this fee)
                     commission = uint128(
                         Math.unsafeDivRoundingUp(
@@ -1084,7 +1083,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                             DECIMALS
                         )
                     );
-
                     tokenToPay = intrinsicValue + int128(commission);
                 }
             } else {
@@ -1121,8 +1119,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             }
             int128 netBorrows = isCreation ? shortAmount - longAmount : longAmount - shortAmount;
 
+            int256 _inAMM = int256(uint256(s_inAMM));
+
+            if (_inAMM + netBorrows < 0) revert Errors.InsufficientLiquidity();
+
             // Update s_inAMM
-            s_inAMM = uint256(int256(uint256(s_inAMM)) + netBorrows).toUint128();
+            s_inAMM = uint256(_inAMM + netBorrows).toUint128();
 
             {
                 address _optionOwner = optionOwner;
@@ -1132,7 +1134,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 );
             }
             uint32 utilization = isCreation ? uint32(_poolUtilization()) : 0;
-
             return (utilization, commission, int128(tokenToPay));
         }
     }

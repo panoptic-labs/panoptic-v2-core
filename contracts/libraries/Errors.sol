@@ -43,6 +43,9 @@ library Errors {
     /// @notice Liquidity in a chunk is above 2**128
     error LiquidityTooHigh();
 
+    /// @notice CollateralTracker: There is not enough available liquidity to create a short loan in the PanopticPool
+    error InsufficientLiquidity();
+
     /// @notice The TokenId provided by the user is malformed or invalid
     /// @param parameterType poolId=0, ratio=1, tokenType=2, risk_partner=3, strike=4, width=5, two identical strike/width/tokenType chunks=6
     error InvalidTokenIdParameter(uint256 parameterType);

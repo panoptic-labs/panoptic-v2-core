@@ -800,7 +800,6 @@ library PanopticMath {
 
             longAmounts = longAmounts.add(longs);
             shortAmounts = shortAmounts.add(shorts);
-
             unchecked {
                 ++leg;
             }
@@ -977,6 +976,12 @@ library PanopticMath {
         uint128 amount0;
         uint128 amount1;
 
+        // if the width is zero, add 1 to the width to allow liquidity amounts to be computes
+        /// @dev this is just for accounting purposes, the actual tokenId will remain with a width = 0
+        if (tokenId.width(legIndex) == 0) {
+            tokenId = tokenId.addWidth(2, legIndex);
+        }
+
         LiquidityChunk liquidityChunk = getLiquidityChunk(tokenId, legIndex, positionSize);
 
         // Shorts round UP to ensure user pays enough (conservative for protocol)
@@ -988,7 +993,6 @@ library PanopticMath {
             amount0 = uint128(Math.getAmount0ForLiquidity(liquidityChunk));
             amount1 = uint128(Math.getAmount1ForLiquidity(liquidityChunk));
         }
-
         return LeftRightUnsigned.wrap(amount0).addToLeftSlot(amount1);
     }
 
