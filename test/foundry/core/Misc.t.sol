@@ -199,25 +199,6 @@ contract Misctest is Test, PositionUtils {
     TokenId[][] positionIdLists;
     TokenId[][] collateralIdLists;
 
-    function _boundLog(
-        uint256 x,
-        uint8 min,
-        uint8 max
-    ) internal pure virtual returns (uint256 result) {
-        require(min <= max, "StdUtils boundLog(uint256,uint8,uint8): Max is less than min.");
-
-        // If x is between min and max, DO NOT return x directly. This is to ensure that the sampling remains uniform in log space
-
-        // select an exponent between [min, max]
-        uint256 range = uint256(max) - uint256(min) + 1;
-        uint256 m0 = min + (x % range);
-
-        // randomize the input value, use it to generate a number between 2 ** m0 and 2 **(m0+1)-1
-        x = uint256(keccak256(abi.encode(x)));
-        uint256 m1 = x % 2 ** max;
-        result = 2 ** m0 + (m1 >> (max - m0));
-    }
-
     function setUp() public {
         vm.startPrank(Deployer);
 
@@ -1958,7 +1939,13 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.startPrank(Alice);
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.AccountInsolvent.selector,
+                uint256(0), // solvent
+                uint256(4) // numberOfTicks
+            )
+        );
         settleLongPremium(pp, $posIdLists[0], $posIdList, Bob, 0, false);
 
         uint256 snap = vm.snapshotState();
@@ -1966,7 +1953,13 @@ contract Misctest is Test, PositionUtils {
 
         vm.revertToState(snap);
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.AccountInsolvent.selector,
+                uint256(0), // solvent
+                uint256(4) // numberOfTicks
+            )
+        );
         forceExercise(
             pp,
             Bob,
@@ -1976,7 +1969,13 @@ contract Misctest is Test, PositionUtils {
             LeftRightUnsigned.wrap(0).addToLeftSlot(0)
         );
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.AccountInsolvent.selector,
+                uint256(0), // solvent
+                uint256(4) // numberOfTicks
+            )
+        );
         forceExercise(
             pp,
             Bob,
@@ -1986,7 +1985,9 @@ contract Misctest is Test, PositionUtils {
             LeftRightUnsigned.wrap(0).addToLeftSlot(1)
         );
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
+        );
         forceExercise(
             pp,
             Bob,
@@ -2006,7 +2007,9 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
+        );
         forceExercise(
             pp,
             Bob,
@@ -2016,7 +2019,9 @@ contract Misctest is Test, PositionUtils {
             LeftRightUnsigned.wrap(0).addToLeftSlot(0)
         );
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
+        );
         forceExercise(
             pp,
             Bob,
@@ -2064,7 +2069,9 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Alice);
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
+        );
         forceExercise(
             pp,
             Bob,
@@ -2074,7 +2081,9 @@ contract Misctest is Test, PositionUtils {
             LeftRightUnsigned.wrap(0).addToLeftSlot(0)
         );
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
+        );
         forceExercise(
             pp,
             Bob,
@@ -3319,7 +3328,9 @@ contract Misctest is Test, PositionUtils {
 
             deal(address(ct0), Buyers[i], i ** 15);
             deal(address(ct1), Buyers[i], i ** 15);
-            vm.expectRevert(Errors.AccountInsolvent.selector);
+            vm.expectRevert(
+                abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
+            );
             settleLongPremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[i], 0, true);
             vm.revertTo(snap);
         }
@@ -3502,7 +3513,9 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct0, Buyers[2], 0);
         editCollateral(ct1, Buyers[2], 0);
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
+        );
         settleLongPremium(pp, $posIdLists[0], $posIdLists[1], Buyers[2], 0, true);
     }
 
@@ -3828,7 +3841,9 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct0, Bob, ct0.convertToShares(266262));
         editCollateral(ct1, Bob, 0);
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+        );
         pp.validateCollateralWithdrawable(Bob, $posIdList, true);
     }
 
@@ -3863,7 +3878,9 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+        );
         ct0.withdraw(1_000_000 - 266262, Bob, Bob, $posIdList, true);
     }
 
@@ -3911,7 +3928,9 @@ contract Misctest is Test, PositionUtils {
         //ct1.deposit(0, Bob);
 
         // mint fails
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
+        );
         //vm.expectRevert();
         mintOptions(
             pp,
@@ -3968,7 +3987,9 @@ contract Misctest is Test, PositionUtils {
         ct1.deposit(100_200, Bob);
 
         // mint fails
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
+        );
         mintOptions(
             pp,
             $posIdList,
@@ -4352,7 +4373,9 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+        );
         ct0.withdraw(1_000_000 - 266262, Alice, Bob, $posIdList, true);
     }
 
@@ -5067,7 +5090,7 @@ contract Misctest is Test, PositionUtils {
         }
 
         vm.startPrank(Bob);
-        uint128 positionSize = uint128(_boundLog(positionSizeSeed, 0, 128));
+        uint128 positionSize = uint128(PositionUtils._boundLog(positionSizeSeed, 0, 128));
 
         for (uint256 i = 0; i < n; ++i) {
             // mint OTM position
@@ -5172,7 +5195,7 @@ contract Misctest is Test, PositionUtils {
             n = uint256(uint24(maxTick - minTick)) / uint24(1000 * uniPool.tickSpacing());
         }
         vm.startPrank(Bob);
-        uint128 positionSize = uint128(_boundLog(positionSizeSeed, 0, 128));
+        uint128 positionSize = uint128(PositionUtils._boundLog(positionSizeSeed, 0, 128));
 
         for (uint256 i = 0; i < n; ++i) {
             // mint OTM position
@@ -5337,7 +5360,7 @@ contract Misctest is Test, PositionUtils {
             }
         }
         vm.startPrank(Bob);
-        uint128 positionSize = uint128(_boundLog(positionSizeSeed, 64, 128));
+        uint128 positionSize = uint128(PositionUtils._boundLog(positionSizeSeed, 64, 128));
         uint256 asset = x % 2;
         uint256 tokenType = (x >> 1) % 2;
 
@@ -6195,7 +6218,13 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.AccountInsolvent.selector,
+                uint256(0), // solvent
+                uint256(4) // numberOfTicks
+            )
+        );
         mintOptions(
             pp,
             posIdList,
@@ -6303,7 +6332,13 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Bob);
 
         // burn second option
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.AccountInsolvent.selector,
+                uint256(0), // solvent
+                uint256(1) // numberOfTicks
+            )
+        );
         burnOptions(
             pp,
             posIdList2[1],

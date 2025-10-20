@@ -576,6 +576,25 @@ contract PositionUtils is Test {
             : LiquidityAmounts.getAmount1ForLiquidity(sqrtRatioAX96, sqrtRatioBX96, liquidity);
     }
 
+    function _boundLog(
+        uint256 x,
+        uint8 min,
+        uint8 max
+    ) internal pure virtual returns (uint256 result) {
+        require(min <= max, "StdUtils boundLog(uint256,uint8,uint8): Max is less than min.");
+
+        // If x is between min and max, DO NOT return x directly. This is to ensure that the sampling remains uniform in log space
+
+        // select an exponent between [min, max]
+        uint256 range = uint256(max) - uint256(min) + 1;
+        uint256 m0 = min + (x % range);
+
+        // randomize the input value, use it to generate a number between 2 ** m0 and 2 **(m0+1)-1
+        x = uint256(keccak256(abi.encode(x)));
+        uint256 m1 = x % 2 ** max;
+        result = 2 ** m0 + (m1 >> (max - m0));
+    }
+
     function simulateSwap(
         ISwapRouter router,
         address token0,

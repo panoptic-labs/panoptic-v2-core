@@ -1623,8 +1623,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
     ) public {
         // 1. SETUP
         vm.assume(deltaTime > 0); // Interest only accrues over time.
-        console2.log("data", borrowAmount, userInitialAssets, deltaTime);
-        vm.assume(uint256(userInitialAssets) > uint256(borrowAmount) + 2);
+        vm.assume(
+            uint256(userInitialAssets) > Math.mulDivRoundingUp(4, uint256(borrowAmount), 3) + 3
+        );
 
         _initWorld(0);
         vm.startPrank(Alice);
@@ -1648,6 +1649,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
             positionIdList.push(tokenId);
 
+            console2.log("a");
             mintOptions(
                 panopticPool,
                 positionIdList,
@@ -1657,6 +1659,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 Constants.MIN_V3POOL_TICK,
                 true
             );
+            console2.log("b");
         }
 
         (int128 baseIndexBefore, ) = collateralToken0.interestState(Bob);
@@ -2057,10 +2060,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // --- Alice deposits ---
         vm.startPrank(Alice);
         _grantTokens(Alice);
-        IERC20Partial(token0).approve(address(collateralToken0), assets);
-        collateralToken0.deposit(assets, Alice);
-        IERC20Partial(token1).approve(address(collateralToken1), assets);
-        collateralToken1.deposit(assets, Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), 2 * assets);
+        collateralToken0.deposit(2 * assets, Alice);
+        IERC20Partial(token1).approve(address(collateralToken1), 2 * assets);
+        collateralToken1.deposit(2 * assets, Alice);
         vm.stopPrank();
 
         // --- Charlie (our control user) deposits and borrows exactly like Bob ---
@@ -2091,6 +2094,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         IERC20Partial(token0).approve(address(collateralToken0), assets);
         collateralToken0.deposit(assets, Bob);
 
+        console2.log("here?");
         // Bob sell assets/2
         mintOptions(
             panopticPool,
@@ -3883,7 +3887,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         collateralToken0.setInAMM(-300);
 
-        vm.expectRevert(Errors.CastingError.selector);
+        vm.expectRevert(Errors.InsufficientCreditLiquidity.selector);
         mintOptions(
             panopticPool,
             positionIdList,
@@ -3936,7 +3940,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         positionIdList.pop();
 
-        vm.expectRevert(Errors.CastingError.selector);
+        vm.expectRevert(Errors.InsufficientCreditLiquidity.selector);
         burnOptions(
             panopticPool,
             tokenId,
@@ -4168,7 +4172,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         uint256 assets0 = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
         // fail because collateral requirement are too high
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+        );
         collateralToken0.withdraw(assets0, Bob, Bob, positionIdList, true);
 
         // generate a spoof tokenId, set the Hash
@@ -6126,7 +6132,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 Alice
             );
 
-            vm.expectRevert(Errors.AccountInsolvent.selector);
+            vm.expectRevert(
+                abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+            );
             mintOptions(
                 panopticPool,
                 positionIdList1,
@@ -6238,7 +6246,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 Alice
             );
 
-            vm.expectRevert(Errors.AccountInsolvent.selector);
+            vm.expectRevert(
+                abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+            );
             mintOptions(
                 panopticPool,
                 positionIdList1,
@@ -7039,6 +7049,95 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
     }
 
+    function test_Success_collateralCheck_PutCallAllTicks(
+        uint256 x,
+        uint128 positionSizeSeed,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 swapSizeSeed
+    ) public {
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool);
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.startPrank(Bob);
+
+            // give Bob the max amount of tokens
+            _grantTokens(Bob);
+
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+
+            // award corresponding shares
+            _mockMaxDeposit(Bob);
+
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1 + ((x >> 2) % 127),
+                (x % 2),
+                0,
+                (x >> 1) % 2,
+                0,
+                int24(bound(strikeSeed, -800000, 800000)),
+                int24(uint24(bound(widthSeed, 1, 4095)))
+            );
+            positionIdList.push(tokenId);
+
+            /// calculate position
+            positionSize0 = uint128(PositionUtils._boundLog(positionSizeSeed, 1, 64));
+            _assumePositionValidity(Bob, tokenId, positionSize0);
+
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                positionSize0,
+                type(uint64).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+        }
+
+        // mimic pool activity
+        twoWaySwap(swapSizeSeed);
+
+        // check requirement at fuzzed tick
+
+        {
+            for (
+                int24 atTick = (-887272 / tickSpacing) * tickSpacing + tickSpacing;
+                atTick < (887272 / tickSpacing) * tickSpacing;
+                atTick += 1000 * tickSpacing
+            ) {
+                ($shortPremia, $longPremia, posBalanceArray) = panopticPool
+                    .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
+
+                (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
+                    Bob,
+                    atTick,
+                    positionIdList,
+                    posBalanceArray,
+                    $shortPremia,
+                    $longPremia,
+                    collateralToken0,
+                    collateralToken1
+                );
+
+                console2.log(
+                    atTick < 0 ? uint24(-atTick) : uint24(atTick),
+                    tokenData0.leftSlot(),
+                    tokenData1.leftSlot()
+                );
+                //assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
+                //assertEq(required, tokenData1.leftSlot(), "required token1");
+            }
+        }
+    }
+
     function test_Success_collateralCheck_ITMcallSpread_assetTT1(
         uint256 x,
         uint128 positionSizeSeed,
@@ -7417,6 +7516,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 (uint128(poolUtilization1 == 0 ? 1 : poolUtilization1) << 64);
 
             required = _spreadTokensRequired(tokenId1, positionSize0 / 2, poolUtilizations);
+            console2.log("required-spreads", required);
         }
 
         // mimic pool activity
@@ -9052,6 +9152,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 checkSingle
             );
 
+            console2.log("required", required);
             // only add premium requirement if there is net premia owed
             int128 premium1 = int128(
                 int256(uint256($shortPremia.leftSlot())) - int256(uint256($longPremia.leftSlot()))
@@ -9804,6 +9905,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 tokenData0.leftSlot(),
                 "required token0 -"
             );
+            console2.log("required", required, tokenId.tokenType(0));
             assertEq(
                 tokenId.tokenType(0) == 1 ? required : 0,
                 tokenData1.leftSlot(),
@@ -11176,7 +11278,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
     ) internal returns (uint128 tokensRequired) {
         uint i;
         uint maxLoop;
-        tokensRequired = 1;
         if (checkSingle[0] == 1) {
             i = checkSingle[1];
             maxLoop = checkSingle[1] + 1;
@@ -11219,9 +11320,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 sellCollateralRatio = uint256(int256(riskEngine.sellCollateralRatio(utilization)));
                 buyCollateralRatio = uint256(int256(riskEngine.buyCollateralRatio(utilization)));
             }
+            console2.log("data", _width);
+            console2.log("isLong", _isLong);
             if (_width == 0) {
                 if (_isLong == 0) {
-                    tokensRequired =
+                    _tokensRequired =
                         uint128(
                             FullMath.mulDivRoundingUp(
                                 notionalMoved,
@@ -11231,67 +11334,107 @@ contract CollateralTrackerTest is Test, PositionUtils {
                         ) +
                         notionalMoved;
                 } else {
-                    tokensRequired = uint128(
-                        Math.unsafeDivRoundingUp(
-                            1 +
-                                FullMath.mulDivRoundingUp(
-                                    notionalMoved,
-                                    buyCollateralRatio,
-                                    DECIMALS
-                                ),
-                            10
-                        )
-                    );
-                }
-            } else if (_isLong == 0) {
-                // pos is short
-                // base
-                _tokensRequired += uint128(
-                    FullMath.mulDivRoundingUp(notionalMoved, sellCollateralRatio, DECIMALS)
-                );
-                // OTM
-                if (
-                    ((atTick >= (legUpperTick)) && (_tokenType == 1)) ||
-                    ((atTick < (legLowerTick)) && (_tokenType == 0))
-                ) {} else {
-                    uint160 ratio;
-                    ratio = _tokenType == 1
-                        ? TickMath.getSqrtRatioAtTick(
-                            Math.max24(2 * (atTick - _strike), TickMath.MIN_TICK)
-                        )
-                        : TickMath.getSqrtRatioAtTick(
-                            Math.max24(2 * (_strike - atTick), TickMath.MIN_TICK)
-                        );
-
-                    // ITM
-                    if (
-                        ((atTick < (legLowerTick)) && (_tokenType == 1)) ||
-                        ((atTick >= (legUpperTick)) && (_tokenType == 0))
-                    ) {
-                        uint256 c2 = FixedPoint96.Q96 - ratio;
-
-                        _tokensRequired += uint128(Math.mulDiv96RoundingUp(notionalMoved, c2));
-                    } else {
-                        // ATM
-                        uint160 scaleFactor = TickMath.getSqrtRatioAtTick(
-                            (legUpperTick - _strike) + (_strike - legLowerTick)
-                        );
-
-                        uint256 c3 = FullMath.mulDivRoundingUp(
-                            notionalMoved,
-                            scaleFactor - ratio,
-                            scaleFactor + FixedPoint96.Q96
-                        );
-                        _tokensRequired += uint128(c3);
-                    }
+                    _tokensRequired = 0;
                 }
             } else {
-                // pos is long
-                // base
-                _tokensRequired += uint128(
-                    FullMath.mulDivRoundingUp(notionalMoved, buyCollateralRatio, DECIMALS)
-                );
+                // required collateral is at least 1
+                _tokensRequired = 1;
+
+                _tokensRequired += Math
+                    .mulDivRoundingUp(
+                        notionalMoved,
+                        isLong == 1 ? buyCollateralRatio : sellCollateralRatio,
+                        DECIMALS
+                    )
+                    .toUint128();
+                // start with base requirement, which is based on isLong value
+                if (_isLong == 0) {
+                    // if position is short, check whether the position is out-the-money
+
+                    (int24 tickLower, int24 tickUpper) = tokenId.asTicks(i);
+
+                    int24 strike = tokenId.strike(i);
+                    // if position is ITM or ATM, then the collateral requirement depends on price:
+
+                    // compute the ratio of strike to price for calls (or price to strike for puts)
+                    // (- and * 2 in tick space are / and ^ 2 in price space so sqrtRatioAtTick(2 *(a - b)) = a/b (*2^96)
+                    // both of these ratios decrease as the position becomes deeper ITM, and it is possible
+                    // for the ratio of the prices to go under the minimum price
+                    // (which is the limit of what getSqrtRatioAtTick supports)
+                    // so instead we cap it at the minimum price, which is acceptable because
+                    // a higher ratio will result in an increased slope for the collateral requirement
+                    int24 _atTick = atTick;
+                    uint160 ratio = tokenType == 1 // tokenType
+                        ? Math.getSqrtRatioAtTick(
+                            int24(
+                                Math.bound(
+                                    2 * (_atTick - strike),
+                                    Constants.MIN_V3POOL_TICK,
+                                    Constants.MAX_V3POOL_TICK
+                                )
+                            )
+                        ) // puts ->  price/strike
+                        : Math.getSqrtRatioAtTick(
+                            int24(
+                                Math.bound(
+                                    2 * (strike - _atTick),
+                                    Constants.MIN_V3POOL_TICK,
+                                    Constants.MAX_V3POOL_TICK
+                                )
+                            )
+                        ); // calls -> strike/price
+
+                    // Following Reg-T guidelines, the collateral requirement is the max of:
+                    //    - 10% of the notional value at the strike price
+                    //    - 20% of the underlying price MINUS the out-the-money amount
+                    // Note that  between the LP position's range, we over-estimate the capital composition.
+
+                    uint256 r0 = _tokensRequired / 2;
+
+                    uint256 r1;
+
+                    {
+                        if (tokenType == 1) {
+                            uint256 p0 = notionalMoved +
+                                Math.mulDiv96RoundingUp(_tokensRequired, ratio);
+                            uint256 p1 = Math.mulDiv96RoundingUp(notionalMoved, ratio);
+
+                            r1 = p0 > p1 ? p0 - p1 : 0;
+                        } else {
+                            uint256 p0 = notionalMoved +
+                                Math.mulDiv96RoundingUp(_tokensRequired, ratio);
+                            uint256 p1 = Math.mulDiv96RoundingUp(notionalMoved, ratio);
+
+                            r1 = p0 > p1 ? p0 - p1 : 0;
+                        }
+                    }
+                    uint256 r2;
+
+                    if ((_atTick < tickUpper) && (_atTick >= tickLower)) {
+                        // position is in-range (ie. current tick is between upper+lower tick): we draw a line between the
+                        // collateral requirement at the lowerTick and the one at the upperTick. We use that interpolation as
+                        // the collateral requirement when in-range, which always over-estimates the amount of token required
+                        // Specifically:
+                        //  required = amountMoved * (scaleFactor - ratio) / (scaleFactor + 1) + sellCollateralRatio*amountMoved
+                        uint160 scaleFactor = Math.getSqrtRatioAtTick(tickUpper - tickLower);
+                        r2 =
+                            Math.mulDivRoundingUp(
+                                notionalMoved,
+                                scaleFactor - ratio,
+                                scaleFactor + Constants.FP96
+                            ) +
+                            _tokensRequired;
+                    }
+
+                    _tokensRequired = Math.max(Math.max(r2, r1), r0).toUint128();
+                    console2.log("rs", r0, r1, r2);
+                } else {
+                    _tokensRequired += Math
+                        .mulDivRoundingUp(notionalMoved, buyCollateralRatio, DECIMALS)
+                        .toUint128();
+                }
             }
+
             tokensRequired += _tokensRequired;
         }
     }
@@ -11315,14 +11458,37 @@ contract CollateralTrackerTest is Test, PositionUtils {
             baseStrike = _tokenId.strike(partnerIndex);
             partnerStrike = _tokenId.strike(i);
 
+            _tempTokensRequired = 1;
+            amountsMoved = PanopticMath.getAmountsMoved(_tokenId, positionSize, i);
+            {
+                // This is a CALENDAR SPREAD adjustment, where the collateral requirement is the max loss of the position
+                // real formula is contractSize * (1/(sqrt(r1)+1) - 1/(sqrt(r2)+1))
+                // Taylor expand to get a rough approximation of: contractSize * ∆width * tickSpacing / 40000
+                // This is strictly larger than the real one, so OK to use that for a collateral requirement.
+                int24 deltaWidth = tokenId.width(i) - tokenId.width(partnerIndex);
+
+                // TODO check if same strike and same width is allowed
+                if (deltaWidth < 0) deltaWidth = -deltaWidth;
+
+                if (tokenId.tokenType(i) == 0) {
+                    _tempTokensRequired +=
+                        (amountsMoved.rightSlot() *
+                            uint256(int256(deltaWidth * tokenId.tickSpacing()))) /
+                        80000;
+                } else {
+                    _tempTokensRequired +=
+                        (amountsMoved.leftSlot() *
+                            uint256(int256(deltaWidth * tokenId.tickSpacing()))) /
+                        80000;
+                }
+            }
+
             if ((isLong == isLongP) || (tokenType != tokenTypeP)) continue;
 
             {
                 if (isLong == 1) {
                     // spread requirement
                     {
-                        amountsMoved = PanopticMath.getAmountsMoved(_tokenId, positionSize, i);
-
                         amountsMovedPartner = PanopticMath.getAmountsMoved(
                             _tokenId,
                             positionSize,
@@ -11341,13 +11507,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
                         if (asset != tokenType) {
                             if (tokenType == 0) {
-                                _tempTokensRequired = (
+                                _tempTokensRequired += (
                                     movedRight < movedPartnerRight
                                         ? movedPartnerRight - movedRight
                                         : movedRight - movedPartnerRight
                                 );
                             } else {
-                                _tempTokensRequired = (
+                                _tempTokensRequired += (
                                     movedLeft < movedPartnerLeft
                                         ? movedPartnerLeft - movedLeft
                                         : movedLeft - movedPartnerLeft
@@ -11355,31 +11521,31 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             }
                         } else {
                             if (tokenType == 1) {
-                                _tempTokensRequired = (
+                                _tempTokensRequired += (
                                     movedRight < movedPartnerRight
                                         ? Math.mulDivRoundingUp(
                                             movedPartnerRight - movedRight,
                                             movedLeft,
-                                            movedRight
+                                            movedPartnerRight
                                         )
                                         : Math.mulDivRoundingUp(
                                             movedRight - movedPartnerRight,
                                             movedLeft,
-                                            movedPartnerRight
+                                            movedRight
                                         )
                                 );
                             } else {
-                                _tempTokensRequired = (
+                                _tempTokensRequired += (
                                     movedLeft < movedPartnerLeft
                                         ? Math.mulDivRoundingUp(
                                             movedPartnerLeft - movedLeft,
                                             movedRight,
-                                            movedLeft
+                                            movedPartnerLeft
                                         )
                                         : Math.mulDivRoundingUp(
                                             movedLeft - movedPartnerLeft,
                                             movedRight,
-                                            movedPartnerLeft
+                                            movedLeft
                                         )
                                 );
                             }
@@ -11388,18 +11554,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     console2.log("spread req", _tempTokensRequired);
                     console2.log("tokenType", tokenType);
                     console2.log("poolUtilizations", poolUtilizations);
-                    _tempTokensRequired = Math.max(
-                        uint128(
-                            riskEngine.getRequiredCollateralAtUtilization(
-                                uint128(tokenType == 0 ? movedRight : movedLeft),
-                                1,
-                                tokenType == 0
-                                    ? int16(uint16(poolUtilizations))
-                                    : int16(uint16(poolUtilizations >> 16))
-                            )
-                        ),
-                        _tempTokensRequired
-                    );
                     console2.log(
                         "util req",
                         riskEngine.getRequiredCollateralAtUtilization(
