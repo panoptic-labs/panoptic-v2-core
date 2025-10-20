@@ -1127,7 +1127,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             int256 _inAMM = int256(uint256(s_inAMM));
 
-            if (_inAMM + netBorrows < 0) revert Errors.InsufficientLiquidity();
+            if (_inAMM + netBorrows < 0) revert Errors.InsufficientCreditLiquidity();
 
             // Update s_inAMM
             s_inAMM = uint256(_inAMM + netBorrows).toUint128();

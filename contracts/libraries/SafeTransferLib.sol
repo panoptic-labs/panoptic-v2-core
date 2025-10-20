@@ -42,7 +42,10 @@ library SafeTransferLib {
             )
         }
 
-        if (!success) revert Errors.TransferFailed();
+        if (!success) {
+            uint256 balance = _balanceOfOrZero(token, from);
+            revert Errors.TransferFailed(token, from, amount, balance);
+        }
     }
 
     /// @notice Safely transfers ERC20 tokens to a specified address.
@@ -72,6 +75,27 @@ library SafeTransferLib {
             )
         }
 
-        if (!success) revert Errors.TransferFailed();
+        if (!success) {
+            uint256 balance = _balanceOfOrZero(token, address(this));
+            revert Errors.TransferFailed(token, address(this), amount, balance);
+        }
+    }
+
+    function _balanceOfOrZero(address token, address who) private view returns (uint256 bal) {
+        assembly ("memory-safe") {
+            let p := mload(0x40)
+            mstore(p, 0x70a0823100000000000000000000000000000000000000000000000000000000) // balanceOf(address)
+            mstore(add(p, 4), who)
+            // staticcall: token is already warm due to the prior call
+            if iszero(staticcall(gas(), token, p, 36, 0, 32)) {
+                bal := 0
+            }
+            // accept only full 32-byte returns; else treat as zero
+            if lt(returndatasize(), 32) {
+                bal := 0
+            }
+            // load into bal
+            bal := mload(0)
+        }
     }
 }

@@ -43,8 +43,8 @@ library Errors {
     /// @notice Liquidity in a chunk is above 2**128
     error LiquidityTooHigh();
 
-    /// @notice CollateralTracker: There is not enough available liquidity to create a short loan in the PanopticPool
-    error InsufficientLiquidity();
+    /// @notice CollateralTracker: There is not enough available liquidity to fulfill a credit in the PanopticPool
+    error InsufficientCreditLiquidity();
 
     /// @notice The TokenId provided by the user is malformed or invalid
     /// @param parameterType poolId=0, ratio=1, tokenType=2, risk_partner=3, strike=4, width=5, two identical strike/width/tokenType chunks=6
@@ -100,7 +100,7 @@ library Errors {
     error TooManyLegsOpen();
 
     /// @notice ERC20 or SFPM (ERC1155) token transfer did not complete successfully
-    error TransferFailed();
+    error TransferFailed(address token, address from, uint256 amount, uint256 balance);
 
     /// @notice The tick range given by the strike price and width is invalid
     /// because the upper and lower ticks are not initializable multiples of `tickSpacing`

@@ -688,7 +688,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             if (
                 LeftRightUnsigned.unwrap(s_accountLiquidity[positionKey_to]) != 0 ||
                 LeftRightUnsigned.unwrap(fromLiq) != liquidityChunk.liquidity()
-            ) revert Errors.TransferFailed();
+            ) revert Errors.TransferFailed(address(this), from, amount, 0);
 
             s_accountLiquidity[positionKey_to] = fromLiq;
             s_accountLiquidity[positionKey_from] = LeftRightUnsigned.wrap(0);
