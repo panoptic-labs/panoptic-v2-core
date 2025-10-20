@@ -943,25 +943,37 @@ contract RiskEngine {
                     // a higher ratio will result in an increased slope for the collateral requirement
                     uint160 ratio = tokenType == 1 // tokenType
                         ? Math.getSqrtRatioAtTick(
-                            Math.max24(2 * (atTick - strike), Constants.MIN_V3POOL_TICK)
+                            int24(
+                                Math.bound(
+                                    2 * (atTick - strike),
+                                    Constants.MIN_V3POOL_TICK,
+                                    Constants.MAX_V3POOL_TICK
+                                )
+                            )
                         ) // puts ->  price/strike
                         : Math.getSqrtRatioAtTick(
-                            Math.max24(2 * (strike - atTick), Constants.MIN_V3POOL_TICK)
+                            int24(
+                                Math.bound(
+                                    2 * (strike - atTick),
+                                    Constants.MIN_V3POOL_TICK,
+                                    Constants.MAX_V3POOL_TICK
+                                )
+                            )
                         ); // calls -> strike/price
 
                     // Following Reg-T guidelines, the collateral requirement is the max of:
-                    //    - 10% of the notional value at the strike price
-                    //    - 20% of the underlying price MINUS the out-the-money amount
-                    // Note that  between the LP position's range, we over-estimate the capital composition.
+                    //    - 10% of the notional value at the strike price (r0)
+                    //    - 20% of the underlying price MINUS the out-the-money amount (r1)
+                    // Note that we over-estimate the capital composition between the LP position's range.
 
-                    uint256 r0 = required;
+                    uint256 r0 = required / 2;
 
                     uint256 r1;
                     {
-                        uint256 c0 = amountMoved + Math.mulDiv96RoundingUp(2 * required, ratio);
-                        uint256 c1 = Math.mulDiv96RoundingUp(amountMoved, ratio);
+                        uint256 p0 = amountMoved + Math.mulDiv96RoundingUp(required, ratio);
+                        uint256 p1 = Math.mulDiv96RoundingUp(amountMoved, ratio);
 
-                        r1 = c0 > c1 ? c0 - c1 : 0;
+                        r1 = p0 > p1 ? p0 - p1 : 0;
                     }
                     uint256 r2;
 
