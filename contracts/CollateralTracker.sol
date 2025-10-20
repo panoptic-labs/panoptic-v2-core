@@ -852,8 +852,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice Returns the current interest owed by a specific user
     /// @param owner Address of the user to check
     /// @return The amount of interest currently owed by the user
-    function owedInterest(address owner) public view returns (uint128) {
+    function owedInterest(address owner) external view returns (uint128) {
         return _owedInterest(owner);
+    }
+
+    function assetsAndInterest(address owner) external view returns (uint256, uint256) {
+        unchecked {
+            return (convertToAssets(balanceOf[owner]), _owedInterest(owner));
+        }
     }
 
     /// @notice Internal function to calculate interest owed by a user

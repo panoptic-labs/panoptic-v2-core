@@ -604,8 +604,9 @@ contract RiskEngine {
     /// @dev NOTE: It's up to the caller to confirm from the returned result that the account has enough collateral.
     /// @dev This can be used to check the health: how many tokens a user has compared to the margin threshold.
     /// @param user The account to check collateral/margin health for
+    /// @param positionBalanceArray The list of all open positions held by the `optionOwner`, stored as `[balance/poolUtilizationAtMint, ...]`
     /// @param atTick The tick at which to evaluate the account's positions
-    /// @param positionBalanceArray The list of all open positions held by the `optionOwner`, stored as `[[tokenId, balance/poolUtilizationAtMint], ...]`
+    /// @param positionIdList The list of all option positions held by `user`
     /// @param shortPremia The total amount of premium (prorated by available settled tokens) owed to the short legs of `user`
     /// @param longPremia The total amount of premium owed by the long legs of `user`
     /// @param ct0 The Address of the CollateralTracker for token0
@@ -614,8 +615,9 @@ contract RiskEngine {
     /// @return Whether the account is solvent at the given tick
     function isAccountSolvent(
         address user,
+        uint256[] calldata positionBalanceArray,
         int24 atTick,
-        uint256[2][] memory positionBalanceArray,
+        TokenId[] calldata positionIdList,
         LeftRightUnsigned shortPremia,
         LeftRightUnsigned longPremia,
         CollateralTracker ct0,
@@ -624,8 +626,9 @@ contract RiskEngine {
     ) external view returns (bool) {
         (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = _getMargin(
             user,
-            atTick,
             positionBalanceArray,
+            atTick,
+            positionIdList,
             shortPremia,
             longPremia,
             ct0,
@@ -673,8 +676,9 @@ contract RiskEngine {
     ///        - Balances are in raw token units
     ///        - Ratios elsewhere in the engine use DECIMALS = 10_000_000
     /// @param user Account to evaluate
+    /// @param positionBalanceArray Array of [balanceOrUtilAtMint] for all open positions of `user`
     /// @param atTick Tick at which exposures are valued
-    /// @param positionBalanceArray Array of [tokenId, balanceOrUtilAtMint] for all open positions of `user`
+    /// @param positionIdList The list of all option positions held by `user`
     /// @param shortPremia Total short premia owed to `user` (right slot = token0 credit, left slot = token1 credit)
     /// @param longPremia Total long premia owed by `user`   (right slot = token0 debit,  left slot = token1 debit)
     /// @param ct0 CollateralTracker for token0
@@ -684,13 +688,25 @@ contract RiskEngine {
     function getMargin(
         address user,
         int24 atTick,
-        uint256[2][] memory positionBalanceArray,
+        TokenId[] calldata positionIdList,
+        uint256[] calldata positionBalanceArray,
         LeftRightUnsigned shortPremia,
         LeftRightUnsigned longPremia,
         CollateralTracker ct0,
         CollateralTracker ct1
     ) external view returns (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) {
-        return _getMargin(user, atTick, positionBalanceArray, shortPremia, longPremia, ct0, ct1);
+        if (positionIdList.length != positionBalanceArray.length) revert Errors.LengthMismatch();
+        return
+            _getMargin(
+                user,
+                positionBalanceArray,
+                atTick,
+                positionIdList,
+                shortPremia,
+                longPremia,
+                ct0,
+                ct1
+            );
     }
 
     /// @notice Internal workhorse for margin computation.
@@ -700,8 +716,9 @@ contract RiskEngine {
     ///        - right slot = total available balance in that token including settled short premia
     ///      Caller is responsible for any cross-asset conversion, haircuts, and final solvency logic.
     /// @param user Account to evaluate
+    /// @param positionBalanceArray Array of [balanceOrUtilAtMint] for all open positions of `user`
     /// @param atTick Tick at which exposures are valued
-    /// @param positionBalanceArray Array of [tokenId, balanceOrUtilAtMint] for all open positions of `user`
+    /// @param positionIdList The list of all option positions held by `user`
     /// @param shortPremia Total short premia owed to `user` (right slot = token0 credit, left slot = token1 credit)
     /// @param longPremia Total long premia owed by `user`   (right slot = token0 debit,  left slot = token1 debit)
     /// @param ct0 CollateralTracker for token0
@@ -710,71 +727,84 @@ contract RiskEngine {
     /// @return tokenData1 LeftRightUnsigned for token1 with left = maintenance requirement, right = available balance
     function _getMargin(
         address user,
+        uint256[] calldata positionBalanceArray,
         int24 atTick,
-        uint256[2][] memory positionBalanceArray,
+        TokenId[] calldata positionIdList,
         LeftRightUnsigned shortPremia,
         LeftRightUnsigned longPremia,
         CollateralTracker ct0,
         CollateralTracker ct1
     ) internal view returns (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) {
-        {
-            uint256 balance0 = ct0.assetsOf(user) + shortPremia.rightSlot();
-            uint256 owedInterest0 = ct0.owedInterest(user);
-            uint256 requirement0 = positionBalanceArray.length > 0
-                ? (_getTotalRequiredCollateral(atTick, positionBalanceArray, true) +
-                    longPremia.rightSlot() +
-                    owedInterest0)
-                : 0;
+        (uint256 requirements0, uint256 requirements1) = _getTotalRequiredCollateral(
+            positionBalanceArray,
+            positionIdList,
+            atTick
+        );
+        unchecked {
+            requirements0 += longPremia.rightSlot();
+            requirements1 += longPremia.leftSlot();
+        }
+        address _user = user;
+        (uint256 balance0, uint256 interest0) = ct0.assetsAndInterest(_user);
+        (uint256 balance1, uint256 interest1) = ct1.assetsAndInterest(_user);
 
-            tokenData0 = LeftRightUnsigned.wrap(balance0.toUint128()).addToLeftSlot(
-                requirement0.toUint128()
-            );
+        unchecked {
+            balance0 += shortPremia.rightSlot();
+            balance1 += shortPremia.leftSlot();
+
+            requirements0 += interest0;
+            requirements1 += interest1;
         }
-        {
-            uint256 balance1 = ct1.assetsOf(user) + shortPremia.leftSlot();
-            uint256 owedInterest1 = ct1.owedInterest(user);
-            uint256 requirement1 = positionBalanceArray.length > 0
-                ? (_getTotalRequiredCollateral(atTick, positionBalanceArray, false) +
-                    longPremia.leftSlot() +
-                    owedInterest1)
-                : 0;
-            tokenData1 = LeftRightUnsigned.wrap(balance1.toUint128()).addToLeftSlot(
-                requirement1.toUint128()
-            );
-        }
+        tokenData0 = LeftRightUnsigned.wrap(balance0.toUint128()).addToLeftSlot(
+            requirements0.toUint128()
+        );
+
+        tokenData1 = LeftRightUnsigned.wrap(balance1.toUint128()).addToLeftSlot(
+            requirements1.toUint128()
+        );
     }
 
     /// @notice Get the total required amount of collateral tokens of a user/account across all active positions to stay above the margin requirement.
     /// @dev Returns the token amounts required for the entire account with active positions in `positionIdList` (list of tokenIds).
+    /// @param positionBalanceArray The list of all open positions held by the `optionOwner`, stored as `[balance/poolUtilizationAtMint, ...]`
+    /// @param positionIdList The list of all option positions held by `owner`
     /// @param atTick The tick at which to evaluate the account's positions
-    /// @param positionBalanceArray The list of all open positions held by the `optionOwner`, stored as `[[tokenId, balance/poolUtilizationAtMint], ...]`
-    /// @param underlyingIsToken0 whether the calculation is for token0 (true) or token1 (false)
-    /// @return tokenRequired The amount of tokens required to stay above the margin threshold for all active positions of user
+    /// @return tokenRequired0 The amount of token0 required to stay above the margin threshold for all active positions of user
+    /// @return tokenRequired1 The amount of token1 required to stay above the margin threshold for all active positions of user
     function _getTotalRequiredCollateral(
-        int24 atTick,
-        uint256[2][] memory positionBalanceArray,
-        bool underlyingIsToken0
-    ) internal view returns (uint256 tokenRequired) {
+        uint256[] calldata positionBalanceArray,
+        TokenId[] calldata positionIdList,
+        int24 atTick
+    ) internal view returns (uint256 tokenRequired0, uint256 tokenRequired1) {
         uint256 totalIterations = positionBalanceArray.length;
-        for (uint256 i = 0; i < totalIterations; ) {
-            TokenId tokenId = TokenId.wrap(positionBalanceArray[i][0]);
+        for (uint256 i; i < totalIterations; ) {
+            TokenId tokenId = positionIdList[i];
 
-            uint128 positionSize = PositionBalance.wrap(positionBalanceArray[i][1]).positionSize();
+            PositionBalance positionBalance = PositionBalance.wrap(positionBalanceArray[i]);
+            uint128 positionSize = positionBalance.positionSize();
 
-            int16 poolUtilization = underlyingIsToken0
-                ? int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization0())
-                : int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization1());
+            int16 utilization0 = int16(positionBalance.utilization0());
+            int16 utilization1 = int16(positionBalance.utilization1());
 
-            uint256 _tokenRequired = _getRequiredCollateralAtTickSinglePosition(
+            uint256 _tokenRequired0 = _getRequiredCollateralAtTickSinglePosition(
                 tokenId,
                 positionSize,
                 atTick,
-                poolUtilization,
-                underlyingIsToken0
+                utilization0,
+                true
+            );
+
+            uint256 _tokenRequired1 = _getRequiredCollateralAtTickSinglePosition(
+                tokenId,
+                positionSize,
+                atTick,
+                utilization1,
+                false
             );
 
             unchecked {
-                tokenRequired += _tokenRequired;
+                tokenRequired0 += _tokenRequired0;
+                tokenRequired1 += _tokenRequired1;
             }
             unchecked {
                 ++i;

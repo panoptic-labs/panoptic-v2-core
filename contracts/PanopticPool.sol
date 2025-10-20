@@ -368,12 +368,12 @@ contract PanopticPool is Multicall {
     /// @param includePendingPremium If true, include premium that is owed to the user but has not yet settled; if false, only include premium that is available to collect
     /// @return The total amount of premium owed (which may `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
     /// @return The total amount of premium owed by the long legs in `positionIdList` (token0: right slot, token1: left slot)
-    /// @return A list of `PositionBalance` data (balance and pool utilization/oracle ticks at last mint) for each position, of the form `[[tokenId0, PositionBalance_0], [tokenId1, PositionBalance_1], ...]`
+    /// @return A list of `PositionBalance` data (balance and pool utilization/oracle ticks at last mint) for each position, of the form `[PositionBalance_0, PositionBalance_1, ...]`
     function getAccumulatedFeesAndPositionsData(
         address user,
         bool includePendingPremium,
         TokenId[] calldata positionIdList
-    ) external view returns (LeftRightUnsigned, LeftRightUnsigned, uint256[2][] memory) {
+    ) external view returns (LeftRightUnsigned, LeftRightUnsigned, uint256[] memory) {
         // Get the current tick of the Uniswap pool
         int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
         // Compute the accumulated premia for all tokenId in positionIdList (includes short+long premium)
@@ -408,11 +408,11 @@ contract PanopticPool is Multicall {
         returns (
             LeftRightUnsigned shortPremium,
             LeftRightUnsigned longPremium,
-            uint256[2][] memory balances
+            uint256[] memory balances
         )
     {
         uint256 pLength = positionIdList.length;
-        balances = new uint256[2][](pLength);
+        balances = new uint256[](pLength);
 
         address c_user = user;
         // loop through each option position/tokenId
@@ -423,17 +423,14 @@ contract PanopticPool is Multicall {
                 PositionBalance positionBalanceData = s_positionBalance[c_user][tokenId];
                 if (positionBalanceData.positionSize() == 0) revert Errors.PositionNotOwned();
 
-                balances[k] = [
-                    TokenId.unwrap(tokenId),
-                    PositionBalance.unwrap(positionBalanceData)
-                ];
+                balances[k] = PositionBalance.unwrap(positionBalanceData);
             }
             (
                 LeftRightSigned[4] memory premiaByLeg,
                 uint256[2][4] memory premiumAccumulatorsByLeg
             ) = _getPremia(
                     tokenId,
-                    LeftRightUnsigned.wrap(balances[k][1]).rightSlot(),
+                    LeftRightUnsigned.wrap(balances[k]).rightSlot(),
                     c_user,
                     usePremiaAsCollateral,
                     atTick
@@ -868,8 +865,8 @@ contract PanopticPool is Multicall {
             positionIdList,
             currentTick,
             atTicks,
-            buffer,
-            usePremiaAsCollateral
+            usePremiaAsCollateral,
+            buffer
         );
         uint256 numberOfTicks = atTicks.length;
 
@@ -936,8 +933,8 @@ contract PanopticPool is Multicall {
                 positionIdListTo,
                 currentTick,
                 atTicks,
-                NO_BUFFER,
-                COMPUTE_PREMIA_AS_COLLATERAL
+                COMPUTE_PREMIA_AS_COLLATERAL,
+                NO_BUFFER
             );
             numberOfTicks = atTicks.length;
         }
@@ -1023,7 +1020,7 @@ contract PanopticPool is Multicall {
         LeftRightUnsigned tokenData1;
         LeftRightUnsigned shortPremium;
         {
-            uint256[2][] memory positionBalanceArray = new uint256[2][](positionIdList.length);
+            uint256[] memory positionBalanceArray = new uint256[](positionIdList.length);
             LeftRightUnsigned longPremium;
             (shortPremium, longPremium, positionBalanceArray) = _calculateAccumulatedPremia(
                 liquidatee,
@@ -1035,6 +1032,7 @@ contract PanopticPool is Multicall {
             (tokenData0, tokenData1) = s_riskEngine.getMargin(
                 liquidatee,
                 twapTick,
+                positionIdList,
                 positionBalanceArray,
                 shortPremium,
                 longPremium,
@@ -1297,13 +1295,13 @@ contract PanopticPool is Multicall {
         TokenId[] calldata positionIdList,
         int24 currentTick,
         int24[] memory atTicks,
-        uint256 buffer,
-        bool usePremiaAsCollateral
+        bool usePremiaAsCollateral,
+        uint256 buffer
     ) internal view returns (uint256) {
         (
             LeftRightUnsigned shortPremium,
             LeftRightUnsigned longPremium,
-            uint256[2][] memory positionBalanceArray
+            uint256[] memory positionBalanceArray
         ) = _calculateAccumulatedPremia(
                 account,
                 positionIdList,
@@ -1321,6 +1319,7 @@ contract PanopticPool is Multicall {
                     _isAccountSolvent(
                         account,
                         atTicks[i],
+                        positionIdList,
                         positionBalanceArray,
                         shortPremium,
                         longPremium,
@@ -1346,7 +1345,8 @@ contract PanopticPool is Multicall {
     function _isAccountSolvent(
         address account,
         int24 atTick,
-        uint256[2][] memory positionBalanceArray,
+        TokenId[] calldata positionIdList,
+        uint256[] memory positionBalanceArray,
         LeftRightUnsigned shortPremium,
         LeftRightUnsigned longPremium,
         uint256 buffer
@@ -1354,8 +1354,9 @@ contract PanopticPool is Multicall {
         return
             s_riskEngine.isAccountSolvent(
                 account,
-                atTick,
                 positionBalanceArray,
+                atTick,
+                positionIdList,
                 shortPremium,
                 longPremium,
                 s_collateralToken0,
@@ -1480,7 +1481,6 @@ contract PanopticPool is Multicall {
         )
     {
         currentTick = SFPM.getCurrentTick(s_univ3pool);
-
         (spotTick, medianTick, latestTick, ) = s_riskEngine.getOracleTicks(
             currentTick,
             s_oraclePack
