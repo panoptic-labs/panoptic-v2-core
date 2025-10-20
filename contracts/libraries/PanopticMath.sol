@@ -295,8 +295,7 @@ library PanopticMath {
         spotEMATick = int22toInt24(EMAs & BITMASK_UINT22);
 
         // Reconstruct the absolute tick of the last observation by adding the reference tick (bits 96-119) to the latest residual (bits 0-11).
-        latestTick = int24(uint24(oraclePack >> 96)) + int12toInt24(oraclePack % 2 ** 12);
-
+        latestTick = int24(uint24(oraclePackIn >> 96)) + int12toInt24(oraclePackIn % 2 ** 12);
         // finally, get the median tick
         (medianTick, oraclePack) = computeInternalMedian(oraclePackIn, currentTick, EMAperiods);
     }
