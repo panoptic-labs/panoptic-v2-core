@@ -5099,14 +5099,18 @@ contract Misctest is Test, PositionUtils {
                 // SUCCESS CASE - mintOptions didn't revert
                 console2.log("Found non-reverting strike:", strike);
 
-                (, , uint256[2][] memory positionBalanceArray) = pp
-                    .getAccumulatedFeesAndPositionsData(Bob, false, mintList);
+                (, , uint256[] memory positionBalanceArray) = pp.getAccumulatedFeesAndPositionsData(
+                    Bob,
+                    false,
+                    mintList
+                );
 
                 (, currentTick, , , , , ) = uniPool.slot0();
 
                 (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = re.getMargin(
                     Bob,
                     currentTick,
+                    mintList,
                     positionBalanceArray,
                     LeftRightUnsigned.wrap(0),
                     LeftRightUnsigned.wrap(0),
@@ -5220,7 +5224,7 @@ contract Misctest is Test, PositionUtils {
                 mintList[0] = $tokenIdLong;
                 try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
                     console2.log("Found non-reverting strike:", strike);
-                    (, , uint256[2][] memory positionBalanceArray) = pp
+                    (, , uint256[] memory positionBalanceArray) = pp
                         .getAccumulatedFeesAndPositionsData(Alice, false, mintList);
 
                     (, currentTick, , , , , ) = uniPool.slot0();
@@ -5228,6 +5232,7 @@ contract Misctest is Test, PositionUtils {
                     (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = re.getMargin(
                         Alice,
                         currentTick,
+                        mintList,
                         positionBalanceArray,
                         LeftRightUnsigned.wrap(0),
                         LeftRightUnsigned.wrap(0),
@@ -5390,7 +5395,7 @@ contract Misctest is Test, PositionUtils {
                 try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
                     console2.log("");
                     console2.log("Found non-reverting strike:", $strike);
-                    (, , uint256[2][] memory positionBalanceArray) = pp
+                    (, , uint256[] memory positionBalanceArray) = pp
                         .getAccumulatedFeesAndPositionsData(Alice, false, mintList);
 
                     (, currentTick, , , , , ) = uniPool.slot0();
@@ -5399,6 +5404,7 @@ contract Misctest is Test, PositionUtils {
                         (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = re.getMargin(
                             Alice,
                             currentTick,
+                            mintList,
                             positionBalanceArray,
                             LeftRightUnsigned.wrap(0),
                             LeftRightUnsigned.wrap(0),
@@ -5447,8 +5453,8 @@ contract Misctest is Test, PositionUtils {
                 } catch (bytes memory reason) {
                     if (reason.length >= 4) {
                         bytes4 receivedSelector = bytes4(reason);
-                        if (receivedSelector == Errors.NotEnoughLiquidity.selector) {
-                            console2.log("LONG: NotEnoughLiquidity at strike:", $strike);
+                        if (receivedSelector == Errors.NotEnoughLiquidityToBuy.selector) {
+                            console2.log("LONG: NotEnoughLiquidityToBuy at strike:", $strike);
                         } else if (
                             receivedSelector == Errors.EffectiveLiquidityAboveThreshold.selector
                         ) {
@@ -5460,8 +5466,8 @@ contract Misctest is Test, PositionUtils {
                             console2.log("SPREAD: NotEnoughTokens at strike:", $strike);
                         } else if (receivedSelector == Errors.ZeroCollateralRequirement.selector) {
                             console2.log("SPREAD: ZeroCollateralRequirement at strike:", $strike);
-                        } else if (receivedSelector == Errors.ZeroLiquidity.selector) {
-                            console2.log("SPREAD: ZeroLiquidity at strike:", $strike);
+                        } else if (receivedSelector == Errors.ChunkHasZeroLiquidity.selector) {
+                            console2.log("SPREAD: ChunkHasZeroLiquidity at strike:", $strike);
                         } else if (receivedSelector == Errors.NetLiquidityZero.selector) {
                             console2.log("SPREAD: NetLiquidityZero at strike:", $strike);
                         } else if (receivedSelector == Errors.PositionTooLarge.selector) {
@@ -5482,16 +5488,16 @@ contract Misctest is Test, PositionUtils {
                 if (reason.length >= 4) {
                     bytes4 receivedSelector = bytes4(reason);
 
-                    if (receivedSelector == Errors.ZeroLiquidity.selector) {
-                        console2.log("ZeroLiquidity at strike:", $strike);
+                    if (receivedSelector == Errors.ChunkHasZeroLiquidity.selector) {
+                        console2.log("ChunkHasZeroLiquidity at strike:", $strike);
                     } else if (receivedSelector == Errors.InvalidTickBound.selector) {
                         console2.log("InvalidTickBound at strike:", $strike);
                     } else if (receivedSelector == 0x08c379a0) {
                         console2.log("Uniswap constraint at strike:", $strike);
                     } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
                         console2.log("LiquidityTooHigh at strike:", $strike);
-                    } else if (receivedSelector == Errors.NotEnoughLiquidity.selector) {
-                        console2.log("NotEnoughLiquidity at strike:", $strike);
+                    } else if (receivedSelector == Errors.NotEnoughLiquidityToBuy.selector) {
+                        console2.log("NotEnoughLiquidityToBuy at strike:", $strike);
                     } else if (receivedSelector == Errors.AccountInsolvent.selector) {
                         console2.log("AccountInsolvent at strike:", $strike);
                     } else if (receivedSelector == Errors.PositionTooLarge.selector) {

@@ -7891,7 +7891,7 @@ contract PanopticPoolTest is PositionUtils {
             uint256 exerciseableCount;
             // make sure position is exercisable - the uniswap twap is used to determine exercisability
             // so it could potentially be both OTM and non-exercisable (in-range)
-            (, , , TWAPtick, ) = pp.getOracleTicks();
+            TWAPtick = pp.getUniV3TWAP_();
             for (uint256 i = 0; i < numLegs; ++i) {
                 if (
                     (TWAPtick < (numLegs == 1 ? tickLower : tickLowers[i]) ||
