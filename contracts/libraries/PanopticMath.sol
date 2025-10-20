@@ -291,7 +291,7 @@ library PanopticMath {
         returns (int24 spotEMATick, int24 medianTick, int24 latestTick, uint256 oraclePack)
     {
         // Extract the spote EMA from the lowest 22 bits of the packed EMAs value and assign it as the fast oracle price.
-        uint256 EMAs = (oraclePack >> 120) & BITMASK_UINT88;
+        uint256 EMAs = (oraclePackIn >> 120) & BITMASK_UINT88;
         spotEMATick = int22toInt24(EMAs & BITMASK_UINT22);
 
         // Reconstruct the absolute tick of the last observation by adding the reference tick (bits 96-119) to the latest residual (bits 0-11).
