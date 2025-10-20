@@ -276,7 +276,7 @@ contract PanopticPoolTest is PositionUtils {
 
     uint256 $accValueBefore0;
 
-    uint256[2][] $positionBalanceArray;
+    uint256[] $positionBalanceArray;
 
     int256 $balanceDelta0;
     int256 $balanceDelta1;
@@ -1943,7 +1943,7 @@ contract PanopticPoolTest is PositionUtils {
             posIdList[0] = tokenId;
             posIdList[1] = tokenId2;
 
-            uint256[2][] memory posBalanceArray;
+            uint256[] memory posBalanceArray;
             ($shortPremia, $longPremia, posBalanceArray) = pp.getAccumulatedFeesAndPositionsData(
                 Alice,
                 false,
@@ -1959,13 +1959,12 @@ contract PanopticPoolTest is PositionUtils {
                 int256(uint256($shortPremia.leftSlot())) - int256(uint256($longPremia.leftSlot())),
                 int256(expectedPremia[1])
             );
-            assertEq(posBalanceArray[0][0], TokenId.unwrap(tokenId));
-            assertEq(PositionBalance.wrap(posBalanceArray[0][1]).positionSize(), positionSizes[0]);
-            assertEq(PositionBalance.wrap(posBalanceArray[0][1]).utilizations(), 1);
-            assertEq(posBalanceArray[1][0], TokenId.unwrap(tokenId2));
-            assertEq(LeftRightUnsigned.wrap(posBalanceArray[1][1]).rightSlot(), positionSizes[1]);
+            assertEq(PositionBalance.wrap(posBalanceArray[0]).positionSize(), positionSizes[0]);
+            assertEq(PositionBalance.wrap(posBalanceArray[0]).utilizations(), 1);
+            assertEq(posBalanceArray[1], TokenId.unwrap(tokenId2));
+            assertEq(LeftRightUnsigned.wrap(posBalanceArray[1]).rightSlot(), positionSizes[1]);
             assertEq(
-                PositionBalance.wrap(posBalanceArray[1][1]).utilizations(),
+                PositionBalance.wrap(posBalanceArray[1]).utilizations(),
                 uint32(uint128(poolUtilizationsAtMint.rightSlot())) +
                     (uint32(uint128(poolUtilizationsAtMint.leftSlot())) << 16)
             );
@@ -8678,6 +8677,7 @@ contract PanopticPoolTest is PositionUtils {
         ($tokenData0, $tokenData1) = re.getMargin(
             Alice,
             TWAPtick,
+            $posIdLists[1],
             $positionBalanceArray,
             $shortPremia,
             $longPremia,
@@ -9321,6 +9321,7 @@ contract PanopticPoolTest is PositionUtils {
         ($tokenData0, $tokenData1) = re.getMargin(
             Alice,
             TWAPtick,
+            $posIdLists[1],
             $positionBalanceArray,
             $shortPremia,
             $longPremia,
@@ -10119,8 +10120,17 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
-
-        (, , , TWAPtick, ) = pp.getOracleTicks();
+        {
+            int24 spotTick;
+            int24 medianTick;
+            (, spotTick, medianTick, TWAPtick, ) = pp.getOracleTicks();
+            console2.log("currentTick, TWAPtick", currentTick);
+            console2.log("currentTick, TWAPtick", TWAPtick);
+            console2.log("spot", spotTick);
+            console2.log("median", medianTick);
+            TWAPtick = pp.getUniV3TWAP_();
+            console2.log("TW", TWAPtick);
+        }
         vm.assume(Math.abs(int256(currentTick) - TWAPtick) <= 513);
 
         (, uint256 twapCollateralRequired0) = ph.checkCollateral(

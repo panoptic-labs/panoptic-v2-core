@@ -108,10 +108,6 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
         balanceOf[owner] = amount;
     }
 
-    function getOwedInterest(address owner) external view returns (uint128) {
-        return owedInterest(owner);
-    }
-
     function poolUtilizationHook() external view returns (int128) {
         return int128(int256(_poolUtilization()));
     }
@@ -489,7 +485,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     LeftRightUnsigned $longPremia;
     LeftRightUnsigned $shortPremia;
 
-    uint256[2][] posBalanceArray;
+    uint256[] posBalanceArray;
 
     uint128 DECIMALS = 10_000_000;
     int128 DECIMALS128 = 10_000_000;
@@ -2533,6 +2529,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         (LeftRightUnsigned tokenData0, ) = riskEngine.getMargin(
             Bob,
             currentTick,
+            positionIdList,
             posBalanceArray,
             $shortPremia,
             $longPremia,
@@ -2548,6 +2545,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         (tokenData0, ) = riskEngine.getMargin(
             Bob,
             currentTick,
+            positionIdList,
             posBalanceArray,
             $shortPremia,
             $longPremia,
@@ -2702,6 +2700,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         (LeftRightUnsigned tokenData0, ) = riskEngine.getMargin(
             Bob,
             currentTick,
+            positionIdList,
             posBalanceArray,
             $shortPremia,
             $longPremia,
@@ -2721,6 +2720,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         (tokenData0, ) = riskEngine.getMargin(
             Bob,
             currentTick,
+            positionIdList,
             posBalanceArray,
             $shortPremia,
             $longPremia,
@@ -2868,6 +2868,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         (LeftRightUnsigned tokenData0, ) = riskEngine.getMargin(
             Bob,
             currentTick,
+            positionIdList,
             posBalanceArray,
             $shortPremia,
             $longPremia,
@@ -5764,6 +5765,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -5798,6 +5800,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -5963,6 +5966,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -5997,6 +6001,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -6386,6 +6391,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -6420,6 +6426,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -6561,6 +6568,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -6615,6 +6623,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -6752,6 +6761,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -6807,6 +6817,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -6945,6 +6956,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -7001,6 +7013,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -7178,6 +7191,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -7235,6 +7249,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -7418,6 +7433,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -7470,6 +7486,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -7629,6 +7646,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -7691,6 +7709,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -7857,6 +7876,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -7919,6 +7939,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -8071,6 +8092,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -8133,6 +8155,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
+                positionIdList1,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -8266,6 +8289,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 atTick,
+                positionIdList,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -8312,6 +8336,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 currentTick,
+                positionIdList,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -8437,6 +8462,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 atTick,
+                positionIdList,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -8503,6 +8529,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 currentTick,
+                positionIdList,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -8628,6 +8655,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 atTick,
+                positionIdList,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -8690,6 +8718,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 currentTick,
+                positionIdList,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -8814,6 +8843,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 atTick,
+                positionIdList,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -8877,6 +8907,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 currentTick,
+                positionIdList,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -8998,6 +9029,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 atTick,
+                positionIdList,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -9047,6 +9079,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 currentTick,
+                positionIdList,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -9166,6 +9199,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 atTick,
+                positionIdList,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -9228,6 +9262,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 currentTick,
+                positionIdList,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -9326,6 +9361,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 atTick,
+                positionIdList,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -9404,6 +9440,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 currentTick,
+                positionIdList,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -9493,6 +9530,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 atTick,
+                positionIdList,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -9568,6 +9606,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 currentTick,
+                positionIdList,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -9700,6 +9739,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 atTick,
+                positionIdList,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
@@ -9781,6 +9821,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 currentTick,
+                positionIdList,
                 posBalanceArray,
                 $shortPremia,
                 $longPremia,
