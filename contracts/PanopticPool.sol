@@ -496,7 +496,7 @@ contract PanopticPool is Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Updates the internal median with the last Uniswap observation if the `MEDIAN_PERIOD` has elapsed.
-    function pokeMedian() external {
+    function pokeOracle() external {
         (uint16 observationIndex, uint16 observationCardinality) = SFPM.indexAndCardinality(
             s_univ3pool
         );
@@ -993,7 +993,7 @@ contract PanopticPool is Multicall {
                 exchangedAmounts = _liquidate(account, positionIdListTo, twapTick, currentTick);
             } else {
                 // otherwise, revert because the account is not fully margin called
-                revert Errors.AccountInsolvent(solvent, 4);
+                revert Errors.NotMarginCalled();
             }
         }
 
