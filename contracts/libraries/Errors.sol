@@ -53,7 +53,7 @@ library Errors {
     /// @notice A mint or swap callback was attempted from an address that did not match the canonical Uniswap V3 pool with the claimed features
     error InvalidUniswapCallback();
 
-    /// @notice RiskEngine: There is a mismatch between the lengh of the positionIdList and positionBalanceArray
+    /// @notice RiskEngine: There is a mismatch between the length of the positionIdList and positionBalanceArray
     error LengthMismatch();
 
     /// @notice PanopticPool: The Net Liquidity is zero due to small positions and cannot be used to compute the liquiditySpread
