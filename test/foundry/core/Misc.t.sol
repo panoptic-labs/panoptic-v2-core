@@ -319,7 +319,7 @@ contract Misctest is Test, PositionUtils {
         // for (uint256 i = 0; i < 8; ++i) {
         //     vm.warp(block.timestamp + 120);
         //     vm.roll(block.number + 1);
-        //     pp.pokeMedian();
+        //     pp.pokeOracle();
         // }
 
         for (uint256 i = 0; i < 20; ++i) {
@@ -361,23 +361,23 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, 2 ** 96);
 
         // Update median
-        pp.pokeMedian();
+        pp.pokeOracle();
         vm.warp(block.timestamp + 120);
         vm.roll(block.number + 10);
 
-        pp.pokeMedian();
+        pp.pokeOracle();
         vm.warp(block.timestamp + 120);
         vm.roll(block.number + 10);
 
-        pp.pokeMedian();
+        pp.pokeOracle();
         vm.warp(block.timestamp + 120);
         vm.roll(block.number + 10);
 
-        pp.pokeMedian();
+        pp.pokeOracle();
         vm.warp(block.timestamp + 120);
         vm.roll(block.number + 10);
 
-        pp.pokeMedian();
+        pp.pokeOracle();
         vm.warp(block.timestamp + 120);
         vm.roll(block.number + 10);
 
@@ -3881,7 +3881,7 @@ contract Misctest is Test, PositionUtils {
         vm.expectRevert(
             abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
         );
-        ct0.withdraw(1_000_000 - 266262, Bob, Bob, $posIdList, true);
+        ct0.withdraw(1_000_000 - 264777, Bob, Bob, $posIdList, true);
     }
 
     function test_Fail_InsolventAtCurrentTick_itmPut() public {
@@ -3897,7 +3897,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
@@ -3956,7 +3956,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
@@ -4014,7 +4014,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
@@ -4090,7 +4090,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
         }
 
@@ -4181,7 +4181,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
@@ -4255,7 +4255,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
             vm.warp(block.timestamp + 60); // 1 mins steps
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
                 .getOracleTicks();
             int24 TWAPtick = re.twapEMA(oraclePack);
@@ -4439,7 +4439,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
@@ -4458,7 +4458,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10000, 10000, 10 ** 18);
         }
 
@@ -4467,7 +4467,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
         vm.warp(block.timestamp + 120);
         vm.roll(block.number + 1);
-        pp.pokeMedian();
+        pp.pokeOracle();
         swapperc.burn(uniPool, -10000, 10000, 10 ** 18);
 
         assertTrue(pp.isSafeMode() == 0, "slow oracle tick caught up");
@@ -4486,7 +4486,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
@@ -4587,7 +4587,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
@@ -4675,7 +4675,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
@@ -4766,13 +4766,13 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
         vm.warp((block.timestamp >> 6) * 64 + 128);
         vm.roll(block.number + 1);
-        pp.pokeMedian();
+        pp.pokeOracle();
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
@@ -4834,7 +4834,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
-        pp.pokeMedian();
+        pp.pokeOracle();
 
         (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
@@ -4843,7 +4843,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
-        pp.pokeMedian();
+        pp.pokeOracle();
 
         (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
@@ -4852,7 +4852,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
-        pp.pokeMedian();
+        pp.pokeOracle();
 
         (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
@@ -4873,13 +4873,13 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
         vm.warp((block.timestamp >> 6) * 64 + 128);
         vm.roll(block.number + 1);
-        pp.pokeMedian();
+        pp.pokeOracle();
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
@@ -4935,7 +4935,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
-        pp.pokeMedian();
+        pp.pokeOracle();
 
         (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
@@ -4944,7 +4944,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
-        pp.pokeMedian();
+        pp.pokeOracle();
 
         (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
@@ -4953,7 +4953,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
-        pp.pokeMedian();
+        pp.pokeOracle();
 
         (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
@@ -4977,14 +4977,14 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
         vm.warp(2 ** 30 - 1);
         vm.roll(block.number + 1);
         console2.log("START");
-        pp.pokeMedian();
+        pp.pokeOracle();
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
@@ -5048,7 +5048,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
 
@@ -5060,7 +5060,7 @@ contract Misctest is Test, PositionUtils {
         vm.warp(block.timestamp + 120);
         vm.roll(block.number + 1);
         swapperc.burn(uniPool, -10000, 10000, 10 ** 18);
-        pp.pokeMedian();
+        pp.pokeOracle();
 
         (int24 currentTickNew, , int24 slowOracleTickNew, , uint256 oraclePackNew) = pp
             .getOracleTicks();
@@ -5772,7 +5772,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
@@ -6221,7 +6221,7 @@ contract Misctest is Test, PositionUtils {
         vm.expectRevert(
             abi.encodeWithSelector(
                 Errors.AccountInsolvent.selector,
-                uint256(0), // solvent
+                uint256(3), // solvent
                 uint256(4) // numberOfTicks
             )
         );
@@ -6335,8 +6335,8 @@ contract Misctest is Test, PositionUtils {
         vm.expectRevert(
             abi.encodeWithSelector(
                 Errors.AccountInsolvent.selector,
-                uint256(0), // solvent
-                uint256(1) // numberOfTicks
+                uint256(3), // solvent
+                uint256(4) // numberOfTicks
             )
         );
         burnOptions(
@@ -6409,7 +6409,7 @@ contract Misctest is Test, PositionUtils {
         // swap to 1.21 or 0.82, depending on tokenType
         swapperc.swapTo(
             uniPool,
-            tokenType == 0 ? 87150978765690778389772763136 : 72025602285694849958832766976
+            tokenType == 0 ? 89150978765690778389772763136 : 70025602285694849958832766976
         );
         (, currentTick, , , , , ) = uniPool.slot0();
 
@@ -6428,9 +6428,12 @@ contract Misctest is Test, PositionUtils {
             vm.roll(block.number + 10);
             swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
             swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+            pp.pokeOracle();
         }
 
-        twapTick = PanopticMath.twapFilter(uniPool, 600);
+        (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+            .getOracleTicks();
+        twapTick = re.twapEMA(oraclePack);
         {
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
                 pp,
@@ -6442,8 +6445,6 @@ contract Misctest is Test, PositionUtils {
             assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable twap!");
         }
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(twapTick) - 500));
-
         (currentTick, fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
 
         {
@@ -6453,7 +6454,6 @@ contract Misctest is Test, PositionUtils {
                 fastOracleTick,
                 posIdList
             );
-
             assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable fast!");
 
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
@@ -6465,13 +6465,25 @@ contract Misctest is Test, PositionUtils {
 
             assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable last!");
 
+            swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(twapTick) - 500));
+            (currentTick, , , , ) = pp.getOracleTicks();
+
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
                 pp,
                 Bob,
                 currentTick,
                 posIdList
             );
+            console2.log(
+                "totalCollateralBalance0,totalCollateralRequired0",
+                totalCollateralBalance0,
+                totalCollateralRequired0
+            );
 
+            console2.log("curren", currentTick);
+            console2.log("fat", fastOracleTick);
+            console2.log("lastOv", lastObservedTick);
+            console2.log("twap", twapTick);
             assertTrue(
                 totalCollateralBalance0 > totalCollateralRequired0,
                 "Is NOT liquidatable current!"
