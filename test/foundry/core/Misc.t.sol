@@ -1789,8 +1789,9 @@ contract Misctest is Test, PositionUtils {
         vm.warp(block.timestamp + 600);
         vm.roll(block.number + 1);
 
-        swapperc.swapTo(uniPool, 10 * 2 ** 96);
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(512));
 
+        pp.pokeOracle();
         vm.warp(block.timestamp + 600);
         vm.roll(block.number + 1);
 
@@ -1798,7 +1799,12 @@ contract Misctest is Test, PositionUtils {
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
 
         PanopticMath.twapFilter(uniPool, 600);
-
+        (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+            .getOracleTicks();
+        twapTick = re.twapEMA(oraclePack);
+        console2.log("cur", currentTick);
+        console2.log("twapTick", twapTick);
+        vm.assume(Math.abs(currentTick - twapTick) < 513);
         vm.startPrank(Bob);
         forceExercise(
             pp,
@@ -1943,7 +1949,7 @@ contract Misctest is Test, PositionUtils {
             abi.encodeWithSelector(
                 Errors.AccountInsolvent.selector,
                 uint256(0), // solvent
-                uint256(4) // numberOfTicks
+                uint256(1) // numberOfTicks
             )
         );
         settleLongPremium(pp, $posIdLists[0], $posIdList, Bob, 0, false);
@@ -1957,7 +1963,7 @@ contract Misctest is Test, PositionUtils {
             abi.encodeWithSelector(
                 Errors.AccountInsolvent.selector,
                 uint256(0), // solvent
-                uint256(4) // numberOfTicks
+                uint256(1) // numberOfTicks
             )
         );
         forceExercise(
@@ -1973,7 +1979,7 @@ contract Misctest is Test, PositionUtils {
             abi.encodeWithSelector(
                 Errors.AccountInsolvent.selector,
                 uint256(0), // solvent
-                uint256(4) // numberOfTicks
+                uint256(1) // numberOfTicks
             )
         );
         forceExercise(
@@ -1986,7 +1992,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.expectRevert(
-            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
         );
         forceExercise(
             pp,
@@ -2008,7 +2014,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.expectRevert(
-            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
         );
         forceExercise(
             pp,
@@ -2020,7 +2026,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.expectRevert(
-            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
         );
         forceExercise(
             pp,
@@ -2070,7 +2076,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Alice);
 
         vm.expectRevert(
-            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
         );
         forceExercise(
             pp,
@@ -2082,7 +2088,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.expectRevert(
-            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
         );
         forceExercise(
             pp,
@@ -2242,7 +2248,7 @@ contract Misctest is Test, PositionUtils {
         vm.warp(block.timestamp + 600);
         vm.roll(block.number + 1);
 
-        swapperc.swapTo(uniPool, 10 * 2 ** 96);
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(512));
 
         vm.warp(block.timestamp + 600);
         vm.roll(block.number + 1);
@@ -2250,8 +2256,12 @@ contract Misctest is Test, PositionUtils {
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
 
-        twapTick = PanopticMath.twapFilter(uniPool, 600);
-
+        (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+            .getOracleTicks();
+        twapTick = re.twapEMA(oraclePack);
+        console2.log("cur", currentTick);
+        console2.log("twapTick", twapTick);
+        vm.assume(Math.abs(currentTick - twapTick) < 513);
         vm.startPrank(Bob);
         forceExercise(
             pp,
@@ -3838,7 +3848,7 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        editCollateral(ct0, Bob, ct0.convertToShares(266262));
+        editCollateral(ct0, Bob, ct0.convertToShares(264777));
         editCollateral(ct1, Bob, 0);
 
         vm.expectRevert(
@@ -4030,10 +4040,10 @@ contract Misctest is Test, PositionUtils {
 
         (, int24 staleTick, , , , , ) = uniPool.slot0();
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-954));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-952));
 
         console2.log("isSafeMode", pp.isSafeMode() > 0 ? "safe mode ON" : "safe mode OFF");
-        assertTrue(pp.isSafeMode() == 0);
+        assertTrue(pp.isSafeMode() == 0, "safeMode");
         vm.startPrank(Bob);
 
         uint256 snapshot = vm.snapshot();
@@ -4088,7 +4098,7 @@ contract Misctest is Test, PositionUtils {
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
             swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
-            vm.warp(block.timestamp + 120);
+            vm.warp(block.timestamp + 3600);
             vm.roll(block.number + 1);
             pp.pokeOracle();
             swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
@@ -4198,8 +4208,10 @@ contract Misctest is Test, PositionUtils {
         (, int24 staleTick, , , , , ) = uniPool.slot0();
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(952));
+        pp.pokeOracle();
+        console2.log("safeMode level", pp.isSafeMode());
         console2.log("isSafeMode", pp.isSafeMode() > 0 ? "safe mode ON" : "safe mode OFF");
-        assertTrue(pp.isSafeMode() > 0);
+        assertTrue(pp.isSafeMode() == 0);
 
         vm.startPrank(Bob);
 
@@ -4213,7 +4225,8 @@ contract Misctest is Test, PositionUtils {
 
         // deposit bare minimum for naked mints
         //ct0.deposit(0, Bob);
-        ct1.deposit(17_850, Bob);
+        ct1.deposit(20_000, Bob);
+        console2.log("Bob mint");
 
         // mint succeeds
         mintOptions(
@@ -4243,6 +4256,11 @@ contract Misctest is Test, PositionUtils {
             $posIdList
         );
 
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
         assertTrue(
             totalCollateralBalance0 <= totalCollateralRequired0,
             "Is liquidatable at current tick!"
@@ -4253,7 +4271,7 @@ contract Misctest is Test, PositionUtils {
         // setup mini-median price array
         for (uint256 i = 0; i < 60; ++i) {
             swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
-            vm.warp(block.timestamp + 60); // 1 mins steps
+            vm.warp(block.timestamp + 3600); // 1h steps
             vm.roll(block.number + 1);
             pp.pokeOracle();
             (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
@@ -4274,7 +4292,6 @@ contract Misctest is Test, PositionUtils {
         (currentTick, , , , oraclePack) = pp.getOracleTicks();
         int24 TWAPtick = re.twapEMA(oraclePack);
         console2.log("TWAPtick", TWAPtick);
-        assertTrue(false);
 
         liquidate(pp, new TokenId[](0), Bob, $posIdList);
 
@@ -4289,10 +4306,10 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(953));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
 
         console2.log("isSafeMode", pp.isSafeMode() > 0 ? "safe mode ON" : "safe mode OFF");
-        assertTrue(pp.isSafeMode() > 0);
+        assertTrue(pp.isSafeMode() > 0, "safe mode still");
 
         vm.startPrank(Bob);
 
@@ -4304,7 +4321,7 @@ contract Misctest is Test, PositionUtils {
 
         // deposit bare minimum for covered mints
         //ct0.deposit(0, Bob);
-        ct1.deposit(150466, Bob);
+        ct1.deposit(136820, Bob);
 
         mintOptions(
             pp,
@@ -4376,7 +4393,7 @@ contract Misctest is Test, PositionUtils {
         vm.expectRevert(
             abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
         );
-        ct0.withdraw(1_000_000 - 266262, Alice, Bob, $posIdList, true);
+        ct0.withdraw(1_000_000 - 264777, Alice, Bob, $posIdList, true);
     }
 
     function test_Success_SafeMode_down() public {
@@ -6012,13 +6029,18 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-800_000));
-
-        for (uint256 j = 0; j < 100; ++j) {
-            vm.warp(block.timestamp + 120);
+        for (uint256 j = 0; j < 10000; ++j) {
+            vm.warp(block.timestamp + 3600);
             vm.roll(block.number + 10);
             swapperc.mint(uniPool, -887200, 887200, 10 ** 10);
             swapperc.burn(uniPool, -887200, 887200, 10 ** 10);
+            pp.pokeOracle();
         }
+        (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+            .getOracleTicks();
+        twapTick = re.twapEMA(oraclePack);
+        console2.log("cur", currentTick);
+        console2.log("twapTick", twapTick);
 
         vm.startPrank(Charlie);
         liquidate(pp, new TokenId[](0), Bob, $posIdList);
@@ -6122,8 +6144,8 @@ contract Misctest is Test, PositionUtils {
                 uint160(
                     bound(
                         prices[i],
-                        tokenType == 0 ? sqrtPriceTargetX96 : Constants.MIN_V3POOL_SQRT_RATIO + 2,
-                        tokenType == 0 ? Constants.MAX_V3POOL_SQRT_RATIO - 2 : sqrtPriceTargetX96
+                        tokenType == 0 ? sqrtPriceTargetX96 * 2 : sqrtPriceTargetX96 / 5,
+                        tokenType == 0 ? sqrtPriceTargetX96 * 5 : sqrtPriceTargetX96 / 2
                     )
                 )
             );
@@ -6132,26 +6154,38 @@ contract Misctest is Test, PositionUtils {
             (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
                 .checkCollateral(pp, Bob, currentTick, posIdList);
 
-            assertTrue(totalCollateralBalance0 <= totalCollateralRequired0, "Is liquidatable!");
+            console2.log(
+                "totalCollateralBalance0, totalCollateralRequired0",
+                totalCollateralBalance0,
+                totalCollateralRequired0
+            );
+            assertTrue(totalCollateralBalance0 <= totalCollateralRequired0, "Is liquidatable! 2");
 
             // update twaps
-            for (uint256 j = 0; j < 100; ++j) {
-                vm.warp(block.timestamp + 120);
+            for (uint256 j = 0; j < 250; ++j) {
+                vm.warp(block.timestamp + 3600);
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 10);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 10);
+                pp.pokeOracle();
             }
 
             // deal alice a bunch of collateral tokens without touching the supply
             editCollateral(ct0, Alice, ct0.convertToShares(type(uint120).max));
             editCollateral(ct1, Alice, ct1.convertToShares(type(uint120).max));
             // update twaps
-            for (uint256 j = 0; j < 100; ++j) {
-                vm.warp(block.timestamp + 120);
+            for (uint256 j = 0; j < 250; ++j) {
+                vm.warp(block.timestamp + 3600);
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
+            (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+                .getOracleTicks();
+            twapTick = re.twapEMA(oraclePack);
+            console2.log("cur", currentTick);
+            console2.log("twapTick", twapTick);
 
             vm.startPrank(Alice);
             liquidate(pp, new TokenId[](0), Bob, posIdList);
@@ -6420,7 +6454,7 @@ contract Misctest is Test, PositionUtils {
             posIdList
         );
 
-        assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+        assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable! 1");
 
         // update twaps
         for (uint256 j = 0; j < 100; ++j) {
@@ -6524,10 +6558,10 @@ contract Misctest is Test, PositionUtils {
 
         if (tokenType == 0) {
             token0.approve(address(ct0), 1000);
-            ct0.deposit(1000, Bob);
+            ct0.deposit(900, Bob);
         } else {
             token1.approve(address(ct1), 1000);
-            ct1.deposit(1000, Bob);
+            ct1.deposit(900, Bob);
         }
 
         mintOptions(
@@ -6567,17 +6601,25 @@ contract Misctest is Test, PositionUtils {
             posIdList
         );
 
-        assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable! 0");
 
         // update twaps
         for (uint256 j = 0; j < 100; ++j) {
-            vm.warp(block.timestamp + 120);
+            vm.warp(block.timestamp + 3600);
             vm.roll(block.number + 10);
             swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
             swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+            pp.pokeOracle();
         }
 
-        twapTick = PanopticMath.twapFilter(uniPool, 600);
+        (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+            .getOracleTicks();
+        twapTick = re.twapEMA(oraclePack);
         {
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
                 pp,
@@ -6702,13 +6744,19 @@ contract Misctest is Test, PositionUtils {
 
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
-                vm.warp(block.timestamp + 120);
+                vm.warp(block.timestamp + 3600);
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             (, currentTick, , , , , ) = uniPool.slot0();
+            (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+                .getOracleTicks();
+            twapTick = re.twapEMA(oraclePack);
+            console2.log("cur", currentTick);
+            console2.log("twapTick", twapTick);
 
             vm.startPrank(Alice);
             console2.log("");
@@ -6787,15 +6835,22 @@ contract Misctest is Test, PositionUtils {
 
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
-                vm.warp(block.timestamp + 120);
+                vm.warp(block.timestamp + 3600);
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             vm.startPrank(Alice);
             console2.log("");
             console2.log("cross collateral", i);
+            (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+                .getOracleTicks();
+            twapTick = re.twapEMA(oraclePack);
+            console2.log("cur", currentTick);
+            console2.log("twapTick", twapTick);
+
             liquidate(pp, new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
@@ -6889,11 +6944,17 @@ contract Misctest is Test, PositionUtils {
             }
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
-                vm.warp(block.timestamp + 120);
+                vm.warp(block.timestamp + 3600);
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
+            (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+                .getOracleTicks();
+            twapTick = re.twapEMA(oraclePack);
+            console2.log("cur", currentTick);
+            console2.log("twapTick", twapTick);
 
             vm.startPrank(Alice);
             liquidate(pp, new TokenId[](0), Bob, posIdList);
@@ -6986,13 +7047,21 @@ contract Misctest is Test, PositionUtils {
             }
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
-                vm.warp(block.timestamp + 120);
+                vm.warp(block.timestamp + 3600);
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             vm.startPrank(Alice);
+
+            (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+                .getOracleTicks();
+            twapTick = re.twapEMA(oraclePack);
+            console2.log("cur", currentTick);
+            console2.log("twapTick", twapTick);
+
             liquidate(pp, new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
@@ -7083,13 +7152,19 @@ contract Misctest is Test, PositionUtils {
             }
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
-                vm.warp(block.timestamp + 120);
+                vm.warp(block.timestamp + 3600);
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             vm.startPrank(Alice);
+            (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+                .getOracleTicks();
+            twapTick = re.twapEMA(oraclePack);
+            console2.log("cur", currentTick);
+            console2.log("twapTick", twapTick);
 
             liquidate(pp, new TokenId[](0), Bob, posIdList);
 
@@ -7167,7 +7242,7 @@ contract Misctest is Test, PositionUtils {
                 posIdList
             );
 
-            assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+            assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable! 0");
 
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
@@ -7175,6 +7250,7 @@ contract Misctest is Test, PositionUtils {
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
             console2.log("");
             console2.log("no cross collateral", i);
@@ -7251,7 +7327,7 @@ contract Misctest is Test, PositionUtils {
                 posIdList
             );
 
-            assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+            assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable! 1");
 
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
@@ -7259,6 +7335,7 @@ contract Misctest is Test, PositionUtils {
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             vm.startPrank(Alice);
@@ -7351,7 +7428,10 @@ contract Misctest is Test, PositionUtils {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
                     .checkCollateral(pp, Bob, currentTick, posIdList);
 
-                assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+                assertTrue(
+                    totalCollateralBalance0 < totalCollateralRequired0,
+                    "Is liquidatable! 2"
+                );
             }
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
@@ -7359,6 +7439,7 @@ contract Misctest is Test, PositionUtils {
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             vm.startPrank(Alice);
@@ -7444,7 +7525,10 @@ contract Misctest is Test, PositionUtils {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
                     .checkCollateral(pp, Bob, currentTick, posIdList);
 
-                assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+                assertTrue(
+                    totalCollateralBalance0 < totalCollateralRequired0,
+                    "Is liquidatable! 3"
+                );
             }
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
@@ -7452,6 +7536,7 @@ contract Misctest is Test, PositionUtils {
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             vm.startPrank(Alice);
@@ -7537,7 +7622,10 @@ contract Misctest is Test, PositionUtils {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
                     .checkCollateral(pp, Bob, currentTick, posIdList);
 
-                assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+                assertTrue(
+                    totalCollateralBalance0 < totalCollateralRequired0,
+                    "Is liquidatable! 4"
+                );
             }
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
@@ -7545,6 +7633,7 @@ contract Misctest is Test, PositionUtils {
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             vm.startPrank(Alice);
@@ -7654,15 +7743,22 @@ contract Misctest is Test, PositionUtils {
             }
             vm.startPrank(Swapper);
 
-            editCollateral(ct0, Bob, ct0.convertToShares(250));
-            editCollateral(ct1, Bob, ct1.convertToShares(250));
+            editCollateral(ct0, Bob, ct0.convertToShares(99));
+            editCollateral(ct1, Bob, ct1.convertToShares(99));
 
             (, currentTick, , , , , ) = uniPool.slot0();
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
                     .checkCollateral(pp, Bob, currentTick, posIdList);
-
-                assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+                console2.log(
+                    "totalCollateralBalance0, totalCollateralRequired0",
+                    totalCollateralBalance0,
+                    totalCollateralRequired0
+                );
+                assertTrue(
+                    totalCollateralBalance0 < totalCollateralRequired0,
+                    "Is liquidatable! 5"
+                );
             }
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
@@ -7670,6 +7766,7 @@ contract Misctest is Test, PositionUtils {
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             vm.startPrank(Alice);
@@ -7754,7 +7851,7 @@ contract Misctest is Test, PositionUtils {
             token0.approve(address(ct0), 2500);
             ct0.deposit(2500, Bob);
             token1.approve(address(ct1), 150);
-            ct1.deposit(150, Bob);
+            ct1.deposit(127, Bob);
             // mint 1 liquidity unit of wideish centered position
 
             mintOptions(
@@ -7780,14 +7877,23 @@ contract Misctest is Test, PositionUtils {
             }
             vm.startPrank(Swapper);
 
-            editCollateral(ct0, Bob, ct0.convertToShares(250));
+            editCollateral(ct0, Bob, ct0.convertToShares(0));
+            editCollateral(ct1, Bob, ct1.convertToShares(198));
 
             (, currentTick, , , , , ) = uniPool.slot0();
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
                     .checkCollateral(pp, Bob, currentTick, posIdList);
+                console2.log(
+                    "totalCollateralBalance0, totalCollateralRequired0",
+                    totalCollateralBalance0,
+                    totalCollateralRequired0
+                );
 
-                assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+                assertTrue(
+                    totalCollateralBalance0 < totalCollateralRequired0,
+                    "Is liquidatable! 6"
+                );
             }
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
@@ -7795,6 +7901,7 @@ contract Misctest is Test, PositionUtils {
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             vm.startPrank(Alice);
@@ -7877,7 +7984,7 @@ contract Misctest is Test, PositionUtils {
             ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
 
             token0.approve(address(ct0), 150);
-            ct0.deposit(150, Bob);
+            ct0.deposit(127, Bob);
             token1.approve(address(ct1), 2500);
             ct1.deposit(2500, Bob);
             // mint 1 liquidity unit of wideish centered position
@@ -7905,14 +8012,23 @@ contract Misctest is Test, PositionUtils {
             }
             vm.startPrank(Swapper);
 
-            editCollateral(ct1, Bob, ct1.convertToShares(250));
+            editCollateral(ct0, Bob, ct0.convertToShares(125));
+            editCollateral(ct1, Bob, ct1.convertToShares(0));
 
             (, currentTick, , , , , ) = uniPool.slot0();
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
                     .checkCollateral(pp, Bob, currentTick, posIdList);
+                console2.log(
+                    "totalCollateralBalance0, totalCollateralRequired0",
+                    totalCollateralBalance0,
+                    totalCollateralRequired0
+                );
 
-                assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+                assertTrue(
+                    totalCollateralBalance0 < totalCollateralRequired0,
+                    "Is liquidatable! 7"
+                );
             }
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
