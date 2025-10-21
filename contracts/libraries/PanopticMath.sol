@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
+import "forge-std/Test.sol";
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
@@ -417,7 +418,6 @@ library PanopticMath {
                 differentEpoch = currentEpoch != recordedEpoch;
                 timeDelta = int256(uint256(uint24(currentEpoch - recordedEpoch))) * 64;
             }
-            updatedOraclePack = oraclePack;
             // only proceed if last entry is in a different epoch (takes care of looping edge case in a way that ">" doesn't)
             if (differentEpoch) {
                 int24 clampedTick = clampTick(currentTick, oraclePack);
