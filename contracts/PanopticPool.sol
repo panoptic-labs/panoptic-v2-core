@@ -997,7 +997,7 @@ contract PanopticPool is Multicall {
                 if (toLength == finalLength) revert Errors.AccountInsolvent(solvent, 4);
 
                 if (toLength == (finalLength + 1)) {
-                    // final is one element shorter, that's a forces closed through a force exercise
+                    // final is one element shorter, that's a liquidation through a force exercise
                     tokenId = positionIdListTo[toLength - 1];
                     exchangedAmounts = _forceExercise(
                         account,
@@ -1159,11 +1159,12 @@ contract PanopticPool is Multicall {
         // The protocol delegates some virtual shares to ensure the burn can be settled.
         ct0.delegate(account);
         ct1.delegate(account);
+        LeftRightSigned netPaid;
 
         {
             // Exercise the option
             // Turn off ITM swapping to prevent swap at potentially unfavorable price
-            _burnOptions(
+            (netPaid, ) = _burnOptions(
                 tokenId,
                 positionSize,
                 MIN_SWAP_TICK,
@@ -1171,6 +1172,8 @@ contract PanopticPool is Multicall {
                 account,
                 COMMIT_LONG_SETTLED
             );
+
+            issueReceipt(tokenId, positionSize, account, netPaid);
         }
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
         refundAmounts = s_riskEngine.getRefundAmounts(account, exerciseFees, twapTick, ct0, ct1);
@@ -1184,6 +1187,34 @@ contract PanopticPool is Multicall {
         ct1.revoke(account);
 
         emit ForcedExercised(msg.sender, account, tokenId, exerciseFees);
+    }
+
+    function issueReceipt(
+        TokenId tokenId,
+        uint128 positionSize,
+        address account,
+        LeftRightSigned netPaid
+    ) internal {
+        uint256 asset = tokenId.asset(0);
+        // add poolId information
+        TokenId tokenIdBase = TokenId.wrap(tokenId.poolId());
+
+        // add the tokenType=0 leg: a loan if the amount paid is negative, a credit if it is positive
+        tokenIdBase = tokenIdBase.addLeg(0, 1, asset, netPaid.rightSlot() < 0 ? 0 : 1, 0, 1, 0, 0);
+
+        // add the tokenType=1 leg: a loan if the amount paid is negative, a credit if it is positive
+        tokenIdBase = tokenIdBase.addLeg(1, 1, asset, netPaid.leftSlot() < 0 ? 0 : 1, 1, 0, 0, 0);
+
+        // issue the tokenId receipt to the user
+        _mintOptions(
+            tokenIdBase,
+            positionSize,
+            type(uint64).max,
+            account,
+            MIN_SWAP_TICK,
+            MAX_SWAP_TICK,
+            0
+        );
     }
 
     /// @notice Settle unpaid premium for one `legIndex` on a position owned by `owner`.
