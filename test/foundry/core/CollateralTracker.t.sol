@@ -2718,7 +2718,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // reduce balance so the account has barely any shares left
         collateralToken0.mintShares(
             Bob,
-            collateralToken0.previewDeposit(tokenData0.leftSlot() - 9932835926210985459)
+            collateralToken0.previewDeposit(tokenData0.leftSlot() - 8949971082503561822)
         );
 
         (tokenData0, ) = riskEngine.getMargin(
@@ -2734,12 +2734,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
         console2.log("balan, thr", tokenData0.rightSlot(), tokenData0.leftSlot());
 
         vm.stopPrank();
+        previewedInterest = collateralToken0.previewOwedInterest(Bob);
 
         // Convert to shares to check if user is insolvent
         uint256 sharesOwed = collateralToken0.convertToShares(previewedInterest);
         uint256 bobBalance = collateralToken0.balanceOf(Bob);
 
-        // Verify Bob would be insolvent but can pau
+        // Verify Bob would be insolvent but can pay
         assertLt(
             sharesOwed,
             bobBalance,
@@ -2751,6 +2752,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 maxBobCanPay = collateralToken0.convertToAssets(bobBalance);
         assertLt(previewedInterest, maxBobCanPay, "Preview shows that Bob can pay");
 
+        console2.log("Bobs preview, max", previewedInterest, maxBobCanPay);
         vm.startPrank(Alice);
         // Now accrue interest to verify Bob becomes insolvent
         uint256 charlieAssetsBefore = collateralToken0.convertToAssets(
@@ -8215,6 +8217,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 checkSingle
             );
 
+            console2.log("rrr", required);
             // checks tokens required
             required += uint128(
                 int256(uint256($shortPremia.rightSlot())) -
@@ -8580,6 +8583,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint128 poolUtilizations = uint128(utilization0) + (uint128(utilization1) << 64);
 
             uint256[2] memory checkSingle = [uint256(0), uint256(0)];
+            console2.log("utili", utilization0, utilization1);
             uint128 required = _tokensRequired(
                 tokenId,
                 positionSize0,
@@ -8588,6 +8592,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 checkSingle
             );
 
+            console2.log("required", required);
             // only add premium requirement if there is net premia owed
             int128 premium0 = int128(
                 int256(uint256($shortPremia.rightSlot())) - int256(uint256($longPremia.rightSlot()))
@@ -11319,7 +11324,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
                 sellCollateralRatio = uint256(int256(riskEngine.sellCollateralRatio(utilization)));
                 buyCollateralRatio = uint256(int256(riskEngine.buyCollateralRatio(utilization)));
+                console2.log("sell/buy", sellCollateralRatio, buyCollateralRatio, DECIMALS);
             }
+            console2.log("utilization", utilization);
             console2.log("data", _width);
             console2.log("isLong", _isLong);
             if (_width == 0) {
@@ -11343,10 +11350,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 _tokensRequired += Math
                     .mulDivRoundingUp(
                         notionalMoved,
-                        isLong == 1 ? buyCollateralRatio : sellCollateralRatio,
+                        _isLong == 1 ? buyCollateralRatio : sellCollateralRatio,
                         DECIMALS
                     )
                     .toUint128();
+                console2.log("notionalMoved", notionalMoved);
+                console2.log("_tokensRequired-beforeOUT", _tokensRequired);
                 // start with base requirement, which is based on isLong value
                 if (_isLong == 0) {
                     // if position is short, check whether the position is out-the-money
@@ -11364,7 +11373,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     // so instead we cap it at the minimum price, which is acceptable because
                     // a higher ratio will result in an increased slope for the collateral requirement
                     int24 _atTick = atTick;
-                    uint160 ratio = tokenType == 1 // tokenType
+                    uint160 ratio = _tokenType == 1 // tokenType
                         ? Math.getSqrtRatioAtTick(
                             int24(
                                 Math.bound(
@@ -11393,21 +11402,19 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
                     uint256 r1;
 
+                    console2.log("tolenType", tokenType);
+                    console2.log("strike", strike);
+                    console2.log("_atTick", _atTick);
+                    console2.log("ratio", ratio);
                     {
-                        if (tokenType == 1) {
-                            uint256 p0 = notionalMoved +
-                                Math.mulDiv96RoundingUp(_tokensRequired, ratio);
-                            uint256 p1 = Math.mulDiv96RoundingUp(notionalMoved, ratio);
+                        uint256 p0 = notionalMoved +
+                            Math.mulDiv96RoundingUp(_tokensRequired, ratio);
+                        uint256 p1 = Math.mulDiv96RoundingUp(notionalMoved, ratio);
 
-                            r1 = p0 > p1 ? p0 - p1 : 0;
-                        } else {
-                            uint256 p0 = notionalMoved +
-                                Math.mulDiv96RoundingUp(_tokensRequired, ratio);
-                            uint256 p1 = Math.mulDiv96RoundingUp(notionalMoved, ratio);
-
-                            r1 = p0 > p1 ? p0 - p1 : 0;
-                        }
+                        r1 = p0 > p1 ? p0 - p1 : 0;
+                        console2.log("p1-p2-IN", p0, p1);
                     }
+
                     uint256 r2;
 
                     if ((_atTick < tickUpper) && (_atTick >= tickLower)) {
@@ -11428,10 +11435,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
                     _tokensRequired = Math.max(Math.max(r2, r1), r0).toUint128();
                     console2.log("rs", r0, r1, r2);
-                } else {
-                    _tokensRequired += Math
-                        .mulDivRoundingUp(notionalMoved, buyCollateralRatio, DECIMALS)
-                        .toUint128();
                 }
             }
 
@@ -11653,43 +11656,87 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 _tokensRequired += uint128(
                     FullMath.mulDivRoundingUp(notionalMoved, uint128(baseCollateralRatio), DECIMALS)
                 );
+                // start with base requirement, which is based on isLong value
+                if (isLong == 0) {
+                    // if position is short, check whether the position is out-the-money
 
-                // OTM
-                if (
-                    ((atTick >= (legUpperTick)) && (tokenType == 1)) ||
-                    ((atTick < (legLowerTick)) && (tokenType == 0))
-                ) {
-                    _tokensRequired = _tokensRequired; // base
-                } else {
-                    uint160 ratio;
-                    ratio = tokenType == 1
-                        ? TickMath.getSqrtRatioAtTick(
-                            Math.max24(2 * (atTick - strike), TickMath.MIN_TICK)
-                        )
-                        : TickMath.getSqrtRatioAtTick(
-                            Math.max24(2 * (strike - atTick), TickMath.MIN_TICK)
-                        );
+                    (int24 tickLower, int24 tickUpper) = tokenId.asTicks(i);
 
-                    // ITM
-                    if (
-                        ((atTick < (legLowerTick)) && (tokenType == 1)) ||
-                        ((atTick >= (legUpperTick)) && (tokenType == 0))
-                    ) {
-                        uint256 c2 = FixedPoint96.Q96 - ratio;
-                        _tokensRequired += uint128(Math.mulDiv96RoundingUp(notionalMoved, c2));
-                    } else {
-                        // ATM
-                        uint160 scaleFactor = TickMath.getSqrtRatioAtTick(
-                            (legUpperTick - strike) + (strike - legLowerTick)
-                        );
+                    int24 strike = tokenId.strike(i);
+                    // if position is ITM or ATM, then the collateral requirement depends on price:
 
-                        uint256 c3 = FullMath.mulDivRoundingUp(
-                            notionalMoved,
-                            scaleFactor - ratio,
-                            scaleFactor + FixedPoint96.Q96
-                        );
-                        _tokensRequired += uint128(c3);
+                    // compute the ratio of strike to price for calls (or price to strike for puts)
+                    // (- and * 2 in tick space are / and ^ 2 in price space so sqrtRatioAtTick(2 *(a - b)) = a/b (*2^96)
+                    // both of these ratios decrease as the position becomes deeper ITM, and it is possible
+                    // for the ratio of the prices to go under the minimum price
+                    // (which is the limit of what getSqrtRatioAtTick supports)
+                    // so instead we cap it at the minimum price, which is acceptable because
+                    // a higher ratio will result in an increased slope for the collateral requirement
+                    int24 _atTick = atTick;
+                    uint160 ratio = tokenType == 1 // tokenType
+                        ? Math.getSqrtRatioAtTick(
+                            int24(
+                                Math.bound(
+                                    2 * (_atTick - strike),
+                                    Constants.MIN_V3POOL_TICK,
+                                    Constants.MAX_V3POOL_TICK
+                                )
+                            )
+                        ) // puts ->  price/strike
+                        : Math.getSqrtRatioAtTick(
+                            int24(
+                                Math.bound(
+                                    2 * (strike - _atTick),
+                                    Constants.MIN_V3POOL_TICK,
+                                    Constants.MAX_V3POOL_TICK
+                                )
+                            )
+                        ); // calls -> strike/price
+
+                    // Following Reg-T guidelines, the collateral requirement is the max of:
+                    //    - 10% of the notional value at the strike price
+                    //    - 20% of the underlying price MINUS the out-the-money amount
+                    // Note that  between the LP position's range, we over-estimate the capital composition.
+
+                    uint256 r0 = _tokensRequired / 2;
+
+                    uint256 r1;
+
+                    {
+                        if (tokenType == 1) {
+                            uint256 p0 = notionalMoved +
+                                Math.mulDiv96RoundingUp(_tokensRequired, ratio);
+                            uint256 p1 = Math.mulDiv96RoundingUp(notionalMoved, ratio);
+
+                            r1 = p0 > p1 ? p0 - p1 : 0;
+                        } else {
+                            uint256 p0 = notionalMoved +
+                                Math.mulDiv96RoundingUp(_tokensRequired, ratio);
+                            uint256 p1 = Math.mulDiv96RoundingUp(notionalMoved, ratio);
+
+                            r1 = p0 > p1 ? p0 - p1 : 0;
+                        }
                     }
+                    uint256 r2;
+
+                    if ((_atTick < tickUpper) && (_atTick >= tickLower)) {
+                        // position is in-range (ie. current tick is between upper+lower tick): we draw a line between the
+                        // collateral requirement at the lowerTick and the one at the upperTick. We use that interpolation as
+                        // the collateral requirement when in-range, which always over-estimates the amount of token required
+                        // Specifically:
+                        //  required = amountMoved * (scaleFactor - ratio) / (scaleFactor + 1) + sellCollateralRatio*amountMoved
+                        uint160 scaleFactor = Math.getSqrtRatioAtTick(tickUpper - tickLower);
+                        r2 =
+                            Math.mulDivRoundingUp(
+                                notionalMoved,
+                                scaleFactor - ratio,
+                                scaleFactor + Constants.FP96
+                            ) +
+                            _tokensRequired;
+                    }
+
+                    _tokensRequired = Math.max(Math.max(r2, r1), r0).toUint128();
+                    console2.log("rs", r0, r1, r2);
                 }
             }
 
