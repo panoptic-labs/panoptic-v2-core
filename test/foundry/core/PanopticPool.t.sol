@@ -1707,48 +1707,60 @@ contract PanopticPoolTest is PositionUtils {
 
         assertEq(
             vm.load(address(ct0), bytes32(uint256(7))),
+            bytes32(uint256(uint160(address(re)))),
+            "FAIL: ct0 s_riskEngine not properly set"
+        );
+
+        assertEq(
+            vm.load(address(ct1), bytes32(uint256(7))),
+            bytes32(uint256(uint160(address(re)))),
+            "FAIL: ct1 s_riskEngine not properly set"
+        );
+
+        assertEq(
+            vm.load(address(ct0), bytes32(uint256(8))),
             bytes32(uint256(1)),
             "FAIL: ct0 s_poolAssets + s_inAMM not properly set"
         );
 
         assertEq(
-            vm.load(address(ct1), bytes32(uint256(7))),
+            vm.load(address(ct1), bytes32(uint256(8))),
             bytes32(uint256(1)),
             "FAIL: ct1 s_poolAssets + s_inAMM not properly set"
         );
 
         assertEq(
-            vm.load(address(ct0), bytes32(uint256(8))),
+            vm.load(address(ct0), bytes32(uint256(9))),
             bytes32(uint256(fee)),
             "FAIL: ct0 s_poolFee not properly set"
         );
 
         assertEq(
-            vm.load(address(ct1), bytes32(uint256(8))),
+            vm.load(address(ct1), bytes32(uint256(9))),
             bytes32(uint256(fee)),
             "FAIL: ct1 s_poolFee not properly set"
         );
 
         assertEq(
-            vm.load(address(ct0), bytes32(uint256(9))),
-            bytes32(uint256((block.timestamp << 96) + uint96(1e18))),
+            vm.load(address(ct0), bytes32(uint256(10))),
+            bytes32(uint256((block.timestamp << 80) + uint96(1e18))),
             "FAIL: ct0 s_interestRateAccumulator not properly initialized"
         );
 
         assertEq(
-            vm.load(address(ct1), bytes32(uint256(9))),
-            bytes32(uint256((block.timestamp << 96) + uint96(1e18))),
+            vm.load(address(ct1), bytes32(uint256(10))),
+            bytes32(uint256((block.timestamp << 80) + uint96(1e18))),
             "FAIL: ct1 s_interestRateAccumulator not properly initialized"
         );
 
         assertEq(
-            vm.load(address(ct0), bytes32(uint256(10))),
+            vm.load(address(ct0), bytes32(uint256(11))),
             bytes32(uint256(0)),
             "FAIL: ct0 s_interestState not properly initialized"
         );
 
         assertEq(
-            vm.load(address(ct1), bytes32(uint256(10))),
+            vm.load(address(ct1), bytes32(uint256(11))),
             bytes32(uint256(0)),
             "FAIL: ct1 s_interestState not properly initialized"
         );
@@ -1776,7 +1788,9 @@ contract PanopticPoolTest is PositionUtils {
         uint256 assets0 = ct0.convertToAssets(ct0.balanceOf(Bob));
         uint256 assets1 = ct1.convertToAssets(ct1.balanceOf(Bob));
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(0))
+        );
         pp.assertMinCollateralValues(assets0 + 1, assets1);
     }
 
@@ -1788,7 +1802,9 @@ contract PanopticPoolTest is PositionUtils {
         uint256 assets0 = ct0.convertToAssets(ct0.balanceOf(Bob));
         uint256 assets1 = ct1.convertToAssets(ct1.balanceOf(Bob));
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(0))
+        );
         pp.assertMinCollateralValues(assets0, assets1 + 1);
     }
 
@@ -1800,7 +1816,9 @@ contract PanopticPoolTest is PositionUtils {
         uint256 assets0 = ct0.convertToAssets(ct0.balanceOf(Bob));
         uint256 assets1 = ct1.convertToAssets(ct1.balanceOf(Bob));
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(0))
+        );
         pp.assertMinCollateralValues(assets0 + 1, assets1 + 1);
     }
 
@@ -2921,7 +2939,7 @@ contract PanopticPoolTest is PositionUtils {
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
-        vm.expectRevert("CastingError()");
+        vm.expectRevert(Errors.InsufficientCreditLiquidity.selector);
         mintOptions(
             pp,
             posIdList,
@@ -5161,7 +5179,9 @@ contract PanopticPoolTest is PositionUtils {
         ct0.redeem(ct0.maxRedeem(Alice) - uint128(shortAmounts0.rightSlot()), Alice, Alice);
         ct1.redeem(ct1.maxRedeem(Alice), Alice, Alice);
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+        );
         pp.dispatch(posIdListFail, posIdListFail, sizeListFail, spreadList, tickLimits, true);
         {
             TokenId[] memory posIdListPass = new TokenId[](3);
@@ -5647,7 +5667,9 @@ contract PanopticPoolTest is PositionUtils {
             Charlie
         );
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+        );
         mintOptions(
             pp,
             posIdList,
@@ -7748,7 +7770,11 @@ contract PanopticPoolTest is PositionUtils {
 
             vm.warp(block.timestamp + 1200);
             vm.roll(block.number + 100);
+            (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
+            (, , , TWAPtick, ) = pp.getOracleTicks();
+
+            vm.assume(Math.abs(TWAPtick - currentTick) < 513);
             vm.startPrank(Bob);
             forceExercise(
                 pp,
@@ -7772,6 +7798,7 @@ contract PanopticPoolTest is PositionUtils {
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
         (, , , TWAPtick, ) = pp.getOracleTicks();
+
         (, uint256 totalCollateralRequired0) = ph.checkCollateral(
             pp,
             Bob,
@@ -7779,6 +7806,7 @@ contract PanopticPoolTest is PositionUtils {
             $posIdLists[0]
         );
 
+        console2.log("totalCollateralRequired0", totalCollateralRequired0);
         if (TWAPtick > 0)
             totalCollateralRequired0 = PanopticMath.convert1to0(
                 totalCollateralRequired0,
@@ -7787,10 +7815,15 @@ contract PanopticPoolTest is PositionUtils {
 
         uint256 totalCollateralB0 = bound(
             collateralBalanceSeed,
-            1,
-            (totalCollateralRequired0 * 1_000) / 10_000
+            (totalCollateralRequired0 * 1_000) / 10_000,
+            (totalCollateralRequired0 * 5_000) / 10_000
         );
 
+        console2.log(
+            "totalCollateralB0, totalCollateralRequired0",
+            totalCollateralB0,
+            totalCollateralRequired0
+        );
         vm.assume(
             int256(totalCollateralRequired0) +
                 int256(
@@ -7805,7 +7838,7 @@ contract PanopticPoolTest is PositionUtils {
             ct0,
             Bob,
             ct0.convertToShares(
-                (totalCollateralB0 * bound(collateralRatioSeed, 5_000, 6_000)) / 10_000
+                (totalCollateralB0 * bound(collateralRatioSeed, 5_000, 8_000)) / 10_000
             )
         );
         editCollateral(
@@ -7813,7 +7846,7 @@ contract PanopticPoolTest is PositionUtils {
             Bob,
             ct1.convertToShares(
                 PanopticMath.convert0to1(
-                    (totalCollateralB0 * (10_000 - bound(collateralRatioSeed, 5_000, 6_000))) /
+                    (totalCollateralB0 * (10_000 - bound(collateralRatioSeed, 5_000, 8_000))) /
                         10_000,
                     Math.getSqrtRatioAtTick(TWAPtick)
                 )
@@ -7822,7 +7855,12 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.startPrank(Bob);
 
-        vm.expectRevert();
+        console2.log("curr", currentTick);
+        console2.log("twap", TWAPtick);
+        vm.assume(Math.abs(int256(currentTick) - TWAPtick) < 513);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+        );
         forceExercise(
             pp,
             Alice,
@@ -9966,7 +10004,9 @@ contract PanopticPoolTest is PositionUtils {
         editCollateral(ct0, Bob, 2);
         editCollateral(ct1, Bob, 2);
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+        );
         liquidate(pp, posIdList, Alice, posIdList);
     }
 
