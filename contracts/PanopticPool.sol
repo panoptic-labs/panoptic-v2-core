@@ -116,6 +116,9 @@ contract PanopticPool is Multicall {
     /// @notice Flag that signals to add a new position to the user's positions hash (as opposed to removing an existing position).
     bool internal constant ADD = true;
 
+    /// @notice Flag that signals to an account is solvent.
+    bool internal constant IS_SOLVENT = true;
+
     /// @notice The minimum window (in seconds) used to calculate the TWAP price for solvency checks during liquidations.
     uint32 internal constant TWAP_WINDOW = 600;
 
@@ -940,10 +943,10 @@ contract PanopticPool is Multicall {
         }
         LeftRightSigned exchangedAmounts;
         {
+            uint256 toLength = positionIdListTo.length;
+            uint256 finalLength = positionIdListToFinal.length;
             // if account is solvent at all ticks, this is a force exercise or a settleLongPremium.
             if (solvent == numberOfTicks) {
-                uint256 toLength = positionIdListTo.length;
-                uint256 finalLength = positionIdListToFinal.length;
                 unchecked {
                     tokenId = positionIdListTo[toLength - 1];
                     if (toLength == finalLength) {
@@ -964,7 +967,13 @@ contract PanopticPool is Multicall {
                     } else if (toLength == (finalLength + 1)) {
                         // final is one element shorter, that's a force exercise
                         tokenId.validateIsExercisable(twapTick);
-                        exchangedAmounts = _forceExercise(account, tokenId, twapTick, currentTick);
+                        exchangedAmounts = _forceExercise(
+                            account,
+                            tokenId,
+                            twapTick,
+                            currentTick,
+                            IS_SOLVENT
+                        );
                     } else if (finalLength == 0) {
                         // if final length was zero, this was intended to be liquidation, but revert because not margin called and solvent at some of the tested ticks
                         revert Errors.NotMarginCalled();
@@ -985,9 +994,19 @@ contract PanopticPool is Multicall {
                 // if account is insolvent at all ticks, this is a liquidation
 
                 // if the positions lengths are the same, this was intended as a settleLongPremia, but revert because account is insolvent
-                if (positionIdListToFinal.length == positionIdListTo.length)
-                    revert Errors.AccountInsolvent(solvent, 4);
+                if (toLength == finalLength) revert Errors.AccountInsolvent(solvent, 4);
 
+                if (toLength == (finalLength + 1)) {
+                    // final is one element shorter, that's a forces closed through a force exercise
+                    tokenId = positionIdListTo[toLength - 1];
+                    exchangedAmounts = _forceExercise(
+                        account,
+                        tokenId,
+                        twapTick,
+                        currentTick,
+                        !IS_SOLVENT
+                    );
+                }
                 // if the final position list has a non-zero length, this can't be a complete liquidation, revert
                 if (positionIdListToFinal.length != 0) revert Errors.InputListFail();
                 exchangedAmounts = _liquidate(account, positionIdListTo, twapTick, currentTick);
@@ -1111,7 +1130,8 @@ contract PanopticPool is Multicall {
         address account,
         TokenId tokenId,
         int24 twapTick,
-        int24 currentTick
+        int24 currentTick,
+        bool solvent
     ) internal returns (LeftRightSigned refundAmounts) {
         CollateralTracker ct0 = s_collateralToken0;
         CollateralTracker ct1 = s_collateralToken1;
@@ -1119,14 +1139,11 @@ contract PanopticPool is Multicall {
         LeftRightSigned exerciseFees;
         uint128 positionSize;
         {
-            positionSize = s_positionBalance[account][tokenId].positionSize();
+            PositionBalance positionBalance = s_positionBalance[account][tokenId];
+
+            positionSize = positionBalance.positionSize();
 
             if (positionSize == 0) revert Errors.PositionNotOwned();
-
-            (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
-                tokenId,
-                positionSize
-            );
 
             // Compute the exerciseFee, this will decrease the further away the price is from the exercised position
             // Include any deltas in long legs between the current and oracle tick in the exercise fee
@@ -1134,8 +1151,8 @@ contract PanopticPool is Multicall {
                 currentTick,
                 twapTick,
                 tokenId,
-                positionSize,
-                longAmounts
+                positionBalance,
+                solvent
             );
         }
 
