@@ -270,9 +270,8 @@ contract RiskEngine {
             .computeExercisedAmounts(tokenId, positionBalance.positionSize());
         unchecked {
             if (solvent) {
-                // find the leg furthest to the strike price `currentTick`; this will have the lowest exercise cost
-                // we don't need the leg information itself, really just "the number of half ranges" from the strike price:
-                uint256 maxNumRangesFromStrike = 1; // technically "maxNum(Half)RangesFromStrike" but the name is long
+                // we find whether the price is within any leg; any in-range leg will have a cost. Otherwise, the force-exercise fee is 1bps
+                bool hasLegsInRange;
 
                 for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
                     // short legs are not counted - exercise is intended to be based on long legs
@@ -287,10 +286,8 @@ contract RiskEngine {
                                 )
                             )
                         );
-                        maxNumRangesFromStrike = Math.max(
-                            maxNumRangesFromStrike,
-                            uint256(Math.abs(currentTick - tokenId.strike(leg)) / range)
-                        );
+                        if (Math.abs(currentTick - tokenId.strike(leg)) < range)
+                            hasLegsInRange = true;
                     }
 
                     uint256 currentValue0;
@@ -338,7 +335,7 @@ contract RiskEngine {
                 // the result is rounded DOWN and NOT toward zero
                 // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
                 // subtract 1 from max half ranges from strike so fee starts at FORCE_EXERCISE_COST when moving OTM
-                int256 fee = int256(-int256(FORCE_EXERCISE_COST) >> (maxNumRangesFromStrike - 1)); // exponential decay of fee based on number of half ranges away from the price
+                int256 fee = hasLegsInRange ? -int256(FORCE_EXERCISE_COST) : -1;
 
                 // store the exercise fees in the exerciseFees variable
                 exerciseFees = exerciseFees

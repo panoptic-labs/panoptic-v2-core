@@ -966,7 +966,7 @@ contract PanopticPool is Multicall {
                         );
                     } else if (toLength == (finalLength + 1)) {
                         // final is one element shorter, that's a force exercise
-                        tokenId.validateIsExercisable(twapTick);
+                        if (tokenId.countLongs() == 0) revert Errors.NoLegsExercisable();
                         exchangedAmounts = _forceExercise(
                             account,
                             tokenId,
