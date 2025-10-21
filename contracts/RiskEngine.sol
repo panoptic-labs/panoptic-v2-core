@@ -257,120 +257,86 @@ contract RiskEngine {
     /// @param oracleTick The price oracle tick
     /// @param tokenId The position to be exercised
     /// @param positionBalance The position data of the position to be exercised
-    /// @param solvent whether the account is solvent (positive cost = expense) or insolvent (negative cost = bonus)
     /// @return exerciseFees The fees for exercising the option position
     function exerciseCost(
         int24 currentTick,
         int24 oracleTick,
         TokenId tokenId,
-        PositionBalance positionBalance,
-        bool solvent
+        PositionBalance positionBalance
     ) external view returns (LeftRightSigned exerciseFees) {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionBalance.positionSize());
         unchecked {
-            if (solvent) {
-                // we find whether the price is within any leg; any in-range leg will have a cost. Otherwise, the force-exercise fee is 1bps
-                bool hasLegsInRange;
+            // we find whether the price is within any leg; any in-range leg will have a cost. Otherwise, the force-exercise fee is 1bps
+            bool hasLegsInRange;
 
-                for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
-                    // short legs are not counted - exercise is intended to be based on long legs
-                    if (tokenId.isLong(leg) == 0) continue;
+            for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
+                // short legs are not counted - exercise is intended to be based on long legs
+                if (tokenId.isLong(leg) == 0) continue;
 
-                    {
-                        int24 range = int24(
-                            int256(
-                                Math.unsafeDivRoundingUp(
-                                    uint24(tokenId.width(leg) * tokenId.tickSpacing()),
-                                    2
-                                )
+                {
+                    int24 range = int24(
+                        int256(
+                            Math.unsafeDivRoundingUp(
+                                uint24(tokenId.width(leg) * tokenId.tickSpacing()),
+                                2
                             )
-                        );
-                        if (Math.abs(currentTick - tokenId.strike(leg)) < range)
-                            hasLegsInRange = true;
-                    }
+                        )
+                    );
+                    if (Math.abs(currentTick - tokenId.strike(leg)) < range) hasLegsInRange = true;
+                }
 
-                    uint256 currentValue0;
-                    uint256 currentValue1;
-                    uint256 oracleValue0;
-                    uint256 oracleValue1;
+                uint256 currentValue0;
+                uint256 currentValue1;
+                uint256 oracleValue0;
+                uint256 oracleValue1;
 
-                    {
-                        LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
-                            tokenId,
-                            leg,
-                            positionBalance.positionSize()
-                        );
+                {
+                    LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
+                        tokenId,
+                        leg,
+                        positionBalance.positionSize()
+                    );
 
-                        (currentValue0, currentValue1) = Math.getAmountsForLiquidity(
-                            currentTick,
-                            liquidityChunk
-                        );
+                    (currentValue0, currentValue1) = Math.getAmountsForLiquidity(
+                        currentTick,
+                        liquidityChunk
+                    );
 
-                        (oracleValue0, oracleValue1) = Math.getAmountsForLiquidity(
-                            oracleTick,
-                            liquidityChunk
-                        );
-                    }
-
-                    // reverse any token deltas between the current and oracle prices for the chunk the exercisee had to mint in Uniswap
-                    // the outcome of current price crossing a long chunk will always be less favorable than the status quo, i.e.,
-                    // if the current price is moved downward such that some part of the chunk is between the current and market prices,
-                    // the chunk composition will swap token1 for token0 at a price (token0/token1) more favorable than market (token1/token0),
-                    // forcing the exercisee to provide more value in token0 than they would have provided in token1 at market, and vice versa.
-                    // (the excess value provided by the exercisee could then be captured in a return swap across their newly added liquidity)
-                    exerciseFees = exerciseFees.sub(
-                        LeftRightSigned
-                            .wrap(0)
-                            .addToRightSlot(
-                                int128(uint128(currentValue0)) - int128(uint128(oracleValue0))
-                            )
-                            .addToLeftSlot(
-                                int128(uint128(currentValue1)) - int128(uint128(oracleValue1))
-                            )
+                    (oracleValue0, oracleValue1) = Math.getAmountsForLiquidity(
+                        oracleTick,
+                        liquidityChunk
                     );
                 }
 
-                // NOTE: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
-                // the result is rounded DOWN and NOT toward zero
-                // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
-                // subtract 1 from max half ranges from strike so fee starts at FORCE_EXERCISE_COST when moving OTM
-                int256 fee = hasLegsInRange ? -int256(FORCE_EXERCISE_COST) : -1024;
-
-                // store the exercise fees in the exerciseFees variable
-                exerciseFees = exerciseFees
-                    .addToRightSlot(int128((longAmounts.rightSlot() * fee) / int256(DECIMALS)))
-                    .addToLeftSlot(int128((longAmounts.leftSlot() * fee) / int256(DECIMALS)));
-            } else {
-                int16 utilization0 = int16(positionBalance.utilization0());
-                int16 utilization1 = int16(positionBalance.utilization1());
-
-                uint128 positionSize = positionBalance.positionSize();
-                uint256 _tokenRequired0 = _getRequiredCollateralAtTickSinglePosition(
-                    tokenId,
-                    positionSize,
-                    currentTick,
-                    utilization0,
-                    true
+                // reverse any token deltas between the current and oracle prices for the chunk the exercisee had to mint in Uniswap
+                // the outcome of current price crossing a long chunk will always be less favorable than the status quo, i.e.,
+                // if the current price is moved downward such that some part of the chunk is between the current and market prices,
+                // the chunk composition will swap token1 for token0 at a price (token0/token1) more favorable than market (token1/token0),
+                // forcing the exercisee to provide more value in token0 than they would have provided in token1 at market, and vice versa.
+                // (the excess value provided by the exercisee could then be captured in a return swap across their newly added liquidity)
+                exerciseFees = exerciseFees.sub(
+                    LeftRightSigned
+                        .wrap(0)
+                        .addToRightSlot(
+                            int128(uint128(currentValue0)) - int128(uint128(oracleValue0))
+                        )
+                        .addToLeftSlot(
+                            int128(uint128(currentValue1)) - int128(uint128(oracleValue1))
+                        )
                 );
-
-                uint256 _tokenRequired1 = _getRequiredCollateralAtTickSinglePosition(
-                    tokenId,
-                    positionSize,
-                    currentTick,
-                    utilization1,
-                    false
-                );
-
-                // store the exercise fees in the exerciseFees variable, taken as 5x the required tokens times the FORCE_EXERCISE_COST (6.4% of fixed bonus is it is 1.28%)
-                exerciseFees = exerciseFees
-                    .addToRightSlot(
-                        int128(uint128((_tokenRequired0 * 5 * FORCE_EXERCISE_COST) / DECIMALS))
-                    )
-                    .addToLeftSlot(
-                        int128(uint128((_tokenRequired1 * 5 * FORCE_EXERCISE_COST) / DECIMALS))
-                    );
             }
+
+            // NOTE: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
+            // the result is rounded DOWN and NOT toward zero
+            // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
+            // subtract 1 from max half ranges from strike so fee starts at FORCE_EXERCISE_COST when moving OTM
+            int256 fee = hasLegsInRange ? -int256(FORCE_EXERCISE_COST) : -1024;
+
+            // store the exercise fees in the exerciseFees variable
+            exerciseFees = exerciseFees
+                .addToRightSlot(int128((longAmounts.rightSlot() * fee) / int256(DECIMALS)))
+                .addToLeftSlot(int128((longAmounts.leftSlot() * fee) / int256(DECIMALS)));
         }
     }
 

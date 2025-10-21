@@ -967,13 +967,7 @@ contract PanopticPool is Multicall {
                     } else if (toLength == (finalLength + 1)) {
                         // final is one element shorter, that's a force exercise
                         if (tokenId.countLongs() == 0) revert Errors.NoLegsExercisable();
-                        exchangedAmounts = _forceExercise(
-                            account,
-                            tokenId,
-                            twapTick,
-                            currentTick,
-                            IS_SOLVENT
-                        );
+                        exchangedAmounts = _forceExercise(account, tokenId, twapTick, currentTick);
                     } else if (finalLength == 0) {
                         // if final length was zero, this was intended to be liquidation, but revert because not margin called and solvent at some of the tested ticks
                         revert Errors.NotMarginCalled();
@@ -996,19 +990,8 @@ contract PanopticPool is Multicall {
                 // if the positions lengths are the same, this was intended as a settleLongPremia, but revert because account is insolvent
                 if (toLength == finalLength) revert Errors.AccountInsolvent(solvent, 4);
 
-                if (toLength == (finalLength + 1)) {
-                    // final is one element shorter, that's a liquidation through a force exercise
-                    tokenId = positionIdListTo[toLength - 1];
-                    exchangedAmounts = _forceExercise(
-                        account,
-                        tokenId,
-                        twapTick,
-                        currentTick,
-                        !IS_SOLVENT
-                    );
-                }
-                // if the final position list has a non-zero length, this can't be a complete liquidation, revert
                 if (positionIdListToFinal.length != 0) revert Errors.InputListFail();
+                // if the final position list has a non-zero length, this can't be a complete liquidation, revert
                 exchangedAmounts = _liquidate(account, positionIdListTo, twapTick, currentTick);
             } else {
                 // otherwise, revert because the account is not fully margin called
@@ -1130,8 +1113,7 @@ contract PanopticPool is Multicall {
         address account,
         TokenId tokenId,
         int24 twapTick,
-        int24 currentTick,
-        bool solvent
+        int24 currentTick
     ) internal returns (LeftRightSigned refundAmounts) {
         CollateralTracker ct0 = s_collateralToken0;
         CollateralTracker ct1 = s_collateralToken1;
@@ -1151,8 +1133,7 @@ contract PanopticPool is Multicall {
                 currentTick,
                 twapTick,
                 tokenId,
-                positionBalance,
-                solvent
+                positionBalance
             );
         }
 
@@ -1160,7 +1141,6 @@ contract PanopticPool is Multicall {
         ct0.delegate(account);
         ct1.delegate(account);
         LeftRightSigned netPaid;
-
         {
             // Exercise the option
             // Turn off ITM swapping to prevent swap at potentially unfavorable price
@@ -1181,7 +1161,6 @@ contract PanopticPool is Multicall {
         // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
         ct0.refund(account, msg.sender, refundAmounts.rightSlot());
         ct1.refund(account, msg.sender, refundAmounts.leftSlot());
-
         // revoke the virtual shares that were delegated after settling the difference with the exercisor
         ct0.revoke(account);
         ct1.revoke(account);
@@ -1195,26 +1174,39 @@ contract PanopticPool is Multicall {
         address account,
         LeftRightSigned netPaid
     ) internal {
-        uint256 asset = tokenId.asset(0);
         // add poolId information
-        TokenId tokenIdBase = TokenId.wrap(tokenId.poolId());
+        /*
+       
 
+        // TODO use Uniswap's getTickAtSqrtPrice to extract an effective strike  
+        TokenId tokenIdBase0 = TokenId.wrap(tokenId.poolId());
         // add the tokenType=0 leg: a loan if the amount paid is negative, a credit if it is positive
-        tokenIdBase = tokenIdBase.addLeg(0, 1, asset, netPaid.rightSlot() < 0 ? 0 : 1, 0, 1, 0, 0);
-
+        tokenIdBase0 = tokenIdBase0.addLeg(0, 1, 0, netPaid.rightSlot() < 0 ? 1 : 0, 0, 0, 0, 0);
+        
+        TokenId tokenIdBase1 = TokenId.wrap(tokenId.poolId());
         // add the tokenType=1 leg: a loan if the amount paid is negative, a credit if it is positive
-        tokenIdBase = tokenIdBase.addLeg(1, 1, asset, netPaid.leftSlot() < 0 ? 0 : 1, 1, 0, 0, 0);
-
+        tokenIdBase1 = tokenIdBase1.addLeg(0, 1,1, netPaid.leftSlot() < 0 ? 1 : 0, 1, 0, 0, 0);
         // issue the tokenId receipt to the user
         _mintOptions(
-            tokenIdBase,
-            positionSize,
+            tokenIdBase0,
+            uint128(uint256(Math.abs(netPaid.rightSlot()))),
             type(uint64).max,
             account,
             MIN_SWAP_TICK,
             MAX_SWAP_TICK,
             0
         );
+                
+        _mintOptions(
+            tokenIdBase1,
+            uint128(uint256(Math.abs(netPaid.leftSlot()))),
+            type(uint64).max,
+            account,
+            MIN_SWAP_TICK,
+            MAX_SWAP_TICK,
+            0
+        );
+        */
     }
 
     /// @notice Settle unpaid premium for one `legIndex` on a position owned by `owner`.
