@@ -80,7 +80,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     uint256 internal constant WAD = 1e18;
 
     /// @notice Mask zero the value between bits 112 and 150);
-    uint256 internal TARGET_RATE_MASK =
+    uint256 internal constant TARGET_RATE_MASK =
         0xFFFFFFFFFFFFFFFFFFFFFFFFFFC000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
     /*//////////////////////////////////////////////////////////////
@@ -161,13 +161,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     ///        The global borrow index value when this user last accrued interest
     /// @dev Interest calculation: interestOwed = netBorrows * (currentIndex - userIndex) / userIndex
     mapping(address account => LeftRightSigned interestState) internal s_interestState;
-
-    /// @notice Tracks the state of the adaptive interest rate model
-    /// @dev Packed Layout:
-    ///     - Left slot (128 bits): nothing
-    ///     - Right slot upper 32 bits: last update timestamp
-    ///     - Right slot lower 96 bits: the rateAtTarget value in WAD
-    uint256 internal s_adaptiveIRMState;
 
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS
@@ -1046,8 +1039,15 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         if (assets > 0) {
             _transferFrom(refunder, refundee, convertToShares(uint256(assets)));
         } else {
+            uint256 sharesToTransfer = convertToShares(uint256(-assets));
+            if (balanceOf[refundee] < sharesToTransfer)
+                revert Errors.NotEnoughTokens(
+                    address(this),
+                    uint256(-assets),
+                    convertToAssets(balanceOf[refundee])
+                );
             unchecked {
-                _transferFrom(refundee, refunder, convertToShares(uint256(-assets)));
+                _transferFrom(refundee, refunder, sharesToTransfer);
             }
         }
     }
