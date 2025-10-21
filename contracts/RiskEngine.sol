@@ -335,7 +335,7 @@ contract RiskEngine {
                 // the result is rounded DOWN and NOT toward zero
                 // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
                 // subtract 1 from max half ranges from strike so fee starts at FORCE_EXERCISE_COST when moving OTM
-                int256 fee = hasLegsInRange ? -int256(FORCE_EXERCISE_COST) : -1;
+                int256 fee = hasLegsInRange ? -int256(FORCE_EXERCISE_COST) : -1024;
 
                 // store the exercise fees in the exerciseFees variable
                 exerciseFees = exerciseFees
@@ -362,13 +362,13 @@ contract RiskEngine {
                     false
                 );
 
-                // store the exercise fees in the exerciseFees variable, taken as 10x the required tokens times the FORCE_EXERCISE_COST
+                // store the exercise fees in the exerciseFees variable, taken as 5x the required tokens times the FORCE_EXERCISE_COST (6.4% of fixed bonus is it is 1.28%)
                 exerciseFees = exerciseFees
                     .addToRightSlot(
-                        int128(uint128((_tokenRequired0 * 10 * FORCE_EXERCISE_COST) / DECIMALS))
+                        int128(uint128((_tokenRequired0 * 5 * FORCE_EXERCISE_COST) / DECIMALS))
                     )
                     .addToLeftSlot(
-                        int128(uint128((_tokenRequired1 * 10 * FORCE_EXERCISE_COST) / DECIMALS))
+                        int128(uint128((_tokenRequired1 * 5 * FORCE_EXERCISE_COST) / DECIMALS))
                     );
             }
         }
