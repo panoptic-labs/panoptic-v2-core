@@ -2348,8 +2348,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             currentTick <= lowerBound ? TickMath.MAX_TICK : currentTick
         );
 
-        vm.expectRevert(Errors.PriceBoundFail.selector);
-
+        vm.expectRevert(abi.encodeWithSelector(Errors.PriceBoundFail.selector, currentTick));
         sfpm.mintTokenizedPosition(
             tokenId,
             uint128(positionSize),
