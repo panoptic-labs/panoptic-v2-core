@@ -17,7 +17,7 @@ import {Errors} from "@libraries/Errors.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
-import {PositionBalance} from "@types/PositionBalance.sol";
+import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
 import {Constants} from "@libraries/Constants.sol";
 // Panoptic Interfaces
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
@@ -10074,8 +10074,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                positionSize0 / 4,
-                longAmounts
+                PositionBalanceLibrary.storeBalanceData((positionSize0 / 4), 0, 0)
             );
 
             assertEq(exerciseFees.rightSlot(), exerciseFee0);
@@ -10215,8 +10214,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                positionSize0 / 4,
-                longAmounts
+                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0)
             );
 
             assertEq(exerciseFees.rightSlot(), exerciseFee0);
@@ -10356,8 +10354,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                positionSize0 / 4,
-                longAmounts
+                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0)
             );
 
             assertEq(exerciseFees.rightSlot(), exerciseFee0);
@@ -10497,8 +10494,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                positionSize0 / 4,
-                longAmounts
+                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0)
             );
 
             assertEq(exerciseFees.rightSlot(), exerciseFee0);

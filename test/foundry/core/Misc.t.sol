@@ -1789,15 +1789,20 @@ contract Misctest is Test, PositionUtils {
         vm.warp(block.timestamp + 600);
         vm.roll(block.number + 1);
 
-        swapperc.swapTo(uniPool, 10 * 2 ** 96);
-
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(512));
+        pp.pokeOracle();
         vm.warp(block.timestamp + 600);
         vm.roll(block.number + 1);
 
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
 
-        PanopticMath.twapFilter(uniPool, 600);
+        (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+            .getOracleTicks();
+        twapTick = re.twapEMA(oraclePack);
+        console2.log("cur", currentTick);
+        console2.log("twapTick", twapTick);
+        vm.assume(Math.abs(currentTick - twapTick) < 513);
 
         vm.startPrank(Bob);
         forceExercise(
@@ -2242,15 +2247,21 @@ contract Misctest is Test, PositionUtils {
         vm.warp(block.timestamp + 600);
         vm.roll(block.number + 1);
 
-        swapperc.swapTo(uniPool, 10 * 2 ** 96);
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(512));
 
+        pp.pokeOracle();
         vm.warp(block.timestamp + 600);
         vm.roll(block.number + 1);
 
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
 
-        twapTick = PanopticMath.twapFilter(uniPool, 600);
+        (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+            .getOracleTicks();
+        twapTick = re.twapEMA(oraclePack);
+        console2.log("cur", currentTick);
+        console2.log("twapTick", twapTick);
+        vm.assume(Math.abs(currentTick - twapTick) < 513);
 
         vm.startPrank(Bob);
         forceExercise(
