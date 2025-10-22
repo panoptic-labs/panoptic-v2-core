@@ -3848,7 +3848,7 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        editCollateral(ct0, Bob, ct0.convertToShares(264777));
+        editCollateral(ct0, Bob, ct0.convertToShares(264671));
         editCollateral(ct1, Bob, 0);
 
         vm.expectRevert(
@@ -3891,7 +3891,7 @@ contract Misctest is Test, PositionUtils {
         vm.expectRevert(
             abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
         );
-        ct0.withdraw(1_000_000 - 264777, Bob, Bob, $posIdList, true);
+        ct0.withdraw(1_000_000 - 264671, Bob, Bob, $posIdList, true);
     }
 
     function test_Fail_InsolventAtCurrentTick_itmPut() public {
@@ -4393,7 +4393,7 @@ contract Misctest is Test, PositionUtils {
         vm.expectRevert(
             abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
         );
-        ct0.withdraw(1_000_000 - 264777, Alice, Bob, $posIdList, true);
+        ct0.withdraw(1_000_000 - 264671, Alice, Bob, $posIdList, true);
     }
 
     function test_Success_SafeMode_down() public {
@@ -6343,7 +6343,7 @@ contract Misctest is Test, PositionUtils {
         (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
 
         vm.startPrank(Swapper);
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(currentTick) + 950));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(currentTick) + 953));
 
         vm.warp(block.timestamp + 13);
         vm.roll(block.number + 1);
