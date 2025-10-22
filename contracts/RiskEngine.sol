@@ -495,12 +495,11 @@ contract RiskEngine {
         view
         returns (int24 spotTick, int24 medianTick, int24 latestTick, uint256 oraclePack)
     {
-        (spotTick, medianTick, latestTick, ) = PanopticMath.getOracleTicks(
+        (spotTick, medianTick, latestTick, oraclePack) = PanopticMath.getOracleTicks(
             currentTick,
             _oraclePack,
             EMAperiods
         );
-        oraclePack = _oraclePack;
     }
 
     /// @notice Calculates a slow-moving, weighted average price from the on-chain EMAs.
