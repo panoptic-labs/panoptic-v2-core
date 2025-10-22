@@ -116,9 +116,6 @@ contract PanopticPool is Multicall {
     /// @notice Flag that signals to add a new position to the user's positions hash (as opposed to removing an existing position).
     bool internal constant ADD = true;
 
-    /// @notice Flag that signals to an account is solvent.
-    bool internal constant IS_SOLVENT = true;
-
     /// @notice The minimum window (in seconds) used to calculate the TWAP price for solvency checks during liquidations.
     uint32 internal constant TWAP_WINDOW = 600;
 
@@ -958,16 +955,11 @@ contract PanopticPool is Multicall {
                                 revert Errors.InputListFail();
                             }
                         }
-                        exchangedAmounts = _settleLongPremium(
-                            account,
-                            tokenId,
-                            twapTick,
-                            currentTick
-                        );
+                        _settleLongPremium(account, tokenId, twapTick, currentTick);
                     } else if (toLength == (finalLength + 1)) {
                         // final is one element shorter, that's a force exercise
                         if (tokenId.countLongs() == 0) revert Errors.NoLegsExercisable();
-                        exchangedAmounts = _forceExercise(account, tokenId, twapTick, currentTick);
+                        _forceExercise(account, tokenId, twapTick, currentTick);
                     } else if (finalLength == 0) {
                         // if final length was zero, this was intended to be liquidation, but revert because not margin called and solvent at some of the tested ticks
                         revert Errors.NotMarginCalled();
@@ -1114,12 +1106,13 @@ contract PanopticPool is Multicall {
         TokenId tokenId,
         int24 twapTick,
         int24 currentTick
-    ) internal returns (LeftRightSigned refundAmounts) {
+    ) internal {
         CollateralTracker ct0 = s_collateralToken0;
         CollateralTracker ct1 = s_collateralToken1;
 
-        LeftRightSigned exerciseFees;
         uint128 positionSize;
+
+        LeftRightSigned exerciseFees;
         {
             PositionBalance positionBalance = s_positionBalance[account][tokenId];
 
@@ -1140,11 +1133,10 @@ contract PanopticPool is Multicall {
         // The protocol delegates some virtual shares to ensure the burn can be settled.
         ct0.delegate(account);
         ct1.delegate(account);
-        LeftRightSigned netPaid;
         {
             // Exercise the option
             // Turn off ITM swapping to prevent swap at potentially unfavorable price
-            (netPaid, ) = _burnOptions(
+            _burnOptions(
                 tokenId,
                 positionSize,
                 MIN_SWAP_TICK,
@@ -1152,11 +1144,15 @@ contract PanopticPool is Multicall {
                 account,
                 COMMIT_LONG_SETTLED
             );
-
-            issueReceipt(tokenId, positionSize, account, netPaid);
         }
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
-        refundAmounts = s_riskEngine.getRefundAmounts(account, exerciseFees, twapTick, ct0, ct1);
+        LeftRightSigned refundAmounts = s_riskEngine.getRefundAmounts(
+            account,
+            exerciseFees,
+            twapTick,
+            ct0,
+            ct1
+        );
 
         // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
         ct0.refund(account, msg.sender, refundAmounts.rightSlot());
@@ -1166,47 +1162,6 @@ contract PanopticPool is Multicall {
         ct1.revoke(account);
 
         emit ForcedExercised(msg.sender, account, tokenId, exerciseFees);
-    }
-
-    function issueReceipt(
-        TokenId tokenId,
-        uint128 positionSize,
-        address account,
-        LeftRightSigned netPaid
-    ) internal {
-        // add poolId information
-        /*
-       
-
-        // TODO use Uniswap's getTickAtSqrtPrice to extract an effective strike  
-        TokenId tokenIdBase0 = TokenId.wrap(tokenId.poolId());
-        // add the tokenType=0 leg: a loan if the amount paid is negative, a credit if it is positive
-        tokenIdBase0 = tokenIdBase0.addLeg(0, 1, 0, netPaid.rightSlot() < 0 ? 1 : 0, 0, 0, 0, 0);
-        
-        TokenId tokenIdBase1 = TokenId.wrap(tokenId.poolId());
-        // add the tokenType=1 leg: a loan if the amount paid is negative, a credit if it is positive
-        tokenIdBase1 = tokenIdBase1.addLeg(0, 1,1, netPaid.leftSlot() < 0 ? 1 : 0, 1, 0, 0, 0);
-        // issue the tokenId receipt to the user
-        _mintOptions(
-            tokenIdBase0,
-            uint128(uint256(Math.abs(netPaid.rightSlot()))),
-            type(uint64).max,
-            account,
-            MIN_SWAP_TICK,
-            MAX_SWAP_TICK,
-            0
-        );
-                
-        _mintOptions(
-            tokenIdBase1,
-            uint128(uint256(Math.abs(netPaid.leftSlot()))),
-            type(uint64).max,
-            account,
-            MIN_SWAP_TICK,
-            MAX_SWAP_TICK,
-            0
-        );
-        */
     }
 
     /// @notice Settle unpaid premium for one `legIndex` on a position owned by `owner`.
@@ -1219,7 +1174,7 @@ contract PanopticPool is Multicall {
         TokenId tokenId,
         int24 twapTick,
         int24 currentTick
-    ) internal returns (LeftRightSigned refundAmounts) {
+    ) internal {
         CollateralTracker ct0 = s_collateralToken0;
         CollateralTracker ct1 = s_collateralToken1;
 
@@ -1231,6 +1186,7 @@ contract PanopticPool is Multicall {
 
         if (positionSize == 0) revert Errors.PositionNotOwned();
 
+        LeftRightSigned refundAmounts;
         for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
             if (tokenId.width(leg) != 0 && tokenId.isLong(leg) != 0) {
                 LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
