@@ -406,7 +406,8 @@ library TokenIdLibrary {
         uint256 optionRatios = (TokenId.unwrap(self) & OPTION_RATIO_MASK) >> 64;
 
         unchecked {
-            while (optionRatios >= 1 << (48 * numLegs)) {
+            // forge-lint: disable-next-line(incorrect-shift)
+            while (optionRatios >= (1 << (48 * numLegs))) {
                 ++numLegs;
             }
         }
