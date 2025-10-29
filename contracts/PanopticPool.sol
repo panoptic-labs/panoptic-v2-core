@@ -1013,6 +1013,7 @@ contract PanopticPool is Multicall {
         LeftRightUnsigned tokenData0;
         LeftRightUnsigned tokenData1;
         LeftRightUnsigned shortPremium;
+        LeftRightSigned netLiq;
         {
             uint256[] memory positionBalanceArray = new uint256[](positionIdList.length);
             LeftRightUnsigned longPremium;
@@ -1022,6 +1023,13 @@ contract PanopticPool is Multicall {
                 COMPUTE_PREMIA_AS_COLLATERAL,
                 ONLY_AVAILABLE_PREMIUM,
                 currentTick
+            );
+            netLiq = s_riskEngine.getNetLiquidationValue(
+                positionIdList,
+                positionBalanceArray,
+                twapTick,
+                shortPremium,
+                longPremium
             );
             (tokenData0, tokenData1) = s_riskEngine.getMargin(
                 liquidatee,
@@ -1060,6 +1068,7 @@ contract PanopticPool is Multicall {
             (bonusAmounts, collateralRemaining) = s_riskEngine.getLiquidationBonus(
                 tokenData0,
                 tokenData1,
+                netLiq,
                 Math.getSqrtRatioAtTick(twapTick),
                 netPaid,
                 shortPremium

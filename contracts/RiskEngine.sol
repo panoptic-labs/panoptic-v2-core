@@ -351,6 +351,7 @@ contract RiskEngine {
     function getLiquidationBonus(
         LeftRightUnsigned tokenData0,
         LeftRightUnsigned tokenData1,
+        LeftRightSigned netLiq,
         uint160 atSqrtPriceX96,
         LeftRightSigned netPaid,
         LeftRightUnsigned shortPremium
@@ -360,16 +361,32 @@ contract RiskEngine {
         unchecked {
             // compute bonus as min(collateralBalance/2, required-collateralBalance)
             {
-                // compute the ratio of token0 to total collateral requirements
-                // evaluate at TWAP price to maintain consistency with solvency calculations
-                (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.getCrossBalances(
-                    tokenData0,
-                    tokenData1,
-                    atSqrtPriceX96
-                );
-
-                uint256 bonusCross = Math.min(balanceCross / 2, thresholdCross - balanceCross);
-
+                uint256 thresholdCross;
+                uint256 bonusCross;
+                {
+                    uint256 balanceCross;
+                    // compute the ratio of token0 to total collateral requirements
+                    // evaluate at TWAP price to maintain consistency with solvency calculations
+                    (balanceCross, thresholdCross) = PanopticMath.getCrossBalances(
+                        tokenData0,
+                        tokenData1,
+                        atSqrtPriceX96
+                    );
+                    int256 netLiqCross = PanopticMath.getCrossBalances(netLiq, atSqrtPriceX96);
+                    if (thresholdCross < balanceCross + uint256(Math.max(0, netLiqCross))) {
+                        bonusCross = 0;
+                    } else if (
+                        thresholdCross - balanceCross - uint256(Math.max(0, netLiqCross)) <
+                        balanceCross / 2
+                    ) {
+                        bonusCross =
+                            thresholdCross -
+                            balanceCross -
+                            uint256(Math.max(0, netLiqCross));
+                    } else {
+                        bonusCross = balanceCross / 2;
+                    }
+                }
                 // `bonusCross` and `thresholdCross` are returned in terms of the lowest-priced token
                 if (atSqrtPriceX96 < Constants.FP96) {
                     // required0 / (required0 + token0(required1))
@@ -593,6 +610,81 @@ contract RiskEngine {
         }
 
         return atTicks;
+    }
+
+    /// @notice Calculate approximate NLV of user's option portfolio (token delta after closing `positionIdList`) at a given tick.
+    /// @param atTick The tick to calculate the value at
+    /// @param positionIdList A list of all positions the user holds on that pool
+    /// @param positionBalanceArray The list of all open positions held by the `optionOwner`, stored as `[balance/poolUtilizationAtMint, ...]`
+    /// @param shortPremia The total amount of premium (prorated by available settled tokens) owed to the short legs of `user`
+    /// @param longPremia The total amount of premium owed by the long legs of `user`
+    /// @return netLiq The NLV of token0 (right) and token1 (left) for `positionIdList` positions owned by `account` at the price `atTick`
+    function getNetLiquidationValue(
+        TokenId[] calldata positionIdList,
+        uint256[] calldata positionBalanceArray,
+        int24 atTick,
+        LeftRightUnsigned shortPremia,
+        LeftRightUnsigned longPremia
+    ) external view returns (LeftRightSigned netLiq) {
+        // Compute premia for all options (includes short+long premium)
+
+        int256 value0;
+        int256 value1;
+
+        for (uint256 k = 0; k < positionIdList.length; ) {
+            TokenId tokenId = positionIdList[k];
+            uint128 positionSize = PositionBalance.wrap(positionBalanceArray[k]).positionSize();
+            for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
+                uint256 amount0;
+                uint256 amount1;
+                {
+                    LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
+                        tokenId,
+                        leg,
+                        positionSize
+                    );
+
+                    (amount0, amount1) = Math.getAmountsForLiquidity(atTick, liquidityChunk);
+                }
+                if (tokenId.isLong(leg) == 0) {
+                    unchecked {
+                        value0 += int256(amount0);
+                        value1 += int256(amount1);
+                    }
+                } else {
+                    unchecked {
+                        value0 -= int256(amount0);
+                        value1 -= int256(amount1);
+                    }
+                }
+
+                unchecked {
+                    ++leg;
+                }
+            }
+
+            (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
+                .computeExercisedAmounts(tokenId, positionSize);
+
+            value0 += int256(longAmounts.rightSlot()) - int256(shortAmounts.rightSlot());
+            value1 += int256(longAmounts.leftSlot()) - int256(shortAmounts.leftSlot());
+
+            unchecked {
+                ++k;
+            }
+        }
+
+        unchecked {
+            value0 +=
+                int256(uint256(shortPremia.rightSlot())) -
+                int256(uint256(longPremia.rightSlot()));
+            value1 +=
+                int256(uint256(shortPremia.leftSlot())) -
+                int256(uint256(longPremia.leftSlot()));
+        }
+        netLiq = LeftRightSigned.wrap(0).addToRightSlot(int128(value0)).addToLeftSlot(
+            int128(value1)
+        );
     }
 
     /// @notice Get the collateral status/margin details of an account/user.

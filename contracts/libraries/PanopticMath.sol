@@ -934,6 +934,22 @@ library PanopticMath {
         }
     }
 
+    /// @notice Get a single balance in terms of the lowest-priced token for a given set of (token0/token1) balances.
+    /// @param netLiq LeftRight encoded word with balance of token0 in the right slot, and balance of token1 in left slot
+    /// @param sqrtPriceX96 The price at which to compute the collateral value and requirements
+    /// @return The combined balances of netLiq in terms of (token0 if `price(token1/token0) < 1` and vice versa)
+    function getCrossBalances(
+        LeftRightSigned netLiq,
+        uint160 sqrtPriceX96
+    ) internal pure returns (int256) {
+        // convert values to the highest precision (lowest price) of the two tokens (token0 if price token1/token0 < 1 and vice versa)
+        if (sqrtPriceX96 < Constants.FP96) {
+            return netLiq.rightSlot() + PanopticMath.convert1to0(netLiq.leftSlot(), sqrtPriceX96);
+        }
+
+        return PanopticMath.convert0to1(netLiq.rightSlot(), sqrtPriceX96) + netLiq.leftSlot();
+    }
+
     /// @notice Get a single collateral balance and requirement in terms of the lowest-priced token for a given set of (token0/token1) collateral balances and requirements.
     /// @param tokenData0 LeftRight encoded word with balance of token0 in the right slot, and required balance in left slot
     /// @param tokenData1 LeftRight encoded word with balance of token1 in the right slot, and required balance in left slot
