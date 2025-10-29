@@ -5186,7 +5186,16 @@ contract Misctest is Test, PositionUtils {
                         console2.log("Uniswap constraint at strike:", strike);
                     } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
                         console2.log("LiquidityTooHigh at strike:", strike);
-                    } else if (receivedSelector == Errors.AccountInsolvent.selector) {
+                    } else if (
+                        receivedSelector ==
+                        bytes4(
+                            abi.encodeWithSelector(
+                                Errors.AccountInsolvent.selector,
+                                uint256(0),
+                                uint256(1)
+                            )
+                        )
+                    ) {
                         console2.log("AccountInsolvent at strike:", strike);
                     } else if (receivedSelector == Errors.PositionTooLarge.selector) {
                         console2.log("PositionTooLarge at strike:", strike);
@@ -5349,7 +5358,16 @@ contract Misctest is Test, PositionUtils {
                         console2.log("LiquidityTooHigh at strike:", strike);
                     } else if (receivedSelector == Errors.NotEnoughLiquidityToBuy.selector) {
                         console2.log("NotEnoughLiquidityToBuy at strike:", strike);
-                    } else if (receivedSelector == Errors.AccountInsolvent.selector) {
+                    } else if (
+                        receivedSelector ==
+                        bytes4(
+                            abi.encodeWithSelector(
+                                Errors.AccountInsolvent.selector,
+                                uint256(0),
+                                uint256(1)
+                            )
+                        )
+                    ) {
                         console2.log("AccountInsolvent at strike:", strike);
                     } else if (receivedSelector == Errors.PositionTooLarge.selector) {
                         console2.log("PositionTooLarge at strike:", strike);
@@ -5508,6 +5526,17 @@ contract Misctest is Test, PositionUtils {
                                 "LONG: EffectiveLiquidityAboveThreshold at strike:",
                                 $strike
                             );
+                        } else if (
+                            receivedSelector ==
+                            bytes4(
+                                abi.encodeWithSelector(
+                                    Errors.AccountInsolvent.selector,
+                                    uint256(0),
+                                    uint256(1)
+                                )
+                            )
+                        ) {
+                            console2.log("SPREAD: AccountInsolvent at strike:", $strike);
                         } else if (receivedSelector == Errors.NotEnoughTokens.selector) {
                             console2.log("SPREAD: NotEnoughTokens at strike:", $strike);
                         } else if (receivedSelector == Errors.ZeroCollateralRequirement.selector) {
@@ -5522,7 +5551,7 @@ contract Misctest is Test, PositionUtils {
                             // Unexpected error
                             console2.logBytes4(receivedSelector);
                             console2.logBytes(reason);
-                            revert(string(abi.encodePacked("Unexpected error")));
+                            revert(string(abi.encodePacked("Unexpected error Spread")));
                         }
                     }
                 }
@@ -5544,7 +5573,16 @@ contract Misctest is Test, PositionUtils {
                         console2.log("LiquidityTooHigh at strike:", $strike);
                     } else if (receivedSelector == Errors.NotEnoughLiquidityToBuy.selector) {
                         console2.log("NotEnoughLiquidityToBuy at strike:", $strike);
-                    } else if (receivedSelector == Errors.AccountInsolvent.selector) {
+                    } else if (
+                        receivedSelector ==
+                        bytes4(
+                            abi.encodeWithSelector(
+                                Errors.AccountInsolvent.selector,
+                                uint256(0),
+                                uint256(1)
+                            )
+                        )
+                    ) {
                         console2.log("AccountInsolvent at strike:", $strike);
                     } else if (receivedSelector == Errors.PositionTooLarge.selector) {
                         console2.log("PositionTooLarge at strike:", $strike);
@@ -5553,7 +5591,7 @@ contract Misctest is Test, PositionUtils {
                         // Unexpected error
                         console2.logBytes4(receivedSelector);
                         console2.logBytes(reason);
-                        revert(string(abi.encodePacked("Unexpected error")));
+                        revert(string(abi.encodePacked("Unexpected error Mint")));
                     }
                 }
             }
