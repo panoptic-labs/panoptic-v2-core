@@ -519,14 +519,22 @@ contract PanopticPool is Multicall {
     /// denominated as X32 = (`ratioLimit * 2^32`)
     /// @param tickLimits The lower and lower bounds of an acceptable open interval for the ending price
     /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
+    /// @param builderCode The user-provided code to (re)direct the fees to.
     function dispatch(
         TokenId[] calldata positionIdList,
         TokenId[] calldata finalPositionIdList,
+        uint256 builderCode,
         uint128[] calldata positionSizes,
         uint64[] calldata effectiveLiquidityLimitsX32,
         int24[2][] calldata tickLimits,
         bool usePremiaAsCollateral
     ) external {
+        if (builderCode != 0) {
+            bytes32 slot = Constants.BUILDER_CODE_TRANSIENT_SLOT;
+            assembly {
+                tstore(slot, builderCode)
+            }
+        }
         // if safeMode, enforce covered at mint and exercise at burn
         uint8 safeMode = isSafeMode();
 

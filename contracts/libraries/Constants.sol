@@ -21,6 +21,10 @@ library Constants {
     uint160 internal constant MAX_V3POOL_SQRT_RATIO =
         1461446703485210103287273052203988822378723970342;
 
+    /// @dev The transient storage slot for the builder code.
+    /// Used to pass the builderCode across contract calls within a single transaction.
+    bytes32 internal constant BUILDER_CODE_TRANSIENT_SLOT = keccak256("panoptic.builder.code");
+
     /// @notice Parameter that determines which oracle type to use for the "slow" oracle price on non-liquidation solvency checks.
     /// @dev If false, an 8-slot internal median array is used to compute the "slow" oracle price.
     /// @dev This oracle is updated with the last Uniswap observation during `mintOptions` if MEDIAN_PERIOD has elapsed past the last observation.
