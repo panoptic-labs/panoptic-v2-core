@@ -1129,6 +1129,7 @@ contract RiskEngine {
                                         positionSize,
                                         index,
                                         partnerIndex,
+                                        atTick,
                                         poolUtilization
                                     )
                                     : 0;
@@ -1235,13 +1236,14 @@ contract RiskEngine {
         }
     }
 
-    /// @notice Calculate the required amount of collateral for the spread portion of the spread position.
-    /// @dev `max(long leg requirement, 100% collateralized risk)`
-    /// @dev May be higher than the requirement of an equivalent pair of non-risk-partnered legs if the spread is very wide (risky).
+    /// @notice Calculates the total collateral requirement for a defined-risk spread position.
+    /// @dev A spread's collateral is the minimum of its defined max loss or the sum of its legs' individual (unpartnered) requirements.
+    /// @dev This provides capital efficiency, as deep OTM spreads may require less collateral than their max loss due to OTM decay on the long leg.
     /// @param tokenId The option position
     /// @param positionSize The size of the position
     /// @param index The leg index of the LONG leg in the spread position
     /// @param partnerIndex The index of the partnered SHORT leg in the spread position
+    /// @param atTick the tick the requirement is evaluated at
     /// @param poolUtilization The pool utilization: how much funds are in the Panoptic pool versus the AMM pool
     /// @return spreadRequirement The required amount of collateral needed for the spread
     function _computeSpread(
@@ -1249,49 +1251,81 @@ contract RiskEngine {
         uint128 positionSize,
         uint256 index,
         uint256 partnerIndex,
+        int24 atTick,
         int16 poolUtilization
     ) internal view returns (uint256 spreadRequirement) {
         spreadRequirement = 1;
-        // compute the total amount of funds moved for the position's current leg
-        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index);
 
+        uint256 splitRequirement;
         {
-            // This is a CALENDAR SPREAD adjustment, where the collateral requirement is the max loss of the position
-            // real formula is contractSize * (1/(sqrt(r1)+1) - 1/(sqrt(r2)+1))
-            // Taylor expand to get a rough approximation of: contractSize * ∆width * tickSpacing / 40000
-            // This is strictly larger than the real one, so OK to use that for a collateral requirement.
-            int24 deltaWidth = tokenId.width(index) - tokenId.width(partnerIndex);
-
-            // TODO check if same strike and same width is allowed
-            if (deltaWidth < 0) deltaWidth = -deltaWidth;
-
-            if (tokenId.tokenType(index) == 0) {
-                spreadRequirement +=
-                    (amountsMoved.rightSlot() *
-                        uint256(int256(deltaWidth * tokenId.tickSpacing()))) /
-                    80000;
-            } else {
-                spreadRequirement +=
-                    (amountsMoved.leftSlot() *
-                        uint256(int256(deltaWidth * tokenId.tickSpacing()))) /
-                    80000;
-            }
+            uint256 _required = _getRequiredCollateralSingleLegNoPartner(
+                tokenId,
+                index,
+                positionSize,
+                atTick,
+                poolUtilization
+            );
+            uint256 requiredPartner = _getRequiredCollateralSingleLegNoPartner(
+                tokenId,
+                partnerIndex,
+                positionSize,
+                atTick,
+                poolUtilization
+            );
+            splitRequirement = _required + requiredPartner;
         }
 
-        // compute the total amount of funds moved for the position's partner leg
-        LeftRightUnsigned amountsMovedPartner = PanopticMath.getAmountsMoved(
-            tokenId,
-            positionSize,
-            partnerIndex
-        );
-
-        uint128 moved0 = amountsMoved.rightSlot();
-        uint128 moved1 = amountsMoved.leftSlot();
-
-        uint128 moved0Partner = amountsMovedPartner.rightSlot();
-        uint128 moved1Partner = amountsMovedPartner.leftSlot();
-
+        uint128 moved0;
+        uint128 moved1;
+        uint128 moved0Partner;
+        uint128 moved1Partner;
         uint256 tokenType = tokenId.tokenType(index);
+        {
+            // compute the total amount of funds moved for the position's current leg
+            LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
+                tokenId,
+                positionSize,
+                index
+            );
+            {
+                // This is a CALENDAR SPREAD adjustment, where the collateral requirement is the max loss of the position
+                // real formula is contractSize * (1/(sqrt(r1)+1) - 1/(sqrt(r2)+1))
+                // Taylor expand to get a rough approximation of: contractSize * ∆width * tickSpacing / 40000
+                // This is strictly larger than the real one, so OK to use that for a collateral requirement.
+                TokenId _tokenId = tokenId;
+                int24 deltaWidth = _tokenId.width(index) - _tokenId.width(partnerIndex);
+
+                // TODO check if same strike and same width is allowed -> Think not from TokenId.sol?
+                if (deltaWidth < 0) deltaWidth = -deltaWidth;
+
+                if (tokenType == 0) {
+                    spreadRequirement +=
+                        (amountsMoved.rightSlot() *
+                            uint256(int256(deltaWidth * _tokenId.tickSpacing()))) /
+                        80000;
+                } else {
+                    spreadRequirement +=
+                        (amountsMoved.leftSlot() *
+                            uint256(int256(deltaWidth * _tokenId.tickSpacing()))) /
+                        80000;
+                }
+            }
+
+            moved0 = amountsMoved.rightSlot();
+            moved1 = amountsMoved.leftSlot();
+
+            {
+                // compute the total amount of funds moved for the position's partner leg
+                LeftRightUnsigned amountsMovedPartner = PanopticMath.getAmountsMoved(
+                    tokenId,
+                    positionSize,
+                    partnerIndex
+                );
+
+                moved0Partner = amountsMovedPartner.rightSlot();
+                moved1Partner = amountsMovedPartner.leftSlot();
+            }
+        }
 
         // compute the max loss of the spread
 
@@ -1331,6 +1365,8 @@ contract RiskEngine {
                     : Math.unsafeDivRoundingUp((notional - notionalP) * contracts, notional);
             }
         }
+
+        spreadRequirement = Math.min(splitRequirement, spreadRequirement);
     }
 
     /// @notice Calculate the required amount of collateral for a strangle leg.
