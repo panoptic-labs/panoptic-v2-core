@@ -52,6 +52,11 @@ contract RiskEngine {
     /// @dev uint type for composability with unsigned integer based mathematical operations.
     uint256 internal constant DECIMALS = 10_000_000;
 
+    uint256 internal constant LN2_SCALED = 6931472;
+
+    uint256 internal constant ONE_BPS = 1000;
+    uint256 internal constant TEN_BPS = 10000;
+
     //int256 constant EMA_PERIOD_SPOT = 180; // 3 minutes
     //int256 constant EMA_PERIOD_FAST = 600; // 10 minutes
     //int256 constant EMA_PERIOD_SLOW = 3600; // 1h minutes
@@ -331,7 +336,7 @@ contract RiskEngine {
             // the result is rounded DOWN and NOT toward zero
             // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
             // subtract 1 from max half ranges from strike so fee starts at FORCE_EXERCISE_COST when moving OTM
-            int256 fee = hasLegsInRange ? -int256(FORCE_EXERCISE_COST) : -1024;
+            int256 fee = hasLegsInRange ? -int256(FORCE_EXERCISE_COST) : -int256(ONE_BPS);
 
             // store the exercise fees in the exerciseFees variable
             exerciseFees = exerciseFees
@@ -920,13 +925,12 @@ contract RiskEngine {
                     isLong,
                     poolUtilization
                 );
+                (int24 tickLower, int24 tickUpper) = tokenId.asTicks(index);
+                int24 strike = tokenId.strike(index);
 
                 if (isLong == 0) {
                     // if position is short, check whether the position is out-the-money
 
-                    (int24 tickLower, int24 tickUpper) = tokenId.asTicks(index);
-
-                    int24 strike = tokenId.strike(index);
                     // if position is ITM or ATM, then the collateral requirement depends on price:
 
                     // compute the ratio of strike to price for calls (or price to strike for puts)
@@ -989,6 +993,46 @@ contract RiskEngine {
                     }
 
                     required = Math.max(Math.max(r2, r1), r0);
+                } else {
+                    uint256 positionWidth = uint256(uint24(tickUpper - tickLower));
+
+                    uint256 distanceFromStrike = Math.max(
+                        positionWidth / 2,
+                        atTick > strike
+                            ? uint256(uint24(atTick - strike))
+                            : uint256(uint24(strike - atTick))
+                    );
+
+                    // Calculate the exponent: 2 * distance / width
+
+                    uint256 expValue;
+                    {
+                        uint256 scaledRatio = (2 * distanceFromStrike * DECIMALS) / positionWidth;
+                        // Divide by ln(2) to get the number of doublings
+                        // LN2_SCALED = ln(2) * DECIMALS
+                        uint256 shifts = scaledRatio / LN2_SCALED;
+                        uint256 remainder = scaledRatio % LN2_SCALED;
+
+                        // Calculate e^(remainder/DECIMALS) - now always less than e^(ln(2)) = 2
+                        // This means Taylor expansion is very accurate
+                        uint256 expFractional = Math.sTaylorCompounded(remainder, DECIMALS);
+
+                        // Combine: e^x = 2^shifts * e^remainder
+                        // We divide by DECIMALS at the end to maintain precision
+                        if (shifts < 256) {
+                            // Prevent overflow
+                            expValue = (expFractional << shifts) / DECIMALS;
+                        } else {
+                            expValue = type(uint256).max / DECIMALS; // Cap at max value
+                        }
+                    }
+                    // Apply the exponential decay to required collateral
+                    required = Math.min(
+                        required,
+                        (DECIMALS * required * positionWidth) /
+                            (2 * distanceFromStrike * expValue) +
+                            TEN_BPS
+                    );
                 }
             }
         }
