@@ -1083,58 +1083,43 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             int256 tokenToPay;
 
             if (isCreation) {
+                tokenToPay = int256(swappedAmount) - (shortAmount - longAmount);
+            } else {
+                // add premium and token deltas not covered by swap to be paid/collected on position close
+                tokenToPay = int256(swappedAmount) - (longAmount - shortAmount) - realizedPremium;
+            }
+            // commissions, to be paid for all transactions.
+            {
+                uint128 commission = uint128(
+                    Math.unsafeDivRoundingUp(
+                        uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
+                        DECIMALS
+                    )
+                );
+                address builderCodeRecipient;
                 {
-                    tokenToPay = int256(swappedAmount) - (shortAmount - longAmount);
-                    // the swap commission is paid on the intrinsic value (if a swap occurred; users who mint covered options with their own collateral do not pay this fee)
-                    uint128 commission = uint128(
-                        Math.unsafeDivRoundingUp(
-                            uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
-                            DECIMALS
-                        )
-                    );
+                    bytes32 slot = Constants.BUILDER_CODE_TRANSIENT_SLOT;
+                    assembly {
+                        builderCodeRecipient := tload(slot)
+                    }
+                }
+                if (builderCodeRecipient != address(0)) {
                     uint256 commissionShares = Math.mulDivRoundingUp(
                         commission,
                         _totalSupply,
                         _totalAssets
                     );
-                    uint256 builderCode;
-                    {
-                        bytes32 slot = Constants.BUILDER_CODE_TRANSIENT_SLOT;
-                        assembly {
-                            builderCode := tload(slot)
-                        }
-                    }
-                    if (builderCode != 0) {
-                        _transferFrom(
-                            optionOwner,
-                            address(uint160(builderCode)),
-                            commissionShares / 10
-                        );
-                        emit CommissionPaid(
-                            optionOwner,
-                            address(uint160(builderCode)),
-                            commission / 10
-                        );
-                        _transferFrom(
-                            optionOwner,
-                            address(s_riskEngine),
-                            (4 * commissionShares) / 5
-                        );
-                        emit CommissionPaid(
-                            optionOwner,
-                            address(s_riskEngine),
-                            (4 * commission) / 5
-                        );
-                    } else {
-                        _transferFrom(optionOwner, address(s_riskEngine), commissionShares);
-                        emit CommissionPaid(optionOwner, address(s_riskEngine), commission);
-                    }
-                }
-            } else {
-                // add premium and token deltas not covered by swap to be paid/collected on position close
-                tokenToPay = int256(swappedAmount) - (longAmount - shortAmount) - realizedPremium;
-            }
 
+                    _transferFrom(optionOwner, builderCodeRecipient, commissionShares / 10);
+                    emit CommissionPaid(optionOwner, builderCodeRecipient, commission / 10);
+                    _transferFrom(optionOwner, address(s_riskEngine), (4 * commissionShares) / 5);
+                    emit CommissionPaid(optionOwner, address(s_riskEngine), (4 * commission) / 5);
+                } else {
+                    // if no builder code is supplied, pay the commission by burning share tokens
+                    tokenToPay += int128(commission);
+                    emit CommissionPaid(optionOwner, address(this), commission);
+                }
+            }
             // Mint/Burn Shares
             if (tokenToPay > 0) {
                 uint256 sharesToBurn = Math.mulDivRoundingUp(

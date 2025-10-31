@@ -530,9 +530,10 @@ contract PanopticPool is Multicall {
         bool usePremiaAsCollateral
     ) external {
         if (builderCode != 0) {
+            address recipient = address(uint160((builderCode)));
             bytes32 slot = Constants.BUILDER_CODE_TRANSIENT_SLOT;
             assembly {
-                tstore(slot, builderCode)
+                tstore(slot, recipient)
             }
         }
         // if safeMode, enforce covered at mint and exercise at burn
