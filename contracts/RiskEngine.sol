@@ -638,13 +638,26 @@ contract RiskEngine {
                 uint256 amount0;
                 uint256 amount1;
                 {
-                    LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
-                        tokenId,
-                        leg,
-                        positionSize
-                    );
+                    if (tokenId.width(leg) != 0) {
+                        LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
+                            tokenId,
+                            leg,
+                            positionSize
+                        );
 
-                    (amount0, amount1) = Math.getAmountsForLiquidity(atTick, liquidityChunk);
+                        (amount0, amount1) = Math.getAmountsForLiquidity(atTick, liquidityChunk);
+                    } else {
+                        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
+                            tokenId,
+                            positionSize,
+                            leg
+                        );
+                        if (tokenId.tokenType(leg) == 0) {
+                            amount0 = amountsMoved.rightSlot();
+                        } else {
+                            amount1 = amountsMoved.leftSlot();
+                        }
+                    }
                 }
                 if (tokenId.isLong(leg) == 0) {
                     unchecked {
