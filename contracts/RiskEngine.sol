@@ -1035,7 +1035,10 @@ contract RiskEngine {
         // - Delayed Swap (credit at one strike, loan at another; different amounts = effective swap) = requirement is max(loan0 - convert1to0(credit), 1) or max(loan1 - convert0to1(credit), 1)
         {
             // only proceed if the partners have the same asset
-            if (tokenId.asset(partnerIndex) == tokenId.asset(index)) {
+            if (
+                tokenId.asset(partnerIndex) == tokenId.asset(index) &&
+                tokenId.optionRatio(partnerIndex) == tokenId.optionRatio(index)
+            ) {
                 // witdh of associated legs, true if greater than 0 (ie. it is an option leg)
                 bool _width = tokenId.width(index) > 0;
                 bool widthP = tokenId.width(partnerIndex) > 0;
@@ -1063,14 +1066,23 @@ contract RiskEngine {
                         } else if (_isLong != isLongP) {
                             // SYNTHETIC STOCK: different token types, one is long and the other is short
                             return
-                                // return the collateral requirement of the short leg only, the long leg is free!
-                                _isLong == 0
-                                    ? _getRequiredCollateralSingleLegNoPartner(
-                                        tokenId,
-                                        index,
-                                        positionSize,
-                                        atTick,
-                                        poolUtilization
+                                // return the largest collateral requirement of the two legs
+                                index < partnerIndex
+                                    ? Math.max(
+                                        _getRequiredCollateralSingleLegNoPartner(
+                                            tokenId,
+                                            index,
+                                            positionSize,
+                                            atTick,
+                                            poolUtilization
+                                        ),
+                                        _getRequiredCollateralSingleLegNoPartner(
+                                            tokenId,
+                                            partnerIndex,
+                                            positionSize,
+                                            atTick,
+                                            poolUtilization
+                                        )
                                     )
                                     : 0;
                         }
