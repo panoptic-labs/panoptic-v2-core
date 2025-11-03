@@ -840,7 +840,7 @@ contract RiskEngine {
             for (uint256 index = 0; index < numLegs; ++index) {
                 if (tokenId.tokenType(index) != (underlyingIsToken0 ? 0 : 1)) continue;
 
-                if (tokenId.width(index) == 0 && tokenId.isLong == 1) {
+                if (tokenId.width(index) == 0 && tokenId.isLong(index) == 1) {
                     LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
                         tokenId,
                         positionSize,
@@ -1429,9 +1429,34 @@ contract RiskEngine {
         // can only be called when partnerIndex is the credit
         LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index);
 
+        LeftRightUnsigned amountsMovedP = PanopticMath.getAmountsMoved(
+            tokenId,
+            positionSize,
+            partnerIndex
+        );
+
         uint256 loanAmount = tokenId.tokenType(index) == 0
             ? amountsMoved.rightSlot()
             : amountsMoved.leftSlot();
+        uint256 required = Math.mulDivRoundingUp(
+            loanAmount,
+            SELLER_COLLATERAL_RATIO + DECIMALS,
+            DECIMALS
+        );
+
+        uint256 creditAmount = tokenId.tokenType(partnerIndex) == 0
+            ? amountsMovedP.rightSlot()
+            : amountsMovedP.leftSlot();
+
+        uint256 convertedCredit = tokenId.tokenType(partnerIndex) == 0
+            ? PanopticMath.convert0to1RoundingUp(creditAmount, Math.getSqrtRatioAtTick(atTick))
+            : PanopticMath.convert1to0RoundingUp(creditAmount, Math.getSqrtRatioAtTick(atTick));
+
+        if (required > convertedCredit) {
+            return required;
+        } else {
+            return convertedCredit;
+        }
 
         return loanAmount;
     }
