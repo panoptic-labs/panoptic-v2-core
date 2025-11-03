@@ -141,8 +141,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
         bytes32 salt32 = bytes32(
             abi.encodePacked(
                 uint80(uint160(msg.sender) >> 80),
-                uint80(uint160(address(v3Pool)) >> 40),
-                uint80(uint160(address(riskEngine)) >> 40),
+                uint40(uint160(address(v3Pool)) >> 120),
+                uint40(uint160(address(riskEngine)) >> 120),
                 salt
             )
         );
@@ -208,6 +208,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     function minePoolAddress(
         address deployerAddress,
         address v3Pool,
+        address riskEngine,
         uint96 salt,
         uint256 loops,
         uint256 minTargetRarity
@@ -224,7 +225,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
             bytes32 newSalt = bytes32(
                 abi.encodePacked(
                     uint80(uint160(deployerAddress) >> 80),
-                    uint80(uint160(v3Pool) >> 80),
+                    uint40(uint160(v3Pool) >> 120),
+                    uint40(uint160(riskEngine) >> 120),
                     salt
                 )
             );
