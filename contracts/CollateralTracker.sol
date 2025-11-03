@@ -672,11 +672,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         _accrueInterest(msg.sender);
     }
 
-    /// @notice Accrues protocol-wide interest and makes `to` pay outstanding interest.
-    function accrueInterestTo(address to) external onlyPanopticPool {
-        _accrueInterest(to);
-    }
-
     /// @notice Accrues protocol-wide interest and settles a specific user's interest.
     /// @dev This function should be called before any user action that affects their borrow balance.
     /// @param owner the account which calls accrue interest
