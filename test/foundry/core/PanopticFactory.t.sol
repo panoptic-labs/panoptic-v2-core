@@ -215,16 +215,28 @@ contract PanopticFactoryTest is Test {
         }
 
         string[] memory propsStr = vm.parseJsonStringArray(metadata, ".properties");
+        console2.log("properties count", propsStr.length);
+
         bytes32[] memory props = new bytes32[](propsStr.length);
         for (uint256 i = 0; i < propsStr.length; i++) {
             props[i] = bytes32(bytes(propsStr[i]));
         }
 
-        string[][] memory indicesStr = abi.decode(vm.parseJson(metadata, ".indices"), (string[][]));
+        // indices: read each inner string[] directly
+        string[][] memory indicesStr = new string[][](propsStr.length);
+        for (uint256 i = 0; i < propsStr.length; i++) {
+            // Build ".indices[i]" and parse that inner string[]
+            string memory path = string.concat(".indices[", vm.toString(i), "]");
+            indicesStr[i] = vm.parseJsonStringArray(metadata, path);
+            // optional: console2.log("indices[", i, "] len", indicesStr[i].length);
+        }
+
+        // convert to uint256[][]
         uint256[][] memory indices = new uint256[][](indicesStr.length);
         for (uint256 i = 0; i < indicesStr.length; i++) {
             indices[i] = new uint256[](indicesStr[i].length);
             for (uint256 j = 0; j < indicesStr[i].length; j++) {
+                // your JSON numbers are decimal strings (even the huge ones), so parseUint is correct
                 indices[i][j] = vm.parseUint(indicesStr[i][j]);
             }
         }
@@ -257,8 +269,8 @@ contract PanopticFactoryTest is Test {
             bytes32(
                 abi.encodePacked(
                     uint80(uint160(address(this)) >> 80),
-                    uint80(uint160(address(pool)) >> 40),
-                    uint80(uint160(address(riskEngine)) >> 40),
+                    uint40(uint160(address(pool)) >> 120),
+                    uint40(uint160(address(riskEngine)) >> 120),
                     salt
                 )
             ),
@@ -461,7 +473,7 @@ contract PanopticFactoryTest is Test {
         uint256 minTargetRarity
     ) public {
         // limit minTargetRarity to 1-2 leading zeroes for test efficiency
-        minTargetRarity = bound(minTargetRarity, 1, 2);
+        minTargetRarity = bound(minTargetRarity, 1, 5);
 
         nonce = uint96(bound(nonce, 0, type(uint96).max - 1001));
 
@@ -476,6 +488,7 @@ contract PanopticFactoryTest is Test {
         (uint96 bestSalt, uint256 highestRarity) = panopticFactory.minePoolAddress(
             randomAddress,
             address(pool),
+            address(riskEngine),
             nonce,
             50_000,
             minTargetRarity
@@ -489,7 +502,8 @@ contract PanopticFactoryTest is Test {
                     bytes32(
                         abi.encodePacked(
                             uint80(uint160(randomAddress) >> 80),
-                            uint80(uint160(address(pool)) >> 80),
+                            uint40(uint160(address(pool)) >> 120),
+                            uint40(uint160(address(riskEngine)) >> 120),
                             bestSalt
                         )
                     ),
