@@ -564,10 +564,11 @@ contract RiskEngine {
 
     function getSolvencyTicks(
         int24 currentTick,
-        int24 spotTick,
-        int24 medianTick,
-        int24 latestTick
-    ) external pure returns (int24[] memory) {
+        uint256 _oraclePack
+    ) external view returns (int24[] memory, uint256) {
+        (int24 spotTick, int24 medianTick, int24 latestTick, uint256 oraclePack) = PanopticMath
+            .getOracleTicks(currentTick, _oraclePack, EMAperiods);
+
         int24[] memory atTicks;
 
         // Fall back to a conservative approach if there's high deviation between internal ticks:
@@ -594,7 +595,7 @@ contract RiskEngine {
             atTicks[0] = spotTick;
         }
 
-        return atTicks;
+        return (atTicks, oraclePack);
     }
 
     /// @notice Get the collateral status/margin details of an account/user.
