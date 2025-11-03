@@ -386,6 +386,11 @@ contract RiskEngine {
                     } else {
                         bonusCross = balanceCross / 2;
                     }
+                    // ensure the bonus is at least 1bps of the total balance
+                    bonusCross = Math.max(
+                        bonusCross,
+                        Math.mulDivRoundingUp(balanceCross, 1_000, DECIMALS)
+                    );
                 }
                 // `bonusCross` and `thresholdCross` are returned in terms of the lowest-priced token
                 if (atSqrtPriceX96 < Constants.FP96) {
