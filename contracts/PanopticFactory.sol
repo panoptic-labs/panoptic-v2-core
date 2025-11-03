@@ -137,7 +137,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         SFPM.initializeAMMPool(token0, token1, fee);
 
         // Users can specify a salt, the aim is to incentivize the mining of addresses with leading zeros
-        // salt format: (first 20 characters of deployer address) + (first 20 characters of UniswapV3Pool) + (uint96 user supplied salt)
+        // salt format: (first 20 characters of deployer address) + (first 10 characters of UniswapV3Pool) + (first 10 characters of RiskEngine) + (uint96 user supplied salt)
         bytes32 salt32 = bytes32(
             abi.encodePacked(
                 uint80(uint160(msg.sender) >> 80),
