@@ -637,14 +637,22 @@ contract RiskEngine {
         uint256 bal0 = tokenData0.rightSlot();
         uint256 bal1 = tokenData1.rightSlot();
 
+        uint8 safeMode;
+        {
+            bytes32 slot = Constants.SAFE_MODE_TRANSIENT_SLOT;
+            assembly {
+                safeMode := tload(slot)
+            }
+        }
+
         uint256 scaledSurplusToken0 = Math.mulDiv(
             bal0 > maintReq0 ? bal0 - maintReq0 : 0,
-            CROSS_BUFFER_0,
+            safeMode == 0 ? CROSS_BUFFER_0 : 0,
             DECIMALS
         );
         uint256 scaledSurplusToken1 = Math.mulDiv(
             bal1 > maintReq1 ? bal1 - maintReq1 : 0,
-            CROSS_BUFFER_1,
+            safeMode == 0 ? CROSS_BUFFER_1 : 0,
             DECIMALS
         );
 

@@ -635,7 +635,13 @@ contract PanopticPool is Multicall {
             totalSwapped
         );
 
-        if (safeMode > 0) poolUtilizations = uint32(10_000 + (10_000 << 16));
+        if (safeMode > 0) {
+            poolUtilizations = uint32(10_000 + (10_000 << 16));
+            bytes32 slot = Constants.SAFE_MODE_TRANSIENT_SLOT;
+            assembly {
+                tstore(slot, safeMode)
+            }
+        }
 
         {
             // update the users options balance of position `tokenId`
@@ -1362,10 +1368,10 @@ contract PanopticPool is Multicall {
     }
 
     /// @notice Checks whether the current tick has deviated too much from the previouslyt stored ticks. Computed in the RiskEngine
-    /// @return Whether the current tick has deviated too much to warrant putting the protocol in safe mode
-    function isSafeMode() public view returns (uint8) {
+    /// @return safeMode Whether the current tick has deviated too much to warrant putting the protocol in safe mode
+    function isSafeMode() public view returns (uint8 safeMode) {
         int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
-        return s_riskEngine.isSafeMode(currentTick, s_oraclePack);
+        safeMode = s_riskEngine.isSafeMode(currentTick, s_oraclePack);
     }
 
     /*//////////////////////////////////////////////////////////////
