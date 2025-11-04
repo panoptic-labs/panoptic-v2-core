@@ -1004,17 +1004,17 @@ contract RiskEngine {
                         // collateral requirement at the lowerTick and the one at the upperTick. We use that interpolation as
                         // the collateral requirement when in-range, which always over-estimates the amount of token required
                         // Specifically:
-                        //  required = amountMoved * (scaleFactor - ratio) / (scaleFactor + 1) + sellCollateralRatio*amountMoved
-                        uint160 scaleFactor = Math.getSqrtRatioAtTick(tickUpper - tickLower);
+
+                        uint160 scaleFactor = Math.getSqrtRatioAtTick((tickUpper - tickLower));
+                        uint256 base = (r0 * DECIMALS) / amountMoved;
                         r2 =
                             Math.mulDivRoundingUp(
-                                amountMoved,
-                                scaleFactor - ratio,
-                                scaleFactor + Constants.FP96
+                                amountMoved * (DECIMALS - base),
+                                (scaleFactor - ratio),
+                                DECIMALS * (scaleFactor + Constants.FP96)
                             ) +
-                            required;
+                            r0;
                     }
-
                     required = Math.max(Math.max(r2, r1), r0);
                 } else {
                     uint256 positionHalfWidth = uint256(uint24(tickUpper - tickLower)) / 2;
