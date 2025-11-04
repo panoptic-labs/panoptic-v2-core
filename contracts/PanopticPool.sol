@@ -816,49 +816,15 @@ contract PanopticPool is Multicall {
         uint256 buffer,
         bool usePremiaAsCollateral
     ) internal view returns (uint256) {
-        int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
-
-        (int24 spotTick, int24 medianTick, int24 latestTick, uint256 oraclePack) = s_riskEngine
-            .getOracleTicks(currentTick, s_oraclePack);
-
-        uint96 tickData = PositionBalanceLibrary.packTickData(
-            currentTick,
-            spotTick,
-            medianTick,
-            latestTick
-        );
-
-        _checkSolvency(user, positionIdList, tickData, buffer, usePremiaAsCollateral);
-
-        return oraclePack;
-    }
-
-    /// @notice Validates the solvency of `user` from tickData.
-    /// @param user The account to validate
-    /// @param positionIdList The list of positions to validate solvency for
-    /// @param tickData The packed tick data to check solvency at
-    /// @param buffer The buffer to apply to the collateral requirement for `user`
-    /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
-    function _checkSolvency(
-        address user,
-        TokenId[] calldata positionIdList,
-        uint96 tickData,
-        uint256 buffer,
-        bool usePremiaAsCollateral
-    ) internal view {
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(user, positionIdList);
 
-        (
-            int24 currentTick,
-            int24 spotTick,
-            int24 medianTick,
-            int24 latestTick
-        ) = PositionBalanceLibrary.unpackTickData(tickData);
+        int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
 
+        uint256 oraclePack;
         int24[] memory atTicks;
 
-        atTicks = s_riskEngine.getSolvencyTicks(currentTick, spotTick, medianTick, latestTick);
+        (atTicks, oraclePack) = s_riskEngine.getSolvencyTicks(currentTick, s_oraclePack);
 
         uint256 solvent = _checkSolvencyAtTicks(
             user,
@@ -871,6 +837,8 @@ contract PanopticPool is Multicall {
         uint256 numberOfTicks = atTicks.length;
 
         if (solvent != numberOfTicks) revert Errors.AccountInsolvent(solvent, numberOfTicks);
+
+        return oraclePack;
     }
 
     /*//////////////////////////////////////////////////////////////
