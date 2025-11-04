@@ -1017,20 +1017,21 @@ contract RiskEngine {
 
                     required = Math.max(Math.max(r2, r1), r0);
                 } else {
-                    uint256 positionWidth = uint256(uint24(tickUpper - tickLower));
+                    uint256 positionHalfWidth = uint256(uint24(tickUpper - tickLower)) / 2;
 
                     uint256 distanceFromStrike = Math.max(
-                        positionWidth / 2,
+                        positionHalfWidth,
                         atTick > strike
                             ? uint256(uint24(atTick - strike))
                             : uint256(uint24(strike - atTick))
                     );
 
-                    // Calculate the exponent: 2 * distance / width
+                    // Calculate the exponent: distance / width
 
                     uint256 expValue;
                     {
-                        uint256 scaledRatio = (2 * distanceFromStrike * DECIMALS) / positionWidth;
+                        uint256 scaledRatio = (distanceFromStrike * DECIMALS) /
+                            (2 * positionHalfWidth);
                         // Divide by ln(2) to get the number of doublings
                         // LN2_SCALED = ln(2) * DECIMALS
                         uint256 shifts = scaledRatio / LN2_SCALED;
@@ -1039,21 +1040,20 @@ contract RiskEngine {
                         // Calculate e^(remainder/DECIMALS) - now always less than e^(ln(2)) = 2
                         // This means Taylor expansion is very accurate
                         uint256 expFractional = Math.sTaylorCompounded(remainder, DECIMALS);
-
                         // Combine: e^x = 2^shifts * e^remainder
                         // We divide by DECIMALS at the end to maintain precision
                         if (shifts < 256) {
                             // Prevent overflow
-                            expValue = (expFractional << shifts) / DECIMALS;
+                            expValue = (expFractional << shifts);
                         } else {
-                            expValue = type(uint256).max / DECIMALS; // Cap at max value
+                            expValue = type(uint256).max; // Cap at max value
                         }
                     }
                     // Apply the exponential decay to required collateral
                     required = Math.min(
                         required,
-                        (DECIMALS * required * positionWidth) /
-                            (2 * distanceFromStrike * expValue) +
+                        (2 * DECIMALS * required * positionHalfWidth) /
+                            (distanceFromStrike * expValue) +
                             TEN_BPS
                     );
                 }
