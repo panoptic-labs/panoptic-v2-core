@@ -1229,6 +1229,18 @@ library Math {
         return firstTerm + secondTerm + thirdTerm;
     }
 
+    /// @dev Returns the sum of the first three non-zero terms of a Taylor expansion of e^(nx), to approximate a
+    /// continuous compound interest rate for a custom scale s. Source: https://github.com/morpho-org/morpho-blue/blob/main/src/libraries/MathLib.sol
+    function sTaylorCompounded(uint256 x, uint256 s) internal pure returns (uint256) {
+        uint256 zerothTerm = s;
+        uint256 firstTerm = x;
+        uint256 secondTerm = mulDiv(firstTerm, firstTerm, 2 * s);
+        uint256 thirdTerm = mulDiv(secondTerm, firstTerm, 3 * s);
+        uint256 fourthTerm = mulDiv(thirdTerm, firstTerm, 4 * s);
+
+        return zerothTerm + firstTerm + secondTerm + thirdTerm + fourthTerm;
+    }
+
     /// @dev Returns the multiplication of `x` by `y` (in WAD) rounded towards 0.
     function wMulToZero(int256 x, int256 y) internal pure returns (int256) {
         return (x * y) / WAD_INT;
