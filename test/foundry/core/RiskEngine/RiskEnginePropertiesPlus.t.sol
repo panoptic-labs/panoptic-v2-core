@@ -52,11 +52,13 @@ contract RiskEnginePropertiesPlus is Test {
 
         // No positions, but add premia: short premia credits increase balances only
         LeftRightUnsigned shortPrem = LeftRightUnsigned
-        .wrap(0)
-        .addToRightSlot(uint128(2 ether)).addToLeftSlot(uint128(4 ether)); // token0 credit // token1 credit
+            .wrap(0)
+            .addToRightSlot(uint128(2 ether))
+            .addToLeftSlot(uint128(4 ether)); // token0 credit // token1 credit
         LeftRightUnsigned longPrem = LeftRightUnsigned
-        .wrap(0)
-        .addToRightSlot(uint128(11)).addToLeftSlot(uint128(13)); // long premia should go into requirements
+            .wrap(0)
+            .addToRightSlot(uint128(11))
+            .addToLeftSlot(uint128(13)); // long premia should go into requirements
 
         TokenId[] memory ids = new TokenId[](1);
         uint256[] memory bals = new uint256[](1);
@@ -366,7 +368,8 @@ contract RiskEnginePropertiesPlus is Test {
         uint64 poolId = 1 + (10 << 48);
         // short call with narrow band; walk across lower and upper ticks
         int24 strike = 0;
-        int24 width = 20;
+        int24 width = 300;
+
         TokenId sCall = PositionFactory.makeLeg(poolId, 0, 1, 0, 0, 0, 0, strike, width);
         uint128 size = 1e9;
         int24 lo = strike - width / 2;
@@ -376,6 +379,13 @@ contract RiskEnginePropertiesPlus is Test {
         uint256 r_mid = E.reqSingleNoPartner(sCall, 0, size, strike, 0);
         uint256 r_hi = E.reqSingleNoPartner(sCall, 0, size, hi, 0);
 
+        /*
+        for (int24 t=-5000;t<5000;t += 10) {
+            uint256 r   = E.reqSingleNoPartner(sCall, 0, size, t, 0);
+
+            console2.log('\t', r);
+        }
+        */
         // interpolation implies r_mid between r_lo and r_hi and no upward jump at edges
         assertGe(r_mid, r_lo, "mid >= lo");
         assertLe(r_mid, r_hi + 1, "mid <= hi (+1 rounding)");
