@@ -23,6 +23,9 @@ fork_block_number = 18963715
 optimizer_runs = 277
 test = 'DO_NOT_COMPILE'
 
+[lint]
+exclude_lints = ["mixed-case-variable", "mixed-case-function", "unaliased-plain-import", "unsafe-cheatcode"]
+
 [profile.ci_sizes_ir]
 optimizer_runs = 200
 test = 'DO_NOT_COMPILE'
