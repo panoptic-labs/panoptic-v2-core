@@ -4956,10 +4956,7 @@ contract PanopticPoolTest is PositionUtils {
         {
             assertEq(
                 pp.positionsHash(Alice),
-                uint248(
-                    uint256(keccak256(abi.encodePacked(tokenId0))) ^
-                        uint256(keccak256(abi.encodePacked(tokenId1)))
-                ),
+                uint248(pp.generatePositionsHash(posIdList)),
                 "FAIL: position hashes don't match"
             );
 
@@ -5305,16 +5302,16 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         {
-            (, uint256 inAMM, ) = ct1.getPoolData();
-            assertEq(inAMM, 0, "inAMM 1");
-        }
-        {
-            assertEq(
-                pp.positionsHash(Alice),
-                uint248(uint256(keccak256(abi.encodePacked(tokenId0)))),
-                "FAIL: position hashes don't match"
-            );
-
+            {
+                (, uint256 inAMM, ) = ct1.getPoolData();
+                assertEq(inAMM, 0, "inAMM 1");
+                $posIdList.push(tokenId0);
+                assertEq(
+                    pp.positionsHash(Alice),
+                    uint248(pp.generatePositionsHash($posIdList)),
+                    "FAIL: position hashes don't match"
+                );
+            }
             assertEq(pp.numberOfLegs(Alice), 1, "FAIL: nLegs don't match");
 
             {

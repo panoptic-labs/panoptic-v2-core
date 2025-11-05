@@ -7,16 +7,12 @@ import {RiskEngine} from "./RiskEngine.sol";
 import {ERC20Minimal} from "@tokens/ERC20Minimal.sol";
 import {Multicall} from "@base/Multicall.sol";
 // Libraries
-import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {InteractionHelper} from "@libraries/InteractionHelper.sol";
 import {Math} from "@libraries/Math.sol";
-import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
-import {LiquidityChunk} from "@types/LiquidityChunk.sol";
-import {PositionBalance} from "@types/PositionBalance.sol";
 import {TokenId} from "@types/TokenId.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
@@ -177,8 +173,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Reverts if the associated Panoptic Pool is not the caller.
     modifier onlyPanopticPool() {
-        if (msg.sender != address(s_panopticPool)) revert Errors.NotPanopticPool();
+        _onlyPanopticPool();
         _;
+    }
+
+    function _onlyPanopticPool() internal {
+        if (msg.sender != address(s_panopticPool)) revert Errors.NotPanopticPool();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -745,12 +745,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice Calculates the current interest state without modifying storage
     /// @dev Simulates interest accrual from last interaction to current timestamp
     /// @param inAMM Amount of assets currently deployed in AMM positions
+    /// @param interestRateSnapshot The current interest rate to evaluate at
     /// @return currentBorrowIndex Updated global borrow index after simulated accrual
     /// @return _unrealizedGlobalInterest Total unrealized interest including new accrual
     /// @return currentTime Current block timestamp
     function _calculateCurrentInterestState(
         uint128 inAMM,
-        uint128 interestRate
+        uint128 interestRateSnapshot
     )
         internal
         view
@@ -766,8 +767,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             _unrealizedGlobalInterest = uint128(accumulator >> 150);
             if (deltaTime > 0) {
                 // Calculate interest growth
-                uint128 rawInterest = (Math.wTaylorCompounded(interestRate, uint128(deltaTime)))
-                    .toUint128();
+                uint128 rawInterest = (
+                    Math.wTaylorCompounded(interestRateSnapshot, uint128(deltaTime))
+                ).toUint128();
                 // Calculate interest owed on borrowed amount
 
                 uint128 interestOwed = Math.mulDivWadRoundingUp(inAMM, rawInterest).toUint128();
@@ -789,7 +791,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function _interestRateView(uint256 utilization) internal view returns (uint128) {
         uint128 avgRate = s_riskEngine.interestRate(utilization, s_interestRateAccumulator);
         return avgRate;
-        //return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
     }
 
     function interestRate() public view returns (uint128) {
@@ -798,10 +799,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             s_interestRateAccumulator
         );
         return avgRate;
-    }
-
-    function _interestRate(uint256 utilization) internal returns (uint128) {
-        return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
     }
 
     /// @notice Returns the interest rate per second based on pool utilization

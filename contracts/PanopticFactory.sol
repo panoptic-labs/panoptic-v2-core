@@ -14,7 +14,6 @@ import {FactoryNFT} from "@base/FactoryNFT.sol";
 // External libraries
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 // Libraries
-import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 // Custom types

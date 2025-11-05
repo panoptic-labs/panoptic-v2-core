@@ -8,6 +8,7 @@ import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {CallbackLib} from "@libraries/CallbackLib.sol";
+import {PoolData} from "@types/PoolData.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
@@ -35,7 +36,7 @@ contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
         return s_AddrToPoolIdData[pool];
     }
 
-    function poolIdToPoolData(uint64 poolId) public view returns (PoolData memory) {
+    function poolIdToPoolData(uint64 poolId) public view returns (PoolData) {
         return s_poolIdToPoolData[poolId];
     }
 }
@@ -2947,15 +2948,14 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     function test_Fuzz_mint_burn_TokenizedPosition_amountsMoved(uint256 x) public {
         _initPool(x);
 
-        SemiFungiblePositionManager.PoolData memory poolData;
-        poolData = sfpm.poolIdToPoolData(poolId);
+        PoolData poolData = sfpm.poolIdToPoolData(poolId);
 
         int24 width = int24(uint24(((x >> 48) % 2047) + 1));
         int24 strike = int24(
             bound(
                 int256(x >> 64),
-                poolData.minEnforcedTick + (width * tickSpacing) / 2,
-                poolData.maxEnforcedTick - (width * tickSpacing) / 2
+                poolData.minEnforcedTick() + (width * tickSpacing) / 2,
+                poolData.maxEnforcedTick() - (width * tickSpacing) / 2
             )
         );
         strike = (strike / tickSpacing) * tickSpacing + (tickSpacing / 2) * (width % 2);
@@ -3419,8 +3419,15 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MAX_TICK
         );
 
-        vm.expectRevert(Errors.TransferFailed.selector);
-
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.TransferFailed.selector,
+                address(sfpm), // or whatever 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f is
+                Alice,
+                transferSize,
+                uint256(0)
+            )
+        );
         sfpm.safeTransferFrom(Alice, Bob, TokenId.unwrap(tokenId), transferSize, "");
     }
 
@@ -3480,8 +3487,15 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MAX_TICK
         );
 
-        vm.expectRevert(Errors.TransferFailed.selector);
-
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.TransferFailed.selector,
+                address(sfpm),
+                Alice,
+                positionSize,
+                uint256(0)
+            )
+        );
         sfpm.safeTransferFrom(Alice, Bob, TokenId.unwrap(tokenId2), positionSize, "");
     }
 
@@ -3532,10 +3546,17 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         vm.startPrank(Alice);
-
-        vm.expectRevert(Errors.TransferFailed.selector);
-
         transferSize = bound(transferSize, 1, positionSizes[0] - 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.TransferFailed.selector,
+                address(sfpm), // or whatever 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f is
+                Alice,
+                transferSize,
+                uint256(0)
+            )
+        );
 
         sfpm.safeTransferFrom(Alice, Bob, TokenId.unwrap(tokenId), transferSize, "");
     }

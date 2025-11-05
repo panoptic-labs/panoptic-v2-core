@@ -1,22 +1,16 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 // Interfaces
-import {PanopticPool} from "./PanopticPool.sol";
 import {CollateralTracker} from "./CollateralTracker.sol";
-// Inherited implementations
-import {ERC20Minimal} from "@tokens/ERC20Minimal.sol";
-import {Multicall} from "@base/Multicall.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
-import {InteractionHelper} from "@libraries/InteractionHelper.sol";
 import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
-import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
-import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
+import {PositionBalance} from "@types/PositionBalance.sol";
 import {TokenId} from "@types/TokenId.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
@@ -63,7 +57,7 @@ contract RiskEngine {
     //int256 constant EMA_PERIOD_SLOW = 3600; // 1h minutes
     //int256 constant EMA_PERIOD_EONS = 21600; // 6h minutes
 
-    uint96 constant EMAperiods = uint96(180 + (600 << 24) + (3600 << 48) + (21600 << 72));
+    uint96 constant EMA_PERIODS = uint96(180 + (600 << 24) + (3600 << 48) + (21600 << 72));
     /// @notice The maximum allowed cumulative delta between the fast & slow oracle tick, the current & slow oracle tick, and the last-observed & slow oracle tick.
     /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
     int256 internal constant MAX_TICKS_DELTA = 953;
@@ -270,8 +264,10 @@ contract RiskEngine {
         TokenId tokenId,
         PositionBalance positionBalance
     ) external view returns (LeftRightSigned exerciseFees) {
-        (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            .computeExercisedAmounts(tokenId, positionBalance.positionSize());
+        (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
+            tokenId,
+            positionBalance.positionSize()
+        );
         unchecked {
             // we find whether the price is within any leg; any in-range leg will have a cost. Otherwise, the force-exercise fee is 1bps
             bool hasLegsInRange;
@@ -500,7 +496,7 @@ contract RiskEngine {
         (spotTick, medianTick, latestTick, oraclePack) = PanopticMath.getOracleTicks(
             currentTick,
             _oraclePack,
-            EMAperiods
+            EMA_PERIODS
         );
     }
 
@@ -528,7 +524,7 @@ contract RiskEngine {
         uint256 oraclePack,
         int24 currentTick
     ) external view returns (int24 medianTick, uint256 updatedOraclePack) {
-        return PanopticMath.computeInternalMedian(oraclePack, currentTick, EMAperiods);
+        return PanopticMath.computeInternalMedian(oraclePack, currentTick, EMA_PERIODS);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -540,7 +536,7 @@ contract RiskEngine {
     ///      1. "External Shock": The live spot price deviates too far from the responsive spot EMA .
     ///      2. "Internal Disagreement": The fast EMA deviates too far from the more stable slow EMA, indicating high volatility.
     /// @return Whether the protocol should be in Safe Mode.
-    function isSafeMode(int24 currentTick, uint256 oraclePack) public view returns (uint8) {
+    function isSafeMode(int24 currentTick, uint256 oraclePack) public pure returns (uint8) {
         // Extract the relevant EMAs from oraclePack
         (, int24 slowEMA, int24 fastEMA, int24 spotEMA, int24 medianTick) = PanopticMath.getEMAs(
             oraclePack
@@ -1661,29 +1657,23 @@ contract RiskEngine {
                   ADAPTIVE INTEREST RATE MODEL
     //////////////////////////////////////////////////////////////*/
 
-    function interestRate(uint256 utilization) external returns (uint128) {
-        return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
-    }
-
     function interestRate(
         uint256 utilization,
         uint256 interestRateAccumulator
     ) external view returns (uint128) {
         (uint256 avgRate, ) = _borrowRate(utilization, interestRateAccumulator);
         return uint128(avgRate);
-        //return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
     }
 
     function updateInterestRate(
         uint256 utilization,
         uint256 interestRateAccumulator
-    ) external returns (uint128, uint256) {
+    ) external view returns (uint128, uint256) {
         (uint256 avgRate, int256 endRateAtTarget) = _borrowRate(
             utilization,
             interestRateAccumulator
         );
         return (uint128(avgRate), uint256(endRateAtTarget));
-        //return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
     }
 
     /// @dev Returns avgRate and endRateAtTarget.

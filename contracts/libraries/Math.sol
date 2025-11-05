@@ -175,6 +175,7 @@ library Math {
     /// @return The maximum liquidity that can reference any given tick in the Uniswap V3 pool
     function getMaxLiquidityPerTick(int24 tickSpacing) internal pure returns (uint128) {
         unchecked {
+            // forge-lint: disable-next-line(divide-before-multiply)
             return type(uint128).max / uint24((Constants.MAX_V3POOL_TICK / tickSpacing) * 2 + 1);
         }
     }
@@ -400,6 +401,8 @@ library Math {
             // This check guarantees the following uint128 cast is safe.
             if (liquidity > type(uint128).max) revert Errors.LiquidityTooHigh();
 
+            // casting to 'uint128' is safe because of the liquidity > type(uint128).max check above
+            // forge-lint: disable-next-line(unsafe-typecast)
             return LiquidityChunkLibrary.createChunk(tickLower, tickUpper, uint128(liquidity));
         }
     }

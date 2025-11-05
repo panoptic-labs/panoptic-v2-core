@@ -9,6 +9,7 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {Multicall} from "@base/Multicall.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
+import {EfficientHash} from "@libraries/EfficientHash.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {InteractionHelper} from "@libraries/InteractionHelper.sol";
 import {Math} from "@libraries/Math.sol";
@@ -441,7 +442,7 @@ contract PanopticPool is Multicall {
                 if (tokenId.width(leg) != 0) {
                     if (tokenId.isLong(leg) == 0) {
                         if (!includePendingPremium) {
-                            bytes32 chunkKey = keccak256(
+                            bytes32 chunkKey = EfficientHash.efficientKeccak256(
                                 abi.encodePacked(
                                     tokenId.strike(leg),
                                     tokenId.width(leg),
@@ -497,9 +498,6 @@ contract PanopticPool is Multicall {
 
     /// @notice Updates the internal median with the last Uniswap observation if the `MEDIAN_PERIOD` has elapsed.
     function pokeOracle() external {
-        (uint16 observationIndex, uint16 observationCardinality) = SFPM.indexAndCardinality(
-            s_univ3pool
-        );
         int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
 
         (, uint256 oraclePack) = s_riskEngine.computeInternalMedian(s_oraclePack, currentTick);
@@ -917,8 +915,12 @@ contract PanopticPool is Multicall {
                     if (toLength == finalLength) {
                         // same length, that's a settle
                         {
-                            bytes32 toHash = keccak256(abi.encodePacked(positionIdListTo));
-                            bytes32 finalHash = keccak256(abi.encodePacked(positionIdListToFinal));
+                            bytes32 toHash = EfficientHash.efficientKeccak256(
+                                abi.encodePacked(positionIdListTo)
+                            );
+                            bytes32 finalHash = EfficientHash.efficientKeccak256(
+                                abi.encodePacked(positionIdListToFinal)
+                            );
                             if (toHash != finalHash) {
                                 revert Errors.InputListFail();
                             }
@@ -1217,7 +1219,9 @@ contract PanopticPool is Multicall {
                         int24 strike = _tokenId.strike(leg);
                         int24 width = _tokenId.width(leg);
                         uint256 tokenType = _tokenId.tokenType(leg);
-                        chunkKey = keccak256(abi.encodePacked(strike, width, tokenType));
+                        chunkKey = EfficientHash.efficientKeccak256(
+                            abi.encodePacked(strike, width, tokenType)
+                        );
                     }
                     // commit the delta in settled tokens (all of the premium paid by long chunks in the tokenIds list) to storage
                     s_settledTokens[chunkKey] = s_settledTokens[chunkKey].add(
@@ -1624,7 +1628,7 @@ contract PanopticPool is Multicall {
             if (tokenId.width(leg) != 0) {
                 uint256 isLong = tokenId.isLong(leg);
 
-                bytes32 chunkKey = keccak256(
+                bytes32 chunkKey = EfficientHash.efficientKeccak256(
                     abi.encodePacked(
                         tokenId.strike(leg),
                         tokenId.width(leg),
@@ -1835,7 +1839,7 @@ contract PanopticPool is Multicall {
             if (tokenId.width(leg) != 0) {
                 LeftRightSigned legPremia = premiaByLeg[leg];
 
-                bytes32 chunkKey = keccak256(
+                bytes32 chunkKey = EfficientHash.efficientKeccak256(
                     abi.encodePacked(
                         tokenId.strike(leg),
                         tokenId.width(leg),

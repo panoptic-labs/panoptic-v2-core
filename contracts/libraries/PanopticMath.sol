@@ -9,6 +9,7 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Math} from "@libraries/Math.sol";
+import {EfficientHash} from "@libraries/EfficientHash.sol";
 import {Errors} from "@libraries/Errors.sol";
 // OpenZeppelin libraries
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
@@ -43,11 +44,6 @@ library PanopticMath {
 
     uint256 internal constant BITMASK_UINT88 = 0xFFFFFFFFFFFFFFFFFFFFFF;
     uint256 internal constant BITMASK_UINT22 = 0x3FFFFF;
-
-    int256 constant EMA_PERIOD_SPOT = 180; // 3 minutes
-    int256 constant EMA_PERIOD_FAST = 600; // 10 minutes
-    int256 constant EMA_PERIOD_SLOW = 3600; // 1h minutes
-    int256 constant EMA_PERIOD_EONS = 21600; // 6h minutes
 
     /*//////////////////////////////////////////////////////////////
                               UTILITIES
@@ -189,13 +185,16 @@ library PanopticMath {
         uint256 item,
         bool addFlag
     ) internal pure returns (uint256) {
+        /*
         {
             // XHASH
-            return uint248(hash) ^ (uint248(uint256(keccak256(abi.encode(item)))));
+            return
+                uint248(hash) ^
+                (uint248(uint256(EfficientHash.efficientKeccak256(abi.encode(item)))));
         }
         {
             // AdHash
-            uint256 itemHash = uint256(keccak256(abi.encode(item)));
+            uint256 itemHash = uint256(EfficientHash.efficientKeccak256(abi.encode(item)));
             return
                 addFlag
                     ? addmod(uint248(hash), uint248(itemHash), PRIME_MODULUS_248)
@@ -205,10 +204,10 @@ library PanopticMath {
                         PRIME_MODULUS_248
                     );
         }
-
+        */
         {
             // LtHash, k=2
-            uint256 itemHash = uint256(keccak256(abi.encode(item)));
+            uint256 itemHash = uint256(EfficientHash.efficientKeccak256(abi.encode(item)));
 
             // Pre-calculate the 124-bit chunks for the item to be added/removed
             uint256 item_h0 = itemHash & LANE_MASK_124;
@@ -1197,7 +1196,7 @@ library PanopticMath {
                             LeftRightSigned.wrap(0).sub(haircutAmounts)
                         );
 
-                        bytes32 chunkKey = keccak256(
+                        bytes32 chunkKey = EfficientHash.efficientKeccak256(
                             abi.encodePacked(
                                 tokenId.strike(leg),
                                 tokenId.width(leg),
