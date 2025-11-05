@@ -1549,8 +1549,6 @@ contract RiskEngine {
         } else {
             return convertedCredit;
         }
-
-        return loanAmount;
     }
 
     /// @notice Get the base collateral requirement for a short leg at a given pool utilization.
