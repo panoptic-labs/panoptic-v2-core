@@ -153,8 +153,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     ///      - Left slot (128 bits): Net borrows = netShorts - netLongs
     ///        Represents the user's net borrowed amount in tokens
     ///        Can be negative, in which case they purchased more options than they sold
-    ///      - Right slot (128 bits): User's borrow index snapshot
-    ///        The global borrow index value when this user last accrued interest
+    ///      - Right slot (128 bits):
+    ///        - lower 96 bits: User's borrow index snapshot
+    ///          The global borrow index value when this user last accrued interest
+    ///        - upper 32 bits: Last deposit timestamp (block.timestamp), stored as 68mins epochs
     /// @dev Interest calculation: interestOwed = netBorrows * (currentIndex - userIndex) / userIndex
     mapping(address account => LeftRightSigned interestState) internal s_interestState;
 
@@ -162,10 +164,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                             RISK PARAMETERS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice The commission fee, in basis points, collected from PLPs at option mint.
-    /// @dev In Panoptic, options never expire, commissions are only paid when a new position is minted.
-    /// @dev We believe that this will eliminate the impact of the commission fee on the user's decision-making process when closing a position.
+    /// @notice The commission fee, in basis points, collected from PLPs at option mint and burn.
     uint256 immutable COMMISSION_FEE;
+
+    /// @notice The withdrawal fee, in basis points, collected when a user withdraws within a short time of depositing.
+    uint256 immutable WITHDRAWAL_FEE;
 
     /*//////////////////////////////////////////////////////////////
                             ACCESS CONTROL
@@ -189,6 +192,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param _commissionFee The commission fee, in basis points, collected from PLPs at option mint
     constructor(uint256 _commissionFee) {
         COMMISSION_FEE = _commissionFee;
+        WITHDRAWAL_FEE = 100 * _commissionFee;
     }
 
     /// @notice Initialize a new collateral tracker for a specific token corresponding to the Panoptic Pool being created by the factory that called it.
@@ -283,11 +287,19 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice Returns the borrowing state for a specific user
     /// @dev Returns both the user's borrow index snapshot and their net borrowed amount
     /// @return userBorrowIndex The borrow index when the user last accrued interest (used as the basis for interest calculation)
+    /// @return lastUserDeposit The timestamp of the user's last deposit
     /// @return netBorrows The net borrowed amount for the user (positive = borrower, zero/negative = no interest owed)
     function interestState(
         address user
-    ) external view returns (int128 userBorrowIndex, int128 netBorrows) {
-        return (s_interestState[user].rightSlot(), s_interestState[user].leftSlot());
+    ) external view returns (uint128 userBorrowIndex, uint32 lastUserDeposit, int128 netBorrows) {
+        LeftRightSigned userState = s_interestState[user];
+        unchecked {
+            return (
+                uint128(userState.rightSlot() % 2 ** 96),
+                uint32((uint128(userState.rightSlot()) >> 96)),
+                userState.leftSlot()
+            );
+        }
     }
 
     /// @notice Returns name of token composed of underlying token symbol and pool data.
@@ -442,6 +454,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // update tracked asset balance
         s_poolAssets += uint128(assets);
 
+        uint256 timestamp = (block.timestamp >> 12); //store as ~68 mins epochs
+        LeftRightSigned userState = s_interestState[msg.sender];
+        s_interestState[msg.sender] = LeftRightSigned
+            .wrap(0)
+            .addToLeftSlot(userState.leftSlot())
+            .addToRightSlot(((userState.rightSlot() % 2 ** 96) + int128(uint128(timestamp << 96))));
+
         emit Deposit(msg.sender, receiver, assets, shares);
     }
 
@@ -488,6 +507,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // update tracked asset balance
         s_poolAssets += uint128(assets);
 
+        uint256 epoch = (block.timestamp >> 12); //store as ~68 mins epochs
+        LeftRightSigned userState = s_interestState[msg.sender];
+        s_interestState[msg.sender] = LeftRightSigned
+            .wrap(0)
+            .addToLeftSlot(userState.leftSlot())
+            .addToRightSlot(((userState.rightSlot() % 2 ** 96) + int128(uint128(epoch << 96))));
+
         emit Deposit(msg.sender, receiver, assets, shares);
     }
 
@@ -530,6 +556,21 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         if (assets > maxWithdraw(owner)) revert Errors.ExceedsMaximumRedemption();
 
         shares = previewWithdraw(assets);
+
+        // Retrieve the 32-bit epoch timestamp
+        uint256 lastEpoch = uint128(s_interestState[owner].rightSlot() >> 96);
+
+        // Get the current time in ~68 minute epochs (4096 seconds)
+        uint256 currentEpoch = block.timestamp >> 12;
+
+        // Calculate the fee factor, which decays exponentially (halves) every epoch
+        uint256 epochDeltaFactor = WITHDRAWAL_FEE >> (currentEpoch - lastEpoch);
+
+        // Apply the decayed fee to the withdrawal amount if the fee factor has not decayed to zero.
+        /// @dev do this to prevent JIT deposits to affect the pool utilization
+        if (epochDeltaFactor != 0) {
+            assets -= (assets * epochDeltaFactor) / DECIMALS;
+        }
 
         // check/update allowance for approved withdraw
         if (msg.sender != owner) {
@@ -648,6 +689,21 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         assets = previewRedeem(shares);
         if (assets == 0) revert Errors.BelowMinimumRedemption();
 
+        // Retrieve the 32-bit epoch timestamp
+        uint256 lastEpoch = uint128(s_interestState[owner].rightSlot() >> 96);
+
+        // Get the current time in ~68 minute epochs (4096 seconds)
+        uint256 currentEpoch = block.timestamp >> 12;
+
+        // Apply the decayed fee to the withdrawal amount if the fee factor has not decayed to zero.
+        uint256 epochDeltaFactor = WITHDRAWAL_FEE >> (currentEpoch - lastEpoch);
+
+        // Apply the decayed fee to the withdrawal amount if the fee factor has not decayed to zero.
+        /// @dev do this to prevent JIT deposits to affect the pool utilization
+        if (epochDeltaFactor != 0) {
+            assets -= (assets * epochDeltaFactor) / DECIMALS;
+        }
+
         // burn collateral shares of the Panoptic Pool funds (this ERC20 token)
         _burn(owner, shares);
 
@@ -692,7 +748,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // USER
             LeftRightSigned userState = s_interestState[owner];
             int128 netBorrows = userState.leftSlot();
-            int128 userBorrowIndex = int128(currentBorrowIndex);
+            int128 userBorrowIndex = int128(currentBorrowIndex) % 2 ** 96;
+            int128 lastUserDeposit = userState.rightSlot() >> 96;
             if (netBorrows > 0) {
                 uint128 userInterestOwed = _getUserInterest(userState, currentBorrowIndex);
                 if (userInterestOwed != 0) {
@@ -717,7 +774,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                             _burn(_owner, userBalance);
 
                             /// @dev DO NOT update index. By keeping the user's old baseIndex, their debt continues to compound correctly from the original point in time.
-                            userBorrowIndex = userState.rightSlot();
+                            userBorrowIndex = userState.rightSlot() % 2 ** 96;
                         } else {
                             // Solvent case: Pay in full.
                             _burn(_owner, shares);
@@ -732,7 +789,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             s_interestState[owner] = LeftRightSigned
                 .wrap(0)
-                .addToRightSlot(userBorrowIndex)
+                .addToRightSlot(userBorrowIndex + (lastUserDeposit << 96))
                 .addToLeftSlot(netBorrows);
 
             s_interestRateAccumulator =
@@ -824,7 +881,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 currentBorrowIndex
     ) internal pure returns (uint128 interestOwed) {
         int128 netBorrows = userState.leftSlot();
-        uint128 userBorrowIndex = uint128(userState.rightSlot());
+        uint128 userBorrowIndex = uint128(userState.rightSlot()) % 2 ** 96;
         if (netBorrows <= 0 || userBorrowIndex == 0 || currentBorrowIndex == userBorrowIndex) {
             return 0;
         }
