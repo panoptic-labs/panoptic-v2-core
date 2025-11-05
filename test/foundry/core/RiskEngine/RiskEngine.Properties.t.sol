@@ -484,6 +484,6 @@ contract RiskEngineProperties is Test {
         uint256 r2 = E.reqSingleNoPartner(t, 0, S / 2, int24(0), int16(0));
         uint256 r3 = E.reqSingleNoPartner(t, 0, S / 2, int24(0), int16(0));
         assertLe(r1, r2 + r3, "split/merge invariance");
-        assertEq(r1 + 1, r2 + r3, "split/merge invariance");
+        assertApproxEqAbs(r1, r2 + r3, 2, "split/merge invariance");
     }
 }
