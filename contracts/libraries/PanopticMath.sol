@@ -185,6 +185,7 @@ library PanopticMath {
         uint256 item,
         bool addFlag
     ) internal pure returns (uint256) {
+        /*
         {
             // XHASH
             return
@@ -203,7 +204,7 @@ library PanopticMath {
                         PRIME_MODULUS_248
                     );
         }
-
+        */
         {
             // LtHash, k=2
             uint256 itemHash = uint256(EfficientHash.efficientKeccak256(abi.encode(item)));

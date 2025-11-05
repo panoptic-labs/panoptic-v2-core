@@ -445,8 +445,9 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenId = tokenId.addLeg(0, optionRatio, asset, isLong, tokenType, 0, strike, width);
         }
 
-        uint248 updatedHash = uint248(existingHash) ^
-            (uint248(uint256(keccak256(abi.encode(tokenId)))));
+        uint248 updatedHash = uint248(
+            PanopticMath.homomorphicHash(existingHash, TokenId.unwrap(tokenId), true)
+        );
         vm.assume((existingHash >> 248) < 255);
         uint256 expectedHash = uint256(updatedHash) + (((existingHash >> 248) + 1) << 248);
 
@@ -507,8 +508,9 @@ contract PanopticMathTest is Test, PositionUtils {
         uint256 expectedHash;
         uint256 returnedHash;
         unchecked {
-            uint248 updatedHash = uint248(existingHash) ^
-                (uint248(uint256(keccak256(abi.encode(tokenId)))));
+            uint248 updatedHash = uint248(
+                PanopticMath.homomorphicHash(existingHash, TokenId.unwrap(tokenId), false)
+            );
             vm.assume((existingHash >> 248) > 0);
 
             expectedHash = uint256(updatedHash) + (((existingHash >> 248) - 1) << 248);
