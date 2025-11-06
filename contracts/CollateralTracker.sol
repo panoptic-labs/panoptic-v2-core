@@ -424,6 +424,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
         _accrueInterest(msg.sender);
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
+        if (assets == 0) revert Errors.BelowMinimumRedemption();
 
         shares = previewDeposit(assets);
 
@@ -528,6 +529,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     ) external returns (uint256 shares) {
         _accrueInterest(owner);
         if (assets > maxWithdraw(owner)) revert Errors.ExceedsMaximumRedemption();
+        if (assets == 0) revert Errors.BelowMinimumRedemption();
 
         shares = previewWithdraw(assets);
 
