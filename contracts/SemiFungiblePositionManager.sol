@@ -2,7 +2,8 @@
 pragma solidity ^0.8.24;
 // Interfaces
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
-import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
+import {ICLFactory} from "aerodrome/interfaces/ICLFactory.sol";
+
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
 import {ERC1155} from "@tokens/ERC1155Minimal.sol";
@@ -136,7 +137,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     }
 
     /*//////////////////////////////////////////////////////////////
-                            IMMUTABLES 
+                            IMMUTABLES
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Flag used to indicate a regular position mint.
@@ -164,7 +165,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     uint256 internal immutable SUPPLY_MULTIPLIER_TICKFILL;
 
     /*//////////////////////////////////////////////////////////////
-                            STORAGE 
+                            STORAGE
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Retrieve the corresponding poolId for a given Uniswap V3 pool address.
@@ -177,16 +178,16 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /*
         We're tracking the amount of net and removed liquidity for the specific region:
 
-             net amount    
-           received minted  
-          ▲ for isLong=0     amount           
-          │                 moved out      actual amount 
-          │  ┌────┐-T      due isLong=1   in the UniswapV3Pool 
-          │  │    │          mints      
-          │  │    │                        ┌────┐-(T-R)  
-          │  │    │         ┌────┐-R       │    │          
-          │  │    │         │    │         │    │     
-          └──┴────┴─────────┴────┴─────────┴────┴──────►                     
+             net amount
+           received minted
+          ▲ for isLong=0     amount
+          │                 moved out      actual amount
+          │  ┌────┐-T      due isLong=1   in the UniswapV3Pool
+          │  │    │          mints
+          │  │    │                        ┌────┐-(T-R)
+          │  │    │         ┌────┐-R       │    │
+          │  │    │         │    │         │    │
+          └──┴────┴─────────┴────┴─────────┴────┴──────►
              total=T       removed=R      net=(T-R)
 
 
@@ -203,12 +204,12 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         internal s_accountLiquidity;
 
     /*
-        Any liquidity that has been deposited in the AMM using the SFPM will collect fees over 
+        Any liquidity that has been deposited in the AMM using the SFPM will collect fees over
         time, we call this the gross premia. If that liquidity has been removed, we also need to
         keep track of the amount of fees that *would have been collected*, we call this the owed
-        premia. The gross and owed premia are tracked per unit of liquidity by the 
+        premia. The gross and owed premia are tracked per unit of liquidity by the
         s_accountPremiumGross and s_accountPremiumOwed accumulators.
-        
+
         Here is how we can use the accumulators to compute the Gross, Net, and Owed fees collected
         by any position.
 
@@ -217,8 +218,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         the AMM will collect fees equal to:
 
               net_feesCollectedX128 = feeGrowthX128 * (T - R)
-                                    = feeGrowthX128 * N                                     
-        
+                                    = feeGrowthX128 * N
+
         where N = netLiquidity = T-R. Had that liquidity never been removed, we want the gross
         premia to be given by:
 
@@ -232,28 +233,28 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
               gross_feesCollectedX128 = net_feesCollectedX128 + owed_feesCollectedX128
 
-       where 
+       where
 
               owed_feesCollectedX128 = feeGrowthX128 * R * (1 + spread)                      (Eqn 1)
 
-        A very opinionated definition for the spread is: 
-              
+        A very opinionated definition for the spread is:
+
               spread = ν*(liquidity removed from that strike)/(netLiquidity remaining at that strike)
                      = ν*R/N
 
-        For an arbitrary parameter 0 <= ν <= 1 (ν = 1/2^VEGOID). This way, the gross_feesCollectedX128 will be given by: 
+        For an arbitrary parameter 0 <= ν <= 1 (ν = 1/2^VEGOID). This way, the gross_feesCollectedX128 will be given by:
 
-              gross_feesCollectedX128 = feeGrowthX128 * N + feeGrowthX128*R*(1 + ν*R/N) 
-                                      = feeGrowthX128 * T + feesGrowthX128*ν*R^2/N         
+              gross_feesCollectedX128 = feeGrowthX128 * N + feeGrowthX128*R*(1 + ν*R/N)
+                                      = feeGrowthX128 * T + feesGrowthX128*ν*R^2/N
                                       = feeGrowthX128 * T * (1 + ν*R^2/(N*T))                (Eqn 2)
-        
+
         The s_accountPremiumOwed accumulator tracks the feeGrowthX128 * R * (1 + spread) term
         per unit of removed liquidity R every time the position touched:
 
               s_accountPremiumOwed += feeGrowthX128 * R * (1 + ν*R/N) / R
                                    += feeGrowthX128 * (T - R + ν*R)/N
                                    += feeGrowthX128 * T/N * (1 - R/T + ν*R/T)
-         
+
         Note that the value of feeGrowthX128 can be extracted from the amount of fees collected by
         the smart contract since the amount of feesCollected is related to feeGrowthX128 according
         to:
@@ -261,14 +262,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
              feesCollected = feesGrowthX128 * (T-R)
 
         So that we get:
-             
+
              feesGrowthX128 = feesCollected/N
 
         And the accumulator is computed from the amount of collected fees according to:
-             
-             s_accountPremiumOwed += feesCollected * T/N^2 * (1 - R/T + ν*R/T)          (Eqn 3)     
 
-        So, the amount of owed premia for a position of size r minted at time t1 and burnt at 
+             s_accountPremiumOwed += feesCollected * T/N^2 * (1 - R/T + ν*R/T)          (Eqn 3)
+
+        So, the amount of owed premia for a position of size r minted at time t1 and burnt at
         time t2 is:
 
              owedPremia(t1, t2) = (s_accountPremiumOwed_t2-s_accountPremiumOwed_t1) * r
@@ -280,26 +281,26 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         This way, the amount of premia owed for a position will match Eqn 1 exactly.
 
         Similarly, the amount of gross fees for the total liquidity is tracked in a similar manner
-        by the s_accountPremiumGross accumulator. 
+        by the s_accountPremiumGross accumulator.
 
         However, since we require that Eqn 2 holds up-- ie. the gross fees collected should be equal
         to the net fees collected plus the ower fees plus the small spread, the expression for the
-        s_accountPremiumGross accumulator has to be given by (you`ll see why in a minute): 
+        s_accountPremiumGross accumulator has to be given by (you`ll see why in a minute):
 
-            s_accountPremiumGross += feesCollected * T/N^2 * (1 - R/T + ν*R^2/T^2)       (Eqn 4) 
+            s_accountPremiumGross += feesCollected * T/N^2 * (1 - R/T + ν*R^2/T^2)       (Eqn 4)
 
         This expression can be used to calculate the fees collected by a position of size t between times
         t1 and t2 according to:
-             
+
             grossPremia(t1, t2) = ∆(s_accountPremiumGross) * t
-                                = ∆feeGrowthX128 * t * T/N * (1 - R/T + ν*R^2/T^2) 
-                                = ∆feeGrowthX128 * t * (T - R + ν*R^2/T) / N 
+                                = ∆feeGrowthX128 * t * T/N * (1 - R/T + ν*R^2/T^2)
+                                = ∆feeGrowthX128 * t * (T - R + ν*R^2/T) / N
                                 = ∆feeGrowthX128 * t * (N + ν*R^2/T) / N
                                 = ∆feeGrowthX128 * t * (1  + ν*R^2/(N*T))   (same as Eqn 2)
-            
+
         where the last expression matches Eqn 2 exactly.
 
-        In summary, the s_accountPremium accumulators allow smart contracts that need to handle 
+        In summary, the s_accountPremium accumulators allow smart contracts that need to handle
         long+short liquidity to guarantee that liquidity deposited always receives the correct
         premia, whether that liquidity has been removed from the AMM or not.
 
@@ -320,6 +321,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @dev feesBase represents the baseline fees collected by the position last time it was updated - this is recalculated every time the position is collected from with the new value.
     mapping(bytes32 positionKey => LeftRightSigned baseFees0And1) internal s_accountFeesBase;
 
+    INonfungiblePositionManager public immutable AERODROME_NFPM;
+
     /*//////////////////////////////////////////////////////////////
                              INITIALIZATION
     //////////////////////////////////////////////////////////////*/
@@ -329,11 +332,13 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param _minEnforcedTickFillCost The minimum amount of tokens it should require to fill `maxLiquidityPerTick` at the minimum and maximum enforced ticks
     /// @param _supplyMultiplierTickFill The multiplier, in basis points, to apply to the token supply and set as the minimum enforced tick fill cost if greater than `MIN_ENFORCED_TICKFILL_COST`
     constructor(
-        IUniswapV3Factory _factory,
+        ICLFactory _factory,
+        INonfungiblePositionManager _nfpm,
         uint256 _minEnforcedTickFillCost,
         uint256 _supplyMultiplierTickFill
     ) {
         FACTORY = _factory;
+        AERODROME_NFPM = _nfpm;
         MIN_ENFORCED_TICKFILL_COST = _minEnforcedTickFillCost;
         SUPPLY_MULTIPLIER_TICKFILL = _supplyMultiplierTickFill;
     }
@@ -1036,7 +1041,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             │  │       │                         │      │
             └──┴───────┴──►                      └──────┘
                 Uniswap V3                      msg.sender
-        
+
             else: the position is long (buying a put or a call), then _burnLiquidity to remove liquidity from Uniswap V3
             Buying(isLong=1): Burn in Uniswap
                    ┌─────────────────┐
@@ -1044,11 +1049,11 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             │  ┌──┴─┴──┐         ┌───▼──┐
             │  │       │         │      │
             └──┴───────┴──►      └──────┘
-                Uniswap V3      msg.sender 
+                Uniswap V3      msg.sender
         */
         moved = isLong == 0
-            ? _mintLiquidity(liquidityChunk, univ3pool)
-            : _burnLiquidity(liquidityChunk, univ3pool);
+            ? _mintLiquidity(liquidityChunk, univ3pool, positionKey)
+            : _burnLiquidity(liquidityChunk, univ3pool, positionKey);
 
         // if there was liquidity at that tick before the transaction, collect any accumulated fees
         if (currentLiquidity.rightSlot() > 0) {
@@ -1143,68 +1148,86 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 .addToLeftSlot(int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, liquidity))));
     }
 
-    /// @notice Mint a chunk of liquidity (`liquidityChunk`) in the Uniswap V3 pool; return the amount moved.
-    /// @param liquidityChunk The liquidity chunk in Uniswap to mint
-    /// @param univ3pool The Uniswap V3 pool to mint liquidity in/to
+    /// @notice Mint a chunk of liquidity (`liquidityChunk`) in the Aerodrome pool; return the amount moved.
+    /// @param liquidityChunk The liquidity chunk in Aerodrome to mint
+    /// @param pool The Aerodrome pool to mint liquidity in/to
+    /// @param positionKey Unique identifier of the liquidity chunk to operate on, including the pool it exists on
     /// @return movedAmounts How many tokens were moved from `msg.sender` to Uniswap
     function _mintLiquidity(
         LiquidityChunk liquidityChunk,
-        IUniswapV3Pool univ3pool
+        ICLPool pool,
+        bytes32 positionKey
     ) internal returns (LeftRightSigned movedAmounts) {
-        // build callback data
-        bytes memory mintdata = abi.encode(
-            CallbackLib.CallbackData({
-                poolFeatures: CallbackLib.PoolFeatures({
-                    token0: univ3pool.token0(),
-                    token1: univ3pool.token1(),
-                    fee: univ3pool.fee()
-                }),
-                payer: msg.sender
-            })
-        );
+        // Get the tokenId if it exists, or mint a new position
+        uint256 aerodromeTokenId = s_positionToAerodromeTokenId[positionKey];
+        uint256 amount0, uint256 amount1;
 
-        // mint the required amount in the Uniswap pool
-        // this triggers the uniswap mint callback function
-        (uint256 amount0, uint256 amount1) = univ3pool.mint(
-            address(this),
-            liquidityChunk.tickLower(),
-            liquidityChunk.tickUpper(),
-            liquidityChunk.liquidity(),
-            mintdata
-        );
+        if (aerodromeTokenId == 0) {
+            // First time minting this position - create new NFPM position
+            (uint256 returnedTokenId, , amount0, amount1) = AERODROME_NFPM.mint(
+                INonfungiblePositionManager.MintParams({
+                    token0: pool.token0(),
+                    token1: pool.token1(),
+                    tickSpacing: pool.tickSpacing(),
+                    tickLower: liquidityChunk.tickLower(),
+                    tickUpper: liquidityChunk.tickUpper(),
+                    amount0Desired: type(uint256).max,
+                    amount1Desired: type(uint256).max,
+                    amount0Min: 0,
+                    amount1Min: 0,
+                    recipient: address(this),
+                    deadline: block.timestamp,
+                    sqrtPriceX96: 0
+                })
+            );
 
-        // amount0 The amount of token0 that was paid to mint the given amount of liquidity
-        // amount1 The amount of token1 that was paid to mint the given amount of liquidity
-        // no need to safecast to int from uint here as the max position size is int128
-        movedAmounts = LeftRightSigned
-            .wrap(0)
+            s_positionToAerodromeTokenId[positionKey] = returnedTokenId;
+        } else {
+            // Position exists - increase liquidity
+            (, amount0, amount1) = AERODROME_NFPM.increaseLiquidity(
+                INonfungiblePositionManager.IncreaseLiquidityParams({
+                    tokenId: aerodromeTokenId,
+                    amount0Desired: type(uint256).max,
+                    amount1Desired: type(uint256).max,
+                    amount0Min: 0,
+                    amount1Min: 0,
+                    deadline: block.timestamp
+                })
+            );
+        }
+
+        // TODO: Confirm returned amount0/1 from .mint and .increaseLiquidity are equivalent to old movedAmounts definition
+        movedAmounts = LeftRightSigned.wrap(0)
             .addToRightSlot(int128(int256(amount0)))
             .addToLeftSlot(int128(int256(amount1)));
     }
 
-    /// @notice Burn a chunk of liquidity (`liquidityChunk`) in the Uniswap V3 pool and send to msg.sender; return the amount moved.
+    /// @notice Burn a chunk of liquidity (`liquidityChunk`) in the Aerodrome pool and send to msg.sender; return the amount moved.
     /// @param liquidityChunk The liquidity chunk in Uniswap to burn
-    /// @param univ3pool The Uniswap V3 pool to burn liquidity in/from
+    /// @param pool The Aerodrome pool to burn liquidity in/from
+    /// @param positionKey Unique identifier of the liquidity chunk to operate on, including the pool it exists on
     /// @return movedAmounts How many tokens were moved from Uniswap to `msg.sender`
     function _burnLiquidity(
         LiquidityChunk liquidityChunk,
-        IUniswapV3Pool univ3pool
+        ICLPool pool,
+        bytes32 positionKey
     ) internal returns (LeftRightSigned movedAmounts) {
-        // burn that option's liquidity in the Uniswap Pool.
-        // This will send the underlying tokens back to the Panoptic Pool (msg.sender)
-        (uint256 amount0, uint256 amount1) = univ3pool.burn(
-            liquidityChunk.tickLower(),
-            liquidityChunk.tickUpper(),
-            liquidityChunk.liquidity()
+        uint256 aerodromeTokenId = s_positionToAerodromeTokenId[positionKey];
+
+        if (aerodromeTokenId == 0) revert Errors.NoPositionToDecrease();
+
+        (uint256 amount0, uint256 amount1) = AERODROME_NFPM.decreaseLiquidity(
+            INonfungiblePositionManager.DecreaseLiquidityParams({
+                tokenId: tokenId,
+                liquidity: liquidityChunk.liquidity(),
+                amount0Min: 0,
+                amount1Min: 0,
+                deadline: block.timestamp
+            })
         );
 
-        // amount0 The amount of token0 that was sent back to the Panoptic Pool
-        // amount1 The amount of token1 that was sent back to the Panoptic Pool
-        // no need to safecast to int from uint here as the max position size is int128
-        // decrement the amountsOut with burnt amounts. amountsOut = notional value of tokens moved
         unchecked {
-            movedAmounts = LeftRightSigned
-                .wrap(0)
+            movedAmounts = LeftRightSigned.wrap(0)
                 .addToRightSlot(-int128(int256(amount0)))
                 .addToLeftSlot(-int128(int256(amount1)));
         }
@@ -1218,6 +1241,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param movedInLeg How many tokens have been moved between msg.sender and Uniswap before this function call
     /// @param isLong Whether the leg in question is long (=1) or short (=0)
     /// @return collectedChunk The amount of tokens collected from Uniswap
+    // TODO: Modify this one to call Aerodrome instead of Uniswap
     function _collectAndWritePositionData(
         LiquidityChunk liquidityChunk,
         IUniswapV3Pool univ3pool,
