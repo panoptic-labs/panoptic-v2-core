@@ -214,8 +214,7 @@ contract PanopticPool is Multicall {
     /// @notice Nested mapping that tracks the option formation: address => tokenId => leg => premiaGrowth.
     /// @dev Premia growth is taking a snapshot of the chunk premium in SFPM, which is measuring the amount of fees
     /// collected for every chunk per unit of liquidity (net or short, depending on the isLong value of the specific leg index).
-    mapping(address account => mapping(TokenId tokenId => mapping(uint256 leg => LeftRightUnsigned premiaGrowth)))
-        internal s_options;
+    mapping(address => mapping(TokenId => LeftRightUnsigned[4])) internal s_options;
 
     /// @notice Per-chunk `last` value that gives the aggregate amount of premium owed to all sellers when multiplied by the total amount of liquidity `totalLiquidity`.
     /// @dev `totalGrossPremium = totalLiquidity * (grossPremium(perLiquidityX64) - lastGrossPremium(perLiquidityX64)) / 2**64`
