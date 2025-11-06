@@ -775,7 +775,7 @@ contract PanopticPool is Multicall {
         );
 
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            .computeExercisedAmounts(tokenId, positionSize);
+            .computeExercisedAmounts(tokenId, positionSize, false);
 
         {
             int128 paid0 = s_collateralToken0.settleBurn(

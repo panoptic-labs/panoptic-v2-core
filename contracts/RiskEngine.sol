@@ -265,7 +265,7 @@ contract RiskEngine {
         PositionBalance positionBalance
     ) external view returns (LeftRightSigned exerciseFees) {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            .computeExercisedAmounts(tokenId, positionBalance.positionSize());
+            .computeExercisedAmounts(tokenId, positionBalance.positionSize(), true);
         unchecked {
             // we find whether the price is within any leg; any in-range leg will have a cost. Otherwise, the force-exercise fee is 1bps
             bool hasLegsInRange;
