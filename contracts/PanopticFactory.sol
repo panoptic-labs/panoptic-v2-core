@@ -175,6 +175,10 @@ contract PanopticFactory is FactoryNFT, Multicall {
             )
         );
 
+        newPoolContract.initialize();
+        collateralTracker0.initialize();
+        collateralTracker1.initialize();
+
         s_getPanopticPool[v3Pool][riskEngine] = newPoolContract;
 
         // The Panoptic pool won't be safe to use until the observation cardinality is at least CARDINALITY_INCREASE
