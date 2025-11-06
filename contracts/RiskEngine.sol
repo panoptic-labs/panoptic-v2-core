@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 // Interfaces
-import "forge-std/Test.sol";
 import {CollateralTracker} from "./CollateralTracker.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
@@ -645,9 +644,6 @@ contract RiskEngine {
             DECIMALS
         );
 
-        console2.log("bal0", bal0);
-        console2.log("maintReq-", maintReq0);
-        console2.log("scaledSurplusToken1", scaledSurplusToken1);
         if (sqrtPriceX96 < Constants.FP96) {
             bool isSolvent0 = bal0 + PanopticMath.convert1to0(scaledSurplusToken1, sqrtPriceX96) >=
                 maintReq0;
@@ -740,7 +736,6 @@ contract RiskEngine {
             requirements1 += longPremia.leftSlot();
         }
         address _user = user;
-        console2.log("b0", ct0.balanceOf(_user), ct0.convertToAssets(ct0.balanceOf(_user)));
 
         (uint256 balance0, uint256 interest0) = ct0.assetsAndInterest(_user);
         (uint256 balance1, uint256 interest1) = ct1.assetsAndInterest(_user);

@@ -3810,11 +3810,8 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        console2.log("shares-before", ct0.convertToShares(264671));
-
         editCollateral(ct0, Bob, ct0.convertToShares(264671));
         editCollateral(ct1, Bob, 0);
-        console2.log("shares-after", ct0.convertToShares(264671));
 
         vm.expectRevert(
             abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))

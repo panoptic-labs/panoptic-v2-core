@@ -81,13 +81,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         0xFFFFFFFFFFFFFFFFFFFFFFFFFFC000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
     /*//////////////////////////////////////////////////////////////
-                           UNISWAP POOL DATA
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Boolean which tracks whether this CollateralTracker has been initialized.
-    bool internal s_initialized;
-
-    /*//////////////////////////////////////////////////////////////
                            PANOPTIC POOL DATA
     //////////////////////////////////////////////////////////////*/
 
@@ -96,6 +89,13 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
     /// @notice Amount of assets moved from the Panoptic Pool to the AMM.
     uint128 internal s_inAMM;
+
+    /*//////////////////////////////////////////////////////////////
+                           UNISWAP POOL DATA
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Boolean which tracks whether this CollateralTracker has been initialized.
+    bool internal s_initialized;
 
     /*//////////////////////////////////////////////////////////////
                    POOL-SPECIFIC IMMUTABLE PARAMETERS
