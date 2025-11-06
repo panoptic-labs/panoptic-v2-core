@@ -62,6 +62,19 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 shares
     );
 
+    /// @notice Emitted when a user attempts to settle interest but lacks sufficient shares to pay in full.
+    /// @dev The user's borrow index is not updated, meaning they will need to pay this interest again in the future.
+    /// @param owner The address of the insolvent user
+    /// @param interestOwed The total amount of interest the user owed
+    /// @param interestPaid The actual amount of interest paid (value of shares burned)
+    /// @param sharesBurned The number of shares burned in the partial payment
+    event InsolvencyPenaltyApplied(
+        address indexed owner,
+        uint256 interestOwed,
+        uint256 interestPaid,
+        uint256 sharesBurned
+    );
+
     /*//////////////////////////////////////////////////////////////
                                CONSTANTS
     //////////////////////////////////////////////////////////////*/
@@ -713,6 +726,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                             burntInterestValue = Math
                                 .mulDiv(userBalance, _totalAssets, totalSupply)
                                 .toUint128();
+
+                            emit InsolvencyPenaltyApplied(
+                                owner,
+                                userInterestOwed,
+                                burntInterestValue
+                            );
+
                             /// Insolvent case: Pay what you can
                             _burn(_owner, userBalance);
 
