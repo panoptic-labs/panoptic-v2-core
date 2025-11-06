@@ -56,6 +56,7 @@ contract ReenterBurn {
         activated = true;
         if (reenter)
             SemiFungiblePositionManagerHarness(msg.sender).burnTokenizedPosition(
+                new bytes(0),
                 TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(this), tickSpacing)),
                 0,
                 0,
@@ -116,6 +117,7 @@ contract ReenterMint {
 
         if (reenter)
             SemiFungiblePositionManagerHarness(msg.sender).mintTokenizedPosition(
+                new bytes(0),
                 TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(this), tickSpacing)),
                 0,
                 0,
@@ -282,6 +284,7 @@ contract Reenter1155Initialize {
             SemiFungiblePositionManagerHarness(msg.sender).initializeAMMPool(token0, token1, fee);
         if (reenter)
             SemiFungiblePositionManagerHarness(msg.sender).mintTokenizedPosition(
+                new bytes(0),
                 TokenId.wrap(poolId),
                 0,
                 0,

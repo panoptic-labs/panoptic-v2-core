@@ -1149,6 +1149,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.expectRevert(Errors.InvalidTickBound.selector);
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tickPosition,
             1_000_000,
             Constants.MIN_V3POOL_TICK,
@@ -1179,6 +1180,7 @@ contract Misctest is Test, PositionUtils {
             uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
+                new bytes(0),
                 tickPosition,
                 1_000_000,
                 Constants.MIN_V3POOL_TICK,
@@ -1209,6 +1211,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.expectRevert(Errors.InvalidTickBound.selector);
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tickPosition,
             1_000_000,
             Constants.MIN_V3POOL_TICK,
@@ -1240,6 +1243,7 @@ contract Misctest is Test, PositionUtils {
             uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
+                new bytes(0),
                 tickPosition,
                 1_000_000,
                 Constants.MIN_V3POOL_TICK,
@@ -1398,6 +1402,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.expectRevert(Errors.InvalidTickBound.selector);
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tickPosition,
             1_000_000,
             Constants.MIN_V3POOL_TICK,
@@ -1428,6 +1433,7 @@ contract Misctest is Test, PositionUtils {
             uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
+                new bytes(0),
                 tickPosition,
                 1_000_000,
                 Constants.MIN_V3POOL_TICK,
@@ -1458,6 +1464,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.expectRevert(Errors.InvalidTickBound.selector);
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tickPosition,
             1_000_000,
             Constants.MIN_V3POOL_TICK,
@@ -1489,6 +1496,7 @@ contract Misctest is Test, PositionUtils {
             uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
+                new bytes(0),
                 tickPosition,
                 1_000_000,
                 Constants.MIN_V3POOL_TICK,
@@ -1813,38 +1821,6 @@ contract Misctest is Test, PositionUtils {
             new TokenId[](0),
             new TokenId[](0),
             LeftRightUnsigned.wrap(0).addToLeftSlot(0)
-        );
-    }
-
-    function test_success_ITMspreadfee_0_01bp() public {
-        CollateralTracker(collateralReference).startToken(
-            true,
-            address(token0),
-            address(token1),
-            1,
-            pp,
-            re
-        );
-
-        vm.startPrank(Bob);
-        token0.mint(Bob, type(uint104).max);
-        token0.approve(collateralReference, type(uint104).max);
-        CollateralTracker(collateralReference).deposit(type(uint104).max, Bob);
-
-        vm.startPrank(Alice);
-        token0.mint(Alice, (uint256(1_000_000_000_000_000)));
-        token0.approve(collateralReference, (uint256(1_000_000_000_000_000)));
-        CollateralTracker(collateralReference).deposit((uint256(1_000_000_000_000_000)), Alice);
-
-        vm.startPrank(address(pp));
-        CollateralTracker(collateralReference).settleMint(Alice, 0, 0, 1_000_000_000);
-        assertEq(
-            1_000_000_000_000_000 -
-                1 -
-                CollateralTracker(collateralReference).convertToAssets(
-                    CollateralTracker(collateralReference).balanceOf(Alice)
-                ),
-            1_000_000_000 - 1
         );
     }
 
@@ -2924,7 +2900,7 @@ contract Misctest is Test, PositionUtils {
         {
             (, currentTick, , , , , ) = uniPool.slot0();
             LeftRightUnsigned accountLiquidityPrimary = sfpm.getAccountLiquidity(
-                address(uniPool),
+                abi.encode(address(uniPool)),
                 address(pp),
                 0,
                 10,
@@ -2937,7 +2913,7 @@ contract Misctest is Test, PositionUtils {
             console2.log("accountLiquidityPrimaryRemoved", accountLiquidityPrimary.leftSlot());
 
             (uint256 shortPremium0Primary, uint256 shortPremium1Primary) = sfpm.getAccountPremium(
-                address(uniPool),
+                abi.encode(address(uniPool)),
                 address(pp),
                 0,
                 10,
@@ -2960,7 +2936,7 @@ contract Misctest is Test, PositionUtils {
             );
 
             (uint256 longPremium0Primary, uint256 longPremium1Primary) = sfpm.getAccountPremium(
-                address(uniPool),
+                abi.encode(address(uniPool)),
                 address(pp),
                 0,
                 10,
@@ -2981,7 +2957,7 @@ contract Misctest is Test, PositionUtils {
 
         {
             LeftRightUnsigned accountLiquidityDummy = sfpm.getAccountLiquidity(
-                address(uniPool),
+                abi.encode(address(uniPool)),
                 address(pp),
                 1,
                 -20,
@@ -2995,7 +2971,7 @@ contract Misctest is Test, PositionUtils {
             console2.log("accountLiquidityDummyRemoved", accountLiquidityDummy.leftSlot());
 
             (uint256 shortPremium0Dummy, uint256 shortPremium1Dummy) = sfpm.getAccountPremium(
-                address(uniPool),
+                abi.encode(address(uniPool)),
                 address(pp),
                 1,
                 -20,
@@ -3018,7 +2994,7 @@ contract Misctest is Test, PositionUtils {
             );
 
             (uint256 longPremium0Dummy, uint256 longPremium1Dummy) = sfpm.getAccountPremium(
-                address(uniPool),
+                abi.encode(address(uniPool)),
                 address(pp),
                 1,
                 -20,
@@ -5673,7 +5649,7 @@ contract Misctest is Test, PositionUtils {
 
         // this should behave like the actual accumulator does and rollover, not revert on overflow
         (uint256 premium0, uint256 premium1) = sfpm.getAccountPremium(
-            address(uniPool),
+            abi.encode(address(uniPool)),
             address(pp),
             0,
             -20470,

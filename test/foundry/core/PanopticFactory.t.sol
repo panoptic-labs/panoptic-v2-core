@@ -290,8 +290,10 @@ contract PanopticFactoryTest is Test {
                 address(deployedPool)
             );
             // see if correct pool was linked in the panopticPool
-            IUniswapV3Pool linkedPool = PanopticPool(preComputedPool).univ3pool();
-            address linkedPoolAddress = address(PanopticPool(preComputedPool).univ3pool());
+            IUniswapV3Pool linkedPool = IUniswapV3Pool(
+                abi.decode(PanopticPool(preComputedPool).poolKey(), (address))
+            );
+            address linkedPoolAddress = address(linkedPool);
             assertEq(address(pool), linkedPoolAddress);
 
             // check the pool has the correct parameters
@@ -443,10 +445,12 @@ contract PanopticFactoryTest is Test {
             address(riskEngineB),
             "Pool B should use riskEngineB"
         );
+        address poolAAddress = abi.decode(poolA.poolKey(), (address));
+        address poolBAddress = abi.decode(poolB.poolKey(), (address));
 
         // 4. Sanity check: both pools should still point to the same underlying Uniswap pool.
-        assertEq(address(poolA.univ3pool()), address(pool), "Pool A should have correct univ3pool");
-        assertEq(address(poolB.univ3pool()), address(pool), "Pool B should have correct univ3pool");
+        assertEq(poolAAddress, address(pool), "Pool A should have correct univ3pool");
+        assertEq(poolBAddress, address(pool), "Pool B should have correct univ3pool");
     }
 
     /*//////////////////////////////////////////////////////////////

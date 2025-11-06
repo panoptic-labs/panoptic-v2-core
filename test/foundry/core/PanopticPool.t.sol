@@ -1594,7 +1594,7 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.expectRevert(Errors.PoolAlreadyInitialized.selector);
 
-        pp.startPool(pool, token0, token1, ct0, ct1, re);
+        pp.initialize();
     }
 
     /// @notice Tests that the riskEngine address is correctly set after initialization.
@@ -1926,7 +1926,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256[2] memory expectedPremia;
         {
             (uint256 premiumToken0, uint256 premiumToken1) = sfpm.getAccountPremium(
-                address(pool),
+                abi.encode(address(pool)),
                 address(pp),
                 0,
                 tickLowers[0],
@@ -1942,7 +1942,7 @@ contract PanopticPoolTest is PositionUtils {
 
         {
             (uint256 premiumToken0, uint256 premiumToken1) = sfpm.getAccountPremium(
-                address(pool),
+                abi.encode(address(pool)),
                 address(pp),
                 0,
                 tickLowers[1],
@@ -2266,6 +2266,7 @@ contract PanopticPoolTest is PositionUtils {
 
                 vm.startPrank(address(pp));
                 (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
+                    new bytes(0),
                     tokenId,
                     positionSize,
                     TickMath.MAX_TICK,
@@ -2443,6 +2444,7 @@ contract PanopticPoolTest is PositionUtils {
 
                 vm.startPrank(address(pp));
                 (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
+                    new bytes(0),
                     tokenId,
                     positionSize,
                     TickMath.MAX_TICK,
@@ -2811,6 +2813,7 @@ contract PanopticPoolTest is PositionUtils {
 
                 vm.startPrank(address(pp));
                 (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
+                    new bytes(0),
                     tokenId,
                     positionSize,
                     TickMath.MAX_TICK,
@@ -4024,6 +4027,7 @@ contract PanopticPoolTest is PositionUtils {
 
                 vm.startPrank(address(pp));
                 (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
+                    new bytes(0),
                     tokenId,
                     positionSize,
                     TickMath.MAX_TICK,
@@ -4452,6 +4456,7 @@ contract PanopticPoolTest is PositionUtils {
 
                 vm.startPrank(address(pp));
                 (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
+                    new bytes(0),
                     tokenId,
                     positionSizes[1],
                     TickMath.MAX_TICK,
