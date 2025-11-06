@@ -176,7 +176,7 @@ library Math {
     function getMaxLiquidityPerTick(int24 tickSpacing) internal pure returns (uint128) {
         unchecked {
             // forge-lint: disable-next-line(divide-before-multiply)
-            return type(uint128).max / uint24((Constants.MAX_V3POOL_TICK / tickSpacing) * 2 + 1);
+            return type(uint128).max / uint24((Constants.MAX_POOL_TICK / tickSpacing) * 2 + 1);
         }
     }
 
@@ -187,7 +187,7 @@ library Math {
     function getSqrtRatioAtTick(int24 tick) internal pure returns (uint160) {
         unchecked {
             uint256 absTick = tick < 0 ? uint256(-int256(tick)) : uint256(int256(tick));
-            if (absTick > uint256(int256(Constants.MAX_V3POOL_TICK))) revert Errors.InvalidTick();
+            if (absTick > uint256(int256(Constants.MAX_POOL_TICK))) revert Errors.InvalidTick();
 
             // sqrt(1.0001^(-absTick)) = ∏ sqrt(1.0001^(-bit_i))
             // ex: absTick = 100 = binary 1100100, so sqrt(1.0001^-100) = sqrt(1.0001^-64) * sqrt(1.0001^-32) * sqrt(1.0001^-4)

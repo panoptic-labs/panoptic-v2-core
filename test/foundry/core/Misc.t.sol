@@ -576,8 +576,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdList,
                 2_000_000,
                 0,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK,
                 true
             );
 
@@ -635,8 +635,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdList,
                 1_000_000,
                 type(uint64).max,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK,
                 true
             );
         }
@@ -685,8 +685,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdList,
                 2_000_000,
                 0,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK,
                 true
             );
 
@@ -713,8 +713,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdList,
                 1_000_000,
                 type(uint64).max,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK,
                 true
             );
         }
@@ -794,8 +794,8 @@ contract Misctest is Test, PositionUtils {
                 $setupIdList,
                 2_000_000,
                 0,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK,
                 true
             );
 
@@ -897,8 +897,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdList,
                 1_000_000,
                 type(uint64).max,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK,
                 true
             );
         }
@@ -947,8 +947,8 @@ contract Misctest is Test, PositionUtils {
                 $setupIdList,
                 2_000_000,
                 0,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK,
                 true
             );
 
@@ -990,8 +990,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdList,
                 1_000_000,
                 type(uint64).max,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK,
                 true
             );
         }
@@ -1152,8 +1152,8 @@ contract Misctest is Test, PositionUtils {
             new bytes(0),
             tickPosition,
             1_000_000,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK
         );
 
         tickPosition = TokenId
@@ -1183,8 +1183,8 @@ contract Misctest is Test, PositionUtils {
                 new bytes(0),
                 tickPosition,
                 1_000_000,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK
             );
 
         vm.startPrank(Swapper);
@@ -1214,8 +1214,8 @@ contract Misctest is Test, PositionUtils {
             new bytes(0),
             tickPosition,
             1_000_000,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK
         );
 
         tickPosition = TokenId
@@ -1246,8 +1246,8 @@ contract Misctest is Test, PositionUtils {
                 new bytes(0),
                 tickPosition,
                 1_000_000,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK
             );
     }
 
@@ -1405,8 +1405,8 @@ contract Misctest is Test, PositionUtils {
             new bytes(0),
             tickPosition,
             1_000_000,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK
         );
 
         tickPosition = TokenId
@@ -1436,8 +1436,8 @@ contract Misctest is Test, PositionUtils {
                 new bytes(0),
                 tickPosition,
                 1_000_000,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK
             );
 
         vm.startPrank(Swapper);
@@ -1467,8 +1467,8 @@ contract Misctest is Test, PositionUtils {
             new bytes(0),
             tickPosition,
             1_000_000,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK
         );
 
         tickPosition = TokenId
@@ -1499,8 +1499,8 @@ contract Misctest is Test, PositionUtils {
                 new bytes(0),
                 tickPosition,
                 1_000_000,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK
             );
     }
 
@@ -1529,8 +1529,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1538,8 +1538,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -1568,8 +1568,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1577,8 +1577,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -1594,23 +1594,15 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.expectRevert(Errors.ChunkHasZeroLiquidity.selector);
-        mintOptions(
-            pp,
-            $posIdList,
-            537,
-            0,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK,
-            true
-        );
+        mintOptions(pp, $posIdList, 537, 0, Constants.MIN_POOL_TICK, Constants.MAX_POOL_TICK, true);
 
         mintOptions(
             pp,
             $posIdList,
             2_000_000,
             0,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
@@ -1621,15 +1613,7 @@ contract Misctest is Test, PositionUtils {
             .addLeg(0, 1, 0, 1, 0, 0, -224040, 3540);
 
         vm.expectRevert(Errors.ChunkHasZeroLiquidity.selector);
-        mintOptions(
-            pp,
-            $posIdList,
-            537,
-            0,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK,
-            true
-        );
+        mintOptions(pp, $posIdList, 537, 0, Constants.MIN_POOL_TICK, Constants.MAX_POOL_TICK, true);
     }
 
     function test_success_MintBurnCallSpread() public {
@@ -1654,8 +1638,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             2_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1673,8 +1657,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1682,8 +1666,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -1710,8 +1694,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             2_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1729,8 +1713,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1738,8 +1722,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -1767,8 +1751,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             2_000_000,
             0,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
@@ -1783,8 +1767,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
@@ -1851,8 +1835,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             4_000_000,
             0,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
@@ -1863,8 +1847,8 @@ contract Misctest is Test, PositionUtils {
             $posIdLists[0],
             2_000_000,
             0,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
@@ -1874,8 +1858,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             2_000_000,
             0,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
@@ -1915,8 +1899,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             2_000_000,
             type(uint64).max,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
@@ -1984,8 +1968,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
@@ -2044,8 +2028,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList[0],
             $setupIdList,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
@@ -2105,8 +2089,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
@@ -2188,8 +2172,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             2_000_000,
             0,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
@@ -2210,8 +2194,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
@@ -2284,8 +2268,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2297,8 +2281,8 @@ contract Misctest is Test, PositionUtils {
             $tempIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -2326,8 +2310,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2348,8 +2332,8 @@ contract Misctest is Test, PositionUtils {
             longPositionList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -2427,8 +2411,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2438,8 +2422,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2448,8 +2432,8 @@ contract Misctest is Test, PositionUtils {
             $tempIdList,
             900_000_000,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2473,8 +2457,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdList,
                 250_000_000,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -2482,8 +2466,8 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList[0],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
         }
@@ -2493,8 +2477,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2507,8 +2491,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2548,8 +2532,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2570,8 +2554,8 @@ contract Misctest is Test, PositionUtils {
                 $tempIdList,
                 250_000,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -2581,8 +2565,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdList,
                 250_000,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -2598,8 +2582,8 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList[1],
                 $tempIdList,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -2608,8 +2592,8 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList[1],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
         }
@@ -2620,8 +2604,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -2651,8 +2635,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2671,8 +2655,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdList,
                 499_999,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
             vm.startPrank(Swapper);
@@ -2685,8 +2669,8 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList[1],
                 $tempIdList,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
         }
@@ -2696,8 +2680,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -2730,8 +2714,8 @@ contract Misctest is Test, PositionUtils {
             $posIdLists[0],
             500_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2742,8 +2726,8 @@ contract Misctest is Test, PositionUtils {
             $posIdLists[0],
             250_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2754,8 +2738,8 @@ contract Misctest is Test, PositionUtils {
             $posIdLists[0],
             250_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2774,8 +2758,8 @@ contract Misctest is Test, PositionUtils {
             $posIdLists[1],
             1_000_000_000 - 9_884_444 * 3,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2794,8 +2778,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdLists[2],
                 9_884_444,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
         }
@@ -2816,8 +2800,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdLists[2],
                 9_884_444,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
         }
@@ -2838,8 +2822,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdLists[2],
                 9_884_444,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
         }
@@ -2859,8 +2843,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdLists[2],
                 19_768_888,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
         }
@@ -3054,8 +3038,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdLists[0][0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3085,8 +3069,8 @@ contract Misctest is Test, PositionUtils {
             $posIdLists[1],
             1_000_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3151,8 +3135,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdLists[0][0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3279,8 +3263,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdLists[0][0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3332,8 +3316,8 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdLists[2],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -3385,8 +3369,8 @@ contract Misctest is Test, PositionUtils {
             $posIdLists[0],
             100_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3410,8 +3394,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdLists[1],
                 1_000_000,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
         }
@@ -3540,8 +3524,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             500_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3552,8 +3536,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             250_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3564,8 +3548,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             250_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3584,8 +3568,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             44_468,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3597,8 +3581,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             44_468,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3624,8 +3608,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList[0],
             $tempIdList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3648,8 +3632,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3661,8 +3645,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList[0],
             $tempIdList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3677,8 +3661,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList[1],
             $tempIdList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3698,8 +3682,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3713,8 +3697,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList[1],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3753,8 +3737,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3787,8 +3771,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3821,13 +3805,16 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
+        console2.log("shares-before", ct0.convertToShares(264671));
+
         editCollateral(ct0, Bob, ct0.convertToShares(264671));
         editCollateral(ct1, Bob, 0);
+        console2.log("shares-after", ct0.convertToShares(264671));
 
         vm.expectRevert(
             abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
@@ -3858,8 +3845,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3925,8 +3912,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -3983,8 +3970,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -4042,8 +4029,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph.checkCollateral(
@@ -4125,8 +4112,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4212,8 +4199,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph.checkCollateral(
@@ -4306,8 +4293,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4360,8 +4347,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4531,8 +4518,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4561,8 +4548,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4631,8 +4618,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4649,8 +4636,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4709,8 +4696,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4730,8 +4717,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4745,8 +4732,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4798,16 +4785,16 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             500_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         burnOptions(
             pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         (, , int24 slowOracleTickStale, , uint256 oraclePackStale) = pp.getOracleTicks();
@@ -4823,8 +4810,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             500_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4907,8 +4894,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             500_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4924,8 +4911,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -5006,8 +4993,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             500_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -5023,8 +5010,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -5592,15 +5579,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
         // mint 1 liquidity unit of wideish centered position
-        mintOptions(
-            pp,
-            posIdList,
-            3,
-            0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
-            true
-        );
+        mintOptions(pp, posIdList, 3, 0, Constants.MAX_POOL_TICK, Constants.MIN_POOL_TICK, true);
 
         vm.startPrank(Swapper);
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
@@ -5620,8 +5599,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             tokenId,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -5636,8 +5615,8 @@ contract Misctest is Test, PositionUtils {
             posIdList,
             1_000_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -5673,8 +5652,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             tokenId,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -5737,8 +5716,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             2_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -5761,8 +5740,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -5779,8 +5758,8 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList[0],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -5847,8 +5826,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             2_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -5871,8 +5850,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -5889,8 +5868,8 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList[0],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -5939,8 +5918,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             2_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -5963,8 +5942,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -5981,8 +5960,8 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList[0],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -6042,8 +6021,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_003_003,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -6110,8 +6089,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -6279,15 +6258,7 @@ contract Misctest is Test, PositionUtils {
                 uint256(4) // numberOfTicks
             )
         );
-        mintOptions(
-            pp,
-            posIdList,
-            3000,
-            0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
-            true
-        );
+        mintOptions(pp, posIdList, 3000, 0, Constants.MAX_POOL_TICK, Constants.MIN_POOL_TICK, true);
     }
 
     function test_Fail_DivergentSolvencyCheck_burn() public {
@@ -6324,15 +6295,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        mintOptions(
-            pp,
-            posIdList,
-            3000,
-            0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
-            true
-        );
+        mintOptions(pp, posIdList, 3000, 0, Constants.MAX_POOL_TICK, Constants.MIN_POOL_TICK, true);
 
         TokenId[] memory posIdList2 = new TokenId[](2);
 
@@ -6346,15 +6309,7 @@ contract Misctest is Test, PositionUtils {
         posIdList2[1] = tokenId2;
 
         // mint second option
-        mintOptions(
-            pp,
-            posIdList2,
-            10,
-            0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
-            true
-        );
+        mintOptions(pp, posIdList2, 10, 0, Constants.MAX_POOL_TICK, Constants.MIN_POOL_TICK, true);
 
         (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
 
@@ -6397,8 +6352,8 @@ contract Misctest is Test, PositionUtils {
             pp,
             posIdList2[1],
             posIdList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -6437,15 +6392,7 @@ contract Misctest is Test, PositionUtils {
             ct1.deposit(1000, Bob);
         }
 
-        mintOptions(
-            pp,
-            posIdList,
-            3000,
-            0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
-            true
-        );
+        mintOptions(pp, posIdList, 3000, 0, Constants.MAX_POOL_TICK, Constants.MIN_POOL_TICK, true);
 
         (, currentTick, , , , , ) = uniPool.slot0();
 
@@ -6584,15 +6531,7 @@ contract Misctest is Test, PositionUtils {
             ct1.deposit(900, Bob);
         }
 
-        mintOptions(
-            pp,
-            posIdList,
-            3000,
-            0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
-            true
-        );
+        mintOptions(pp, posIdList, 3000, 0, Constants.MAX_POOL_TICK, Constants.MIN_POOL_TICK, true);
 
         (, currentTick, , , , , ) = uniPool.slot0();
 
@@ -6732,8 +6671,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -6823,8 +6762,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -6931,8 +6870,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -7034,8 +6973,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -7139,8 +7078,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -7236,8 +7175,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -7319,8 +7258,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -7422,8 +7361,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -7520,8 +7459,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -7617,8 +7556,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -7694,8 +7633,8 @@ contract Misctest is Test, PositionUtils {
                     posIdList,
                     1_000_000,
                     0,
-                    Constants.MAX_V3POOL_TICK,
-                    Constants.MIN_V3POOL_TICK,
+                    Constants.MAX_POOL_TICK,
+                    Constants.MIN_POOL_TICK,
                     true
                 );
 
@@ -7745,8 +7684,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 10_000,
                 2 ** 30,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -7828,8 +7767,8 @@ contract Misctest is Test, PositionUtils {
                     posIdList,
                     1_000_000,
                     0,
-                    Constants.MAX_V3POOL_TICK,
-                    Constants.MIN_V3POOL_TICK,
+                    Constants.MAX_POOL_TICK,
+                    Constants.MIN_POOL_TICK,
                     true
                 );
 
@@ -7879,8 +7818,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 10_000,
                 2 ** 30,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -7963,8 +7902,8 @@ contract Misctest is Test, PositionUtils {
                     posIdList,
                     1_000_000,
                     0,
-                    Constants.MAX_V3POOL_TICK,
-                    Constants.MIN_V3POOL_TICK,
+                    Constants.MAX_POOL_TICK,
+                    Constants.MIN_POOL_TICK,
                     true
                 );
 
@@ -8014,8 +7953,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 10_000,
                 2 ** 30,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 

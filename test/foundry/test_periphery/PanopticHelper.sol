@@ -323,7 +323,7 @@ contract PanopticHelper {
             );
             // if price is not within a 100000 tick range of current price, return MIN_TICK
             if (x1 > currentTick + tol || x1 < currentTick - tol) {
-                return Constants.MIN_V3POOL_TICK;
+                return Constants.MIN_POOL_TICK;
             }
             // stop if price is within 0.01% (1 tick) of LP
             if (
@@ -371,7 +371,7 @@ contract PanopticHelper {
             );
             // if price is not within a 100000 tick range of current price, stop + return MAX_TICK
             if (x1 > currentTick + tol || x1 < currentTick - tol) {
-                return Constants.MAX_V3POOL_TICK;
+                return Constants.MAX_POOL_TICK;
             }
             // stop if price is within 0.01% (1 tick) of LP
             if (

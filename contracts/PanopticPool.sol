@@ -93,10 +93,10 @@ contract PanopticPool is Clone, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Lower price bound used when no slippage check is required.
-    int24 internal constant MIN_SWAP_TICK = Constants.MIN_V3POOL_TICK - 1;
+    int24 internal constant MIN_SWAP_TICK = Constants.MIN_POOL_TICK - 1;
 
     /// @notice Upper price bound used when no slippage check is required.
-    int24 internal constant MAX_SWAP_TICK = Constants.MAX_V3POOL_TICK + 1;
+    int24 internal constant MAX_SWAP_TICK = Constants.MAX_POOL_TICK + 1;
 
     /// @notice Flag that signals to compute premia for both the short and long legs of a position.
     bool internal constant COMPUTE_PREMIA_AS_COLLATERAL = true;

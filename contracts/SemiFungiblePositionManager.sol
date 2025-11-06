@@ -793,9 +793,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 msg.sender,
                 zeroForOne,
                 swapAmount,
-                zeroForOne
-                    ? Constants.MIN_V3POOL_SQRT_RATIO + 1
-                    : Constants.MAX_V3POOL_SQRT_RATIO - 1,
+                zeroForOne ? Constants.MIN_POOL_SQRT_RATIO + 1 : Constants.MAX_POOL_SQRT_RATIO - 1,
                 data
             );
 

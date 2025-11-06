@@ -1105,8 +1105,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             assets / 2,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1173,8 +1173,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             assets / 4,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         actualAccumulator = collateralToken0._interestRateAccumulator();
@@ -1198,8 +1198,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         console2.log("DONE", Bob);
@@ -1251,8 +1251,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             assets,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1267,8 +1267,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList1,
             assets / 2,
             2 ** 64 - 1,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1329,8 +1329,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList1,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         console2.log(
@@ -1347,8 +1347,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1393,8 +1393,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList1,
             assets / 2,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1423,8 +1423,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             assets / 8,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1439,8 +1439,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             assets / 4,
             2 ** 64 - 1,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1500,8 +1500,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1521,8 +1521,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList1,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         console2.log(
@@ -1570,8 +1570,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             1,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         vm.stopPrank();
@@ -1687,8 +1687,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList,
                 borrowAmount,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
             console2.log("b");
@@ -1772,8 +1772,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList,
                 aliceSize,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
             vm.stopPrank();
@@ -1795,8 +1795,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList,
                 bobSize,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
             vm.stopPrank();
@@ -1819,8 +1819,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList,
                 charlieSize,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
             vm.stopPrank();
@@ -2114,8 +2114,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             assets,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         vm.stopPrank();
@@ -2133,8 +2133,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             assets,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2344,8 +2344,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             assets / 2,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         vm.stopPrank();
@@ -2468,8 +2468,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             size, // Borrow same amount as deposit
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2551,8 +2551,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             100 ether, // Borrow same amount as deposit
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2718,8 +2718,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             100 ether, // Borrow same amount as deposit
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2895,8 +2895,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             size, // Borrow same amount as deposit
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3044,8 +3044,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             100 ether, // Borrow same amount as deposit
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3166,8 +3166,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             borrowAmount,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         vm.stopPrank();
@@ -3238,8 +3238,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList[0],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
             (, int128 netBorrowsAfter) = collateralToken0.interestState(Bob);
@@ -3251,8 +3251,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList,
                 borrowAmount + borrowAmount / 4,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -3331,8 +3331,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             borrowAmount,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         vm.stopPrank();
@@ -3348,8 +3348,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             borrowAmount,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         vm.stopPrank();
@@ -3453,8 +3453,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             maxBorrow,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         vm.stopPrank();
@@ -3808,8 +3808,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(bound(positionSizeSeed, 501, 1000)),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -3846,8 +3846,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             750,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3859,8 +3859,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             500,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3873,8 +3873,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             tokenId,
             positionIdList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -3911,8 +3911,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             750,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3927,8 +3927,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             500,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -3965,8 +3965,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             750,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3979,8 +3979,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             tokenId,
             positionIdList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -4199,8 +4199,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4270,8 +4270,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -4319,8 +4319,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         // 1. Arrange: Create a spoofed tokenId that Bob doesn't own
@@ -4359,8 +4359,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             spoofList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -4402,8 +4402,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         // 1. Arrange: Create a spoofed tokenId that Bob doesn't own
@@ -4469,8 +4469,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e16),
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         // 1. Arrange: Create a spoofed tokenId that Bob doesn't own
@@ -4498,8 +4498,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             spoofList,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -4543,8 +4543,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e16),
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4557,8 +4557,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e16),
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4588,8 +4588,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             spoofList,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4613,8 +4613,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e16),
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4629,8 +4629,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             tokenId2,
             spoofList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -4672,8 +4672,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         // 1. Arrange: Create a tokenId with no legs and set the hash.
@@ -4730,8 +4730,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         // 1. Arrange: Create a list with the same tokenId twice.
@@ -4746,8 +4746,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             duplicateList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -4789,8 +4789,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         TokenId tokenId2 = TokenId.wrap(0).addPoolId(poolId).addLeg(
@@ -4811,8 +4811,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         TokenId tokenId3 = TokenId.wrap(0).addPoolId(poolId).addLeg(
@@ -4834,8 +4834,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4849,8 +4849,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             tokenId2,
             spoofedList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -5053,8 +5053,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             positionSize0,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -5148,8 +5148,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList,
                 positionSize0,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
         }
@@ -5657,8 +5657,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.settleMint(
             address(0),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK
         );
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
@@ -5666,8 +5666,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             address(0),
             0,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK
         );
     }
 
@@ -11406,8 +11406,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             int24(
                                 Math.bound(
                                     2 * (_atTick - strike),
-                                    Constants.MIN_V3POOL_TICK,
-                                    Constants.MAX_V3POOL_TICK
+                                    Constants.MIN_POOL_TICK,
+                                    Constants.MAX_POOL_TICK
                                 )
                             )
                         ) // puts ->  price/strike
@@ -11415,8 +11415,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             int24(
                                 Math.bound(
                                     2 * (strike - _atTick),
-                                    Constants.MIN_V3POOL_TICK,
-                                    Constants.MAX_V3POOL_TICK
+                                    Constants.MIN_POOL_TICK,
+                                    Constants.MAX_POOL_TICK
                                 )
                             )
                         ); // calls -> strike/price
@@ -11706,8 +11706,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             int24(
                                 Math.bound(
                                     2 * (_atTick - strike),
-                                    Constants.MIN_V3POOL_TICK,
-                                    Constants.MAX_V3POOL_TICK
+                                    Constants.MIN_POOL_TICK,
+                                    Constants.MAX_POOL_TICK
                                 )
                             )
                         ) // puts ->  price/strike
@@ -11715,8 +11715,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             int24(
                                 Math.bound(
                                     2 * (strike - _atTick),
-                                    Constants.MIN_V3POOL_TICK,
-                                    Constants.MAX_V3POOL_TICK
+                                    Constants.MIN_POOL_TICK,
+                                    Constants.MAX_POOL_TICK
                                 )
                             )
                         ); // calls -> strike/price
