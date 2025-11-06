@@ -298,7 +298,8 @@ contract PanopticHelper {
         TokenId[] calldata positionIdList
     ) public view returns (int24 liquidationTick) {
         // initialize right and left bounds from current tick
-        (, int24 currentTick, , , , , ) = PanopticPool(pool).univ3pool().slot0();
+        int24 currentTick = SFPM.getCurrentTick(PanopticPool(pool).poolKey());
+
         int24 x0 = currentTick - 10000;
         int24 x1 = currentTick;
         int24 tol = 100000;
@@ -346,7 +347,7 @@ contract PanopticHelper {
         TokenId[] calldata positionIdList
     ) public view returns (int24 liquidationTick) {
         // initialize right and left bounds from current tick
-        (, int24 currentTick, , , , , ) = PanopticPool(pool).univ3pool().slot0();
+        int24 currentTick = SFPM.getCurrentTick(PanopticPool(pool).poolKey());
         int24 x0 = currentTick;
         int24 x1 = currentTick + 10000;
         int24 tol = 100000;

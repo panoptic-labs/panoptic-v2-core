@@ -12,7 +12,7 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {Multicall} from "@base/Multicall.sol";
 import {FactoryNFT} from "@base/FactoryNFT.sol";
 // External libraries
-import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {ClonesWithImmutableArgs} from "clones-with-immutable-args/ClonesWithImmutableArgs.sol";
 // Libraries
 import {Errors} from "@libraries/Errors.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
@@ -44,7 +44,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
                                  TYPES
     //////////////////////////////////////////////////////////////*/
 
-    using Clones for address;
+    using ClonesWithImmutableArgs for address;
 
     /*//////////////////////////////////////////////////////////////
                          CONSTANTS & IMMUTABLE
@@ -133,7 +133,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
             revert Errors.PoolAlreadyInitialized();
 
         // initialize pool in SFPM if it has not already been initialized
-        SFPM.initializeAMMPool(token0, token1, fee);
+        uint64 poolId = SFPM.initializeAMMPool(token0, token1, fee);
 
         // Users can specify a salt, the aim is to incentivize the mining of addresses with leading zeros
         // salt format: (first 20 characters of deployer address) + (first 20 characters of UniswapV3Pool) + (uint96 user supplied salt)
@@ -146,28 +146,33 @@ contract PanopticFactory is FactoryNFT, Multicall {
             )
         );
 
-        // This creates a new Panoptic Pool (proxy to the PanopticPool implementation)
-        newPoolContract = PanopticPool(POOL_REFERENCE.cloneDeterministic(salt32));
+        // using CREATE3 for the PanopticPool given we don't know some of the immutable args (`CollateralTracker` addresses)
+        // this allows us to link the PanopticPool into the CollateralTrackers as an immutable arg without advance knowledge of their addresses
+        newPoolContract = PanopticPool(ClonesWithImmutableArgs.addressOfClone3(salt32));
 
         // Deploy collateral token proxies
         CollateralTracker collateralTracker0 = CollateralTracker(
-            COLLATERAL_REFERENCE.cloneDeterministic(bytes32(uint256(salt32) + 1))
+            COLLATERAL_REFERENCE.clone2(
+                abi.encodePacked(newPoolContract, true, token0, token0, token1, riskEngine, fee)
+            )
         );
         CollateralTracker collateralTracker1 = CollateralTracker(
-            COLLATERAL_REFERENCE.cloneDeterministic(bytes32(uint256(salt32) + 2))
+            COLLATERAL_REFERENCE.clone2(
+                abi.encodePacked(newPoolContract, false, token1, token0, token1, riskEngine, fee)
+            )
         );
-
-        // Run state initialization sequence for pool and collateral tokens
-        collateralTracker0.startToken(true, token0, token1, fee, newPoolContract, riskEngine);
-        collateralTracker1.startToken(false, token0, token1, fee, newPoolContract, riskEngine);
-
-        newPoolContract.startPool(
-            v3Pool,
-            token0,
-            token1,
-            collateralTracker0,
-            collateralTracker1,
-            riskEngine
+        // This creates a new Panoptic Pool (proxy to the PanopticPool implementation)
+        newPoolContract = PanopticPool(
+            POOL_REFERENCE.clone3(
+                abi.encodePacked(
+                    collateralTracker0,
+                    collateralTracker1,
+                    riskEngine,
+                    uint256(poolId),
+                    abi.encode(v3Pool)
+                ),
+                salt32
+            )
         );
 
         s_getPanopticPool[v3Pool][riskEngine] = newPoolContract;
@@ -175,7 +180,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         // The Panoptic pool won't be safe to use until the observation cardinality is at least CARDINALITY_INCREASE
         // If this is not the case, we increase the next cardinality during deployment so the cardinality can catch up over time
         // When that happens, there will be a period of time where the PanopticPool is deployed, but not (safely) usable
-        v3Pool.increaseObservationCardinalityNext(CARDINALITY_INCREASE);
+        //v3Pool.increaseObservationCardinalityNext(CARDINALITY_INCREASE);
 
         // Issue reward NFT to donor
         uint256 tokenId = uint256(uint160(address(newPoolContract)));
@@ -223,13 +228,14 @@ contract PanopticFactory is FactoryNFT, Multicall {
             bytes32 newSalt = bytes32(
                 abi.encodePacked(
                     uint80(uint160(deployerAddress) >> 80),
-                    uint80(uint160(v3Pool) >> 80),
+                    uint40(uint160(v3Pool) >> 120),
+                    uint40(uint160(v3Pool) >> 120),
                     salt
                 )
             );
 
             uint256 rarity = PanopticMath.numberOfLeadingHexZeros(
-                POOL_REFERENCE.predictDeterministicAddress(newSalt)
+                ClonesWithImmutableArgs.addressOfClone3(newSalt)
             );
 
             if (rarity > highestRarity) {
