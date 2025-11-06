@@ -672,7 +672,7 @@ contract PanopticPool is Multicall {
     {
         // compute how much of tokenId is long and short positions
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            .computeExercisedAmounts(tokenId, positionSize);
+            .computeExercisedAmounts(tokenId, positionSize, true);
         {
             (LeftRightUnsigned utilizationAndCommission0, int128 paid0) = s_collateralToken0
                 .settleMint(

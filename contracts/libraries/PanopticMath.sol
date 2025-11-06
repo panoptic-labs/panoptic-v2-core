@@ -783,18 +783,21 @@ library PanopticMath {
     /// @notice Compute the amount of notional value underlying an option position.
     /// @param tokenId The option position id
     /// @param positionSize The number of contracts of the option
+    /// @param opening Whether you need the token0s and token1s moved while opening the position, or while closing
     /// @return longAmounts Left-right packed word where rightSlot = token0 and leftSlot = token1 held against borrowed Uniswap liquidity for long legs
     /// @return shortAmounts Left-right packed word where where rightSlot = token0 and leftSlot = token1 borrowed to create short legs
     function computeExercisedAmounts(
         TokenId tokenId,
-        uint128 positionSize
+        uint128 positionSize,
+        bool opening
     ) internal pure returns (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) {
         uint256 numLegs = tokenId.countLegs();
         for (uint256 leg = 0; leg < numLegs; ) {
             (LeftRightSigned longs, LeftRightSigned shorts) = _calculateIOAmounts(
                 tokenId,
                 positionSize,
-                leg
+                leg,
+                opening
             );
 
             longAmounts = longAmounts.add(longs);
@@ -966,11 +969,13 @@ library PanopticMath {
     /// @param tokenId The option position identifier
     /// @param positionSize The number of option contracts held in this position (each contract can control multiple tokens)
     /// @param legIndex The leg index of the option contract, can be {0,1,2,3}
+    /// @param opening Whether this position is being opened or closed
     /// @return A LeftRight encoded variable containing the amount0 and the amount1 value controlled by this option position's leg
     function getAmountsMoved(
         TokenId tokenId,
         uint128 positionSize,
-        uint256 legIndex
+        uint256 legIndex,
+        bool opening
     ) internal pure returns (LeftRightUnsigned) {
         uint128 amount0;
         uint128 amount1;
@@ -985,7 +990,7 @@ library PanopticMath {
 
         // Shorts round UP to ensure user pays enough (conservative for protocol)
         // Longs round DOWN to ensure user receives correct amount (conservative for protocol)
-        if (tokenId.isLong(legIndex) == 0) {
+        if ((tokenId.isLong(legIndex) == 0 && opening) || (tokenId.isLong(legIndex) != 0 && !opening)) {
             amount0 = uint128(Math.getAmount0ForLiquidityUp(liquidityChunk));
             amount1 = uint128(Math.getAmount1ForLiquidityUp(liquidityChunk));
         } else {
@@ -999,14 +1004,16 @@ library PanopticMath {
     /// @param tokenId The option position identifier
     /// @param positionSize The number of positions minted
     /// @param legIndex The leg index minted in this position, can be {0,1,2,3}
+    /// @param opening Whether this position is being opened or closed
     /// @return longs A LeftRight-packed word containing the total amount of long positions
     /// @return shorts A LeftRight-packed word containing the amount of short positions
     function _calculateIOAmounts(
         TokenId tokenId,
         uint128 positionSize,
-        uint256 legIndex
+        uint256 legIndex,
+        bool opening
     ) internal pure returns (LeftRightSigned longs, LeftRightSigned shorts) {
-        LeftRightUnsigned amountsMoved = getAmountsMoved(tokenId, positionSize, legIndex);
+        LeftRightUnsigned amountsMoved = getAmountsMoved(tokenId, positionSize, legIndex, opening);
 
         bool isShort = tokenId.isLong(legIndex) == 0;
 
