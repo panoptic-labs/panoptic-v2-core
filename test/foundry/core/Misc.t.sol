@@ -6114,7 +6114,7 @@ contract Misctest is Test, PositionUtils {
             (, , uint256 _utilization) = tokenType == 0 ? ct0.getPoolData() : ct1.getPoolData();
 
             util = int256(_utilization);
-            amountsMoved = PanopticMath.getAmountsMoved(tokenId, 3000, 0);
+            amountsMoved = PanopticMath.getAmountsMoved(tokenId, 3000, 0, false);
             (amountBorrowed, amountITM) = tokenType == 0
                 ? (amountsMoved.rightSlot(), amountsMoved.leftSlot())
                 : (amountsMoved.leftSlot(), amountsMoved.rightSlot());

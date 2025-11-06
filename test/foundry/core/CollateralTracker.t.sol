@@ -1745,7 +1745,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 true
             );
             vm.stopPrank();
-            LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, aliceSize, 0);
+            LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, aliceSize, 0, true);
 
             aliceBorrowAmount = _amountsMoved.rightSlot();
         }
@@ -1768,7 +1768,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 true
             );
             vm.stopPrank();
-            LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, bobSize, 0);
+            LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, bobSize, 0, true);
 
             bobBorrowAmount = _amountsMoved.rightSlot();
         }
@@ -1792,7 +1792,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 true
             );
             vm.stopPrank();
-            LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, charlieSize, 0);
+            LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, charlieSize, 0, true);
 
             charlieBorrowAmount = _amountsMoved.rightSlot();
         }
@@ -2441,7 +2441,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             true
         );
 
-        LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, size, 0);
+        LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, size, 0, true);
 
         uint128 borrowAmount = _amountsMoved.rightSlot();
 
@@ -2882,7 +2882,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             collateralToken1
         );
 
-        LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, size, 0);
+        LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, size, 0, false);
 
         uint128 borrowAmount = _amountsMoved.rightSlot();
 
@@ -5924,7 +5924,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
-                positionSize0 / 2
+                positionSize0 / 2,
+                true
             );
 
             collateralToken1.withdraw(
@@ -6125,7 +6126,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
-                positionSize0 / 2
+                positionSize0 / 2,
+                true
             );
 
             collateralToken1.withdraw(
@@ -6239,7 +6241,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
-                positionSize0 / 2
+                positionSize0 / 2,
+                true
             );
 
             collateralToken0.withdraw(
@@ -6353,7 +6356,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
-                positionSize0 / 2
+                positionSize0 / 2,
+                true
             );
 
             collateralToken0.withdraw(
@@ -9628,7 +9632,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             atTick = (atTick / tickSpacing) * tickSpacing;
 
             (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-                .computeExercisedAmounts(tokenId, positionSize0);
+                .computeExercisedAmounts(tokenId, positionSize0, false);
 
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
@@ -9833,11 +9837,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             (, LeftRightSigned shortAmountsAlice) = PanopticMath.computeExercisedAmounts(
                 tokenIdc,
-                positionSize0 * 10
+                positionSize0 * 10,
+                false
             );
 
             (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-                .computeExercisedAmounts(tokenId, positionSize0);
+                .computeExercisedAmounts(tokenId, positionSize0, false);
 
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
@@ -10058,7 +10063,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
-                positionSize0 / 4
+                positionSize0 / 4,
+                false
             );
 
             uint256 currNumRangesFromStrikeDown = uint256(
@@ -10198,7 +10204,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
-                positionSize0 / 4
+                positionSize0 / 4,
+                false
             );
 
             uint256 currNumRangesFromStrikeDown = uint256(
@@ -10338,7 +10345,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
-                positionSize0 / 4
+                positionSize0 / 4,
+                false
             );
 
             uint256 currNumRangesFromStrikeDown = uint256(
@@ -10478,7 +10486,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
-                positionSize0 / 4
+                positionSize0 / 4,
+                false
             );
 
             uint256 currNumRangesFromStrikeDown = uint256(
@@ -11307,7 +11316,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(
                     _tokenId,
                     positionSize,
-                    i
+                    i,
+                    false
                 );
 
                 notionalMoved = _tokenType == 0
@@ -11458,7 +11468,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             partnerStrike = _tokenId.strike(i);
 
             _tempTokensRequired = 1;
-            amountsMoved = PanopticMath.getAmountsMoved(_tokenId, positionSize, i);
+            amountsMoved = PanopticMath.getAmountsMoved(_tokenId, positionSize, i, false);
             {
                 // This is a CALENDAR SPREAD adjustment, where the collateral requirement is the max loss of the position
                 // real formula is contractSize * (1/(sqrt(r1)+1) - 1/(sqrt(r2)+1))
@@ -11491,7 +11501,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                         amountsMovedPartner = PanopticMath.getAmountsMoved(
                             _tokenId,
                             positionSize,
-                            partnerIndex
+                            partnerIndex,
+                            false
                         );
 
                         // amount moved is right slot if tokenType=0, left slot otherwise
@@ -11603,7 +11614,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             if ((isLong != isLongP) || (tokenType == tokenTypeP)) continue;
 
-            amountsMoved = PanopticMath.getAmountsMoved(_tokenId, positionSize, i);
+            amountsMoved = PanopticMath.getAmountsMoved(_tokenId, positionSize, i, false);
 
             strike = _tokenId.strike(i);
             width = _tokenId.width(i);

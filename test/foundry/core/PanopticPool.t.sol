@@ -2414,7 +2414,8 @@ contract PanopticPoolTest is PositionUtils {
 
         (, LeftRightSigned amountsMoved) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            uint128(positionSize)
+            uint128(positionSize),
+            true
         );
 
         console2.log("amountsMoved0", amountsMoved.rightSlot());
@@ -2949,7 +2950,7 @@ contract PanopticPoolTest is PositionUtils {
         posIdList[0] = tokenId;
 
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            .computeExercisedAmounts(tokenId, positionSize);
+            .computeExercisedAmounts(tokenId, positionSize, true);
 
         vm.assume(
             LeftRightSigned.unwrap(longAmounts) != 0 || LeftRightSigned.unwrap(shortAmounts) != 0
@@ -3024,7 +3025,8 @@ contract PanopticPoolTest is PositionUtils {
         {
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                uint128(positionSize)
+                uint128(positionSize),
+                true
             );
 
             sharesToBurn = Math.mulDivRoundingUp(
@@ -3150,7 +3152,8 @@ contract PanopticPoolTest is PositionUtils {
         {
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                uint128(positionSize)
+                uint128(positionSize),
+                true
             );
 
             sharesToBurn = Math.mulDivRoundingUp(
@@ -3346,7 +3349,8 @@ contract PanopticPoolTest is PositionUtils {
         {
             (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                uint128(positionSize)
+                uint128(positionSize),
+                false
             );
 
             assertApproxEqAbs(
@@ -3445,7 +3449,8 @@ contract PanopticPoolTest is PositionUtils {
         {
             (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                uint128(positionSize)
+                uint128(positionSize),
+                false
             );
 
             assertApproxEqAbs(
@@ -3550,7 +3555,8 @@ contract PanopticPoolTest is PositionUtils {
         {
             (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                positionSize
+                positionSize,
+                false
             );
 
             assertApproxEqAbs(
@@ -3665,7 +3671,8 @@ contract PanopticPoolTest is PositionUtils {
         {
             (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                positionSize
+                positionSize,
+                false
             );
 
             int256 amount1Moved = currentSqrtPriceX96 < sqrtLower
@@ -3803,7 +3810,8 @@ contract PanopticPoolTest is PositionUtils {
         {
             (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                positionSize
+                positionSize,
+                false
             );
 
             int256 amount0Moved = currentSqrtPriceX96 > sqrtUpper
@@ -3911,7 +3919,8 @@ contract PanopticPoolTest is PositionUtils {
         {
             (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                positionSize
+                positionSize,
+                false
             );
 
             int256 amount0Moved = currentSqrtPriceX96 > sqrtUpper
@@ -4015,7 +4024,8 @@ contract PanopticPoolTest is PositionUtils {
         if (pp.isSafeMode() == 0) {
             (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                positionSize
+                positionSize,
+                true
             );
             int256 expectedSwap0;
             int256 expectedSwap1;
@@ -4193,7 +4203,8 @@ contract PanopticPoolTest is PositionUtils {
 
         (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            positionSize
+            positionSize,
+            true
         );
 
         {
@@ -4339,7 +4350,8 @@ contract PanopticPoolTest is PositionUtils {
 
         (, LeftRightSigned shortAmountsSold) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            positionSizes[0]
+            positionSizes[0],
+            true
         );
 
         console2.log("Seller");
@@ -4403,7 +4415,7 @@ contract PanopticPoolTest is PositionUtils {
 
         if (pp.isSafeMode() == 0) {
             (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-                .computeExercisedAmounts(tokenId, positionSizes[1]);
+                .computeExercisedAmounts(tokenId, positionSizes[1], true);
 
             uint256 sharesToBurn;
             int256[2] memory notionalVals;
@@ -4607,7 +4619,8 @@ contract PanopticPoolTest is PositionUtils {
 
         (, LeftRightSigned shortAmountsSold) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            positionSizes[0]
+            positionSizes[0],
+            true
         );
 
         vm.startPrank(Seller);
@@ -4651,7 +4664,7 @@ contract PanopticPoolTest is PositionUtils {
         vm.startPrank(Alice);
 
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            .computeExercisedAmounts(tokenId, positionSizes[1]);
+            .computeExercisedAmounts(tokenId, positionSizes[1], true);
 
         uint256 sharesToBurn;
         int256[2] memory notionalVals;
@@ -4854,7 +4867,8 @@ contract PanopticPoolTest is PositionUtils {
         {
             (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                uint128(positionSize)
+                uint128(positionSize),
+                false
             );
 
             assertApproxEqAbs(
@@ -4980,12 +4994,14 @@ contract PanopticPoolTest is PositionUtils {
         {
             (, LeftRightSigned shortAmounts0) = PanopticMath.computeExercisedAmounts(
                 tokenId0,
-                uint128(positionSizes[0])
+                uint128(positionSizes[0]),
+                false
             );
 
             (, LeftRightSigned shortAmounts1) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
-                uint128(positionSizes[1])
+                uint128(positionSizes[1]),
+                false
             );
 
             console2.log("shortAmounts0", shortAmounts0.rightSlot());
@@ -5228,12 +5244,14 @@ contract PanopticPoolTest is PositionUtils {
         console2.log("sis", positionSizes[0], positionSizes[1]);
         (, LeftRightSigned shortAmounts0) = PanopticMath.computeExercisedAmounts(
             tokenId0,
-            uint128(positionSizes[0])
+            uint128(positionSizes[0]),
+            true
         );
 
         (, LeftRightSigned shortAmounts1) = PanopticMath.computeExercisedAmounts(
             tokenId1,
-            uint128(positionSizes[1])
+            uint128(positionSizes[1]),
+            true
         );
 
         console2.log("shortAmounts0", shortAmounts0.rightSlot());
@@ -5726,7 +5744,8 @@ contract PanopticPoolTest is PositionUtils {
         // deposit commission so we can reach collateral check
         (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            positionSize
+            positionSize,
+            true
         );
 
         vm.startPrank(Charlie);
@@ -5867,7 +5886,8 @@ contract PanopticPoolTest is PositionUtils {
         {
             (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                positionSize
+                positionSize,
+                false
             );
 
             assertApproxEqAbs(
@@ -6020,7 +6040,8 @@ contract PanopticPoolTest is PositionUtils {
 
         (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            uint128(positionSize)
+            uint128(positionSize),
+            false
         );
 
         int256[2] memory notionalVals = [
@@ -6192,7 +6213,8 @@ contract PanopticPoolTest is PositionUtils {
 
         (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            uint128(positionSize)
+            uint128(positionSize),
+            false
         );
 
         int256[2] memory notionalVals = [
@@ -6409,7 +6431,8 @@ contract PanopticPoolTest is PositionUtils {
 
         (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenIds[0],
-            uint128(positionSize)
+            uint128(positionSize),
+            false
         );
 
         int256[2] memory notionalVals = [
@@ -6613,7 +6636,8 @@ contract PanopticPoolTest is PositionUtils {
 
         (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenIds[0],
-            uint128(positionSize)
+            uint128(positionSize),
+            false
         );
 
         int256[2] memory notionalVals = [
@@ -7359,7 +7383,7 @@ contract PanopticPoolTest is PositionUtils {
             true
         );
 
-        ($longAmounts, $shortAmounts) = PanopticMath.computeExercisedAmounts(tokenId, positionSize);
+        ($longAmounts, $shortAmounts) = PanopticMath.computeExercisedAmounts(tokenId, positionSize, true);
 
         // now we can mint the long option we are force exercising
         vm.startPrank(Alice);
@@ -7383,7 +7407,7 @@ contract PanopticPoolTest is PositionUtils {
         posIdList[0] = tokenId;
 
         (LeftRightSigned longAmountsAlice, LeftRightSigned shortAmountsAlice) = PanopticMath
-            .computeExercisedAmounts(tokenId, positionSize);
+            .computeExercisedAmounts(tokenId, positionSize, true);
 
         {
             uint128[] memory sizeList = new uint128[](1);

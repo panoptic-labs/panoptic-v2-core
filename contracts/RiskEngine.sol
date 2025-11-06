@@ -889,7 +889,8 @@ contract RiskEngine {
         uint256 tokenType = tokenId.tokenType(index);
 
         // compute the total amount of funds moved for that position
-        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index);
+        // Since this is a collateral check, we want the amounts moved upon closure, not upon opening
+        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index, false);
 
         // amount moved is right slot if tokenType=0, left slot otherwise
         uint128 amountMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();
@@ -1209,7 +1210,8 @@ contract RiskEngine {
     ) internal view returns (uint256 spreadRequirement) {
         spreadRequirement = 1;
         // compute the total amount of funds moved for the position's current leg
-        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index);
+        // Since this is returning a collateral requirement, we want to return the amounts moved upon closure, not opening
+        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index, false);
 
         {
             // This is a CALENDAR SPREAD adjustment, where the collateral requirement is the max loss of the position
@@ -1238,7 +1240,8 @@ contract RiskEngine {
         LeftRightUnsigned amountsMovedPartner = PanopticMath.getAmountsMoved(
             tokenId,
             positionSize,
-            partnerIndex
+            partnerIndex,
+            false
         );
 
         uint128 moved0 = amountsMoved.rightSlot();
@@ -1394,7 +1397,8 @@ contract RiskEngine {
         LeftRightUnsigned amountsMovedCredit = PanopticMath.getAmountsMoved(
             tokenId,
             positionSize,
-            partnerIndex
+            partnerIndex,
+            false
         );
 
         // get correct
@@ -1421,7 +1425,8 @@ contract RiskEngine {
         LeftRightUnsigned amountsMovedP = PanopticMath.getAmountsMoved(
             tokenId,
             positionSize,
-            partnerIndex
+            partnerIndex,
+            false
         );
 
         uint256 loanAmount = tokenId.tokenType(index) == 0

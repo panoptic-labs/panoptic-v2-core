@@ -334,7 +334,8 @@ contract PanopticMathTest is Test, PositionUtils {
         uint16 tokenType,
         int24 strike,
         int24 width,
-        uint64 positionSize
+        uint64 positionSize,
+        bool opening
     ) public {
         vm.assume(positionSize != 0);
         TokenId tokenId;
@@ -380,10 +381,10 @@ contract PanopticMathTest is Test, PositionUtils {
         }
 
         (LeftRightSigned expectedLongs, LeftRightSigned expectedShorts) = harness
-            .calculateIOAmounts(tokenId, positionSize, 0);
+            .calculateIOAmounts(tokenId, positionSize, 0, opening);
 
         (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
-            .computeExercisedAmounts(tokenId, positionSize);
+            .computeExercisedAmounts(tokenId, positionSize, opening);
 
         assertEq(LeftRightSigned.unwrap(expectedLongs), LeftRightSigned.unwrap(returnedLongs));
         assertEq(LeftRightSigned.unwrap(expectedShorts), LeftRightSigned.unwrap(returnedShorts));
@@ -1143,7 +1144,8 @@ contract PanopticMathTest is Test, PositionUtils {
         uint16 tokenType,
         int24 strike,
         int24 width,
-        uint128 positionSize
+        uint128 positionSize,
+        bool opening
     ) public {
         TokenId tokenId;
 
@@ -1252,7 +1254,8 @@ contract PanopticMathTest is Test, PositionUtils {
         LeftRightUnsigned returnedContractsNotional = harness.getAmountsMoved(
             tokenId,
             positionSize,
-            0
+            0,
+            opening
         );
         assertEq(
             expectedContractsNotional.rightSlot(),
@@ -1287,7 +1290,8 @@ contract PanopticMathTest is Test, PositionUtils {
         uint16 tokenType,
         int24 strike,
         int24 width,
-        uint128 positionSize
+        uint128 positionSize,
+        bool opening
     ) public {
         TokenId tokenId;
 
@@ -1402,7 +1406,8 @@ contract PanopticMathTest is Test, PositionUtils {
         LeftRightUnsigned returnedContractsNotional = harness.getAmountsMoved(
             tokenId,
             positionSize,
-            0
+            0,
+            opening
         );
         assertEq(
             expectedContractsNotional.rightSlot(),
@@ -1437,7 +1442,8 @@ contract PanopticMathTest is Test, PositionUtils {
         uint16 asset,
         int24 strike,
         int24 width,
-        uint64 positionSize
+        uint64 positionSize,
+        bool opening
     ) public {
         vm.assume(positionSize != 0);
         TokenId tokenId;
@@ -1478,14 +1484,14 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenId = tokenId.addLeg(0, optionRatio, asset, 0, 0, 0, strike, width);
         }
 
-        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
+        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0, opening);
         vm.assume(int256(uint256(contractsNotional.rightSlot())) < type(int128).max);
 
         LeftRightSigned expectedShorts = LeftRightSigned.wrap(0).addToRightSlot(
             Math.toInt128(contractsNotional.rightSlot())
         );
         (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
-            .calculateIOAmounts(tokenId, positionSize, 0);
+            .calculateIOAmounts(tokenId, positionSize, 0, opening);
 
         assertEq(LeftRightSigned.unwrap(expectedShorts), LeftRightSigned.unwrap(returnedShorts));
         assertEq(0, LeftRightSigned.unwrap(returnedLongs));
@@ -1495,7 +1501,8 @@ contract PanopticMathTest is Test, PositionUtils {
         uint16 asset,
         int24 strike,
         int24 width,
-        uint64 positionSize
+        uint64 positionSize,
+        bool opening
     ) public {
         vm.assume(positionSize != 0);
         TokenId tokenId;
@@ -1549,14 +1556,14 @@ contract PanopticMathTest is Test, PositionUtils {
             )
         );
 
-        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
+        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0, opening);
         vm.assume(int256(uint256(contractsNotional.rightSlot())) < type(int128).max);
 
         LeftRightSigned expectedLongs = LeftRightSigned.wrap(0).addToRightSlot(
             Math.toInt128(contractsNotional.rightSlot())
         );
         (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
-            .calculateIOAmounts(tokenId, positionSize, 0);
+            .calculateIOAmounts(tokenId, positionSize, 0, opening);
 
         assertEq(LeftRightSigned.unwrap(expectedLongs), LeftRightSigned.unwrap(returnedLongs));
         assertEq(0, LeftRightSigned.unwrap(returnedShorts));
@@ -1567,7 +1574,8 @@ contract PanopticMathTest is Test, PositionUtils {
         uint16 asset,
         int24 strike,
         int24 width,
-        uint64 positionSize
+        uint64 positionSize,
+        bool opening
     ) public {
         positionSize = uint64(bound(positionSize, 1, type(uint64).max));
         TokenId tokenId;
@@ -1605,14 +1613,14 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenId = tokenId.addLeg(0, optionRatio, asset, 0, 1, 0, strike, width);
         }
 
-        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
+        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0, opening);
         vm.assume(int256(uint256(contractsNotional.leftSlot())) < type(int128).max);
 
         LeftRightSigned expectedShorts = LeftRightSigned.wrap(0).addToLeftSlot(
             Math.toInt128(contractsNotional.leftSlot())
         );
         (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
-            .calculateIOAmounts(tokenId, positionSize, 0);
+            .calculateIOAmounts(tokenId, positionSize, 0, opening);
 
         assertEq(LeftRightSigned.unwrap(expectedShorts), LeftRightSigned.unwrap(returnedShorts));
         assertEq(0, LeftRightSigned.unwrap(returnedLongs));
@@ -1623,7 +1631,8 @@ contract PanopticMathTest is Test, PositionUtils {
         uint16 asset,
         int24 strike,
         int24 width,
-        uint64 positionSize
+        uint64 positionSize,
+        bool opening
     ) public {
         vm.assume(positionSize != 0);
         TokenId tokenId;
@@ -1664,7 +1673,7 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenId = tokenId.addLeg(0, optionRatio, asset, 1, 1, 0, strike, width);
         }
 
-        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
+        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0, opening);
 
         vm.assume(int256(uint256(contractsNotional.leftSlot())) < type(int128).max);
         LeftRightSigned expectedLongs = LeftRightSigned.wrap(0).addToLeftSlot(
@@ -1672,7 +1681,7 @@ contract PanopticMathTest is Test, PositionUtils {
         );
 
         (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
-            .calculateIOAmounts(tokenId, positionSize, 0);
+            .calculateIOAmounts(tokenId, positionSize, 0, opening);
 
         assertEq(LeftRightSigned.unwrap(expectedLongs), LeftRightSigned.unwrap(returnedLongs));
         assertEq(0, LeftRightSigned.unwrap(returnedShorts));
