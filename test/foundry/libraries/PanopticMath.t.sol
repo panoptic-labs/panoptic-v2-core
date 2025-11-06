@@ -1147,19 +1147,17 @@ contract PanopticMathTest is Test, PositionUtils {
         uint128 positionSize,
         bool opening
     ) public {
-        TokenId tokenId;
-
         // contruct a tokenId
         {
-            uint256 optionRatio = bound(optionRatioSeed, 1, 127);
+            $optionRatio = bound(optionRatioSeed, 1, 127);
 
             // the following are all 1 bit so mask them:
-            uint8 MASK = 0x1; // takes first 1 bit of the uint16
-            isLong = isLong & MASK;
-            tokenType = tokenType & MASK;
+            $MASK = 0x1; // takes first 1 bit of the uint16
+            isLong = isLong & $MASK;
+            tokenType = tokenType & $MASK;
 
             // bound fuzzed tick
-            selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
+            selectedPool = pools[bound($optionRatio, 0, 2)]; // reuse optionRatio as seed
             tickSpacing = selectedPool.tickSpacing();
 
             width = int24(bound(width, 1, 2048));
@@ -1177,28 +1175,28 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing);
 
-            tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
-            tokenId = tokenId.addLeg(0, optionRatio, 0, isLong, tokenType, 0, strike, width);
+            $tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
+            $tokenId = $tokenId.addLeg(0, $optionRatio, 0, isLong, tokenType, 0, strike, width);
             console2.log("strike", strike);
         }
-        tokenId.validate();
+        $tokenId.validate();
 
         // get the tick range for this leg in order to get the strike price (the underlying price)
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0);
+        ($tickLower, $tickUpper) = $tokenId.asTicks(0);
 
         positionSize = uint128(
-            bound(positionSize, 0, positionSize / uint128(tokenId.optionRatio(0)))
+            bound(positionSize, 0, positionSize / uint128($tokenId.optionRatio(0)))
         );
         vm.assume(positionSize != 0);
 
         // set amount 0 - LEGACY
-        uint256 amount0 = positionSize * uint128(tokenId.optionRatio(0));
+        uint256 amount0 = positionSize * uint128($tokenId.optionRatio(0));
 
         uint256 amount1 = Math.mulDivRoundingUp(
             uint256(amount0),
             Math.mulDiv(
-                Math.getSqrtRatioAtTick(tickLower),
-                Math.getSqrtRatioAtTick(tickUpper),
+                Math.getSqrtRatioAtTick($tickLower),
+                Math.getSqrtRatioAtTick($tickUpper),
                 2 ** 96
             ),
             2 ** 96
@@ -1211,13 +1209,13 @@ contract PanopticMathTest is Test, PositionUtils {
             .addToLeftSlot(amount1.toUint128());
 
         // set amount0 - UNISWAP MATH
-        uint256 contracts = positionSize * tokenId.optionRatio(0);
+        $contracts = positionSize * $tokenId.optionRatio(0);
 
-        uint160 lowPriceX96 = Math.getSqrtRatioAtTick(tickLower);
-        uint160 highPriceX96 = Math.getSqrtRatioAtTick(tickUpper);
+        uint160 lowPriceX96 = Math.getSqrtRatioAtTick($tickLower);
+        uint160 highPriceX96 = Math.getSqrtRatioAtTick($tickUpper);
 
         uint256 liquidity = Math.mulDiv(
-            contracts,
+            $contracts,
             Math.mulDiv96(highPriceX96, lowPriceX96),
             highPriceX96 - lowPriceX96
         );
@@ -1252,7 +1250,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // set amount0 - PANOPTIC MATH
         LeftRightUnsigned returnedContractsNotional = harness.getAmountsMoved(
-            tokenId,
+            $tokenId,
             positionSize,
             0,
             opening
@@ -1268,7 +1266,7 @@ contract PanopticMathTest is Test, PositionUtils {
             "CORRECT: amount 1 not equal"
         );
 
-        if (amount0 != contracts) {
+        if (amount0 != $contracts) {
             assertGe(
                 legacyContractsNotional.rightSlot(),
                 returnedContractsNotional.rightSlot(),
@@ -1284,6 +1282,13 @@ contract PanopticMathTest is Test, PositionUtils {
         }
     }
 
+    uint256 $optionRatio;
+    uint8 $MASK;
+    TokenId $tokenId;
+    int24 $tickLower;
+    int24 $tickUpper;
+    uint256 $contracts;
+
     function test_Fuzz_getAmountsMoved1_legacy(
         uint256 optionRatioSeed,
         uint16 isLong,
@@ -1293,19 +1298,18 @@ contract PanopticMathTest is Test, PositionUtils {
         uint128 positionSize,
         bool opening
     ) public {
-        TokenId tokenId;
 
         // contruct a tokenId
         {
-            uint256 optionRatio = bound(optionRatioSeed, 1, 127);
+            $optionRatio = bound(optionRatioSeed, 1, 127);
 
             // the following are all 1 bit so mask them:
-            uint8 MASK = 0x1; // takes first 1 bit of the uint16
-            isLong = isLong & MASK;
-            tokenType = tokenType & MASK;
+            $MASK = 0x1; // takes first 1 bit of the uint16
+            isLong = isLong & $MASK;
+            tokenType = tokenType & $MASK;
 
             // bound fuzzed tick
-            selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
+            selectedPool = pools[bound($optionRatio, 0, 2)]; // reuse optionRatio as seed
             tickSpacing = selectedPool.tickSpacing();
 
             width = int24(bound(width, 1, 2048));
@@ -1323,29 +1327,29 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing);
 
-            tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
-            tokenId = tokenId.addLeg(0, optionRatio, 1, isLong, tokenType, 0, strike, width);
+            $tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
+            $tokenId = $tokenId.addLeg(0, $optionRatio, 1, isLong, tokenType, 0, strike, width);
             console2.log("strike", strike);
         }
-        tokenId.validate();
+        $tokenId.validate();
 
         // get the tick range for this leg in order to get the strike price (the underlying price)
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0);
+        ($tickLower, $tickUpper) = $tokenId.asTicks(0);
 
         positionSize = uint128(
-            bound(positionSize, 0, positionSize / uint128(tokenId.optionRatio(0)))
+            bound(positionSize, 0, positionSize / uint128($tokenId.optionRatio(0)))
         );
         vm.assume(positionSize != 0);
 
         // set amount 1 - LEGACY
-        uint256 amount1 = positionSize * uint128(tokenId.optionRatio(0));
-        console2.log("tL", Math.getSqrtRatioAtTick(tickLower));
-        console2.log("tU", Math.getSqrtRatioAtTick(tickUpper));
+        uint256 amount1 = positionSize * uint128($tokenId.optionRatio(0));
+        console2.log("tL", Math.getSqrtRatioAtTick($tickLower));
+        console2.log("tU", Math.getSqrtRatioAtTick($tickUpper));
 
         vm.assume(
             Math.mulDiv(
-                Math.getSqrtRatioAtTick(tickLower),
-                Math.getSqrtRatioAtTick(tickUpper),
+                Math.getSqrtRatioAtTick($tickLower),
+                Math.getSqrtRatioAtTick($tickUpper),
                 2 ** 96
             ) > 0
         );
@@ -1353,8 +1357,8 @@ contract PanopticMathTest is Test, PositionUtils {
             uint256(amount1),
             2 ** 96,
             Math.mulDiv(
-                Math.getSqrtRatioAtTick(tickLower),
-                Math.getSqrtRatioAtTick(tickUpper),
+                Math.getSqrtRatioAtTick($tickLower),
+                Math.getSqrtRatioAtTick($tickUpper),
                 2 ** 96
             )
         );
@@ -1367,12 +1371,12 @@ contract PanopticMathTest is Test, PositionUtils {
             .addToLeftSlot(amount1.toUint128());
 
         // set amount0 - UNISWAP MATH
-        uint256 contracts = positionSize * tokenId.optionRatio(0);
+        $contracts = positionSize * $tokenId.optionRatio(0);
 
-        uint160 lowPriceX96 = Math.getSqrtRatioAtTick(tickLower);
-        uint160 highPriceX96 = Math.getSqrtRatioAtTick(tickUpper);
+        uint160 lowPriceX96 = Math.getSqrtRatioAtTick($tickLower);
+        uint160 highPriceX96 = Math.getSqrtRatioAtTick($tickUpper);
 
-        uint256 liquidity = Math.mulDiv(contracts, 2 ** 96, highPriceX96 - lowPriceX96);
+        uint256 liquidity = Math.mulDiv($contracts, 2 ** 96, highPriceX96 - lowPriceX96);
         if (isLong == 0) {
             amount0 = Math.mulDivRoundingUp(
                 Math.mulDivRoundingUp(
@@ -1404,7 +1408,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // set amount0 - PANOPTIC MATH
         LeftRightUnsigned returnedContractsNotional = harness.getAmountsMoved(
-            tokenId,
+            $tokenId,
             positionSize,
             0,
             opening
@@ -1420,7 +1424,7 @@ contract PanopticMathTest is Test, PositionUtils {
             "CORRECT: amount 1 not equal"
         );
 
-        if (amount1 != contracts) {
+        if (amount1 != $contracts) {
             assertGe(
                 legacyContractsNotional.leftSlot(),
                 returnedContractsNotional.leftSlot(),
