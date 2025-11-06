@@ -2120,7 +2120,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256 bobBefore1 = (ct1.balanceOf(Bob));
 
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            ._calculateIOAmounts(tokenId, uint128(positionSize), 0);
+            ._calculateIOAmounts(tokenId, uint128(positionSize), 0, true);
 
         int256 newSharesFromLoan0;
         int256 newSharesFromLoan1;
@@ -2241,7 +2241,8 @@ contract PanopticPoolTest is PositionUtils {
         (, LeftRightSigned amountsMoved) = PanopticMath._calculateIOAmounts(
             tokenId,
             uint128(positionSize),
-            0
+            0,
+            true
         );
 
         int256 newSharesFromLoan0;
@@ -2596,7 +2597,8 @@ contract PanopticPoolTest is PositionUtils {
         (, $shortAmounts) = PanopticMath._calculateIOAmounts(
             tokenIdA,
             uint128(positionSize * 10),
-            0
+            0,
+            true
         );
 
         vm.stopPrank();
@@ -2621,7 +2623,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256 bobBefore1 = (ct1.balanceOf(Bob));
 
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            ._calculateIOAmounts(tokenId, uint128(positionSize), 0);
+            ._calculateIOAmounts(tokenId, uint128(positionSize), 0, true);
         //vm.assume(longAmounts.rightSlot() > 101 || longAmounts.leftSlot() > 101);
 
         int256 newSharesFromLoan0;
@@ -2763,7 +2765,8 @@ contract PanopticPoolTest is PositionUtils {
         (, $shortAmounts) = PanopticMath._calculateIOAmounts(
             tokenIdA,
             uint128(positionSize * 10),
-            0
+            0,
+            true
         );
 
         vm.stopPrank();
@@ -2787,7 +2790,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256 bobBefore1 = (ct1.balanceOf(Bob));
 
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            ._calculateIOAmounts(tokenId, uint128(positionSize), 0);
+            ._calculateIOAmounts(tokenId, uint128(positionSize), 0, true);
 
         int256 newSharesFromLoan0;
         int256 newSharesFromLoan1;

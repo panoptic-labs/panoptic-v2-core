@@ -1420,7 +1420,7 @@ contract RiskEngine {
         uint256 partnerIndex,
         int24 atTick
     ) internal view returns (uint256) {
-        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index);
+        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index, false);
 
         LeftRightUnsigned amountsMovedP = PanopticMath.getAmountsMoved(
             tokenId,
