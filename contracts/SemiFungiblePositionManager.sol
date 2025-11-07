@@ -842,7 +842,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                     tokenId,
                     positionSize,
                     leg,
-                    true
+                    true // always true because the isLong(leg) have been flipped
                 );
                 int128 signMultiplier = isLong == 0 ? int128(-1) : int128(1);
 
