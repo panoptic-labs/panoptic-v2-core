@@ -858,7 +858,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
                     itmAmounts = itmAmounts.addToRightSlot(itm0).addToLeftSlot(itm1);
                 }
-                totalMoved = totalMoved.sub(itmAmounts);
             } else {
                 LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
                     tokenId,
