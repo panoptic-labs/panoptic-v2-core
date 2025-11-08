@@ -980,9 +980,10 @@ library PanopticMath {
         uint128 amount0;
         uint128 amount1;
 
+        bool hasWidth = tokenId.width(legIndex) != 0;
         // if the width is zero, add 1 to the width to allow liquidity amounts to be computes
         /// @dev this is just for accounting purposes, the actual tokenId will remain with a width = 0
-        if (tokenId.width(legIndex) == 0) {
+        if (!hasWidth) {
             tokenId = tokenId.addWidth(2, legIndex);
         }
 
@@ -990,7 +991,11 @@ library PanopticMath {
 
         // Shorts round UP to ensure user pays enough (conservative for protocol)
         // Longs round DOWN to ensure user receives correct amount (conservative for protocol)
-        if ((tokenId.isLong(legIndex) == 0 && opening) || (tokenId.isLong(legIndex) != 0 && !opening)) {
+        if (
+            (tokenId.isLong(legIndex) == 0 && opening) ||
+            (tokenId.isLong(legIndex) != 0 && !opening) ||
+            !hasWidth
+        ) {
             amount0 = uint128(Math.getAmount0ForLiquidityUp(liquidityChunk));
             amount1 = uint128(Math.getAmount1ForLiquidityUp(liquidityChunk));
         } else {
