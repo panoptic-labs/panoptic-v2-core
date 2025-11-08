@@ -567,7 +567,7 @@ contract RiskEngine {
         uint256 _oraclePack
     ) external view returns (int24[] memory, uint256) {
         (int24 spotTick, int24 medianTick, int24 latestTick, uint256 oraclePack) = PanopticMath
-            .getOracleTicks(currentTick, _oraclePack, EMAperiods);
+            .getOracleTicks(currentTick, _oraclePack, EMA_PERIODS);
 
         int24[] memory atTicks;
 
@@ -613,7 +613,7 @@ contract RiskEngine {
     /// @return Whether the account is solvent at the given tick
     function isAccountSolvent(
         address user,
-        uint256[] calldata positionBalanceArray,
+        PositionBalance[] calldata positionBalanceArray,
         int24 atTick,
         TokenId[] calldata positionIdList,
         LeftRightUnsigned shortPremia,
@@ -622,6 +622,8 @@ contract RiskEngine {
         CollateralTracker ct1,
         uint256 buffer
     ) external view returns (bool) {
+        uint256 globalUtilization = _getGlobalUtilization(positionBalanceArray);
+
         (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = _getMargin(
             user,
             positionBalanceArray,
@@ -687,7 +689,7 @@ contract RiskEngine {
         address user,
         int24 atTick,
         TokenId[] calldata positionIdList,
-        uint256[] calldata positionBalanceArray,
+        PositionBalance[] calldata positionBalanceArray,
         LeftRightUnsigned shortPremia,
         LeftRightUnsigned longPremia,
         CollateralTracker ct0,
@@ -725,7 +727,7 @@ contract RiskEngine {
     /// @return tokenData1 LeftRightUnsigned for token1 with left = maintenance requirement, right = available balance
     function _getMargin(
         address user,
-        uint256[] calldata positionBalanceArray,
+        PositionBalance[] calldata positionBalanceArray,
         int24 atTick,
         TokenId[] calldata positionIdList,
         LeftRightUnsigned shortPremia,
@@ -760,6 +762,10 @@ contract RiskEngine {
         );
     }
 
+    function _getGlobalUtilization(
+        PositionBalance[] calldata positionBalanceArray
+    ) internal pure returns (uint256 globalUtilization) {}
+
     /// @notice Get the total required amount of collateral tokens of a user/account across all active positions to stay above the margin requirement.
     /// @dev Returns the token amounts required for the entire account with active positions in `positionIdList` (list of tokenIds).
     /// @param positionBalanceArray The list of all open positions held by the `optionOwner`, stored as `[balance/poolUtilizationAtMint, ...]`
@@ -768,7 +774,7 @@ contract RiskEngine {
     /// @return tokensRequired The amount of token0 (right) and token1 (left) required to stay above the margin threshold for all active positions of user
     /// @return creditAmounts The amount of credit token0 (right) and token1 (left) in the user's portfolio
     function _getTotalRequiredCollateral(
-        uint256[] calldata positionBalanceArray,
+        PositionBalance[] calldata positionBalanceArray,
         TokenId[] calldata positionIdList,
         int24 atTick,
         LeftRightUnsigned longPremia
@@ -783,7 +789,7 @@ contract RiskEngine {
             uint256 _credits1;
             {
                 TokenId tokenId = positionIdList[i];
-                PositionBalance positionBalance = PositionBalance.wrap(positionBalanceArray[i]);
+                PositionBalance positionBalance = positionBalanceArray[i];
                 uint128 positionSize = positionBalance.positionSize();
                 int24 _atTick = atTick;
 

@@ -373,7 +373,7 @@ contract PanopticPool is Multicall {
         address user,
         bool includePendingPremium,
         TokenId[] calldata positionIdList
-    ) external view returns (LeftRightUnsigned, LeftRightUnsigned, uint256[] memory) {
+    ) external view returns (LeftRightUnsigned, LeftRightUnsigned, PositionBalance[] memory) {
         // Get the current tick of the Uniswap pool
         int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
         // Compute the accumulated premia for all tokenId in positionIdList (includes short+long premium)
@@ -408,11 +408,11 @@ contract PanopticPool is Multicall {
         returns (
             LeftRightUnsigned shortPremium,
             LeftRightUnsigned longPremium,
-            uint256[] memory balances
+            PositionBalance[] memory balances
         )
     {
         uint256 pLength = positionIdList.length;
-        balances = new uint256[](pLength);
+        balances = new PositionBalance[](pLength);
 
         address c_user = user;
         // loop through each option position/tokenId
@@ -423,14 +423,14 @@ contract PanopticPool is Multicall {
                 PositionBalance positionBalanceData = s_positionBalance[c_user][tokenId];
                 if (positionBalanceData.positionSize() == 0) revert Errors.PositionNotOwned();
 
-                balances[k] = PositionBalance.unwrap(positionBalanceData);
+                balances[k] = positionBalanceData;
             }
             (
                 LeftRightSigned[4] memory premiaByLeg,
                 uint256[2][4] memory premiumAccumulatorsByLeg
             ) = _getPremia(
                     tokenId,
-                    LeftRightUnsigned.wrap(balances[k]).rightSlot(),
+                    balances[k].positionSize(),
                     c_user,
                     usePremiaAsCollateral,
                     atTick
@@ -983,7 +983,9 @@ contract PanopticPool is Multicall {
         LeftRightUnsigned tokenData1;
         LeftRightUnsigned shortPremium;
         {
-            uint256[] memory positionBalanceArray = new uint256[](positionIdList.length);
+            PositionBalance[] memory positionBalanceArray = new PositionBalance[](
+                positionIdList.length
+            );
             LeftRightUnsigned longPremium;
             (shortPremium, longPremium, positionBalanceArray) = _calculateAccumulatedPremia(
                 liquidatee,
@@ -1268,7 +1270,7 @@ contract PanopticPool is Multicall {
         (
             LeftRightUnsigned shortPremium,
             LeftRightUnsigned longPremium,
-            uint256[] memory positionBalanceArray
+            PositionBalance[] memory positionBalanceArray
         ) = _calculateAccumulatedPremia(
                 account,
                 positionIdList,
@@ -1313,7 +1315,7 @@ contract PanopticPool is Multicall {
         address account,
         int24 atTick,
         TokenId[] calldata positionIdList,
-        uint256[] memory positionBalanceArray,
+        PositionBalance[] memory positionBalanceArray,
         LeftRightUnsigned shortPremium,
         LeftRightUnsigned longPremium,
         uint256 buffer
