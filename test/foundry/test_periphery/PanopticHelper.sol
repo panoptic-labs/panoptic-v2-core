@@ -61,16 +61,18 @@ contract PanopticHelper {
 
         PanopticPool _pool = pool;
         // Query the current and required collateral amounts for the two tokens
-        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = pool.riskEngine().getMargin(
-            account,
-            atTick,
-            positionIdList,
-            positionBalanceArray,
-            shortPremium,
-            longPremium,
-            _pool.collateralToken0(),
-            _pool.collateralToken1()
-        );
+        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = pool
+            .riskEngine()
+            .getMargin(
+                positionBalanceArray,
+                atTick,
+                account,
+                positionIdList,
+                shortPremium,
+                longPremium,
+                _pool.collateralToken0(),
+                _pool.collateralToken1()
+            );
 
         // convert (using atTick) and return the total collateral balance and required balance in terms of tokenType
         return

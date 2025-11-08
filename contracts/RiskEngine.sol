@@ -612,23 +612,21 @@ contract RiskEngine {
     /// @param buffer The buffer to apply to the collateral requirement
     /// @return Whether the account is solvent at the given tick
     function isAccountSolvent(
-        address user,
         PositionBalance[] calldata positionBalanceArray,
-        int24 atTick,
         TokenId[] calldata positionIdList,
+        int24 atTick,
+        address user,
         LeftRightUnsigned shortPremia,
         LeftRightUnsigned longPremia,
         CollateralTracker ct0,
         CollateralTracker ct1,
         uint256 buffer
     ) external view returns (bool) {
-        uint256 globalUtilization = _getGlobalUtilization(positionBalanceArray);
-
-        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = _getMargin(
-            user,
+        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = _getMargin(
             positionBalanceArray,
-            atTick,
             positionIdList,
+            atTick,
+            user,
             shortPremia,
             longPremia,
             ct0,
@@ -686,22 +684,30 @@ contract RiskEngine {
     /// @return tokenData0 LeftRightUnsigned for token0 with left = maintenance requirement, right = available balance
     /// @return tokenData1 LeftRightUnsigned for token1 with left = maintenance requirement, right = available balance
     function getMargin(
-        address user,
-        int24 atTick,
-        TokenId[] calldata positionIdList,
         PositionBalance[] calldata positionBalanceArray,
+        int24 atTick,
+        address user,
+        TokenId[] calldata positionIdList,
         LeftRightUnsigned shortPremia,
         LeftRightUnsigned longPremia,
         CollateralTracker ct0,
         CollateralTracker ct1
-    ) external view returns (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) {
+    )
+        external
+        view
+        returns (
+            LeftRightUnsigned tokenData0,
+            LeftRightUnsigned tokenData1,
+            uint32 globalUtilizations
+        )
+    {
         if (positionIdList.length != positionBalanceArray.length) revert Errors.LengthMismatch();
         return
             _getMargin(
-                user,
                 positionBalanceArray,
-                atTick,
                 positionIdList,
+                atTick,
+                user,
                 shortPremia,
                 longPremia,
                 ct0,
@@ -726,22 +732,33 @@ contract RiskEngine {
     /// @return tokenData0 LeftRightUnsigned for token0 with left = maintenance requirement, right = available balance
     /// @return tokenData1 LeftRightUnsigned for token1 with left = maintenance requirement, right = available balance
     function _getMargin(
-        address user,
         PositionBalance[] calldata positionBalanceArray,
-        int24 atTick,
         TokenId[] calldata positionIdList,
+        int24 atTick,
+        address user,
         LeftRightUnsigned shortPremia,
         LeftRightUnsigned longPremia,
         CollateralTracker ct0,
         CollateralTracker ct1
-    ) internal view returns (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) {
-        (
-            LeftRightUnsigned tokensRequired,
-            LeftRightUnsigned creditAmounts
-        ) = _getTotalRequiredCollateral(positionBalanceArray, positionIdList, atTick, longPremia);
-        address _user = user;
-        (uint256 balance0, uint256 interest0) = ct0.assetsAndInterest(_user);
-        (uint256 balance1, uint256 interest1) = ct1.assetsAndInterest(_user);
+    )
+        internal
+        view
+        returns (
+            LeftRightUnsigned tokenData0,
+            LeftRightUnsigned tokenData1,
+            uint32 globalUtilizations
+        )
+    {
+        LeftRightUnsigned tokensRequired;
+        LeftRightUnsigned creditAmounts;
+        (tokensRequired, creditAmounts, globalUtilizations) = _getTotalRequiredCollateral(
+            positionBalanceArray,
+            positionIdList,
+            atTick,
+            longPremia
+        );
+        (uint256 balance0, uint256 interest0) = ct0.assetsAndInterest(user);
+        (uint256 balance1, uint256 interest1) = ct1.assetsAndInterest(user);
 
         unchecked {
             balance0 += shortPremia.rightSlot();
@@ -764,7 +781,21 @@ contract RiskEngine {
 
     function _getGlobalUtilization(
         PositionBalance[] calldata positionBalanceArray
-    ) internal pure returns (uint256 globalUtilization) {}
+    ) internal pure returns (uint32 globalUtilizations) {
+        int256 utilization0;
+        int256 utilization1;
+        uint256 pLength = positionBalanceArray.length;
+
+        for (uint256 i; i < pLength; ) {
+            PositionBalance positionBalance = positionBalanceArray[i];
+            int256 _utilization0 = positionBalance.utilization0();
+            int256 _utilization1 = positionBalance.utilization1();
+            utilization0 = _utilization0 > utilization0 ? _utilization0 : utilization0;
+            utilization1 = _utilization1 > utilization1 ? _utilization1 : utilization1;
+        }
+
+        globalUtilizations = uint32(uint256(utilization0) + (uint256(utilization1) << 16));
+    }
 
     /// @notice Get the total required amount of collateral tokens of a user/account across all active positions to stay above the margin requirement.
     /// @dev Returns the token amounts required for the entire account with active positions in `positionIdList` (list of tokenIds).
@@ -778,7 +809,16 @@ contract RiskEngine {
         TokenId[] calldata positionIdList,
         int24 atTick,
         LeftRightUnsigned longPremia
-    ) internal view returns (LeftRightUnsigned tokensRequired, LeftRightUnsigned creditAmounts) {
+    )
+        internal
+        view
+        returns (
+            LeftRightUnsigned tokensRequired,
+            LeftRightUnsigned creditAmounts,
+            uint32 globalUtilizations
+        )
+    {
+        globalUtilizations = _getGlobalUtilization(positionBalanceArray);
         // add long premia to tokens required
         tokensRequired = tokensRequired.add(longPremia);
 
@@ -794,7 +834,7 @@ contract RiskEngine {
                 int24 _atTick = atTick;
 
                 {
-                    int16 utilization0 = int16(positionBalance.utilization0());
+                    int16 utilization0 = int16(uint16(globalUtilizations));
                     (_tokenRequired0, _credits0) = _getRequiredCollateralAtTickSinglePosition(
                         tokenId,
                         positionSize,
@@ -804,7 +844,7 @@ contract RiskEngine {
                     );
                 }
                 {
-                    int16 utilization1 = int16(positionBalance.utilization1());
+                    int16 utilization1 = int16(uint16(globalUtilizations >> 16));
                     (_tokenRequired1, _credits1) = _getRequiredCollateralAtTickSinglePosition(
                         tokenId,
                         positionSize,

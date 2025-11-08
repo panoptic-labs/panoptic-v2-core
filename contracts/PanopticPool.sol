@@ -994,11 +994,11 @@ contract PanopticPool is Multicall {
                 ONLY_AVAILABLE_PREMIUM,
                 currentTick
             );
-            (tokenData0, tokenData1) = s_riskEngine.getMargin(
-                liquidatee,
-                twapTick,
-                positionIdList,
+            (tokenData0, tokenData1, ) = s_riskEngine.getMargin(
                 positionBalanceArray,
+                twapTick,
+                liquidatee,
+                positionIdList,
                 shortPremium,
                 longPremium,
                 s_collateralToken0,
@@ -1322,10 +1322,10 @@ contract PanopticPool is Multicall {
     ) internal view returns (bool) {
         return
             s_riskEngine.isAccountSolvent(
-                account,
                 positionBalanceArray,
-                atTick,
                 positionIdList,
+                atTick,
+                account,
                 shortPremium,
                 longPremium,
                 s_collateralToken0,
