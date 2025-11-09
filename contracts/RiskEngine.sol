@@ -802,13 +802,18 @@ contract RiskEngine {
             int256 _utilization1 = positionBalance.utilization1();
             utilization0 = _utilization0 > utilization0 ? _utilization0 : utilization0;
             utilization1 = _utilization1 > utilization1 ? _utilization1 : utilization1;
+            unchecked {
+                ++i;
+            }
         }
 
-        globalUtilizations = PositionBalanceLibrary.storeBalanceData(
-            0,
-            uint32(uint256(utilization0) + (uint256(utilization1) << 16)),
-            0
-        );
+        unchecked {
+            globalUtilizations = PositionBalanceLibrary.storeBalanceData(
+                0,
+                uint32(uint256(utilization0) + (uint256(utilization1) << 16)),
+                0
+            );
+        }
     }
 
     /// @notice Get the total required amount of collateral tokens of a user/account across all active positions to stay above the margin requirement.
