@@ -622,16 +622,20 @@ contract RiskEngine {
         CollateralTracker ct1,
         uint256 buffer
     ) external view returns (bool) {
-        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = _getMargin(
-            positionBalanceArray,
-            positionIdList,
-            atTick,
-            user,
-            shortPremia,
-            longPremia,
-            ct0,
-            ct1
-        );
+        (
+            LeftRightUnsigned tokenData0,
+            LeftRightUnsigned tokenData1,
+            uint32 globalUtilizations
+        ) = _getMargin(
+                positionBalanceArray,
+                positionIdList,
+                atTick,
+                user,
+                shortPremia,
+                longPremia,
+                ct0,
+                ct1
+            );
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
 
         uint256 maintReq0 = Math.mulDivRoundingUp(tokenData0.leftSlot(), buffer, DECIMALS);
@@ -642,12 +646,12 @@ contract RiskEngine {
 
         uint256 scaledSurplusToken0 = Math.mulDiv(
             bal0 > maintReq0 ? bal0 - maintReq0 : 0,
-            CROSS_BUFFER_0,
+            _crossBufferRatio(uint16(globalUtilizations), CROSS_BUFFER_0),
             DECIMALS
         );
         uint256 scaledSurplusToken1 = Math.mulDiv(
             bal1 > maintReq1 ? bal1 - maintReq1 : 0,
-            CROSS_BUFFER_1,
+            _crossBufferRatio(uint16(globalUtilizations >> 16), CROSS_BUFFER_1),
             DECIMALS
         );
 
@@ -818,6 +822,7 @@ contract RiskEngine {
             uint32 globalUtilizations
         )
     {
+        // get the global utilizations, which is the max utilizations for all open positions
         globalUtilizations = _getGlobalUtilization(positionBalanceArray);
         // add long premia to tokens required
         tokensRequired = tokensRequired.add(longPremia);
@@ -834,6 +839,7 @@ contract RiskEngine {
                 int24 _atTick = atTick;
 
                 {
+                    // Use the global utilizations for all positions
                     int16 utilization0 = int16(uint16(globalUtilizations));
                     (_tokenRequired0, _credits0) = _getRequiredCollateralAtTickSinglePosition(
                         tokenId,
@@ -844,6 +850,7 @@ contract RiskEngine {
                     );
                 }
                 {
+                    // Use the global utilizations for all positions
                     int16 utilization1 = int16(uint16(globalUtilizations >> 16));
                     (_tokenRequired1, _credits1) = _getRequiredCollateralAtTickSinglePosition(
                         tokenId,
@@ -1696,6 +1703,56 @@ contract RiskEngine {
                 (BUYER_COLLATERAL_RATIO +
                     (BUYER_COLLATERAL_RATIO * (SATURATED_POOL_UTIL - utilization)) /
                     (SATURATED_POOL_UTIL - TARGET_POOL_UTIL)) / 2; // do the division by 2 at the end after all addition and multiplication; b/c y1 = buyCollateralRatio / 2
+        }
+    }
+
+    /// @notice Get the cross buffer ration for a given utilization
+    /// @dev This is computed using the global utilization of the user.
+    /// @param utilization The pool utilization of this collateral vault at the time the position is minted
+    /// @return crossBufferRatio The cross buffer ratio at `utilization`
+    function _crossBufferRatio(
+        uint256 utilization,
+        uint256 crossBuffer
+    ) internal view returns (uint256 crossBufferRatio) {
+        // linear from crossBuffer to 0 between 50% and 90%
+        // the buy ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
+        //   (x0,y0) = (targetPoolUtilization, crossBuffer) and
+        //   (x1,y1) = (saturatedPoolUtilization, 0)
+        // note that y1<y0 so the slope is negative:
+        // aka the cross buffer starts high and drops to zero with increased utilization
+        // the line's formula: y = a * (x - x0) + y0, where a = (y1 - y0) / (x1 - x0)
+        // but since a<0, we rewrite as:
+        // y = a' * (x0 - x) + y0, where a' = (y0 - y1) / (x1 - x0)
+
+        /*
+          CROSS
+          BUFFER
+          RATIO
+                 ^
+                 |   cross_buffer = 80%
+           80% - |----------_
+                 |         . ¯-_
+                 |         .    ¯-_
+           0% -  +---------+-------∓---+--->   POOL_
+                          50%     90% 100%      UTILIZATION
+         */
+
+        utilization *= 1_000;
+        // return the basal cross buffer ratio if pool utilization is lower than target
+        if (utilization < TARGET_POOL_UTIL) {
+            return crossBuffer;
+        }
+
+        // return 0 if pool utilization is above saturated pool utilization
+        if (utilization > SATURATED_POOL_UTIL) {
+            unchecked {
+                return 0;
+            }
+        }
+
+        unchecked {
+            return ((crossBuffer * (SATURATED_POOL_UTIL - utilization)) /
+                (SATURATED_POOL_UTIL - TARGET_POOL_UTIL)); // do the division by 2 at the end after all addition and multiplication; b/c y1 = buyCollateralRatio / 2
         }
     }
 
