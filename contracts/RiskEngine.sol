@@ -10,7 +10,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
-import {PositionBalance} from "@types/PositionBalance.sol";
+import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
 import {TokenId} from "@types/TokenId.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
@@ -625,7 +625,7 @@ contract RiskEngine {
         (
             LeftRightUnsigned tokenData0,
             LeftRightUnsigned tokenData1,
-            uint32 globalUtilizations
+            PositionBalance globalUtilizations
         ) = _getMargin(
                 positionBalanceArray,
                 positionIdList,
@@ -646,12 +646,12 @@ contract RiskEngine {
 
         uint256 scaledSurplusToken0 = Math.mulDiv(
             bal0 > maintReq0 ? bal0 - maintReq0 : 0,
-            _crossBufferRatio(uint16(globalUtilizations), CROSS_BUFFER_0),
+            _crossBufferRatio(globalUtilizations.utilization0(), CROSS_BUFFER_0),
             DECIMALS
         );
         uint256 scaledSurplusToken1 = Math.mulDiv(
             bal1 > maintReq1 ? bal1 - maintReq1 : 0,
-            _crossBufferRatio(uint16(globalUtilizations >> 16), CROSS_BUFFER_1),
+            _crossBufferRatio(globalUtilizations.utilization1(), CROSS_BUFFER_1),
             DECIMALS
         );
 
@@ -702,7 +702,7 @@ contract RiskEngine {
         returns (
             LeftRightUnsigned tokenData0,
             LeftRightUnsigned tokenData1,
-            uint32 globalUtilizations
+            PositionBalance globalUtilizations
         )
     {
         if (positionIdList.length != positionBalanceArray.length) revert Errors.LengthMismatch();
@@ -750,7 +750,7 @@ contract RiskEngine {
         returns (
             LeftRightUnsigned tokenData0,
             LeftRightUnsigned tokenData1,
-            uint32 globalUtilizations
+            PositionBalance globalUtilizations
         )
     {
         LeftRightUnsigned tokensRequired;
@@ -783,9 +783,15 @@ contract RiskEngine {
         );
     }
 
+    /// @notice Gets the highest pool utilization (for token0 and token1) from an array of positions.
+    /// @dev Iterates through all of a user's positions to find the maximum `utilization0` and maximum `utilization1`
+    /// recorded at the time of minting. These "global" max utilizations are then used for
+    /// portfolio-level margin calculations, ensuring a more conservative risk assessment.
+    /// @param positionBalanceArray The array of a user's `PositionBalance` structs.
+    /// @return globalUtilizations A packed PositionBalance that contains only the utilization data, recoverable as .utilization0() and .utilization1()
     function _getGlobalUtilization(
         PositionBalance[] calldata positionBalanceArray
-    ) internal pure returns (uint32 globalUtilizations) {
+    ) internal pure returns (PositionBalance globalUtilizations) {
         int256 utilization0;
         int256 utilization1;
         uint256 pLength = positionBalanceArray.length;
@@ -798,7 +804,11 @@ contract RiskEngine {
             utilization1 = _utilization1 > utilization1 ? _utilization1 : utilization1;
         }
 
-        globalUtilizations = uint32(uint256(utilization0) + (uint256(utilization1) << 16));
+        globalUtilizations = PositionBalanceLibrary.storeBalanceData(
+            0,
+            uint32(uint256(utilization0) + (uint256(utilization1) << 16)),
+            0
+        );
     }
 
     /// @notice Get the total required amount of collateral tokens of a user/account across all active positions to stay above the margin requirement.
@@ -819,7 +829,7 @@ contract RiskEngine {
         returns (
             LeftRightUnsigned tokensRequired,
             LeftRightUnsigned creditAmounts,
-            uint32 globalUtilizations
+            PositionBalance globalUtilizations
         )
     {
         // get the global utilizations, which is the max utilizations for all open positions
@@ -840,7 +850,7 @@ contract RiskEngine {
 
                 {
                     // Use the global utilizations for all positions
-                    int16 utilization0 = int16(uint16(globalUtilizations));
+                    int16 utilization0 = int16(globalUtilizations.utilization0());
                     (_tokenRequired0, _credits0) = _getRequiredCollateralAtTickSinglePosition(
                         tokenId,
                         positionSize,
@@ -851,7 +861,7 @@ contract RiskEngine {
                 }
                 {
                     // Use the global utilizations for all positions
-                    int16 utilization1 = int16(uint16(globalUtilizations >> 16));
+                    int16 utilization1 = int16(globalUtilizations.utilization1());
                     (_tokenRequired1, _credits1) = _getRequiredCollateralAtTickSinglePosition(
                         tokenId,
                         positionSize,
@@ -1711,7 +1721,7 @@ contract RiskEngine {
     /// @param utilization The pool utilization of this collateral vault at the time the position is minted
     /// @return crossBufferRatio The cross buffer ratio at `utilization`
     function _crossBufferRatio(
-        uint256 utilization,
+        int256 utilization,
         uint256 crossBuffer
     ) internal view returns (uint256 crossBufferRatio) {
         // linear from crossBuffer to 0 between 50% and 90%
@@ -1737,22 +1747,22 @@ contract RiskEngine {
                           50%     90% 100%      UTILIZATION
          */
 
-        utilization *= 1_000;
+        uint256 utilizationScaled = uint256(utilization * 1_000);
         // return the basal cross buffer ratio if pool utilization is lower than target
-        if (utilization < TARGET_POOL_UTIL) {
+        if (utilizationScaled < TARGET_POOL_UTIL) {
             return crossBuffer;
         }
 
         // return 0 if pool utilization is above saturated pool utilization
-        if (utilization > SATURATED_POOL_UTIL) {
+        if (utilizationScaled > SATURATED_POOL_UTIL) {
             unchecked {
                 return 0;
             }
         }
 
         unchecked {
-            return ((crossBuffer * (SATURATED_POOL_UTIL - utilization)) /
-                (SATURATED_POOL_UTIL - TARGET_POOL_UTIL)); // do the division by 2 at the end after all addition and multiplication; b/c y1 = buyCollateralRatio / 2
+            return ((crossBuffer * (SATURATED_POOL_UTIL - utilizationScaled)) /
+                (SATURATED_POOL_UTIL - TARGET_POOL_UTIL));
         }
     }
 
