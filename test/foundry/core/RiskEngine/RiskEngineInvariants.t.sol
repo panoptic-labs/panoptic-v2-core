@@ -101,15 +101,15 @@ contract RiskEngineInvariants is Test {
         TokenId[] memory ids = new TokenId[](1);
         ids[0] = t;
 
-        uint256[] memory arr = new uint256[](1);
-        arr[0] = PositionBalance.unwrap(PositionFactory.posBalance(s, u0, u1));
+        PositionBalance[] memory arr = new PositionBalance[](1);
+        arr[0] = (PositionFactory.posBalance(s, u0, u1));
         LeftRightUnsigned z = LeftRightUnsigned.wrap(0);
 
         bool s1 = E.isAccountSolvent(
-            user,
             arr,
-            0,
             ids,
+            0,
+            user,
             z,
             z,
             CollateralTracker(address(ct0)),
@@ -117,10 +117,10 @@ contract RiskEngineInvariants is Test {
             9_000_000
         );
         bool s2 = E.isAccountSolvent(
-            user,
             arr,
-            0,
             ids,
+            0,
+            user,
             z,
             z,
             CollateralTracker(address(ct0)),
@@ -128,10 +128,10 @@ contract RiskEngineInvariants is Test {
             10_000_000
         );
         bool s3 = E.isAccountSolvent(
-            user,
             arr,
-            0,
             ids,
+            0,
+            user,
             z,
             z,
             CollateralTracker(address(ct0)),
@@ -329,8 +329,8 @@ contract RiskEngineInvariants is Test {
         TokenId t = PositionFactory.makeLeg(pool, 0, 1, 0, 0, 0, 0, 0, 600);
         TokenId[] memory ids = new TokenId[](1);
         ids[0] = t;
-        uint256[] memory arr = new uint256[](1);
-        arr[0] = PositionBalance.unwrap(PositionFactory.posBalance(s, u0, u1));
+        PositionBalance[] memory arr = new PositionBalance[](1);
+        arr[0] = (PositionFactory.posBalance(s, u0, u1));
         LeftRightUnsigned z = LeftRightUnsigned.wrap(0);
 
         // search two buffers; verify monotone tightening and at most one flip
@@ -339,10 +339,10 @@ contract RiskEngineInvariants is Test {
         bool flipped = false;
         for (uint256 i; i < B.length; ++i) {
             bool si = E.isAccountSolvent(
-                user,
                 arr,
-                0,
                 ids,
+                0,
+                user,
                 z,
                 z,
                 CollateralTracker(address(ct0)),
@@ -395,15 +395,15 @@ contract RiskEngineInvariants is Test {
         TokenId[] memory ids = new TokenId[](1);
         ids[0] = t;
 
-        uint256[] memory arr = new uint256[](1);
-        arr[0] = PositionBalance.unwrap(PositionFactory.posBalance(s, u0, u1));
+        PositionBalance[] memory arr = new PositionBalance[](1);
+        arr[0] = (PositionFactory.posBalance(s, u0, u1));
         LeftRightUnsigned z = LeftRightUnsigned.wrap(0);
 
         bool A = E.isAccountSolvent(
-            user,
             arr,
-            tick,
             ids,
+            tick,
+            user,
             z,
             z,
             CollateralTracker(address(ct0)),
@@ -411,10 +411,10 @@ contract RiskEngineInvariants is Test {
             DEC
         );
         bool B = E.isAccountSolvent(
-            user,
             arr,
-            -tick,
             ids,
+            -tick,
+            user,
             z,
             z,
             CollateralTracker(address(ct0)),
@@ -453,7 +453,7 @@ contract RiskEngineInvariants is Test {
         );
 
         // zero positions, just to test routing
-        uint256[] memory arr = new uint256[](0);
+        PositionBalance[] memory arr = new PositionBalance[](0);
         TokenId[] memory ids = new TokenId[](0);
         LeftRightUnsigned shortPrem = LeftRightUnsigned
             .wrap(0)
@@ -464,7 +464,7 @@ contract RiskEngineInvariants is Test {
             .addToRightSlot(uint128(bound(premLong0, 0, 1e18)))
             .addToLeftSlot(uint128(bound(premLong1, 0, 1e18)));
 
-        (LeftRightUnsigned td0, LeftRightUnsigned td1) = E.getMarginInternal(
+        (LeftRightUnsigned td0, LeftRightUnsigned td1, ) = E.getMarginInternal(
             u,
             arr,
             0,

@@ -58,12 +58,12 @@ contract RiskEngineProperties is Test {
 
         // no positions → requirements from positions = 0
         TokenId[] memory ids = new TokenId[](1);
-        uint256[] memory bals = new uint256[](1);
+        PositionBalance[] memory bals = new PositionBalance[](1);
 
         LeftRightUnsigned shortPremia = LeftRightUnsigned.wrap(0);
         LeftRightUnsigned longPremia = LeftRightUnsigned.wrap(0);
 
-        (LeftRightUnsigned td0, LeftRightUnsigned td1) = E.getMarginInternal(
+        (LeftRightUnsigned td0, LeftRightUnsigned td1, ) = E.getMarginInternal(
             user,
             bals,
             int24(0),
@@ -102,13 +102,13 @@ contract RiskEngineProperties is Test {
         ids[0] = t;
 
         PositionBalance pb = PositionFactory.posBalance(size, util0, util1);
-        uint256[] memory arr = new uint256[](1);
-        arr[0] = PositionBalance.unwrap(pb);
+        PositionBalance[] memory arr = new PositionBalance[](1);
+        arr[0] = (pb);
 
         // no premia impact for scaling
         LeftRightUnsigned zero = LeftRightUnsigned.wrap(0);
 
-        (LeftRightUnsigned reqs0, LeftRightUnsigned reqs1) = E.totalRequiredCollateral(
+        (LeftRightUnsigned reqs0, LeftRightUnsigned reqs1, ) = E.totalRequiredCollateral(
             arr,
             ids,
             /*atTick*/ int24(0),
@@ -118,10 +118,10 @@ contract RiskEngineProperties is Test {
         // scale by k=7 and compare
         uint128 size2 = size * 7;
         PositionBalance pb2 = PositionFactory.posBalance(size2, util0, util1);
-        uint256[] memory arr2 = new uint256[](1);
-        arr2[0] = PositionBalance.unwrap(pb2);
+        PositionBalance[] memory arr2 = new PositionBalance[](1);
+        arr2[0] = (pb2);
 
-        (LeftRightUnsigned reqs0b, LeftRightUnsigned reqs1b) = E.totalRequiredCollateral(
+        (LeftRightUnsigned reqs0b, LeftRightUnsigned reqs1b, ) = E.totalRequiredCollateral(
             arr2,
             ids,
             int24(0),
@@ -327,12 +327,12 @@ contract RiskEngineProperties is Test {
         ids[0] = t;
 
         PositionBalance pb = PositionFactory.posBalance(uint128(1e9), 1000, 0);
-        uint256[] memory arr = new uint256[](1);
-        arr[0] = PositionBalance.unwrap(pb);
+        PositionBalance[] memory arr = new PositionBalance[](1);
+        arr[0] = (pb);
 
         LeftRightUnsigned longPremia = LeftRightUnsigned.wrap(0).addToLeftSlot(uint128(5e6));
 
-        (LeftRightUnsigned req0, LeftRightUnsigned req1) = E.totalRequiredCollateral(
+        (LeftRightUnsigned req0, LeftRightUnsigned req1, ) = E.totalRequiredCollateral(
             arr,
             ids,
             int24(0),
@@ -375,18 +375,18 @@ contract RiskEngineProperties is Test {
         ids[0] = t;
 
         PositionBalance pb = PositionFactory.posBalance(uint128(5e9), 2000, 2000);
-        uint256[] memory arr = new uint256[](1);
-        arr[0] = PositionBalance.unwrap(pb);
+        PositionBalance[] memory arr = new PositionBalance[](1);
+        arr[0] = (pb);
 
         LeftRightUnsigned sPrem = LeftRightUnsigned.wrap(0);
         LeftRightUnsigned lPrem = LeftRightUnsigned.wrap(0);
 
         // Case A: sqrtPriceX96 < FP96
         bool A = E.isAccountSolvent(
-            user,
             arr,
-            /*atTick*/ int24(-200),
             ids,
+            /*atTick*/ int24(-200),
+            user,
             sPrem,
             lPrem,
             CollateralTracker(address(ct0)),
@@ -396,10 +396,10 @@ contract RiskEngineProperties is Test {
 
         // Case B: sqrtPriceX96 > FP96
         bool B = E.isAccountSolvent(
-            user,
             arr,
-            /*atTick*/ int24(200),
             ids,
+            /*atTick*/ int24(200),
+            user,
             sPrem,
             lPrem,
             CollateralTracker(address(ct0)),
@@ -426,16 +426,16 @@ contract RiskEngineProperties is Test {
         ids[0] = t;
 
         PositionBalance pb = PositionFactory.posBalance(uint128(2e9), 4000, 4000);
-        uint256[] memory arr = new uint256[](1);
-        arr[0] = PositionBalance.unwrap(pb);
+        PositionBalance[] memory arr = new PositionBalance[](1);
+        arr[0] = (pb);
 
         LeftRightUnsigned zero = LeftRightUnsigned.wrap(0);
 
         bool lo = E.isAccountSolvent(
-            user,
             arr,
-            int24(0),
             ids,
+            int24(0),
+            user,
             zero,
             zero,
             CollateralTracker(address(ct0)),
@@ -444,10 +444,10 @@ contract RiskEngineProperties is Test {
         );
 
         bool hi = E.isAccountSolvent(
-            user,
             arr,
-            int24(0),
             ids,
+            int24(0),
+            user,
             zero,
             zero,
             CollateralTracker(address(ct0)),

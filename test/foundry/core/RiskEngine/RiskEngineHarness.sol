@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import "forge-std/Test.sol";
 
 import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {PositionBalance} from "@types/PositionBalance.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
@@ -150,35 +151,36 @@ contract RiskEngineHarness is RiskEngine {
 
     // Thin public shim for _getTotalRequiredCollateral for property-only assertions
     function totalRequiredCollateral(
-        uint256[] calldata positionBalanceArray,
+        PositionBalance[] calldata positionBalanceArray,
         TokenId[] calldata positionIdList,
         int24 atTick,
         LeftRightUnsigned longPremia
-    ) external view returns (LeftRightUnsigned, LeftRightUnsigned) {
+    ) external view returns (LeftRightUnsigned, LeftRightUnsigned, PositionBalance) {
         (
             LeftRightUnsigned tokensRequired,
-            LeftRightUnsigned creditAmounts
+            LeftRightUnsigned creditAmounts,
+            PositionBalance globalUtilizations
         ) = _getTotalRequiredCollateral(positionBalanceArray, positionIdList, atTick, longPremia);
-        return (tokensRequired, creditAmounts);
+        return (tokensRequired, creditAmounts, globalUtilizations);
     }
 
     // Thin public shim for _getMargin for packing/units properties
     function getMarginInternal(
         address user,
-        uint256[] calldata positionBalanceArray,
+        PositionBalance[] calldata positionBalanceArray,
         int24 atTick,
         TokenId[] calldata positionIdList,
         LeftRightUnsigned shortPremia,
         LeftRightUnsigned longPremia,
         CollateralTracker ct0,
         CollateralTracker ct1
-    ) external view returns (LeftRightUnsigned, LeftRightUnsigned) {
+    ) external view returns (LeftRightUnsigned, LeftRightUnsigned, PositionBalance) {
         return
             _getMargin(
-                user,
                 positionBalanceArray,
-                atTick,
                 positionIdList,
+                atTick,
+                user,
                 shortPremia,
                 longPremia,
                 ct0,

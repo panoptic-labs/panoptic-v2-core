@@ -15,6 +15,7 @@ import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
+import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
@@ -5105,19 +5106,16 @@ contract Misctest is Test, PositionUtils {
                 // SUCCESS CASE - mintOptions didn't revert
                 console2.log("Found non-reverting strike:", strike);
 
-                (, , uint256[] memory positionBalanceArray) = pp.getAccumulatedFeesAndPositionsData(
-                    Bob,
-                    false,
-                    mintList
-                );
+                (, , PositionBalance[] memory positionBalanceArray) = pp
+                    .getAccumulatedFeesAndPositionsData(Bob, false, mintList);
 
                 (, currentTick, , , , , ) = uniPool.slot0();
 
-                (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = re.getMargin(
-                    Bob,
-                    currentTick,
-                    mintList,
+                (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = re.getMargin(
                     positionBalanceArray,
+                    currentTick,
+                    Bob,
+                    mintList,
                     LeftRightUnsigned.wrap(0),
                     LeftRightUnsigned.wrap(0),
                     ct0,
@@ -5239,16 +5237,16 @@ contract Misctest is Test, PositionUtils {
                 mintList[0] = $tokenIdLong;
                 try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
                     console2.log("Found non-reverting strike:", strike);
-                    (, , uint256[] memory positionBalanceArray) = pp
+                    (, , PositionBalance[] memory positionBalanceArray) = pp
                         .getAccumulatedFeesAndPositionsData(Alice, false, mintList);
 
                     (, currentTick, , , , , ) = uniPool.slot0();
 
-                    (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = re.getMargin(
-                        Alice,
-                        currentTick,
-                        mintList,
+                    (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = re.getMargin(
                         positionBalanceArray,
+                        currentTick,
+                        Alice,
+                        mintList,
                         LeftRightUnsigned.wrap(0),
                         LeftRightUnsigned.wrap(0),
                         ct0,
@@ -5419,22 +5417,23 @@ contract Misctest is Test, PositionUtils {
                 try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
                     console2.log("");
                     console2.log("Found non-reverting strike:", $strike);
-                    (, , uint256[] memory positionBalanceArray) = pp
+                    (, , PositionBalance[] memory positionBalanceArray) = pp
                         .getAccumulatedFeesAndPositionsData(Alice, false, mintList);
 
                     (, currentTick, , , , , ) = uniPool.slot0();
 
                     {
-                        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = re.getMargin(
-                            Alice,
-                            currentTick,
-                            mintList,
-                            positionBalanceArray,
-                            LeftRightUnsigned.wrap(0),
-                            LeftRightUnsigned.wrap(0),
-                            ct0,
-                            ct1
-                        );
+                        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = re
+                            .getMargin(
+                                positionBalanceArray,
+                                currentTick,
+                                Alice,
+                                mintList,
+                                LeftRightUnsigned.wrap(0),
+                                LeftRightUnsigned.wrap(0),
+                                ct0,
+                                ct1
+                            );
 
                         console2.log("positionSize", positionSize);
 
