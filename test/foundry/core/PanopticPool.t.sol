@@ -276,7 +276,7 @@ contract PanopticPoolTest is PositionUtils {
 
     uint256 $accValueBefore0;
 
-    uint256[] $positionBalanceArray;
+    PositionBalance[] $positionBalanceArray;
 
     int256 $balanceDelta0;
     int256 $balanceDelta1;
@@ -1961,7 +1961,7 @@ contract PanopticPoolTest is PositionUtils {
             posIdList[0] = tokenId;
             posIdList[1] = tokenId2;
 
-            uint256[] memory posBalanceArray;
+            PositionBalance[] memory posBalanceArray;
             ($shortPremia, $longPremia, posBalanceArray) = pp.getAccumulatedFeesAndPositionsData(
                 Alice,
                 false,
@@ -1979,19 +1979,11 @@ contract PanopticPoolTest is PositionUtils {
                 int256(expectedPremia[1]),
                 "premia1"
             );
+            assertEq((posBalanceArray[0]).positionSize(), positionSizes[0], "size1");
+            assertEq((posBalanceArray[0]).utilizations(), 1, "utilizati");
+            assertEq(posBalanceArray[1].positionSize(), positionSizes[1], "size2");
             assertEq(
-                PositionBalance.wrap(posBalanceArray[0]).positionSize(),
-                positionSizes[0],
-                "size1"
-            );
-            assertEq(PositionBalance.wrap(posBalanceArray[0]).utilizations(), 1, "utilizati");
-            assertEq(
-                LeftRightUnsigned.wrap(posBalanceArray[1]).rightSlot(),
-                positionSizes[1],
-                "size2"
-            );
-            assertEq(
-                PositionBalance.wrap(posBalanceArray[1]).utilizations(),
+                (posBalanceArray[1]).utilizations(),
                 uint32(uint128(poolUtilizationsAtMint.rightSlot())) +
                     (uint32(uint128(poolUtilizationsAtMint.leftSlot())) << 16),
                 "utils"
@@ -4454,10 +4446,11 @@ contract PanopticPoolTest is PositionUtils {
             {
                 uint256 snapshot = vm.snapshot();
 
+                TokenId _tokenId = tokenId;
                 vm.startPrank(address(pp));
                 (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
                     new bytes(0),
-                    tokenId,
+                    _tokenId,
                     positionSizes[1],
                     TickMath.MAX_TICK,
                     TickMath.MIN_TICK
@@ -8769,11 +8762,11 @@ contract PanopticPoolTest is PositionUtils {
             $posIdLists[1]
         );
 
-        ($tokenData0, $tokenData1) = re.getMargin(
-            Alice,
-            TWAPtick,
-            $posIdLists[1],
+        ($tokenData0, $tokenData1, ) = re.getMargin(
             $positionBalanceArray,
+            TWAPtick,
+            Alice,
+            $posIdLists[1],
             $shortPremia,
             $longPremia,
             ct0,
@@ -9413,11 +9406,11 @@ contract PanopticPoolTest is PositionUtils {
             $posIdLists[1]
         );
 
-        ($tokenData0, $tokenData1) = re.getMargin(
-            Alice,
-            TWAPtick,
-            $posIdLists[1],
+        ($tokenData0, $tokenData1, ) = re.getMargin(
             $positionBalanceArray,
+            TWAPtick,
+            Alice,
+            $posIdLists[1],
             $shortPremia,
             $longPremia,
             ct0,

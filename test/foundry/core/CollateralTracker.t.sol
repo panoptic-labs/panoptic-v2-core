@@ -411,7 +411,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     LeftRightUnsigned $longPremia;
     LeftRightUnsigned $shortPremia;
 
-    uint256[] posBalanceArray;
+    PositionBalance[] posBalanceArray;
 
     uint128 DECIMALS = 10_000_000;
     int128 DECIMALS128 = 10_000_000;
@@ -2569,11 +2569,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // Move forward significantly to generate high interest
         vm.warp(block.timestamp + 365 days);
 
-        (LeftRightUnsigned tokenData0, ) = riskEngine.getMargin(
-            Bob,
-            currentTick,
-            positionIdList,
+        (LeftRightUnsigned tokenData0, , ) = riskEngine.getMargin(
             posBalanceArray,
+            currentTick,
+            Bob,
+            positionIdList,
             $shortPremia,
             $longPremia,
             collateralToken0,
@@ -2585,11 +2585,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.burnShares(Bob, collateralToken0.previewDeposit(tokenData0.rightSlot()));
         collateralToken0.mintShares(Bob, collateralToken0.previewDeposit(tokenData0.leftSlot()));
 
-        (tokenData0, ) = riskEngine.getMargin(
-            Bob,
-            currentTick,
-            positionIdList,
+        (tokenData0, , ) = riskEngine.getMargin(
             posBalanceArray,
+            currentTick,
+            Bob,
+            positionIdList,
             $shortPremia,
             $longPremia,
             collateralToken0,
@@ -2740,11 +2740,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 previewedInterest = collateralToken0.previewOwedInterest(Bob);
         assertGt(previewedInterest, 0, "Preview should show interest even for insolvent user");
 
-        (LeftRightUnsigned tokenData0, ) = riskEngine.getMargin(
-            Bob,
-            currentTick,
-            positionIdList,
+        (LeftRightUnsigned tokenData0, , ) = riskEngine.getMargin(
             posBalanceArray,
+            currentTick,
+            Bob,
+            positionIdList,
             $shortPremia,
             $longPremia,
             collateralToken0,
@@ -2760,11 +2760,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             collateralToken0.previewDeposit(tokenData0.leftSlot() - 8949971082503561822)
         );
 
-        (tokenData0, ) = riskEngine.getMargin(
-            Bob,
-            currentTick,
-            positionIdList,
+        (tokenData0, , ) = riskEngine.getMargin(
             posBalanceArray,
+            currentTick,
+            Bob,
+            positionIdList,
             $shortPremia,
             $longPremia,
             collateralToken0,
@@ -2910,11 +2910,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         ($shortPremia, $longPremia, posBalanceArray) = panopticPool
             .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-        (LeftRightUnsigned tokenData0, ) = riskEngine.getMargin(
-            Bob,
-            currentTick,
-            positionIdList,
+        (LeftRightUnsigned tokenData0, , ) = riskEngine.getMargin(
             posBalanceArray,
+            currentTick,
+            Bob,
+            positionIdList,
             $shortPremia,
             $longPremia,
             collateralToken0,
@@ -5809,11 +5809,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -5844,11 +5844,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -6010,11 +6010,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -6045,11 +6045,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -6439,11 +6439,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -6474,11 +6474,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -6616,11 +6616,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -6671,11 +6671,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -6809,11 +6809,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -6865,11 +6865,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -7004,11 +7004,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -7061,11 +7061,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -7157,16 +7157,17 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                     .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-                (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                    Bob,
-                    atTick,
-                    positionIdList,
-                    posBalanceArray,
-                    $shortPremia,
-                    $longPremia,
-                    collateralToken0,
-                    collateralToken1
-                );
+                (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine
+                    .getMargin(
+                        posBalanceArray,
+                        atTick,
+                        Bob,
+                        positionIdList,
+                        $shortPremia,
+                        $longPremia,
+                        collateralToken0,
+                        collateralToken1
+                    );
 
                 console2.log(
                     atTick < 0 ? uint24(-atTick) : uint24(atTick),
@@ -7328,11 +7329,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -7386,11 +7387,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -7571,11 +7572,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -7624,11 +7625,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -7784,11 +7785,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -7847,11 +7848,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8014,11 +8015,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8077,11 +8078,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8230,11 +8231,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8294,11 +8295,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8428,11 +8429,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                atTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8475,11 +8476,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8601,11 +8602,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                atTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8670,11 +8671,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8796,11 +8797,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                atTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8859,11 +8860,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8984,11 +8985,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                atTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9048,11 +9049,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9170,11 +9171,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                atTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9221,11 +9222,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9341,11 +9342,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                atTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9404,11 +9405,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9503,11 +9504,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                atTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9582,11 +9583,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9672,11 +9673,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                atTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9748,11 +9749,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9881,11 +9882,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                atTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9964,11 +9965,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -10109,11 +10110,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                atTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -10194,11 +10195,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -10264,11 +10265,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList
             );
             console2.log("balanceData0, thresholdData0", balanceData0, thresholdData0);
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -10292,11 +10293,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             console2.log("long.r", $longPremia.rightSlot());
             console2.log("long.l", $longPremia.leftSlot());
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
