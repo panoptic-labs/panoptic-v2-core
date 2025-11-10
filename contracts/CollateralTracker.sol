@@ -59,6 +59,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         uint256 shares
     );
 
+    event CommissionPaid(address indexed payer, address indexed recipient, uint256 commission);
+
     /*//////////////////////////////////////////////////////////////
                                CONSTANTS
     //////////////////////////////////////////////////////////////*/
@@ -1076,35 +1078,57 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     ) internal returns (uint32, uint128, int128) {
         _accrueInterest(optionOwner);
         unchecked {
-            int256 tokenToPay;
-            uint128 commission;
-
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
 
+            uint256 _totalSupply = totalSupply;
+            uint256 _totalAssets = totalAssets();
+            int256 tokenToPay;
+
             if (isCreation) {
-                {
-                    int256 intrinsicValue = int256(swappedAmount) - (shortAmount - longAmount);
-                    // the swap commission is paid on the intrinsic value (if a swap occurred; users who mint covered options with their own collateral do not pay this fee)
-                    commission = uint128(
-                        Math.unsafeDivRoundingUp(
-                            uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
-                            DECIMALS
-                        )
-                    );
-                    tokenToPay = intrinsicValue + int128(commission);
-                }
+                tokenToPay = int256(swappedAmount) - (shortAmount - longAmount);
             } else {
                 // add premium and token deltas not covered by swap to be paid/collected on position close
                 tokenToPay = int256(swappedAmount) - (longAmount - shortAmount) - realizedPremium;
             }
+            // commissions, to be paid for all transactions.
+            {
+                uint128 commission = uint128(
+                    Math.unsafeDivRoundingUp(
+                        uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
+                        DECIMALS
+                    )
+                );
+                address builderCodeRecipient;
+                {
+                    bytes32 slot = Constants.BUILDER_CODE_TRANSIENT_SLOT;
+                    assembly {
+                        builderCodeRecipient := tload(slot)
+                    }
+                }
+                if (builderCodeRecipient != address(0)) {
+                    uint256 commissionShares = Math.mulDivRoundingUp(
+                        commission,
+                        _totalSupply,
+                        _totalAssets
+                    );
 
+                    _transferFrom(optionOwner, builderCodeRecipient, commissionShares / 10);
+                    emit CommissionPaid(optionOwner, builderCodeRecipient, commission / 10);
+                    _transferFrom(optionOwner, address(s_riskEngine), (4 * commissionShares) / 5);
+                    emit CommissionPaid(optionOwner, address(s_riskEngine), (4 * commission) / 5);
+                } else {
+                    // if no builder code is supplied, pay the commission by burning share tokens
+                    tokenToPay += int128(commission);
+                    emit CommissionPaid(optionOwner, address(this), commission);
+                }
+            }
             // Mint/Burn Shares
             if (tokenToPay > 0) {
                 uint256 sharesToBurn = Math.mulDivRoundingUp(
                     uint256(tokenToPay),
-                    totalSupply,
-                    totalAssets()
+                    _totalSupply,
+                    _totalAssets
                 );
                 address _optionOwner = optionOwner;
                 if (balanceOf[_optionOwner] < sharesToBurn)
@@ -1116,7 +1140,11 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
                 _burn(optionOwner, sharesToBurn);
             } else if (tokenToPay < 0) {
-                uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
+                uint256 sharesToMint = Math.mulDiv(
+                    uint256(-tokenToPay),
+                    _totalSupply,
+                    _totalAssets
+                );
                 _mint(optionOwner, sharesToMint);
             }
 
@@ -1143,7 +1171,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                 );
             }
             uint32 utilization = isCreation ? uint32(_poolUtilization()) : 0;
-            return (utilization, commission, int128(tokenToPay));
+            return (utilization, 0, int128(tokenToPay));
         }
     }
 
