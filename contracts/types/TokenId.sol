@@ -488,8 +488,8 @@ library TokenIdLibrary {
 
                 // Strike cannot be MIN_TICK or MAX_TICK
                 if (
-                    (self.strike(i) == Constants.MIN_V3POOL_TICK) ||
-                    (self.strike(i) == Constants.MAX_V3POOL_TICK)
+                    (self.strike(i) == Constants.MIN_POOL_TICK) ||
+                    (self.strike(i) == Constants.MAX_POOL_TICK)
                 ) revert Errors.InvalidTokenIdParameter(4);
 
                 // In the following, we check whether the risk partner of this leg is itself

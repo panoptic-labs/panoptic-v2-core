@@ -567,7 +567,7 @@ contract RiskEngine {
         uint256 _oraclePack
     ) external view returns (int24[] memory, uint256) {
         (int24 spotTick, int24 medianTick, int24 latestTick, uint256 oraclePack) = PanopticMath
-            .getOracleTicks(currentTick, _oraclePack, EMAperiods);
+            .getOracleTicks(currentTick, _oraclePack, EMA_PERIODS);
 
         int24[] memory atTicks;
 
@@ -738,6 +738,7 @@ contract RiskEngine {
             LeftRightUnsigned creditAmounts
         ) = _getTotalRequiredCollateral(positionBalanceArray, positionIdList, atTick, longPremia);
         address _user = user;
+
         (uint256 balance0, uint256 interest0) = ct0.assetsAndInterest(_user);
         (uint256 balance1, uint256 interest1) = ct1.assetsAndInterest(_user);
 
@@ -964,8 +965,8 @@ contract RiskEngine {
                             int24(
                                 Math.bound(
                                     2 * (atTick - strike),
-                                    Constants.MIN_V3POOL_TICK,
-                                    Constants.MAX_V3POOL_TICK
+                                    Constants.MIN_POOL_TICK,
+                                    Constants.MAX_POOL_TICK
                                 )
                             )
                         ) // puts ->  price/strike
@@ -973,8 +974,8 @@ contract RiskEngine {
                             int24(
                                 Math.bound(
                                     2 * (strike - atTick),
-                                    Constants.MIN_V3POOL_TICK,
-                                    Constants.MAX_V3POOL_TICK
+                                    Constants.MIN_POOL_TICK,
+                                    Constants.MAX_POOL_TICK
                                 )
                             )
                         ); // calls -> strike/price
