@@ -48,11 +48,11 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     }
 
     function _inAMM() external view returns (uint256) {
-        return s_inAMM;
+        return s_assetsInAMM;
     }
 
     function _poolAssets() external view returns (uint256) {
-        return s_poolAssets;
+        return s_depositedAssets;
     }
 
     function _interestRateAccumulator() external view returns (uint256) {
@@ -64,7 +64,7 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     }
 
     function _availableAssets() external view returns (uint256) {
-        return s_poolAssets;
+        return s_depositedAssets;
     }
 
     function burnShares(address owner, uint256 shares) external {
@@ -76,7 +76,7 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     }
 
     function setPoolAssets(uint256 amount) external {
-        s_poolAssets = uint128(amount);
+        s_depositedAssets = uint128(amount);
     }
 
     function setTotalSupply(uint256 amount) external {
@@ -84,7 +84,7 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     }
 
     function setInAMM(int128 amount) external {
-        s_inAMM = uint128(int128(s_inAMM) + amount);
+        s_assetsInAMM = uint128(int128(s_assetsInAMM) + amount);
     }
 
     function setInterestRateAccumulator(uint256 amount) external {
