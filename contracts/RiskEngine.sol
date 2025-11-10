@@ -1035,8 +1035,8 @@ contract RiskEngine {
                             int24(
                                 Math.bound(
                                     2 * (atTick - strike),
-                                    Constants.MIN_V3POOL_TICK,
-                                    Constants.MAX_V3POOL_TICK
+                                    Constants.MIN_POOL_TICK,
+                                    Constants.MAX_POOL_TICK
                                 )
                             )
                         ) // puts ->  price/strike
@@ -1044,8 +1044,8 @@ contract RiskEngine {
                             int24(
                                 Math.bound(
                                     2 * (strike - atTick),
-                                    Constants.MIN_V3POOL_TICK,
-                                    Constants.MAX_V3POOL_TICK
+                                    Constants.MIN_POOL_TICK,
+                                    Constants.MAX_POOL_TICK
                                 )
                             )
                         ); // calls -> strike/price

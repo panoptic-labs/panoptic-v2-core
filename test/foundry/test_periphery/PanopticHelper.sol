@@ -294,7 +294,8 @@ contract PanopticHelper {
         TokenId[] calldata positionIdList
     ) public view returns (int24 liquidationTick) {
         // initialize right and left bounds from current tick
-        (, int24 currentTick, , , , , ) = PanopticPool(pool).univ3pool().slot0();
+        int24 currentTick = SFPM.getCurrentTick(PanopticPool(pool).poolKey());
+
         int24 x0 = currentTick - 10000;
         int24 x1 = currentTick;
         int24 tol = 100000;
@@ -318,7 +319,7 @@ contract PanopticHelper {
             );
             // if price is not within a 100000 tick range of current price, return MIN_TICK
             if (x1 > currentTick + tol || x1 < currentTick - tol) {
-                return Constants.MIN_V3POOL_TICK;
+                return Constants.MIN_POOL_TICK;
             }
             // stop if price is within 0.01% (1 tick) of LP
             if (
@@ -342,7 +343,7 @@ contract PanopticHelper {
         TokenId[] calldata positionIdList
     ) public view returns (int24 liquidationTick) {
         // initialize right and left bounds from current tick
-        (, int24 currentTick, , , , , ) = PanopticPool(pool).univ3pool().slot0();
+        int24 currentTick = SFPM.getCurrentTick(PanopticPool(pool).poolKey());
         int24 x0 = currentTick;
         int24 x1 = currentTick + 10000;
         int24 tol = 100000;
@@ -366,7 +367,7 @@ contract PanopticHelper {
             );
             // if price is not within a 100000 tick range of current price, stop + return MAX_TICK
             if (x1 > currentTick + tol || x1 < currentTick - tol) {
-                return Constants.MAX_V3POOL_TICK;
+                return Constants.MAX_POOL_TICK;
             }
             // stop if price is within 0.01% (1 tick) of LP
             if (
