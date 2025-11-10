@@ -91,7 +91,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     uint128 internal s_assetsInAMM;
 
     /// @notice Amount of shares credited to the protocol, includes credits and purchased option liquidity above the rehypothecation threshold.
-    uint128 internal s_creditedShares;
+    uint256 internal s_creditedShares;
 
     /*//////////////////////////////////////////////////////////////
                            UNISWAP POOL DATA
@@ -400,14 +400,14 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param assets The amount of assets to be deposited
     /// @return shares The amount of shares that can be minted
     function convertToShares(uint256 assets) public view returns (uint256 shares) {
-        return Math.mulDiv(assets, totalSupply, totalAssets());
+        return Math.mulDiv(assets, effectiveSupply(), totalAssets());
     }
 
     /// @notice Returns the amount of assets that can be redeemed for the given amount of shares.
     /// @param shares The amount of shares to be redeemed
     /// @return assets The amount of assets that can be redeemed
     function convertToAssets(uint256 shares) public view returns (uint256 assets) {
-        return Math.mulDiv(shares, totalAssets(), totalSupply);
+        return Math.mulDiv(shares, totalAssets(), effectiveSupply());
     }
 
     /// @notice Returns the amount of assets that can be redeem by the user.
@@ -427,7 +427,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param assets The amount of assets to be deposited
     /// @return shares The amount of shares that can be minted
     function previewDeposit(uint256 assets) public view returns (uint256 shares) {
-        shares = Math.mulDiv(assets, totalSupply, totalAssets());
+        shares = Math.mulDiv(assets, effectiveSupply(), totalAssets());
     }
 
     /// @notice Deposit underlying tokens (assets) to the Panoptic pool from the LP and mint corresponding amount of shares.
@@ -472,7 +472,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     function previewMint(uint256 shares) public view returns (uint256 assets) {
         // round up depositing assets to avoid protocol loss
         // This prevents minting of shares where the assets provided is rounded down to zero
-        assets = Math.mulDivRoundingUp(shares, totalAssets(), totalSupply);
+        assets = Math.mulDivRoundingUp(shares, totalAssets(), effectiveSupply());
     }
 
     /// @notice Deposit required amount of assets to receive specified amount of shares.
@@ -524,7 +524,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param assets The amount of assets to be withdrawn
     /// @return shares The amount of shares that would be burned
     function previewWithdraw(uint256 assets) public view returns (uint256 shares) {
-        uint256 supply = totalSupply; // Saves an extra SLOAD if totalSupply is non-zero.
+        uint256 supply = effectiveSupply(); // Saves an extra SLOAD if effectiveSupply() is non-zero.
 
         return Math.mulDivRoundingUp(assets, supply, totalAssets());
     }
@@ -717,7 +717,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
                     uint256 shares = Math.mulDivRoundingUp(
                         userInterestOwed,
-                        totalSupply,
+                        effectiveSupply(),
                         _totalAssets
                     );
 
@@ -728,7 +728,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                         if (shares > userBalance) {
                             // update the accrual of interest paid
                             burntInterestValue = Math
-                                .mulDiv(userBalance, _totalAssets, totalSupply)
+                                .mulDiv(userBalance, _totalAssets, effectiveSupply())
                                 .toUint128();
                             /// Insolvent case: Pay what you can
                             _burn(_owner, userBalance);
@@ -1092,9 +1092,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             int256 tokenToPay;
             uint128 commission;
 
-            // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
-            int256 updatedAssets = int256(uint256(s_depositedAssets)) - ammDeltaAmount;
-
             int128 netBorrows = isCreation ? shortAmount - longAmount : longAmount - shortAmount;
 
             if (isCreation) {
@@ -1114,12 +1111,35 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                 tokenToPay = int256(ammDeltaAmount) - netBorrows - realizedPremium;
             }
 
+            /// Snapshot state variables to compute the price per share
+            uint256 _totalAssets = totalAssets();
+            {
+                int256 tA = int256(_totalAssets) - int256(ammDeltaAmount) + realizedPremium;
+                if (tA < 0) tA = 0;
+                _totalAssets = uint256(tA);
+            }
+            uint256 _effectiveSupply = effectiveSupply();
+
+            // compute creditDelta with the snapshotted values
+            uint256 creditDelta = Math.mulDiv(
+                uint256(uint128(longAmount)),
+                _effectiveSupply,
+                _totalAssets
+            );
+
+            if (!isCreation) {
+                // check that there is no underflow (necessary?)
+                if (s_creditedShares < creditDelta) revert Errors.InsufficientCreditLiquidity();
+                // update s_creditedShares: add long amounts == tokens moved into AMM or received when the position is closed
+                s_creditedShares -= creditDelta;
+            }
+
             // Mint/Burn Shares
             if (tokenToPay > 0) {
                 uint256 sharesToBurn = Math.mulDivRoundingUp(
                     uint256(tokenToPay),
-                    totalSupply,
-                    totalAssets()
+                    _effectiveSupply,
+                    _totalAssets
                 );
                 address _optionOwner = optionOwner;
                 if (balanceOf[_optionOwner] < sharesToBurn)
@@ -1129,25 +1149,41 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                         convertToAssets(balanceOf[_optionOwner])
                     );
 
-                _burn(optionOwner, sharesToBurn);
+                _burn(_optionOwner, sharesToBurn);
             } else if (tokenToPay < 0) {
-                uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
-                _mint(optionOwner, sharesToMint);
+                uint256 sharesToMint = Math.mulDiv(
+                    uint256(-tokenToPay),
+                    _effectiveSupply,
+                    _totalAssets
+                );
+                address _optionOwner = optionOwner;
+                _mint(_optionOwner, sharesToMint);
             }
 
             // Update Pool Assets
-            if (isCreation) {
-                s_depositedAssets = uint256(updatedAssets).toUint128();
-            } else {
-                s_depositedAssets = uint256(updatedAssets + realizedPremium).toUint128();
+            // use current available assets belonging to PLPs (updated after settlement)
+            /// @dev realizedPremium is 0 for mints, so can add it here
+            s_depositedAssets = uint256(
+                int256(uint256(s_depositedAssets)) - ammDeltaAmount + realizedPremium
+            ).toUint128();
+
+            // Update s_assetsInAMM:
+            // isCreation: Add short amounts == tokens moved into the AMM or used to create loans
+            // !isCreation: remove short amounts == tokens moved out of the AMM or repaid when the position is closed
+            {
+                int256 newAssetsInAmm = int256(uint256(s_assetsInAMM));
+                newAssetsInAmm += isCreation ? int256(shortAmount) : -int256(shortAmount);
+                s_assetsInAMM = uint256(newAssetsInAmm).toUint128();
             }
 
-            int256 _assetsInAMM = int256(uint256(s_assetsInAMM));
-
-            if (_assetsInAMM + netBorrows < 0) revert Errors.InsufficientCreditLiquidity();
-
-            // Update s_assetsInAMM
-            s_assetsInAMM = uint256(_assetsInAMM + netBorrows).toUint128();
+            if (isCreation) {
+                // update s_creditedShares: Add long amounts == tokens moved out of AMM or paid when creating credits
+                s_creditedShares += Math.mulDiv(
+                    uint128(longAmount),
+                    _effectiveSupply,
+                    _totalAssets
+                );
+            }
 
             {
                 address _optionOwner = optionOwner;
