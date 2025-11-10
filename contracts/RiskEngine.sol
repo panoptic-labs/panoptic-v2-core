@@ -798,8 +798,11 @@ contract RiskEngine {
 
         for (uint256 i; i < pLength; ) {
             PositionBalance positionBalance = positionBalanceArray[i];
+
             int256 _utilization0 = positionBalance.utilization0();
             int256 _utilization1 = positionBalance.utilization1();
+
+            // utilizations are always positive, so can compare directly here
             utilization0 = _utilization0 > utilization0 ? _utilization0 : utilization0;
             utilization1 = _utilization1 > utilization1 ? _utilization1 : utilization1;
             unchecked {
