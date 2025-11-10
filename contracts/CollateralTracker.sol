@@ -1112,11 +1112,11 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             }
 
             /// Snapshot state variables to compute the price per share
-            uint256 _totalAssets = totalAssets();
+            uint256 _totalAssets = uint256(int256(totalAssets()) + realizedPremium);
             {
-                int256 tA = int256(_totalAssets) - int256(ammDeltaAmount) + realizedPremium;
-                if (tA < 0) tA = 0;
-                _totalAssets = uint256(tA);
+                //int256 tA = int256(_totalAssets) - int256(ammDeltaAmount) + realizedPremium;
+                //if (tA < 0) tA = 0;
+                //_totalAssets = uint256(tA);
             }
             uint256 _effectiveSupply = effectiveSupply();
 
