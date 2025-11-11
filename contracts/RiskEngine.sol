@@ -276,6 +276,9 @@ contract RiskEngine {
                 // short legs are not counted - exercise is intended to be based on long legs
                 if (tokenId.isLong(leg) == 0) continue;
 
+                // credit/loans are not counted
+                if (tokenId.width(leg) == 0) continue;
+
                 {
                     int24 range = int24(
                         int256(
