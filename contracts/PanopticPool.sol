@@ -378,7 +378,7 @@ contract PanopticPool is Clone, Multicall {
         TokenId[] calldata positionIdList,
         bool usePremiaAsCollateral
     ) external view {
-        _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER, usePremiaAsCollateral);
+        _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER, usePremiaAsCollateral, 0);
     }
 
     /// @notice Returns the total amount of premium accumulated for a list of positions and a list containing the corresponding `PositionBalance` information for each position.
@@ -572,8 +572,7 @@ contract PanopticPool is Clone, Multicall {
                     effectiveLiquidityLimitsX32[i],
                     msg.sender,
                     tickLimitLow,
-                    tickLimitHigh,
-                    safeMode
+                    tickLimitHigh
                 );
             } else {
                 uint128 positionSize = positionBalanceData.positionSize();
@@ -599,7 +598,8 @@ contract PanopticPool is Clone, Multicall {
             msg.sender,
             finalPositionIdList,
             BP_DECREASE_BUFFER,
-            usePremiaAsCollateral
+            usePremiaAsCollateral,
+            safeMode
         );
 
         // Update `s_oraclePack` with a new observation if the last observation is old enough (returned oraclePack is nonzero)
@@ -618,15 +618,13 @@ contract PanopticPool is Clone, Multicall {
     /// @param owner The owner of the option position to be minted
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
-    /// @param safeMode whether the pool is in safeMode: mandate 100% collateral requirement if safeMode > 0
     function _mintOptions(
         TokenId tokenId,
         uint128 positionSize,
         uint64 effectiveLiquidityLimitX32,
         address owner,
         int24 tickLimitLow,
-        int24 tickLimitHigh,
-        uint8 safeMode
+        int24 tickLimitHigh
     ) internal returns (LeftRightSigned paidAmounts) {
         // Mint in the SFPM and update state of collateral
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned netAmmDelta) = SFPM
@@ -649,8 +647,6 @@ contract PanopticPool is Clone, Multicall {
             owner,
             netAmmDelta
         );
-
-        if (safeMode > 0) poolUtilizations = uint32(10_000 + (10_000 << 16));
 
         {
             // update the users options balance of position `tokenId`
@@ -829,7 +825,8 @@ contract PanopticPool is Clone, Multicall {
         address user,
         TokenId[] calldata positionIdList,
         uint256 buffer,
-        bool usePremiaAsCollateral
+        bool usePremiaAsCollateral,
+        uint8 safeMode
     ) internal view returns (uint256) {
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(user, positionIdList);
@@ -843,6 +840,7 @@ contract PanopticPool is Clone, Multicall {
 
         uint256 solvent = _checkSolvencyAtTicks(
             user,
+            safeMode,
             positionIdList,
             currentTick,
             atTicks,
@@ -913,6 +911,7 @@ contract PanopticPool is Clone, Multicall {
 
             solvent = _checkSolvencyAtTicks(
                 account,
+                0,
                 positionIdListTo,
                 currentTick,
                 atTicks,
@@ -960,7 +959,8 @@ contract PanopticPool is Clone, Multicall {
                         account,
                         positionIdListToFinal,
                         NO_BUFFER,
-                        premiaAsCollateral
+                        premiaAsCollateral,
+                        0
                     );
                 }
             } else if (solvent == 0) {
@@ -983,7 +983,8 @@ contract PanopticPool is Clone, Multicall {
             msg.sender,
             positionIdListFrom,
             NO_BUFFER,
-            usePremiaAsCollateral.leftSlot() > 0
+            usePremiaAsCollateral.leftSlot() > 0,
+            0
         );
     }
 
@@ -1279,6 +1280,7 @@ contract PanopticPool is Clone, Multicall {
     /// @return boolean flag that determines if account is solvent
     function _checkSolvencyAtTicks(
         address account,
+        uint8 safeMode,
         TokenId[] calldata positionIdList,
         int24 currentTick,
         int24[] memory atTicks,
@@ -1297,6 +1299,15 @@ contract PanopticPool is Clone, Multicall {
                 currentTick
             );
 
+        // if safeMode is ON, make the collateral requirements for 100% utilizations: no cross-margining, fully covered positions
+        if (safeMode > 0) {
+            uint32 maxUtilizations = uint32(10_000 + (10_000 << 16));
+            positionBalanceArray[0] = PositionBalanceLibrary.storeBalanceData(
+                positionBalanceArray[0].positionSize(),
+                maxUtilizations,
+                0
+            );
+        }
         uint256 numberOfTicks = atTicks.length;
 
         uint256 solvent;
