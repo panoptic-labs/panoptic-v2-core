@@ -220,6 +220,8 @@ contract PanopticFactoryTest is Test {
         }
 
         string[] memory propsStr = vm.parseJsonStringArray(metadata, ".properties");
+        console2.log("properties count", propsStr.length);
+
         bytes32[] memory props = new bytes32[](propsStr.length);
         for (uint256 i = 0; i < propsStr.length; i++) {
             props[i] = bytes32(bytes(propsStr[i]));
@@ -478,7 +480,7 @@ contract PanopticFactoryTest is Test {
         uint256 minTargetRarity
     ) public {
         // limit minTargetRarity to 1-2 leading zeroes for test efficiency
-        minTargetRarity = bound(minTargetRarity, 1, 2);
+        minTargetRarity = bound(minTargetRarity, 1, 5);
 
         nonce = uint96(bound(nonce, 0, type(uint96).max - 1001));
 
