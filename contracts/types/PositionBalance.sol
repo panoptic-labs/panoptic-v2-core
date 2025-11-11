@@ -68,6 +68,8 @@ library PositionBalanceLibrary {
     ) internal pure returns (uint96) {
         unchecked {
             return
+                // casting to 'uint24' is safe because ticks are always < 2**24
+                // forge-lint: disable-next-line(unsafe-typecast)
                 uint96(uint24(_currentTick)) +
                 (uint96(uint24(_fastOracleTick)) << 24) +
                 (uint96(uint24(_slowOracleTick)) << 48) +

@@ -66,8 +66,12 @@ library LiquidityChunkLibrary {
         uint128 amount
     ) internal pure returns (LiquidityChunk) {
         unchecked {
+            // casting to 'uint256' is safe because _tickUpper/_tickLower is always < 2**24
+            // forge-lint: disable-next-line(unsafe-typecast)
             return
                 LiquidityChunk.wrap(
+                    // casting to 'uint24' is safe because _tickLower/_tickUpper is always < 2**24
+                    // forge-lint: disable-next-line(unsafe-typecast)
                     (uint256(uint24(_tickLower)) << 232) +
                         (uint256(uint24(_tickUpper)) << 208) +
                         uint256(amount)

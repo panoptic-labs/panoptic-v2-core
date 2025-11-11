@@ -29,6 +29,7 @@ import {FixedPoint96} from "v3-core/libraries/FixedPoint96.sol";
 import {PoolAddress} from "v3-periphery/libraries/PoolAddress.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {LiquidityAmounts} from "@uniswap/v3-periphery/contracts/libraries/LiquidityAmounts.sol";
+import {ClonesWithImmutableArgs} from "clones-with-immutable-args/ClonesWithImmutableArgs.sol";
 // Uniswap Interfaces
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
 import {IUniswapV3Factory} from "v3-core/interfaces/IUniswapV3Factory.sol";
@@ -41,31 +42,17 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     //constructor() CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000) {}
     constructor() CollateralTracker(10) {}
 
-    // view deployer (panoptic pool)
-    function panopticPool() external view returns (PanopticPool) {
-        return s_panopticPool;
-    }
-
-    function riskEngine() external view returns (RiskEngine) {
-        return s_riskEngine;
-    }
-
     // whether the token has been initialized already or not
     function initalized() external view returns (bool) {
         return s_initialized;
     }
 
-    // whether the current instance is token 0
-    function underlyingIsToken0() external view returns (bool) {
-        return s_underlyingIsToken0;
-    }
-
     function _inAMM() external view returns (uint256) {
-        return s_inAMM;
+        return s_assetsInAMM;
     }
 
     function _poolAssets() external view returns (uint256) {
-        return s_poolAssets;
+        return s_depositedAssets;
     }
 
     function _interestRateAccumulator() external view returns (uint256) {
@@ -77,7 +64,7 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     }
 
     function _availableAssets() external view returns (uint256) {
-        return s_poolAssets;
+        return s_depositedAssets;
     }
 
     function burnShares(address owner, uint256 shares) external {
@@ -89,15 +76,19 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     }
 
     function setPoolAssets(uint256 amount) external {
-        s_poolAssets = uint128(amount);
+        s_depositedAssets = uint128(amount);
     }
 
     function setTotalSupply(uint256 amount) external {
-        totalSupply = amount;
+        _internalSupply = amount;
     }
 
     function setInAMM(int128 amount) external {
-        s_inAMM = uint128(int128(s_inAMM) + amount);
+        s_assetsInAMM = uint128(int128(s_assetsInAMM) + amount);
+    }
+
+    function setCreditedShares(int256 amount) external {
+        s_creditedShares = uint256(amount);
     }
 
     function setInterestRateAccumulator(uint256 amount) external {
@@ -117,71 +108,6 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
 // which enables us to use our modified CollateralTracker harness that exposes internal data
 contract PanopticPoolHarness is PanopticPool {
     constructor(SemiFungiblePositionManager _SFPM) PanopticPool(_SFPM) {}
-
-    function modifiedStartPool(
-        address token0,
-        address token1,
-        IUniswapV3Pool uniswapPool,
-        RiskEngine riskEngine
-    ) external {
-        // Store the univ3Pool variable
-        s_univ3pool = IUniswapV3Pool(uniswapPool);
-
-        s_poolId = SFPM.getPoolId(address(s_univ3pool));
-
-        s_riskEngine = riskEngine;
-
-        // store token0 and token1
-        address s_token0 = uniswapPool.token0();
-        address s_token1 = uniswapPool.token1();
-
-        // Start and store the collateral token0/1
-        _initalizeCollateralPair(token0, token1, uniswapPool, riskEngine);
-
-        (, int24 currentTick, , , , , ) = uniswapPool.slot0();
-
-        unchecked {
-            s_oraclePack =
-                (uint256((block.timestamp >> 6) % 2 ** 24) << 232) +
-                // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
-                // see comment on s_oraclePack initialization for format of this magic number
-                (uint256(0xf590a60000000000000000000000000000800e00200e00200e00000000)) +
-                // EMA1D at bits 207-186
-                (uint256(uint24(currentTick) & 0x3FFFFF) << 186) +
-                // EMA8H at bits 185-164
-                (uint256(uint24(currentTick) & 0x3FFFFF) << 164) +
-                // EMA1H at bits 163-142
-                (uint256(uint24(currentTick) & 0x3FFFFF) << 142) +
-                // EMA10m at bits 141-120
-                (uint256(uint24(currentTick) & 0x3FFFFF) << 120) +
-                // store currentTick as the reference tick at bits 119-96
-                (uint256(uint24(currentTick)) << 96);
-        }
-
-        // Approve transfers of Panoptic Pool funds by SFPM
-        IERC20Partial(s_token0).approve(address(SFPM), type(uint256).max);
-        IERC20Partial(s_token1).approve(address(SFPM), type(uint256).max);
-
-        // Approve transfers of Panoptic Pool funds by Collateral token
-        IERC20Partial(s_token0).approve(address(s_collateralToken0), type(uint256).max);
-        IERC20Partial(s_token1).approve(address(s_collateralToken1), type(uint256).max);
-    }
-
-    // Generate a new pair of collateral tokens from a univ3 pool
-    function _initalizeCollateralPair(
-        address token0,
-        address token1,
-        IUniswapV3Pool uniswapPool,
-        RiskEngine riskEngine
-    ) internal {
-        // Deploy collateral tokens
-        s_collateralToken0 = new CollateralTrackerHarness();
-        s_collateralToken1 = new CollateralTrackerHarness();
-
-        // initialize the token
-        s_collateralToken0.startToken(true, token0, token1, uniswapPool.fee(), this, riskEngine);
-        s_collateralToken1.startToken(false, token0, token1, uniswapPool.fee(), this, riskEngine);
-    }
 
     function delegate(address delegatee, CollateralTracker collateralToken) external {
         collateralToken.delegate(delegatee);
@@ -262,6 +188,23 @@ contract RiskEngineHarness is RiskEngine {
         int16 utilization
     ) external view returns (uint256 required) {
         return _getRequiredCollateralAtUtilization(amount, isLong, utilization);
+    }
+
+    function getRequiredCollateralAtTickSinglePosition(
+        TokenId tokenId,
+        uint128 positionSize,
+        int24 atTick,
+        int16 poolUtilization,
+        bool underlyingIsToken0
+    ) external view returns (uint256) {
+        (uint256 tokensRequired, ) = _getRequiredCollateralAtTickSinglePosition(
+            tokenId,
+            positionSize,
+            atTick,
+            poolUtilization,
+            underlyingIsToken0
+        );
+        return tokensRequired;
     }
 
     function sellCollateralRatio(int256 utilization) external view returns (uint256) {
@@ -366,6 +309,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
     IUniswapV3Pool constant USDC_WETH_5 =
         IUniswapV3Pool(0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640);
 
+    IUniswapV3Pool constant USDC_WETH_100 =
+        IUniswapV3Pool(0x7BeA39867e4169DBe237d55C8242a8f2fcDcc387);
+
     IUniswapV3Pool constant WBTC_ETH_30 =
         IUniswapV3Pool(0xCBCdF9626bC03E24f779434178A73a0B4bad62eD);
 
@@ -378,8 +324,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
     IUniswapV3Pool constant WSTETH_ETH_1 =
         IUniswapV3Pool(0x109830a1AAaD605BbF02a9dFA7B0B92EC2FB7dAa);
 
-    IUniswapV3Pool[5] public pools = [
+    IUniswapV3Pool[6] public pools = [
         USDC_WETH_5,
+        USDC_WETH_100,
         WBTC_ETH_30,
         MATIC_ETH_30,
         DAI_USDC_1,
@@ -485,7 +432,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     LeftRightUnsigned $longPremia;
     LeftRightUnsigned $shortPremia;
 
-    uint256[] posBalanceArray;
+    PositionBalance[] posBalanceArray;
 
     uint128 DECIMALS = 10_000_000;
     int128 DECIMALS128 = 10_000_000;
@@ -640,58 +587,182 @@ contract CollateralTrackerTest is Test, PositionUtils {
     function _deployCustomPanopticPool(
         address _token0,
         address _token1,
-        IUniswapV3Pool uniswapPool
+        IUniswapV3Pool uniswapPool // must already exist and be initialized
     ) internal {
-        // deploy the semiFungiblePositionManager
+        // 1) SFPM and AMM pool init
         sfpm = new SemiFungiblePositionManagerHarness(V3FACTORY);
+        // enforce token sort like the factory does
+        (address t0, address t1) = _token0 < _token1 ? (_token0, _token1) : (_token1, _token0);
+        uint64 poolId = sfpm.initializeAMMPool(t0, t1, fee);
 
-        // Initialize the world pool
-        sfpm.initializeAMMPool(_token0, _token1, fee);
-
-        panopticHelper = new PanopticHelper(SemiFungiblePositionManager(sfpm));
-
+        // 2) Risk engine
         riskEngine = new RiskEngineHarness(10_000_000, 10_000_000);
 
-        // deploy modified Panoptic pool
-        panopticPool = new PanopticPoolHarness(sfpm);
+        // 3) Implementations (POOL_REFERENCE and COLLATERAL_REFERENCE stand-ins)
+        // If you already have shared references in your test suite, reuse them instead of deploying new ones.
+        CollateralTrackerHarness collateralImpl = new CollateralTrackerHarness();
+        panopticPool = new PanopticPoolHarness(sfpm); // acts as POOL_REFERENCE
 
-        // initalize Panoptic Pool
-        panopticPool.modifiedStartPool(_token0, _token1, uniswapPool, riskEngine);
+        // 4) Deterministic salt like the factory (deployer + pool + risk + user salt=0)
+        bytes32 salt = bytes32(
+            abi.encodePacked(
+                uint80(uint160(address(this)) >> 80),
+                uint80(uint160(address(uniswapPool)) >> 40),
+                uint80(uint160(address(riskEngine)) >> 40),
+                uint96(0)
+            )
+        );
 
-        collateralToken0 = CollateralTrackerHarness(address(panopticPool.collateralToken0()));
-        collateralToken1 = CollateralTrackerHarness(address(panopticPool.collateralToken1()));
+        // 5) Predict pool proxy address for embedding into collateral immutables
+        PanopticPoolHarness predictedPool = PanopticPoolHarness(
+            ClonesWithImmutableArgs.addressOfClone3(salt)
+        );
 
-        // store panoptic pool address
+        // 6) Clone collateral trackers with immutables
+        collateralToken0 = CollateralTrackerHarness(
+            ClonesWithImmutableArgs.clone2(
+                address(collateralImpl),
+                abi.encodePacked(
+                    predictedPool, // panopticPool
+                    true, // is0
+                    t0, // token0
+                    t0, // ct.token0()
+                    t1, // ct.token1()
+                    riskEngine, // risk engine
+                    fee // pool fee
+                )
+            )
+        );
+
+        collateralToken1 = CollateralTrackerHarness(
+            ClonesWithImmutableArgs.clone2(
+                address(collateralImpl),
+                abi.encodePacked(
+                    predictedPool, // panopticPool
+                    false, // is0
+                    t1, // token1
+                    t0, // ct.token0()
+                    t1, // ct.token1()
+                    riskEngine, // risk engine
+                    fee // pool fee
+                )
+            )
+        );
+
+        // 7) Clone the PanopticPool proxy with immutables
+        panopticPool = PanopticPoolHarness(
+            ClonesWithImmutableArgs.clone3(
+                address(panopticPool), // implementation = POOL_REFERENCE
+                abi.encodePacked(
+                    collateralToken0,
+                    collateralToken1,
+                    riskEngine,
+                    uint256(poolId),
+                    abi.encode(uniswapPool) // v3 pool reference payload
+                ),
+                salt
+            )
+        );
+
+        // 8) Initialize pool and trackers, exactly like the factory path
+        panopticPool.initialize();
+        collateralToken0.initialize();
+        collateralToken1.initialize();
+
+        // 9) Helpers wiring for tests
+        panopticHelper = new PanopticHelper(SemiFungiblePositionManager(sfpm));
         panopticPoolAddress = address(panopticPool);
     }
 
     function _deployCustomPanopticPool(
         address _token0,
         address _token1,
-        IUniswapV3Pool uniswapPool,
+        IUniswapV3Pool uniswapPool, // must already exist and be initialized
         uint256 crossBuffer0,
         uint256 crossBuffer1
     ) internal {
-        // deploy the semiFungiblePositionManager
+        // 1) SFPM and AMM pool init
         sfpm = new SemiFungiblePositionManagerHarness(V3FACTORY);
+        // enforce token sort like the factory does
+        (address t0, address t1) = _token0 < _token1 ? (_token0, _token1) : (_token1, _token0);
+        uint64 poolId = sfpm.initializeAMMPool(t0, t1, fee);
 
-        // Initialize the world pool
-        sfpm.initializeAMMPool(_token0, _token1, fee);
-
-        panopticHelper = new PanopticHelper(SemiFungiblePositionManager(sfpm));
-
+        // 2) Risk engine
         riskEngine = new RiskEngineHarness(crossBuffer0, crossBuffer1);
 
-        // deploy modified Panoptic pool
-        panopticPool = new PanopticPoolHarness(sfpm);
+        // 3) Implementations (POOL_REFERENCE and COLLATERAL_REFERENCE stand-ins)
+        // If you already have shared references in your test suite, reuse them instead of deploying new ones.
+        CollateralTrackerHarness collateralImpl = new CollateralTrackerHarness();
+        panopticPool = new PanopticPoolHarness(sfpm); // acts as POOL_REFERENCE
 
-        // initalize Panoptic Pool
-        panopticPool.modifiedStartPool(_token0, _token1, uniswapPool, riskEngine);
+        // 4) Deterministic salt like the factory (deployer + pool + risk + user salt=0)
+        bytes32 salt = bytes32(
+            abi.encodePacked(
+                uint80(uint160(address(this)) >> 80),
+                uint80(uint160(address(uniswapPool)) >> 40),
+                uint80(uint160(address(riskEngine)) >> 40),
+                uint96(0)
+            )
+        );
 
-        collateralToken0 = CollateralTrackerHarness(address(panopticPool.collateralToken0()));
-        collateralToken1 = CollateralTrackerHarness(address(panopticPool.collateralToken1()));
+        // 5) Predict pool proxy address for embedding into collateral immutables
+        PanopticPoolHarness predictedPool = PanopticPoolHarness(
+            ClonesWithImmutableArgs.addressOfClone3(salt)
+        );
 
-        // store panoptic pool address
+        // 6) Clone collateral trackers with immutables
+        collateralToken0 = CollateralTrackerHarness(
+            ClonesWithImmutableArgs.clone2(
+                address(collateralImpl),
+                abi.encodePacked(
+                    predictedPool, // panopticPool
+                    true, // is0
+                    t0, // token0
+                    t0, // ct.token0()
+                    t1, // ct.token1()
+                    riskEngine, // risk engine
+                    fee // pool fee
+                )
+            )
+        );
+
+        collateralToken1 = CollateralTrackerHarness(
+            ClonesWithImmutableArgs.clone2(
+                address(collateralImpl),
+                abi.encodePacked(
+                    predictedPool, // panopticPool
+                    false, // is0
+                    t1, // token1
+                    t0, // ct.token0()
+                    t1, // ct.token1()
+                    riskEngine, // risk engine
+                    fee // pool fee
+                )
+            )
+        );
+
+        // 7) Clone the PanopticPool proxy with immutables
+        panopticPool = PanopticPoolHarness(
+            ClonesWithImmutableArgs.clone3(
+                address(panopticPool), // implementation = POOL_REFERENCE
+                abi.encodePacked(
+                    collateralToken0,
+                    collateralToken1,
+                    riskEngine,
+                    uint256(poolId),
+                    abi.encode(uniswapPool) // v3 pool reference payload
+                ),
+                salt
+            )
+        );
+
+        // 8) Initialize pool and trackers, exactly like the factory path
+        panopticPool.initialize();
+        collateralToken0.initialize();
+        collateralToken1.initialize();
+
+        // 9) Helpers wiring for tests
+        panopticHelper = new PanopticHelper(SemiFungiblePositionManager(sfpm));
         panopticPoolAddress = address(panopticPool);
     }
 
@@ -762,6 +833,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             )
         );
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        console2.log("ct0", currentSqrtPriceX96);
 
         router.exactOutputSingle(
             ISwapRouter.ExactOutputSingleParams(
@@ -777,6 +850,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        console2.log("ct1", currentSqrtPriceX96);
     }
 
     function setUp() public {}
@@ -788,7 +862,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     function test_Success_StartToken_virtualShares() public {
         _initWorld(0);
         CollateralTracker ct = new CollateralTracker(10);
-        ct.startToken(false, token0, token1, fee, panopticPool, riskEngine);
+        ct.initialize();
 
         assertEq(ct.totalSupply(), 10 ** 6);
         assertEq(ct.totalAssets(), 1);
@@ -801,25 +875,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0 = new CollateralTrackerHarness();
 
         // initialize the token
-        collateralToken0.startToken(
-            false,
-            token0,
-            token1,
-            fee,
-            PanopticPool(address(0)),
-            riskEngine
-        );
+        collateralToken0.initialize();
 
         // fails if already initialized
         vm.expectRevert(Errors.CollateralTokenAlreadyInitialized.selector);
-        collateralToken0.startToken(
-            false,
-            token0,
-            token1,
-            fee,
-            PanopticPool(address(0)),
-            riskEngine
-        );
+        collateralToken0.initialize();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1073,8 +1133,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             assets / 2,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1141,8 +1201,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             assets / 4,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         actualAccumulator = collateralToken0._interestRateAccumulator();
@@ -1166,8 +1226,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         console2.log("DONE", Bob);
@@ -1219,8 +1279,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             assets,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1235,8 +1295,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList1,
             assets / 2,
             2 ** 64 - 1,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1255,7 +1315,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         console2.log("after accru", uint128(collateralToken0._interestRateAccumulator()));
 
         {
-            (, , uint256 utilization) = collateralToken0.getPoolData();
+            (, , , uint256 utilization) = collateralToken0.getPoolData();
             assertGt(utilization, 0, "FAIL: Utilization should be positive after borrow");
         }
 
@@ -1297,8 +1357,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList1,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         console2.log(
@@ -1315,8 +1375,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1361,8 +1421,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList1,
             assets / 2,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1391,8 +1451,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             assets / 8,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1407,8 +1467,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             assets / 4,
             2 ** 64 - 1,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1428,7 +1488,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         console2.log("after accru", uint128(collateralToken0._interestRateAccumulator()));
 
         {
-            (, , uint256 utilization) = collateralToken0.getPoolData();
+            (, , , uint256 utilization) = collateralToken0.getPoolData();
             assertGt(utilization, 0, "FAIL: Utilization should be positive after borrow");
         }
 
@@ -1468,8 +1528,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -1489,8 +1549,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList1,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         console2.log(
@@ -1538,8 +1598,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             1,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         vm.stopPrank();
@@ -1655,8 +1715,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList,
                 borrowAmount,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
             console2.log("b");
@@ -1740,8 +1800,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList,
                 aliceSize,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
             vm.stopPrank();
@@ -1763,8 +1823,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList,
                 bobSize,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
             vm.stopPrank();
@@ -1787,8 +1847,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList,
                 charlieSize,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
             vm.stopPrank();
@@ -2082,8 +2142,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             assets,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         vm.stopPrank();
@@ -2101,8 +2161,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             assets,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2312,8 +2372,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             assets / 2,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         vm.stopPrank();
@@ -2436,8 +2496,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             size, // Borrow same amount as deposit
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2519,8 +2579,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             100 ether, // Borrow same amount as deposit
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2530,11 +2590,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // Move forward significantly to generate high interest
         vm.warp(block.timestamp + 365 days);
 
-        (LeftRightUnsigned tokenData0, ) = riskEngine.getMargin(
-            Bob,
-            currentTick,
-            positionIdList,
+        (LeftRightUnsigned tokenData0, , ) = riskEngine.getMargin(
             posBalanceArray,
+            currentTick,
+            Bob,
+            positionIdList,
             $shortPremia,
             $longPremia,
             collateralToken0,
@@ -2546,11 +2606,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.burnShares(Bob, collateralToken0.previewDeposit(tokenData0.rightSlot()));
         collateralToken0.mintShares(Bob, collateralToken0.previewDeposit(tokenData0.leftSlot()));
 
-        (tokenData0, ) = riskEngine.getMargin(
-            Bob,
-            currentTick,
-            positionIdList,
+        (tokenData0, , ) = riskEngine.getMargin(
             posBalanceArray,
+            currentTick,
+            Bob,
+            positionIdList,
             $shortPremia,
             $longPremia,
             collateralToken0,
@@ -2686,8 +2746,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             100 ether, // Borrow same amount as deposit
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -2701,11 +2761,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 previewedInterest = collateralToken0.previewOwedInterest(Bob);
         assertGt(previewedInterest, 0, "Preview should show interest even for insolvent user");
 
-        (LeftRightUnsigned tokenData0, ) = riskEngine.getMargin(
-            Bob,
-            currentTick,
-            positionIdList,
+        (LeftRightUnsigned tokenData0, , ) = riskEngine.getMargin(
             posBalanceArray,
+            currentTick,
+            Bob,
+            positionIdList,
             $shortPremia,
             $longPremia,
             collateralToken0,
@@ -2721,11 +2781,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             collateralToken0.previewDeposit(tokenData0.leftSlot() - 8949971082503561822)
         );
 
-        (tokenData0, ) = riskEngine.getMargin(
-            Bob,
-            currentTick,
-            positionIdList,
+        (tokenData0, , ) = riskEngine.getMargin(
             posBalanceArray,
+            currentTick,
+            Bob,
+            positionIdList,
             $shortPremia,
             $longPremia,
             collateralToken0,
@@ -2863,19 +2923,19 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             size, // Borrow same amount as deposit
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
         ($shortPremia, $longPremia, posBalanceArray) = panopticPool
             .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-        (LeftRightUnsigned tokenData0, ) = riskEngine.getMargin(
-            Bob,
-            currentTick,
-            positionIdList,
+        (LeftRightUnsigned tokenData0, , ) = riskEngine.getMargin(
             posBalanceArray,
+            currentTick,
+            Bob,
+            positionIdList,
             $shortPremia,
             $longPremia,
             collateralToken0,
@@ -3012,8 +3072,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             100 ether, // Borrow same amount as deposit
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3134,8 +3194,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             borrowAmount,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         vm.stopPrank();
@@ -3206,8 +3266,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList[0],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
             (, int128 netBorrowsAfter) = collateralToken0.interestState(Bob);
@@ -3219,8 +3279,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList,
                 borrowAmount + borrowAmount / 4,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
 
@@ -3299,8 +3359,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             borrowAmount,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         vm.stopPrank();
@@ -3316,8 +3376,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             borrowAmount,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         vm.stopPrank();
@@ -3421,8 +3481,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             maxBorrow,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         vm.stopPrank();
@@ -3776,8 +3836,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(bound(positionSizeSeed, 501, 1000)),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -3814,8 +3874,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             750,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3827,8 +3887,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             500,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3841,8 +3901,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             tokenId,
             positionIdList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -3879,24 +3939,36 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             750,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, strike, width);
         positionIdList.push(tokenId);
 
-        collateralToken0.setInAMM(-300);
-
-        vm.expectRevert(Errors.InsufficientCreditLiquidity.selector);
         mintOptions(
             panopticPool,
             positionIdList,
             500,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+        positionIdList1.push(tokenId);
+        positionIdList.pop();
+
+        collateralToken0.setCreditedShares(0);
+
+        console2.log("ffo");
+        vm.expectRevert(Errors.InsufficientCreditLiquidity.selector);
+        burnOptions(
+            panopticPool,
+            positionIdList1,
+            positionIdList,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -3933,8 +4005,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             750,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -3942,13 +4014,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         positionIdList.pop();
 
-        vm.expectRevert(Errors.InsufficientCreditLiquidity.selector);
+        vm.expectRevert(Errors.CastingError.selector);
         burnOptions(
             panopticPool,
             tokenId,
             positionIdList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -4167,8 +4239,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4238,8 +4310,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -4287,8 +4359,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         // 1. Arrange: Create a spoofed tokenId that Bob doesn't own
@@ -4327,8 +4399,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             spoofList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -4370,8 +4442,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         // 1. Arrange: Create a spoofed tokenId that Bob doesn't own
@@ -4437,8 +4509,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e16),
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         // 1. Arrange: Create a spoofed tokenId that Bob doesn't own
@@ -4466,8 +4538,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             spoofList,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -4511,8 +4583,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e16),
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4525,8 +4597,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e16),
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4556,8 +4628,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             spoofList,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4581,8 +4653,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e16),
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4597,8 +4669,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             tokenId2,
             spoofList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -4640,8 +4712,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         // 1. Arrange: Create a tokenId with no legs and set the hash.
@@ -4698,8 +4770,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         // 1. Arrange: Create a list with the same tokenId twice.
@@ -4714,8 +4786,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             duplicateList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -4757,8 +4829,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         TokenId tokenId2 = TokenId.wrap(0).addPoolId(poolId).addLeg(
@@ -4779,8 +4851,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
         TokenId tokenId3 = TokenId.wrap(0).addPoolId(poolId).addLeg(
@@ -4802,8 +4874,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(1e9),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -4817,8 +4889,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             tokenId2,
             spoofedList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
     }
@@ -5021,8 +5093,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             positionSize0,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
             true
         );
 
@@ -5116,8 +5188,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList,
                 positionSize0,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
                 true
             );
         }
@@ -5625,8 +5697,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.settleMint(
             address(0),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK
         );
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
@@ -5634,8 +5706,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             address(0),
             0,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK
         );
     }
 
@@ -5770,11 +5842,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -5805,11 +5877,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -5972,11 +6044,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -6007,11 +6079,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -6404,11 +6476,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -6439,11 +6511,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -6581,11 +6653,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -6636,11 +6708,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -6774,11 +6846,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -6830,11 +6902,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -6969,11 +7041,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -7026,11 +7098,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -7122,16 +7194,17 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                     .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-                (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                    Bob,
-                    atTick,
-                    positionIdList,
-                    posBalanceArray,
-                    $shortPremia,
-                    $longPremia,
-                    collateralToken0,
-                    collateralToken1
-                );
+                (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine
+                    .getMargin(
+                        posBalanceArray,
+                        atTick,
+                        Bob,
+                        positionIdList,
+                        $shortPremia,
+                        $longPremia,
+                        collateralToken0,
+                        collateralToken1
+                    );
 
                 console2.log(
                     atTick < 0 ? uint24(-atTick) : uint24(atTick),
@@ -7293,11 +7366,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -7351,11 +7424,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -7521,7 +7594,17 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint128 poolUtilizations = uint128(poolUtilization0 == 0 ? 1 : poolUtilization0) +
                 (uint128(poolUtilization1 == 0 ? 1 : poolUtilization1) << 64);
 
-            required = _spreadTokensRequired(tokenId1, positionSize0 / 2, poolUtilizations);
+            required = uint128(
+                riskEngine.getRequiredCollateralAtTickSinglePosition(
+                    tokenId1,
+                    positionSize0 / 2,
+                    currentTick,
+                    int16(uint16(poolUtilizations)),
+                    true
+                )
+            );
+
+            //required = _spreadTokensRequired(tokenId1, positionSize0 / 2, poolUtilizations);
             console2.log("required-spreads", required);
         }
 
@@ -7536,11 +7619,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -7589,11 +7672,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -7749,11 +7832,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -7812,11 +7895,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -7979,11 +8062,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8042,11 +8125,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8195,11 +8278,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                atTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8259,11 +8342,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Alice,
-                currentTick,
-                positionIdList1,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8393,11 +8476,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                atTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8440,11 +8523,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8566,19 +8649,19 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                atTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
                 collateralToken1
             );
 
-            (, , uint256 utilization0) = collateralToken0.getPoolData();
-            (, , uint256 utilization1) = collateralToken1.getPoolData();
+            (, , , uint256 utilization0) = collateralToken0.getPoolData();
+            (, , , uint256 utilization1) = collateralToken1.getPoolData();
 
             // check user packed utilization
             assertApproxEqAbs(targetUtilization, utilization0, 1, "utilization ct 0");
@@ -8635,11 +8718,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8761,11 +8844,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                atTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8824,11 +8907,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -8949,11 +9032,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                atTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9013,11 +9096,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9135,11 +9218,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                atTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9186,11 +9269,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9306,11 +9389,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                atTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9369,11 +9452,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9468,11 +9551,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                atTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9547,11 +9630,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9604,7 +9687,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 (x % 127) + 1,
                 (x >> 10) % 2,
                 0,
-                (x >> 11) % 12,
+                (x >> 11) % 2,
                 0,
                 (currentTick / tickSpacing) * tickSpacing,
                 0
@@ -9637,11 +9720,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                atTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9713,11 +9796,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9771,7 +9854,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 (x % 127) + 1,
                 (x >> 10) % 2,
                 0,
-                (x >> 11) % 12,
+                (x >> 11) % 2,
                 0,
                 (currentTick / tickSpacing) * tickSpacing,
                 0
@@ -9809,7 +9892,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 (x % 127) + 1,
                 (x >> 10) % 2,
                 1,
-                (x >> 11) % 12,
+                (x >> 11) % 2,
                 0,
                 (currentTick / tickSpacing) * tickSpacing,
                 0
@@ -9847,11 +9930,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                atTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9872,7 +9955,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             assertEq(
                 poolUtilization0,
                 Math.mulDivRoundingUp(
-                    uint128(shortAmountsAlice.rightSlot() - longAmounts.rightSlot()),
+                    uint128(shortAmountsAlice.rightSlot()),
                     10000,
                     collateralToken0.totalAssets()
                 ),
@@ -9881,7 +9964,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             assertEq(
                 poolUtilization1,
                 Math.mulDivRoundingUp(
-                    uint128(shortAmountsAlice.leftSlot() - longAmounts.leftSlot()),
+                    uint128(shortAmountsAlice.leftSlot()),
                     10000,
                     collateralToken1.totalAssets()
                 ),
@@ -9930,11 +10013,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
-                Bob,
-                currentTick,
-                positionIdList,
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
                 posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
                 $shortPremia,
                 $longPremia,
                 collateralToken0,
@@ -9947,6 +10030,336 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 Math.getSqrtRatioAtTick(currentTick)
             );
 
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
+                panopticPool,
+                Bob,
+                currentTick,
+                positionIdList
+            );
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
+        }
+    }
+
+    function test_Success_collateralCheck_CreditOption(uint256 x) public {
+        uint64 targetUtilization;
+        x = uint256(keccak256(abi.encode(x)));
+        TokenId tokenIdc;
+        {
+            _initWorld(1);
+
+            console2.log("pool.fee", pool.fee());
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool);
+
+            // Invoke all interactions with the Collateral Tracker from user Alice
+            vm.startPrank(Alice);
+
+            // give Bob the max amount of tokens
+            _grantTokens(Alice);
+
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+
+            // equal deposits for both collateral token pairs for testing purposes
+            collateralToken0.deposit(type(uint104).max, Alice);
+            collateralToken1.deposit(type(uint104).max, Alice);
+
+            tokenIdc = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                100,
+                (x >> 10) % 2,
+                0,
+                (x >> 11) % 2,
+                0,
+                (currentTick / tickSpacing) * tickSpacing,
+                2
+            );
+            positionIdList.push(tokenIdc);
+
+            positionSize0 = uint128(bound(x >> 128, 10 ** 10, 10 ** 12));
+
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                positionSize0 * 10,
+                type(uint64).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.startPrank(Bob);
+
+            // give Bob the max amount of tokens
+            _grantTokens(Bob);
+
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+
+            // equal deposits for both collateral token pairs for testing purposes
+            collateralToken0.deposit(type(uint104).max, Bob);
+            collateralToken1.deposit(type(uint104).max, Bob);
+
+            // a credit and a long option
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                (x >> 10) % 2,
+                1,
+                (x >> 11) % 2,
+                1,
+                (currentTick / tickSpacing) * tickSpacing,
+                0
+            );
+            tokenId = tokenId.addLeg(
+                1,
+                100,
+                (x >> 10) % 2,
+                1,
+                (x >> 11) % 2,
+                0,
+                (currentTick / tickSpacing) * tickSpacing,
+                2
+            );
+
+            positionIdList.pop();
+            positionIdList.push(tokenId);
+
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                (9 * positionSize0) / 10,
+                type(uint64).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+        }
+
+        // check requirement at fuzzed tick
+        {
+            int24 atTick = int24(
+                bound(int24(uint24((x >> 24) % 2 ** 24)), TickMath.MIN_TICK, TickMath.MAX_TICK)
+            );
+            atTick = (atTick / tickSpacing) * tickSpacing;
+
+            (, LeftRightSigned shortAmountsAlice) = PanopticMath.computeExercisedAmounts(
+                tokenIdc,
+                positionSize0 * 10
+            );
+
+            (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
+                .computeExercisedAmounts(tokenId, (9 * positionSize0) / 10);
+
+            ($shortPremia, $longPremia, posBalanceArray) = panopticPool
+                .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
+
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
+                posBalanceArray,
+                atTick,
+                Bob,
+                positionIdList,
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
+            );
+
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Bob, tokenId);
+
+            console2.log("shortAlice1", shortAmountsAlice.leftSlot());
+            console2.log("long1", longAmounts.leftSlot());
+            console2.log(
+                "inAMM0",
+                uint128(shortAmountsAlice.rightSlot() - longAmounts.rightSlot())
+            );
+            console2.log("inAMM1", uint128(shortAmountsAlice.leftSlot() - longAmounts.leftSlot()));
+            // check user packed utilization
+            assertEq(
+                poolUtilization0,
+                Math.mulDivRoundingUp(
+                    uint128(shortAmountsAlice.rightSlot() - longAmounts.rightSlot()),
+                    10000,
+                    collateralToken0.totalAssets()
+                ),
+                "utilization ct 0"
+            );
+            assertEq(
+                poolUtilization1,
+                Math.mulDivRoundingUp(
+                    uint128(shortAmountsAlice.leftSlot() - longAmounts.leftSlot()),
+                    10000,
+                    collateralToken1.totalAssets()
+                ),
+                "utilization ct 1"
+            );
+
+            uint128 poolUtilizations = uint128(poolUtilization0) +
+                (uint128(poolUtilization1) << 64);
+
+            uint256[2] memory checkSingle = [uint256(0), uint256(0)];
+            uint128 required = _tokensRequired(
+                tokenId,
+                (9 * positionSize0) / 10,
+                atTick,
+                poolUtilizations,
+                checkSingle
+            );
+
+            assertTrue(
+                int256(uint256($shortPremia.rightSlot())) -
+                    int256(uint256($longPremia.rightSlot())) >=
+                    0 &&
+                    int256(uint256($shortPremia.leftSlot())) -
+                        int256(uint256($longPremia.leftSlot())) >=
+                    0,
+                "invalid premia"
+            );
+
+            /*
+            assertEq(
+                tokenId.tokenType(0) == 0 ? required : 0,
+                tokenData0.leftSlot(),
+                "required token0 -"
+            );
+            console2.log("required", required, tokenId.tokenType(0));
+            assertEq(
+                tokenId.tokenType(0) == 1 ? required : 0,
+                tokenData1.leftSlot(),
+                "required token1 -"
+            );
+           */
+        }
+
+        //check collateral output against panoptic pool at current tick
+        {
+            (, currentTick, , , , , ) = pool.slot0();
+
+            ($shortPremia, $longPremia, posBalanceArray) = panopticPool
+                .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
+
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
+                posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
+            );
+
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
+
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
+                panopticPool,
+                Bob,
+                currentTick,
+                positionIdList
+            );
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
+
+            console2.log("tokenData1.leftSlot()", tokenData1.leftSlot());
+            collateralToken1.withdraw(
+                collateralToken1.convertToAssets(collateralToken1.balanceOf(Bob)) -
+                    (1334 * tokenData1.leftSlot()) /
+                    1000,
+                Bob,
+                Bob,
+                positionIdList,
+                true
+            );
+            console2.log("tokenData0.leftSlot()", tokenData0.leftSlot());
+            collateralToken0.withdraw(
+                collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob)) -
+                    (1334 * tokenData0.leftSlot()) /
+                    1000,
+                Bob,
+                Bob,
+                positionIdList,
+                true
+            );
+        }
+        (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
+            panopticPool,
+            Bob,
+            currentTick,
+            positionIdList
+        );
+
+        for (uint256 i; i < 5; ++i) {
+            twoWaySwap(10 ** 21 - 1);
+            console2.log("i", i);
+            console2.log("currentTick", currentTick);
+            ($shortPremia, $longPremia, posBalanceArray) = panopticPool
+                .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
+
+            console2.log("long.r", $longPremia.rightSlot());
+            console2.log("long.l", $longPremia.leftSlot());
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
+                panopticPool,
+                Bob,
+                currentTick,
+                positionIdList
+            );
+            console2.log("balanceData0, thresholdData0", balanceData0, thresholdData0);
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
+                posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
+            );
+
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
+            console2.log("bb", calcBalanceCross, calcThresholdCross);
+        }
+
+        //check collateral output against panoptic pool at current tick
+        {
+            (, currentTick, , , , , ) = pool.slot0();
+
+            ($shortPremia, $longPremia, posBalanceArray) = panopticPool
+                .getAccumulatedFeesAndPositionsData(Bob, true, positionIdList);
+
+            console2.log("long.r", $longPremia.rightSlot());
+            console2.log("long.l", $longPremia.leftSlot());
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
+                posBalanceArray,
+                currentTick,
+                Bob,
+                positionIdList,
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
+            );
+
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
+
+            console2.log("calcBalanceCross", calcBalanceCross);
+            console2.log("calcThresholdCross", calcThresholdCross);
             (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 panopticPool,
                 Bob,
@@ -10909,8 +11322,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
             expectedTotalBalance
         );
 
-        (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = collateralToken0
-            .getPoolData();
+        (
+            uint256 poolAssets,
+            uint256 insideAMM,
+            uint256 creditedShares,
+            uint256 currentPoolUtilization
+        ) = collateralToken0.getPoolData();
 
         assertEq(expectedBal, poolAssets);
         assertEq(expectedInAMM, insideAMM);
@@ -11384,8 +11801,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             int24(
                                 Math.bound(
                                     2 * (_atTick - strike),
-                                    Constants.MIN_V3POOL_TICK,
-                                    Constants.MAX_V3POOL_TICK
+                                    Constants.MIN_POOL_TICK,
+                                    Constants.MAX_POOL_TICK
                                 )
                             )
                         ) // puts ->  price/strike
@@ -11393,8 +11810,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             int24(
                                 Math.bound(
                                     2 * (strike - _atTick),
-                                    Constants.MIN_V3POOL_TICK,
-                                    Constants.MAX_V3POOL_TICK
+                                    Constants.MIN_POOL_TICK,
+                                    Constants.MAX_POOL_TICK
                                 )
                             )
                         ); // calls -> strike/price
@@ -11685,8 +12102,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             int24(
                                 Math.bound(
                                     2 * (_atTick - strike),
-                                    Constants.MIN_V3POOL_TICK,
-                                    Constants.MAX_V3POOL_TICK
+                                    Constants.MIN_POOL_TICK,
+                                    Constants.MAX_POOL_TICK
                                 )
                             )
                         ) // puts ->  price/strike
@@ -11694,8 +12111,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             int24(
                                 Math.bound(
                                     2 * (strike - _atTick),
-                                    Constants.MIN_V3POOL_TICK,
-                                    Constants.MAX_V3POOL_TICK
+                                    Constants.MIN_POOL_TICK,
+                                    Constants.MAX_POOL_TICK
                                 )
                             )
                         ); // calls -> strike/price

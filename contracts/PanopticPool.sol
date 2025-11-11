@@ -4,11 +4,12 @@ pragma solidity ^0.8.24;
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
-import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
+import {Clone} from "clones-with-immutable-args/Clone.sol";
 import {Multicall} from "@base/Multicall.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
+import {EfficientHash} from "@libraries/EfficientHash.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {InteractionHelper} from "@libraries/InteractionHelper.sol";
 import {Math} from "@libraries/Math.sol";
@@ -22,7 +23,7 @@ import {TokenId} from "@types/TokenId.sol";
 /// @title The Panoptic Pool: Create permissionless options on a CLAMM.
 /// @author Axicon Labs Limited
 /// @notice Manages positions, collateral, liquidations and forced exercises.
-contract PanopticPool is Multicall {
+contract PanopticPool is Clone, Multicall {
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -91,10 +92,10 @@ contract PanopticPool is Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Lower price bound used when no slippage check is required.
-    int24 internal constant MIN_SWAP_TICK = Constants.MIN_V3POOL_TICK - 1;
+    int24 internal constant MIN_SWAP_TICK = Constants.MIN_POOL_TICK - 1;
 
     /// @notice Upper price bound used when no slippage check is required.
-    int24 internal constant MAX_SWAP_TICK = Constants.MAX_V3POOL_TICK + 1;
+    int24 internal constant MAX_SWAP_TICK = Constants.MAX_POOL_TICK + 1;
 
     /// @notice Flag that signals to compute premia for both the short and long legs of a position.
     bool internal constant COMPUTE_PREMIA_AS_COLLATERAL = true;
@@ -148,12 +149,6 @@ contract PanopticPool is Multicall {
                                 STORAGE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice The Uniswap V3 pool that this instance of Panoptic is deployed on.
-    IUniswapV3Pool internal s_univ3pool;
-
-    /// @notice The poolId of this instance of Panoptic.
-    uint64 internal s_poolId;
-
     /// @notice Stores a sorted set of 8 price observations used to compute the internal median oracle price.
     // The data for the last 8 interactions is stored as such:
     //
@@ -202,19 +197,10 @@ contract PanopticPool is Multicall {
     // Each token has its own vault, listed in the same order as the tokens in the pool
     // In addition to collateral deposits, these vaults also handle various collateral/bonus/exercise computations
 
-    /// @notice Collateral vault for token0 in the Uniswap pool.
-    CollateralTracker internal s_collateralToken0;
-    /// @notice Collateral vault for token1 in the Uniswap pool.
-    CollateralTracker internal s_collateralToken1;
-
-    /// @notice Risk Engine powering this PanopticPool
-    RiskEngine internal s_riskEngine;
-
     /// @notice Nested mapping that tracks the option formation: address => tokenId => leg => premiaGrowth.
     /// @dev Premia growth is taking a snapshot of the chunk premium in SFPM, which is measuring the amount of fees
     /// collected for every chunk per unit of liquidity (net or short, depending on the isLong value of the specific leg index).
-    mapping(address account => mapping(TokenId tokenId => mapping(uint256 leg => LeftRightUnsigned premiaGrowth)))
-        internal s_options;
+    mapping(address => mapping(TokenId => LeftRightUnsigned[4])) internal s_options;
 
     /// @notice Per-chunk `last` value that gives the aggregate amount of premium owed to all sellers when multiplied by the total amount of liquidity `totalLiquidity`.
     /// @dev `totalGrossPremium = totalLiquidity * (grossPremium(perLiquidityX64) - lastGrossPremium(perLiquidityX64)) / 2**64`
@@ -246,6 +232,56 @@ contract PanopticPool is Multicall {
     mapping(address account => uint256 positionsHash) internal s_positionsHash;
 
     /*//////////////////////////////////////////////////////////////
+                   POOL-SPECIFIC IMMUTABLE PARAMETERS
+    //////////////////////////////////////////////////////////////*/
+
+    // The parameters will be encoded in calldata at `_getImmutableArgsOffset()` as follows:
+    // abi.encodePacked(address collateralToken0, address collateralToken1, address oracleContract, uint256 poolId, abi.encode(PoolKey poolKey))
+    // bytes: 0                    20                   40                   60                   92
+    //        |<---- 160 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 256 bits ---->|<---- 1280 bits ---->|
+    //           collateralToken0     collateralToken1       riskEngine             poolId               poolKey
+
+    /// @notice Get the collateral token corresponding to token0 of the Uniswap pool.
+    /// @return Collateral token corresponding to token0 in Uniswap
+    function collateralToken0() public pure returns (CollateralTracker) {
+        return CollateralTracker(_getArgAddress(0));
+    }
+
+    /// @notice Get the collateral token corresponding to token1 of the Uniswap pool.
+    /// @return Collateral token corresponding to token1 in Uniswap
+    function collateralToken1() public pure returns (CollateralTracker) {
+        return CollateralTracker(_getArgAddress(20));
+    }
+
+    /// @notice Get the address of the external oracle contract used by this Panoptic Pool.
+    /// @return The external oracle contract used by this Panoptic Pool
+    function riskEngine() public pure returns (RiskEngine) {
+        return RiskEngine(_getArgAddress(40));
+    }
+
+    /// @notice Get the Uniswap Pool ID for the Uniswap pool used by this Panoptic.
+    /// @return The Pool ID for this Panoptic Pool
+    function poolId() public pure returns (uint64) {
+        return uint64(_getArgUint256(60));
+    }
+
+    /// @notice Get the pool key for the Uniswap pool used by this Panoptic Pool.
+    /// @dev For Uniswap v3, this is the address of the UniswapV3Pool
+    /// @dev For Uniswap v4, this is Pool Key
+    /// @dev For any other AMMs, this is assumed to be an address
+    /// @return key The Pool Key for this Panoptic Pool.
+    function poolKey() public pure returns (bytes calldata key) {
+        uint256 offset = _getImmutableArgsOffset();
+        uint256 start = offset + 92;
+        uint256 len;
+        assembly {
+            len := sub(calldatasize(), start)
+            key.offset := start
+            key.length := len
+        }
+    }
+
+    /*//////////////////////////////////////////////////////////////
                              INITIALIZATION
     //////////////////////////////////////////////////////////////*/
 
@@ -255,30 +291,13 @@ contract PanopticPool is Multicall {
         SFPM = _sfpm;
     }
 
-    /// @notice Initializes a Panoptic Pool on top of an existing Uniswap V3 + collateral vault pair.
-    /// @dev Must be called first (by a factory contract) before any transaction can occur.
-    /// @param _univ3pool Address of the target Uniswap V3 pool
-    /// @param token0 Address of the pool's token0
-    /// @param token1 Address of the pool's token1
-    /// @param collateralTracker0 Address of the collateral vault for token0
-    /// @param collateralTracker1 Address of the collateral vault for token1
-    function startPool(
-        IUniswapV3Pool _univ3pool,
-        address token0,
-        address token1,
-        CollateralTracker collateralTracker0,
-        CollateralTracker collateralTracker1,
-        RiskEngine _riskEngine
-    ) external {
-        // reverts if the Uniswap pool has already been initialized
-        if (address(s_univ3pool) != address(0)) revert Errors.PoolAlreadyInitialized();
+    /// @notice Initializes the median oracle of a new `PanopticPool` instance with median oracle state and performs initial token approvals.
+    /// @dev Must be called first (by the factory contract) before any transaction can occur.
+    function initialize() external {
+        // reverts if this contract has already been initialized (assuming block.timestamp > 0)
+        if (s_oraclePack != 0) revert Errors.PoolAlreadyInitialized();
 
-        // Store the univ3Pool variable
-        s_univ3pool = IUniswapV3Pool(_univ3pool);
-
-        s_poolId = SFPM.getPoolId(address(s_univ3pool));
-
-        (, int24 currentTick, , , , , ) = IUniswapV3Pool(_univ3pool).slot0();
+        int24 currentTick = SFPM.getCurrentTick(poolKey());
 
         // Store the median data
         unchecked {
@@ -299,19 +318,19 @@ contract PanopticPool is Multicall {
                 (uint256(uint24(currentTick)) << 96);
         }
 
-        // Store the collateral token0
-        s_collateralToken0 = collateralTracker0;
-        s_collateralToken1 = collateralTracker1;
-
-        // store the risk engine
-        s_riskEngine = _riskEngine;
-
         // consolidate all 4 approval calls to one library delegatecall in order to reduce bytecode size
         // approves:
         // SFPM: token0, token1
         // CollateralTracker0 - token0
         // CollateralTracker1 - token1
-        InteractionHelper.doApprovals(SFPM, collateralTracker0, collateralTracker1, token0, token1);
+        // TODO: Add Pool manager logic to handle v4
+        InteractionHelper.doApprovals(
+            SFPM,
+            collateralToken0(),
+            collateralToken1(),
+            collateralToken0().token0(),
+            collateralToken0().token1()
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -341,8 +360,8 @@ contract PanopticPool is Multicall {
     /// @param minValue0 The minimum acceptable `token0` value of collateral
     /// @param minValue1 The minimum acceptable `token1` value of collateral
     function assertMinCollateralValues(uint256 minValue0, uint256 minValue1) external view {
-        CollateralTracker ct0 = s_collateralToken0;
-        CollateralTracker ct1 = s_collateralToken1;
+        CollateralTracker ct0 = collateralToken0();
+        CollateralTracker ct1 = collateralToken1();
         if (ct0.assetsOf(msg.sender) < minValue0 || ct1.assetsOf(msg.sender) < minValue1)
             revert Errors.AccountInsolvent(0, 0);
     }
@@ -373,9 +392,9 @@ contract PanopticPool is Multicall {
         address user,
         bool includePendingPremium,
         TokenId[] calldata positionIdList
-    ) external view returns (LeftRightUnsigned, LeftRightUnsigned, uint256[] memory) {
+    ) external view returns (LeftRightUnsigned, LeftRightUnsigned, PositionBalance[] memory) {
         // Get the current tick of the Uniswap pool
-        int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
+        int24 currentTick = SFPM.getCurrentTick(poolKey());
         // Compute the accumulated premia for all tokenId in positionIdList (includes short+long premium)
         return
             _calculateAccumulatedPremia(
@@ -408,11 +427,11 @@ contract PanopticPool is Multicall {
         returns (
             LeftRightUnsigned shortPremium,
             LeftRightUnsigned longPremium,
-            uint256[] memory balances
+            PositionBalance[] memory balances
         )
     {
         uint256 pLength = positionIdList.length;
-        balances = new uint256[](pLength);
+        balances = new PositionBalance[](pLength);
 
         address c_user = user;
         // loop through each option position/tokenId
@@ -423,14 +442,14 @@ contract PanopticPool is Multicall {
                 PositionBalance positionBalanceData = s_positionBalance[c_user][tokenId];
                 if (positionBalanceData.positionSize() == 0) revert Errors.PositionNotOwned();
 
-                balances[k] = PositionBalance.unwrap(positionBalanceData);
+                balances[k] = positionBalanceData;
             }
             (
                 LeftRightSigned[4] memory premiaByLeg,
                 uint256[2][4] memory premiumAccumulatorsByLeg
             ) = _getPremia(
                     tokenId,
-                    LeftRightUnsigned.wrap(balances[k]).rightSlot(),
+                    balances[k].positionSize(),
                     c_user,
                     usePremiaAsCollateral,
                     atTick
@@ -441,7 +460,7 @@ contract PanopticPool is Multicall {
                 if (tokenId.width(leg) != 0) {
                     if (tokenId.isLong(leg) == 0) {
                         if (!includePendingPremium) {
-                            bytes32 chunkKey = keccak256(
+                            bytes32 chunkKey = EfficientHash.efficientKeccak256(
                                 abi.encodePacked(
                                     tokenId.strike(leg),
                                     tokenId.width(leg),
@@ -497,12 +516,9 @@ contract PanopticPool is Multicall {
 
     /// @notice Updates the internal median with the last Uniswap observation if the `MEDIAN_PERIOD` has elapsed.
     function pokeOracle() external {
-        (uint16 observationIndex, uint16 observationCardinality) = SFPM.indexAndCardinality(
-            s_univ3pool
-        );
-        int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
+        int24 currentTick = SFPM.getCurrentTick(poolKey());
 
-        (, uint256 oraclePack) = s_riskEngine.computeInternalMedian(s_oraclePack, currentTick);
+        (, uint256 oraclePack) = riskEngine().computeInternalMedian(s_oraclePack, currentTick);
 
         if (oraclePack != 0) s_oraclePack = oraclePack;
     }
@@ -530,12 +546,11 @@ contract PanopticPool is Multicall {
         // if safeMode, enforce covered at mint and exercise at burn
         uint8 safeMode = isSafeMode();
 
-        uint64 poolId = s_poolId;
         for (uint256 i = 0; i < positionIdList.length; ) {
             TokenId tokenId = positionIdList[i];
 
             // make sure the tokenId is for this Panoptic pool
-            if (tokenId.poolId() != poolId) revert Errors.WrongPoolId();
+            if (tokenId.poolId() != poolId()) revert Errors.WrongPoolId();
 
             PositionBalance positionBalanceData = s_positionBalance[msg.sender][tokenId];
 
@@ -614,8 +629,8 @@ contract PanopticPool is Multicall {
         uint8 safeMode
     ) internal returns (LeftRightSigned paidAmounts) {
         // Mint in the SFPM and update state of collateral
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
-            .mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned netAmmDelta) = SFPM
+            .mintTokenizedPosition(poolKey(), tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
         _updateSettlementPostMint(
             tokenId,
@@ -632,7 +647,7 @@ contract PanopticPool is Multicall {
             tokenId,
             positionSize,
             owner,
-            totalSwapped
+            netAmmDelta
         );
 
         if (safeMode > 0) poolUtilizations = uint32(10_000 + (10_000 << 16));
@@ -655,7 +670,7 @@ contract PanopticPool is Multicall {
     /// @param tokenId The option position
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param owner The owner of the option position to be minted
-    /// @param totalSwapped The amount of tokens moved during creation of the option position
+    /// @param netAmmDelta The amount of tokens moved during creation of the option position
     /// @return utilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as `(inAMM * 10_000) / totalAssets()`
     /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
@@ -665,7 +680,7 @@ contract PanopticPool is Multicall {
         TokenId tokenId,
         uint128 positionSize,
         address owner,
-        LeftRightSigned totalSwapped
+        LeftRightSigned netAmmDelta
     )
         internal
         returns (uint32 utilizations, LeftRightUnsigned commissions, LeftRightSigned paidAmounts)
@@ -674,24 +689,24 @@ contract PanopticPool is Multicall {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize, true);
         {
-            (LeftRightUnsigned utilizationAndCommission0, int128 paid0) = s_collateralToken0
+            (LeftRightUnsigned utilizationAndCommission0, int128 paid0) = collateralToken0()
                 .settleMint(
                     owner,
                     longAmounts.rightSlot(),
                     shortAmounts.rightSlot(),
-                    totalSwapped.rightSlot()
+                    netAmmDelta.rightSlot()
                 );
             utilizations = uint32(utilizationAndCommission0.rightSlot());
             commissions = commissions.addToRightSlot(utilizationAndCommission0.leftSlot());
             paidAmounts = paidAmounts.addToRightSlot(paid0);
         }
         {
-            (LeftRightUnsigned utilizationAndCommission1, int128 paid1) = s_collateralToken1
+            (LeftRightUnsigned utilizationAndCommission1, int128 paid1) = collateralToken1()
                 .settleMint(
                     owner,
                     longAmounts.leftSlot(),
                     shortAmounts.leftSlot(),
-                    totalSwapped.leftSlot()
+                    netAmmDelta.leftSlot()
                 );
             utilizations += uint32(utilizationAndCommission1.rightSlot() << 16);
             commissions = commissions.addToLeftSlot(utilizationAndCommission1.leftSlot());
@@ -762,8 +777,8 @@ contract PanopticPool is Multicall {
         address owner,
         bool commitLongSettled
     ) internal returns (LeftRightSigned paidAmounts, LeftRightSigned[4] memory premiaByLeg) {
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
-            .burnTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned netAmmDelta) = SFPM
+            .burnTokenizedPosition(poolKey(), tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
         LeftRightSigned realizedPremia;
         (realizedPremia, premiaByLeg) = _updateSettlementPostBurn(
@@ -778,22 +793,22 @@ contract PanopticPool is Multicall {
             .computeExercisedAmounts(tokenId, positionSize, false);
 
         {
-            int128 paid0 = s_collateralToken0.settleBurn(
+            int128 paid0 = collateralToken0().settleBurn(
                 owner,
                 longAmounts.rightSlot(),
                 shortAmounts.rightSlot(),
-                totalSwapped.rightSlot(),
+                netAmmDelta.rightSlot(),
                 realizedPremia.rightSlot()
             );
             paidAmounts = paidAmounts.addToRightSlot(paid0);
         }
 
         {
-            int128 paid1 = s_collateralToken1.settleBurn(
+            int128 paid1 = collateralToken1().settleBurn(
                 owner,
                 longAmounts.leftSlot(),
                 shortAmounts.leftSlot(),
-                totalSwapped.leftSlot(),
+                netAmmDelta.leftSlot(),
                 realizedPremia.leftSlot()
             );
             paidAmounts = paidAmounts.addToLeftSlot(paid1);
@@ -816,49 +831,15 @@ contract PanopticPool is Multicall {
         uint256 buffer,
         bool usePremiaAsCollateral
     ) internal view returns (uint256) {
-        int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
-
-        (int24 spotTick, int24 medianTick, int24 latestTick, uint256 oraclePack) = s_riskEngine
-            .getOracleTicks(currentTick, s_oraclePack);
-
-        uint96 tickData = PositionBalanceLibrary.packTickData(
-            currentTick,
-            spotTick,
-            medianTick,
-            latestTick
-        );
-
-        _checkSolvency(user, positionIdList, tickData, buffer, usePremiaAsCollateral);
-
-        return oraclePack;
-    }
-
-    /// @notice Validates the solvency of `user` from tickData.
-    /// @param user The account to validate
-    /// @param positionIdList The list of positions to validate solvency for
-    /// @param tickData The packed tick data to check solvency at
-    /// @param buffer The buffer to apply to the collateral requirement for `user`
-    /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
-    function _checkSolvency(
-        address user,
-        TokenId[] calldata positionIdList,
-        uint96 tickData,
-        uint256 buffer,
-        bool usePremiaAsCollateral
-    ) internal view {
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(user, positionIdList);
 
-        (
-            int24 currentTick,
-            int24 spotTick,
-            int24 medianTick,
-            int24 latestTick
-        ) = PositionBalanceLibrary.unpackTickData(tickData);
+        int24 currentTick = SFPM.getCurrentTick(poolKey());
 
+        uint256 oraclePack;
         int24[] memory atTicks;
 
-        atTicks = s_riskEngine.getSolvencyTicks(currentTick, spotTick, medianTick, latestTick);
+        (atTicks, oraclePack) = riskEngine().getSolvencyTicks(currentTick, s_oraclePack);
 
         uint256 solvent = _checkSolvencyAtTicks(
             user,
@@ -871,6 +852,8 @@ contract PanopticPool is Multicall {
         uint256 numberOfTicks = atTicks.length;
 
         if (solvent != numberOfTicks) revert Errors.AccountInsolvent(solvent, numberOfTicks);
+
+        return oraclePack;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -902,7 +885,7 @@ contract PanopticPool is Multicall {
     ) external {
         // Assert the account we are liquidating is actually insolvent
         int24 twapTick = getTWAP();
-        int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
+        int24 currentTick = SFPM.getCurrentTick(poolKey());
 
         TokenId tokenId;
 
@@ -914,7 +897,7 @@ contract PanopticPool is Multicall {
             // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
             int24 spotTick;
             int24 latestTick;
-            (spotTick, , latestTick, ) = s_riskEngine.getOracleTicks(currentTick, s_oraclePack);
+            (spotTick, , latestTick, ) = riskEngine().getOracleTicks(currentTick, s_oraclePack);
 
             unchecked {
                 if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
@@ -949,8 +932,12 @@ contract PanopticPool is Multicall {
                     if (toLength == finalLength) {
                         // same length, that's a settle
                         {
-                            bytes32 toHash = keccak256(abi.encodePacked(positionIdListTo));
-                            bytes32 finalHash = keccak256(abi.encodePacked(positionIdListToFinal));
+                            bytes32 toHash = EfficientHash.efficientKeccak256(
+                                abi.encodePacked(positionIdListTo)
+                            );
+                            bytes32 finalHash = EfficientHash.efficientKeccak256(
+                                abi.encodePacked(positionIdListToFinal)
+                            );
                             if (toHash != finalHash) {
                                 revert Errors.InputListFail();
                             }
@@ -1014,7 +1001,9 @@ contract PanopticPool is Multicall {
         LeftRightUnsigned tokenData1;
         LeftRightUnsigned shortPremium;
         {
-            uint256[] memory positionBalanceArray = new uint256[](positionIdList.length);
+            PositionBalance[] memory positionBalanceArray = new PositionBalance[](
+                positionIdList.length
+            );
             LeftRightUnsigned longPremium;
             (shortPremium, longPremium, positionBalanceArray) = _calculateAccumulatedPremia(
                 liquidatee,
@@ -1023,21 +1012,21 @@ contract PanopticPool is Multicall {
                 ONLY_AVAILABLE_PREMIUM,
                 currentTick
             );
-            (tokenData0, tokenData1) = s_riskEngine.getMargin(
-                liquidatee,
-                twapTick,
-                positionIdList,
+            (tokenData0, tokenData1, ) = riskEngine().getMargin(
                 positionBalanceArray,
+                twapTick,
+                liquidatee,
+                positionIdList,
                 shortPremium,
                 longPremium,
-                s_collateralToken0,
-                s_collateralToken1
+                collateralToken0(),
+                collateralToken1()
             );
         }
 
         // The protocol delegates some virtual shares to ensure the burn can be settled.
-        s_collateralToken0.delegate(liquidatee);
-        s_collateralToken1.delegate(liquidatee);
+        collateralToken0().delegate(liquidatee);
+        collateralToken1().delegate(liquidatee);
 
         {
             LeftRightSigned netPaid;
@@ -1057,7 +1046,7 @@ contract PanopticPool is Multicall {
 
             LeftRightSigned collateralRemaining;
             // compute bonus amounts using latest tick data
-            (bonusAmounts, collateralRemaining) = s_riskEngine.getLiquidationBonus(
+            (bonusAmounts, collateralRemaining) = riskEngine().getLiquidationBonus(
                 tokenData0,
                 tokenData1,
                 Math.getSqrtRatioAtTick(twapTick),
@@ -1082,8 +1071,8 @@ contract PanopticPool is Multicall {
                 _positionIdList,
                 premiasByLeg,
                 collateralRemaining,
-                s_collateralToken0,
-                s_collateralToken1,
+                collateralToken0(),
+                collateralToken1(),
                 Math.getSqrtRatioAtTick(_twapTick),
                 s_settledTokens
             );
@@ -1092,8 +1081,8 @@ contract PanopticPool is Multicall {
         }
 
         // revoke delegated virtual shares and settle any bonus deltas with the liquidator
-        s_collateralToken0.settleLiquidation(msg.sender, liquidatee, bonusAmounts.rightSlot());
-        s_collateralToken1.settleLiquidation(msg.sender, liquidatee, bonusAmounts.leftSlot());
+        collateralToken0().settleLiquidation(msg.sender, liquidatee, bonusAmounts.rightSlot());
+        collateralToken1().settleLiquidation(msg.sender, liquidatee, bonusAmounts.leftSlot());
 
         emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
     }
@@ -1107,8 +1096,8 @@ contract PanopticPool is Multicall {
         int24 twapTick,
         int24 currentTick
     ) internal {
-        CollateralTracker ct0 = s_collateralToken0;
-        CollateralTracker ct1 = s_collateralToken1;
+        CollateralTracker ct0 = collateralToken0();
+        CollateralTracker ct1 = collateralToken1();
 
         uint128 positionSize;
 
@@ -1122,7 +1111,7 @@ contract PanopticPool is Multicall {
 
             // Compute the exerciseFee, this will decrease the further away the price is from the exercised position
             // Include any deltas in long legs between the current and oracle tick in the exercise fee
-            exerciseFees = s_riskEngine.exerciseCost(
+            exerciseFees = riskEngine().exerciseCost(
                 currentTick,
                 twapTick,
                 tokenId,
@@ -1146,7 +1135,7 @@ contract PanopticPool is Multicall {
             );
         }
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
-        LeftRightSigned refundAmounts = s_riskEngine.getRefundAmounts(
+        LeftRightSigned refundAmounts = riskEngine().getRefundAmounts(
             account,
             exerciseFees,
             twapTick,
@@ -1175,8 +1164,8 @@ contract PanopticPool is Multicall {
         int24 twapTick,
         int24 currentTick
     ) internal {
-        CollateralTracker ct0 = s_collateralToken0;
-        CollateralTracker ct1 = s_collateralToken1;
+        CollateralTracker ct0 = collateralToken0();
+        CollateralTracker ct1 = collateralToken1();
 
         // The protocol delegates some virtual shares to ensure the premia can be settled.
         ct0.delegate(owner);
@@ -1202,7 +1191,7 @@ contract PanopticPool is Multicall {
                         int24 _currentTick = currentTick;
                         (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = SFPM
                             .getAccountPremium(
-                                address(s_univ3pool),
+                                poolKey(),
                                 address(this),
                                 tokenType,
                                 liquidityChunk.tickLower(),
@@ -1249,14 +1238,16 @@ contract PanopticPool is Multicall {
                         int24 strike = _tokenId.strike(leg);
                         int24 width = _tokenId.width(leg);
                         uint256 tokenType = _tokenId.tokenType(leg);
-                        chunkKey = keccak256(abi.encodePacked(strike, width, tokenType));
+                        chunkKey = EfficientHash.efficientKeccak256(
+                            abi.encodePacked(strike, width, tokenType)
+                        );
                     }
                     // commit the delta in settled tokens (all of the premium paid by long chunks in the tokenIds list) to storage
                     s_settledTokens[chunkKey] = s_settledTokens[chunkKey].add(
                         LeftRightUnsigned.wrap(uint256(LeftRightSigned.unwrap(realizedPremia)))
                     );
                 }
-                refundAmounts = s_riskEngine
+                refundAmounts = riskEngine()
                     .getRefundAmounts(owner, LeftRightSigned.wrap(0), twapTick, ct0, ct1)
                     .add(refundAmounts);
                 emit PremiumSettled(owner, tokenId, leg, realizedPremia);
@@ -1297,7 +1288,7 @@ contract PanopticPool is Multicall {
         (
             LeftRightUnsigned shortPremium,
             LeftRightUnsigned longPremium,
-            uint256[] memory positionBalanceArray
+            PositionBalance[] memory positionBalanceArray
         ) = _calculateAccumulatedPremia(
                 account,
                 positionIdList,
@@ -1342,21 +1333,21 @@ contract PanopticPool is Multicall {
         address account,
         int24 atTick,
         TokenId[] calldata positionIdList,
-        uint256[] memory positionBalanceArray,
+        PositionBalance[] memory positionBalanceArray,
         LeftRightUnsigned shortPremium,
         LeftRightUnsigned longPremium,
         uint256 buffer
     ) internal view returns (bool) {
         return
-            s_riskEngine.isAccountSolvent(
-                account,
+            riskEngine().isAccountSolvent(
                 positionBalanceArray,
-                atTick,
                 positionIdList,
+                atTick,
+                account,
                 shortPremium,
                 longPremium,
-                s_collateralToken0,
-                s_collateralToken1,
+                collateralToken0(),
+                collateralToken1(),
                 buffer
             );
     }
@@ -1364,8 +1355,8 @@ contract PanopticPool is Multicall {
     /// @notice Checks whether the current tick has deviated too much from the previouslyt stored ticks. Computed in the RiskEngine
     /// @return Whether the current tick has deviated too much to warrant putting the protocol in safe mode
     function isSafeMode() public view returns (uint8) {
-        int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
-        return s_riskEngine.isSafeMode(currentTick, s_oraclePack);
+        int24 currentTick = SFPM.getCurrentTick(poolKey());
+        return riskEngine().isSafeMode(currentTick, s_oraclePack);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1388,12 +1379,11 @@ contract PanopticPool is Multicall {
             revert Errors.DuplicateTokenId();
         }
 
-        uint64 poolId = s_poolId;
-
+        uint64 _poolId = poolId();
         for (uint256 i = 0; i < pLength; ) {
             TokenId tokenId = positionIdList[i];
             // make sure the tokenId is for this Panoptic pool
-            if (tokenId.poolId() != poolId) revert Errors.WrongPoolId();
+            if (tokenId.poolId() != _poolId) revert Errors.WrongPoolId();
 
             fingerprintIncomingList = PanopticMath.updatePositionsHash(
                 fingerprintIncomingList,
@@ -1435,30 +1425,6 @@ contract PanopticPool is Multicall {
                                 QUERIES
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Get the address of the AMM pool connected to this Panoptic pool.
-    /// @return AMM pool corresponding to this Panoptic pool
-    function univ3pool() external view returns (IUniswapV3Pool) {
-        return s_univ3pool;
-    }
-
-    /// @notice Get the collateral token corresponding to token0 of the AMM pool.
-    /// @return Collateral token corresponding to token0 in the AMM
-    function collateralToken0() external view returns (CollateralTracker) {
-        return s_collateralToken0;
-    }
-
-    /// @notice Get the collateral token corresponding to token1 of the AMM pool.
-    /// @return Collateral token corresponding to token1 in the AMM
-    function collateralToken1() external view returns (CollateralTracker) {
-        return s_collateralToken1;
-    }
-
-    /// @notice Get the address of the risk engine powering this PanopticPool.
-    /// @return RiskEngine address of the risk engine
-    function riskEngine() external view returns (RiskEngine) {
-        return s_riskEngine;
-    }
-
     /// @notice Computes and returns all oracle ticks.
     /// @return currentTick The current tick in the Uniswap pool
     /// @return spotTick The fast oracle tick, sourced from the internal 10-minute EMA.
@@ -1476,8 +1442,8 @@ contract PanopticPool is Multicall {
             uint256 oraclePack
         )
     {
-        currentTick = SFPM.getCurrentTick(s_univ3pool);
-        (spotTick, medianTick, latestTick, ) = s_riskEngine.getOracleTicks(
+        currentTick = SFPM.getCurrentTick(poolKey());
+        (spotTick, medianTick, latestTick, ) = riskEngine().getOracleTicks(
             currentTick,
             s_oraclePack
         );
@@ -1511,7 +1477,7 @@ contract PanopticPool is Multicall {
     /// @notice Get the oracle price used to check solvency in liquidations.
     /// @return twapTick The current oracle price used to check solvency in liquidations
     function getTWAP() internal view returns (int24 twapTick) {
-        twapTick = s_riskEngine.twapEMA(s_oraclePack);
+        twapTick = riskEngine().twapEMA(s_oraclePack);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1585,7 +1551,7 @@ contract PanopticPool is Multicall {
 
                 (premiumAccumulatorsByLeg[leg][0], premiumAccumulatorsByLeg[leg][1]) = SFPM
                     .getAccountPremium(
-                        address(s_univ3pool),
+                        poolKey(),
                         address(this),
                         tokenType,
                         liquidityChunk.tickLower(),
@@ -1656,7 +1622,7 @@ contract PanopticPool is Multicall {
             if (tokenId.width(leg) != 0) {
                 uint256 isLong = tokenId.isLong(leg);
 
-                bytes32 chunkKey = keccak256(
+                bytes32 chunkKey = EfficientHash.efficientKeccak256(
                     abi.encodePacked(
                         tokenId.strike(leg),
                         tokenId.width(leg),
@@ -1679,7 +1645,7 @@ contract PanopticPool is Multicall {
                     uint256 tokenType = tokenId.tokenType(leg);
                     // can use (type(int24).max flag because premia accumulators were updated during the mintTokenizedPosition step.
                     (grossCurrent0, grossCurrent1) = SFPM.getAccountPremium(
-                        address(s_univ3pool),
+                        poolKey(),
                         address(this),
                         tokenType,
                         liquidityChunk.tickLower(),
@@ -1821,7 +1787,7 @@ contract PanopticPool is Multicall {
         (int24 tickLower, int24 tickUpper) = tokenId.asTicks(leg);
 
         LeftRightUnsigned accountLiquidities = SFPM.getAccountLiquidity(
-            address(s_univ3pool),
+            poolKey(),
             address(this),
             tokenId.tokenType(leg),
             tickLower,
@@ -1867,7 +1833,7 @@ contract PanopticPool is Multicall {
             if (tokenId.width(leg) != 0) {
                 LeftRightSigned legPremia = premiaByLeg[leg];
 
-                bytes32 chunkKey = keccak256(
+                bytes32 chunkKey = EfficientHash.efficientKeccak256(
                     abi.encodePacked(
                         tokenId.strike(leg),
                         tokenId.width(leg),

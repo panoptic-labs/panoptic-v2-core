@@ -1448,14 +1448,16 @@ contract PositionUtils is Test {
     function editCollateral(CollateralTracker ct, address owner, uint256 newShares) internal {
         int256 shareDelta = int256(newShares) - int256(ct.balanceOf(owner));
         int256 assetDelta = convertToAssets(ct, shareDelta);
+        uint256 _internalSupply = uint256(vm.load(address(ct), bytes32(uint256(0))));
+        int256 _newInternalSupply = int256(_internalSupply) + shareDelta;
         vm.store(
             address(ct),
-            bytes32(uint256(8)),
+            bytes32(uint256(3)),
             bytes32(
                 uint256(
                     LeftRightSigned.unwrap(
                         LeftRightSigned
-                            .wrap(int256(uint256(vm.load(address(ct), bytes32(uint256(8))))))
+                            .wrap(int256(uint256(vm.load(address(ct), bytes32(uint256(3))))))
                             .add(LeftRightSigned.wrap(int256(uint256(uint128(int128(assetDelta))))))
                     )
                 )
@@ -1468,6 +1470,7 @@ contract PositionUtils is Test {
             uint256(int256(IERC20Partial(ct.asset()).balanceOf(address(ct))) + assetDelta)
         );
 
-        deal(address(ct), owner, newShares, true);
+        vm.store(address(ct), bytes32(uint256(0)), bytes32(uint256(_newInternalSupply)));
+        deal(address(ct), owner, newShares);
     }
 }

@@ -175,7 +175,8 @@ library Math {
     /// @return The maximum liquidity that can reference any given tick in the Uniswap V3 pool
     function getMaxLiquidityPerTick(int24 tickSpacing) internal pure returns (uint128) {
         unchecked {
-            return type(uint128).max / uint24((Constants.MAX_V3POOL_TICK / tickSpacing) * 2 + 1);
+            // forge-lint: disable-next-line(divide-before-multiply)
+            return type(uint128).max / uint24((Constants.MAX_POOL_TICK / tickSpacing) * 2 + 1);
         }
     }
 
@@ -186,7 +187,7 @@ library Math {
     function getSqrtRatioAtTick(int24 tick) internal pure returns (uint160) {
         unchecked {
             uint256 absTick = tick < 0 ? uint256(-int256(tick)) : uint256(int256(tick));
-            if (absTick > uint256(int256(Constants.MAX_V3POOL_TICK))) revert Errors.InvalidTick();
+            if (absTick > uint256(int256(Constants.MAX_POOL_TICK))) revert Errors.InvalidTick();
 
             // sqrt(1.0001^(-absTick)) = ∏ sqrt(1.0001^(-bit_i))
             // ex: absTick = 100 = binary 1100100, so sqrt(1.0001^-100) = sqrt(1.0001^-64) * sqrt(1.0001^-32) * sqrt(1.0001^-4)
@@ -400,6 +401,8 @@ library Math {
             // This check guarantees the following uint128 cast is safe.
             if (liquidity > type(uint128).max) revert Errors.LiquidityTooHigh();
 
+            // casting to 'uint128' is safe because of the liquidity > type(uint128).max check above
+            // forge-lint: disable-next-line(unsafe-typecast)
             return LiquidityChunkLibrary.createChunk(tickLower, tickUpper, uint128(liquidity));
         }
     }
@@ -1227,6 +1230,18 @@ library Math {
         uint256 thirdTerm = mulDiv(secondTerm, firstTerm, 3 * WAD);
 
         return firstTerm + secondTerm + thirdTerm;
+    }
+
+    /// @dev Returns the sum of the first three non-zero terms of a Taylor expansion of e^(nx), to approximate a
+    /// continuous compound interest rate for a custom scale s. Source: https://github.com/morpho-org/morpho-blue/blob/main/src/libraries/MathLib.sol
+    function sTaylorCompounded(uint256 x, uint256 s) internal pure returns (uint256) {
+        uint256 zerothTerm = s;
+        uint256 firstTerm = x;
+        uint256 secondTerm = mulDiv(firstTerm, firstTerm, 2 * s);
+        uint256 thirdTerm = mulDiv(secondTerm, firstTerm, 3 * s);
+        uint256 fourthTerm = mulDiv(thirdTerm, firstTerm, 4 * s);
+
+        return zerothTerm + firstTerm + secondTerm + thirdTerm + fourthTerm;
     }
 
     /// @dev Returns the multiplication of `x` by `y` (in WAD) rounded towards 0.

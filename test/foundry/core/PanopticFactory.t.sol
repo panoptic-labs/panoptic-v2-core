@@ -29,6 +29,7 @@ import {CallbackValidation} from "v3-periphery/libraries/CallbackValidation.sol"
 import {TransferHelper} from "v3-periphery/libraries/TransferHelper.sol";
 import {Base64} from "solady/utils/Base64.sol";
 import {JSONParserLib} from "solady/utils/JSONParserLib.sol";
+import {ClonesWithImmutableArgs} from "clones-with-immutable-args/ClonesWithImmutableArgs.sol";
 
 contract PanopticFactoryHarness is PanopticFactory {
     constructor(
@@ -53,6 +54,10 @@ contract PanopticFactoryHarness is PanopticFactory {
 
     function getPoolReference() external view returns (address) {
         return POOL_REFERENCE;
+    }
+
+    function create3Address(bytes32 salt) external view returns (address) {
+        return ClonesWithImmutableArgs.addressOfClone3(salt);
     }
 }
 
@@ -215,16 +220,28 @@ contract PanopticFactoryTest is Test {
         }
 
         string[] memory propsStr = vm.parseJsonStringArray(metadata, ".properties");
+        console2.log("properties count", propsStr.length);
+
         bytes32[] memory props = new bytes32[](propsStr.length);
         for (uint256 i = 0; i < propsStr.length; i++) {
             props[i] = bytes32(bytes(propsStr[i]));
         }
 
-        string[][] memory indicesStr = abi.decode(vm.parseJson(metadata, ".indices"), (string[][]));
+        // indices: read each inner string[] directly
+        string[][] memory indicesStr = new string[][](propsStr.length);
+        for (uint256 i = 0; i < propsStr.length; i++) {
+            // Build ".indices[i]" and parse that inner string[]
+            string memory path = string.concat(".indices[", vm.toString(i), "]");
+            indicesStr[i] = vm.parseJsonStringArray(metadata, path);
+            // optional: console2.log("indices[", i, "] len", indicesStr[i].length);
+        }
+
+        // convert to uint256[][]
         uint256[][] memory indices = new uint256[][](indicesStr.length);
         for (uint256 i = 0; i < indicesStr.length; i++) {
             indices[i] = new uint256[](indicesStr[i].length);
             for (uint256 j = 0; j < indicesStr[i].length; j++) {
+                // your JSON numbers are decimal strings (even the huge ones), so parseUint is correct
                 indices[i][j] = vm.parseUint(indicesStr[i][j]);
             }
         }
@@ -251,18 +268,16 @@ contract PanopticFactoryTest is Test {
         _initWorld(x);
 
         // Compute clone determinsitic Panoptic Factory address
-        address poolReference = panopticFactory.getPoolReference();
-        address preComputedPool = predictDeterministicAddress(
-            poolReference,
+        //address poolReference = panopticFactory.getPoolReference();
+        address preComputedPool = panopticFactory.create3Address(
             bytes32(
                 abi.encodePacked(
                     uint80(uint160(address(this)) >> 80),
-                    uint80(uint160(address(pool)) >> 40),
-                    uint80(uint160(address(riskEngine)) >> 40),
+                    uint40(uint160(address(pool)) >> 120),
+                    uint40(uint160(address(riskEngine)) >> 120),
                     salt
                 )
-            ),
-            address(panopticFactory)
+            )
         );
 
         {
@@ -282,7 +297,7 @@ contract PanopticFactoryTest is Test {
                 size := extcodesize(preComputedPool)
             }
             // check if bytecode is greater than 0
-            assertGt(size, 0);
+            assertGt(size, 0, "bytecode");
 
             // check if pool is linked to the correct panoptic pool in factory
             assertEq(
@@ -290,8 +305,10 @@ contract PanopticFactoryTest is Test {
                 address(deployedPool)
             );
             // see if correct pool was linked in the panopticPool
-            IUniswapV3Pool linkedPool = PanopticPool(preComputedPool).univ3pool();
-            address linkedPoolAddress = address(PanopticPool(preComputedPool).univ3pool());
+            IUniswapV3Pool linkedPool = IUniswapV3Pool(
+                abi.decode(PanopticPool(preComputedPool).poolKey(), (address))
+            );
+            address linkedPoolAddress = address(linkedPool);
             assertEq(address(pool), linkedPoolAddress);
 
             // check the pool has the correct parameters
@@ -443,10 +460,12 @@ contract PanopticFactoryTest is Test {
             address(riskEngineB),
             "Pool B should use riskEngineB"
         );
+        address poolAAddress = abi.decode(poolA.poolKey(), (address));
+        address poolBAddress = abi.decode(poolB.poolKey(), (address));
 
         // 4. Sanity check: both pools should still point to the same underlying Uniswap pool.
-        assertEq(address(poolA.univ3pool()), address(pool), "Pool A should have correct univ3pool");
-        assertEq(address(poolB.univ3pool()), address(pool), "Pool B should have correct univ3pool");
+        assertEq(poolAAddress, address(pool), "Pool A should have correct univ3pool");
+        assertEq(poolBAddress, address(pool), "Pool B should have correct univ3pool");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -461,7 +480,7 @@ contract PanopticFactoryTest is Test {
         uint256 minTargetRarity
     ) public {
         // limit minTargetRarity to 1-2 leading zeroes for test efficiency
-        minTargetRarity = bound(minTargetRarity, 1, 2);
+        minTargetRarity = bound(minTargetRarity, 1, 5);
 
         nonce = uint96(bound(nonce, 0, type(uint96).max - 1001));
 
@@ -476,6 +495,7 @@ contract PanopticFactoryTest is Test {
         (uint96 bestSalt, uint256 highestRarity) = panopticFactory.minePoolAddress(
             randomAddress,
             address(pool),
+            address(riskEngine),
             nonce,
             50_000,
             minTargetRarity
@@ -484,22 +504,22 @@ contract PanopticFactoryTest is Test {
         assertEq(
             highestRarity,
             PanopticMath.numberOfLeadingHexZeros(
-                predictDeterministicAddress(
-                    panopticFactory.getPoolReference(),
+                panopticFactory.create3Address(
                     bytes32(
                         abi.encodePacked(
                             uint80(uint160(randomAddress) >> 80),
-                            uint80(uint160(address(pool)) >> 80),
+                            uint40(uint160(address(pool)) >> 120),
+                            uint40(uint160(address(riskEngine)) >> 120),
                             bestSalt
                         )
-                    ),
-                    address(panopticFactory)
+                    )
                 )
-            )
+            ),
+            "rarity check"
         );
 
         // check highestRarity address was reached or surpassed
-        assertGe(highestRarity, minTargetRarity);
+        assertGe(highestRarity, minTargetRarity, "rarity");
     }
 
     /*//////////////////////////////////////////////////////////////

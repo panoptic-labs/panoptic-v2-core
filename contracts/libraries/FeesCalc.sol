@@ -6,7 +6,7 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Libraries
 import {Math} from "@libraries/Math.sol";
 // Custom types
-import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
+import {LeftRightSigned} from "@types/LeftRight.sol";
 
 /// @title Library for Fee Calculations.
 /// @author Axicon Labs Limited

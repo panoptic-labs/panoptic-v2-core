@@ -1,18 +1,12 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 // Interfaces
-import {PanopticPool} from "./PanopticPool.sol";
 import {CollateralTracker} from "./CollateralTracker.sol";
-// Inherited implementations
-import {ERC20Minimal} from "@tokens/ERC20Minimal.sol";
-import {Multicall} from "@base/Multicall.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
-import {InteractionHelper} from "@libraries/InteractionHelper.sol";
 import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
-import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
@@ -52,12 +46,18 @@ contract RiskEngine {
     /// @dev uint type for composability with unsigned integer based mathematical operations.
     uint256 internal constant DECIMALS = 10_000_000;
 
+    int16 internal constant MAX_UTILIZATION = 10_000;
+    uint256 internal constant LN2_SCALED = 6931472;
+
+    uint256 internal constant ONE_BPS = 1000;
+    uint256 internal constant TEN_BPS = 10000;
+
     //int256 constant EMA_PERIOD_SPOT = 180; // 3 minutes
     //int256 constant EMA_PERIOD_FAST = 600; // 10 minutes
     //int256 constant EMA_PERIOD_SLOW = 3600; // 1h minutes
     //int256 constant EMA_PERIOD_EONS = 21600; // 6h minutes
 
-    uint96 constant EMAperiods = uint96(180 + (600 << 24) + (3600 << 48) + (21600 << 72));
+    uint96 constant EMA_PERIODS = uint96(180 + (600 << 24) + (3600 << 48) + (21600 << 72));
     /// @notice The maximum allowed cumulative delta between the fast & slow oracle tick, the current & slow oracle tick, and the last-observed & slow oracle tick.
     /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
     int256 internal constant MAX_TICKS_DELTA = 953;
@@ -264,8 +264,11 @@ contract RiskEngine {
         TokenId tokenId,
         PositionBalance positionBalance
     ) external view returns (LeftRightSigned exerciseFees) {
-        (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            .computeExercisedAmounts(tokenId, positionBalance.positionSize(), true);
+        (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
+            tokenId,
+            positionBalance.positionSize(),
+            true
+        );
         unchecked {
             // we find whether the price is within any leg; any in-range leg will have a cost. Otherwise, the force-exercise fee is 1bps
             bool hasLegsInRange;
@@ -273,6 +276,9 @@ contract RiskEngine {
             for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
                 // short legs are not counted - exercise is intended to be based on long legs
                 if (tokenId.isLong(leg) == 0) continue;
+
+                // credit/loans are not counted
+                if (tokenId.width(leg) == 0) continue;
 
                 {
                     int24 range = int24(
@@ -331,7 +337,7 @@ contract RiskEngine {
             // the result is rounded DOWN and NOT toward zero
             // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
             // subtract 1 from max half ranges from strike so fee starts at FORCE_EXERCISE_COST when moving OTM
-            int256 fee = hasLegsInRange ? -int256(FORCE_EXERCISE_COST) : -1024;
+            int256 fee = hasLegsInRange ? -int256(FORCE_EXERCISE_COST) : -int256(ONE_BPS);
 
             // store the exercise fees in the exerciseFees variable
             exerciseFees = exerciseFees
@@ -494,7 +500,7 @@ contract RiskEngine {
         (spotTick, medianTick, latestTick, oraclePack) = PanopticMath.getOracleTicks(
             currentTick,
             _oraclePack,
-            EMAperiods
+            EMA_PERIODS
         );
     }
 
@@ -522,7 +528,7 @@ contract RiskEngine {
         uint256 oraclePack,
         int24 currentTick
     ) external view returns (int24 medianTick, uint256 updatedOraclePack) {
-        return PanopticMath.computeInternalMedian(oraclePack, currentTick, EMAperiods);
+        return PanopticMath.computeInternalMedian(oraclePack, currentTick, EMA_PERIODS);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -534,7 +540,7 @@ contract RiskEngine {
     ///      1. "External Shock": The live spot price deviates too far from the responsive spot EMA .
     ///      2. "Internal Disagreement": The fast EMA deviates too far from the more stable slow EMA, indicating high volatility.
     /// @return Whether the protocol should be in Safe Mode.
-    function isSafeMode(int24 currentTick, uint256 oraclePack) public view returns (uint8) {
+    function isSafeMode(int24 currentTick, uint256 oraclePack) public pure returns (uint8) {
         // Extract the relevant EMAs from oraclePack
         (, int24 slowEMA, int24 fastEMA, int24 spotEMA, int24 medianTick) = PanopticMath.getEMAs(
             oraclePack
@@ -562,10 +568,11 @@ contract RiskEngine {
 
     function getSolvencyTicks(
         int24 currentTick,
-        int24 spotTick,
-        int24 medianTick,
-        int24 latestTick
-    ) external pure returns (int24[] memory) {
+        uint256 _oraclePack
+    ) external view returns (int24[] memory, uint256) {
+        (int24 spotTick, int24 medianTick, int24 latestTick, uint256 oraclePack) = PanopticMath
+            .getOracleTicks(currentTick, _oraclePack, EMA_PERIODS);
+
         int24[] memory atTicks;
 
         // Fall back to a conservative approach if there's high deviation between internal ticks:
@@ -592,7 +599,7 @@ contract RiskEngine {
             atTicks[0] = spotTick;
         }
 
-        return atTicks;
+        return (atTicks, oraclePack);
     }
 
     /// @notice Get the collateral status/margin details of an account/user.
@@ -609,26 +616,30 @@ contract RiskEngine {
     /// @param buffer The buffer to apply to the collateral requirement
     /// @return Whether the account is solvent at the given tick
     function isAccountSolvent(
-        address user,
-        uint256[] calldata positionBalanceArray,
-        int24 atTick,
+        PositionBalance[] calldata positionBalanceArray,
         TokenId[] calldata positionIdList,
+        int24 atTick,
+        address user,
         LeftRightUnsigned shortPremia,
         LeftRightUnsigned longPremia,
         CollateralTracker ct0,
         CollateralTracker ct1,
         uint256 buffer
     ) external view returns (bool) {
-        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = _getMargin(
-            user,
-            positionBalanceArray,
-            atTick,
-            positionIdList,
-            shortPremia,
-            longPremia,
-            ct0,
-            ct1
-        );
+        (
+            LeftRightUnsigned tokenData0,
+            LeftRightUnsigned tokenData1,
+            PositionBalance globalUtilizations
+        ) = _getMargin(
+                positionBalanceArray,
+                positionIdList,
+                atTick,
+                user,
+                shortPremia,
+                longPremia,
+                ct0,
+                ct1
+            );
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
 
         uint256 maintReq0 = Math.mulDivRoundingUp(tokenData0.leftSlot(), buffer, DECIMALS);
@@ -639,12 +650,12 @@ contract RiskEngine {
 
         uint256 scaledSurplusToken0 = Math.mulDiv(
             bal0 > maintReq0 ? bal0 - maintReq0 : 0,
-            CROSS_BUFFER_0,
+            _crossBufferRatio(globalUtilizations.utilization0(), CROSS_BUFFER_0),
             DECIMALS
         );
         uint256 scaledSurplusToken1 = Math.mulDiv(
             bal1 > maintReq1 ? bal1 - maintReq1 : 0,
-            CROSS_BUFFER_1,
+            _crossBufferRatio(globalUtilizations.utilization1(), CROSS_BUFFER_1),
             DECIMALS
         );
 
@@ -681,22 +692,30 @@ contract RiskEngine {
     /// @return tokenData0 LeftRightUnsigned for token0 with left = maintenance requirement, right = available balance
     /// @return tokenData1 LeftRightUnsigned for token1 with left = maintenance requirement, right = available balance
     function getMargin(
-        address user,
+        PositionBalance[] calldata positionBalanceArray,
         int24 atTick,
+        address user,
         TokenId[] calldata positionIdList,
-        uint256[] calldata positionBalanceArray,
         LeftRightUnsigned shortPremia,
         LeftRightUnsigned longPremia,
         CollateralTracker ct0,
         CollateralTracker ct1
-    ) external view returns (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) {
+    )
+        external
+        view
+        returns (
+            LeftRightUnsigned tokenData0,
+            LeftRightUnsigned tokenData1,
+            PositionBalance globalUtilizations
+        )
+    {
         if (positionIdList.length != positionBalanceArray.length) revert Errors.LengthMismatch();
         return
             _getMargin(
-                user,
                 positionBalanceArray,
-                atTick,
                 positionIdList,
+                atTick,
+                user,
                 shortPremia,
                 longPremia,
                 ct0,
@@ -721,42 +740,87 @@ contract RiskEngine {
     /// @return tokenData0 LeftRightUnsigned for token0 with left = maintenance requirement, right = available balance
     /// @return tokenData1 LeftRightUnsigned for token1 with left = maintenance requirement, right = available balance
     function _getMargin(
-        address user,
-        uint256[] calldata positionBalanceArray,
-        int24 atTick,
+        PositionBalance[] calldata positionBalanceArray,
         TokenId[] calldata positionIdList,
+        int24 atTick,
+        address user,
         LeftRightUnsigned shortPremia,
         LeftRightUnsigned longPremia,
         CollateralTracker ct0,
         CollateralTracker ct1
-    ) internal view returns (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) {
-        (uint256 requirements0, uint256 requirements1) = _getTotalRequiredCollateral(
+    )
+        internal
+        view
+        returns (
+            LeftRightUnsigned tokenData0,
+            LeftRightUnsigned tokenData1,
+            PositionBalance globalUtilizations
+        )
+    {
+        LeftRightUnsigned tokensRequired;
+        LeftRightUnsigned creditAmounts;
+        (tokensRequired, creditAmounts, globalUtilizations) = _getTotalRequiredCollateral(
             positionBalanceArray,
             positionIdList,
-            atTick
+            atTick,
+            longPremia
         );
-        unchecked {
-            requirements0 += longPremia.rightSlot();
-            requirements1 += longPremia.leftSlot();
-        }
-        address _user = user;
-        (uint256 balance0, uint256 interest0) = ct0.assetsAndInterest(_user);
-        (uint256 balance1, uint256 interest1) = ct1.assetsAndInterest(_user);
+        (uint256 balance0, uint256 interest0) = ct0.assetsAndInterest(user);
+        (uint256 balance1, uint256 interest1) = ct1.assetsAndInterest(user);
 
         unchecked {
             balance0 += shortPremia.rightSlot();
             balance1 += shortPremia.leftSlot();
 
-            requirements0 += interest0;
-            requirements1 += interest1;
+            balance0 += creditAmounts.rightSlot();
+            balance1 += creditAmounts.leftSlot();
+            tokensRequired = tokensRequired.addToRightSlot(uint128(interest0)).addToLeftSlot(
+                uint128(interest1)
+            );
         }
         tokenData0 = LeftRightUnsigned.wrap(balance0.toUint128()).addToLeftSlot(
-            requirements0.toUint128()
+            tokensRequired.rightSlot()
         );
 
         tokenData1 = LeftRightUnsigned.wrap(balance1.toUint128()).addToLeftSlot(
-            requirements1.toUint128()
+            tokensRequired.leftSlot()
         );
+    }
+
+    /// @notice Gets the highest pool utilization (for token0 and token1) from an array of positions.
+    /// @dev Iterates through all of a user's positions to find the maximum `utilization0` and maximum `utilization1`
+    /// recorded at the time of minting. These "global" max utilizations are then used for
+    /// portfolio-level margin calculations, ensuring a more conservative risk assessment.
+    /// @param positionBalanceArray The array of a user's `PositionBalance` structs.
+    /// @return globalUtilizations A packed PositionBalance that contains only the utilization data, recoverable as .utilization0() and .utilization1()
+    function _getGlobalUtilization(
+        PositionBalance[] calldata positionBalanceArray
+    ) internal pure returns (PositionBalance globalUtilizations) {
+        int256 utilization0;
+        int256 utilization1;
+        uint256 pLength = positionBalanceArray.length;
+
+        for (uint256 i; i < pLength; ) {
+            PositionBalance positionBalance = positionBalanceArray[i];
+
+            int256 _utilization0 = positionBalance.utilization0();
+            int256 _utilization1 = positionBalance.utilization1();
+
+            // utilizations are always positive, so can compare directly here
+            utilization0 = _utilization0 > utilization0 ? _utilization0 : utilization0;
+            utilization1 = _utilization1 > utilization1 ? _utilization1 : utilization1;
+            unchecked {
+                ++i;
+            }
+        }
+
+        unchecked {
+            globalUtilizations = PositionBalanceLibrary.storeBalanceData(
+                0,
+                uint32(uint256(utilization0) + (uint256(utilization1) << 16)),
+                0
+            );
+        }
     }
 
     /// @notice Get the total required amount of collateral tokens of a user/account across all active positions to stay above the margin requirement.
@@ -764,43 +828,68 @@ contract RiskEngine {
     /// @param positionBalanceArray The list of all open positions held by the `optionOwner`, stored as `[balance/poolUtilizationAtMint, ...]`
     /// @param positionIdList The list of all option positions held by `owner`
     /// @param atTick The tick at which to evaluate the account's positions
-    /// @return tokenRequired0 The amount of token0 required to stay above the margin threshold for all active positions of user
-    /// @return tokenRequired1 The amount of token1 required to stay above the margin threshold for all active positions of user
+    /// @return tokensRequired The amount of token0 (right) and token1 (left) required to stay above the margin threshold for all active positions of user
+    /// @return creditAmounts The amount of credit token0 (right) and token1 (left) in the user's portfolio
     function _getTotalRequiredCollateral(
-        uint256[] calldata positionBalanceArray,
+        PositionBalance[] calldata positionBalanceArray,
         TokenId[] calldata positionIdList,
-        int24 atTick
-    ) internal view returns (uint256 tokenRequired0, uint256 tokenRequired1) {
-        uint256 totalIterations = positionBalanceArray.length;
-        for (uint256 i; i < totalIterations; ) {
-            TokenId tokenId = positionIdList[i];
+        int24 atTick,
+        LeftRightUnsigned longPremia
+    )
+        internal
+        view
+        returns (
+            LeftRightUnsigned tokensRequired,
+            LeftRightUnsigned creditAmounts,
+            PositionBalance globalUtilizations
+        )
+    {
+        // get the global utilizations, which is the max utilizations for all open positions
+        globalUtilizations = _getGlobalUtilization(positionBalanceArray);
+        // add long premia to tokens required
+        tokensRequired = tokensRequired.add(longPremia);
 
-            PositionBalance positionBalance = PositionBalance.wrap(positionBalanceArray[i]);
-            uint128 positionSize = positionBalance.positionSize();
+        for (uint256 i; i < positionBalanceArray.length; ) {
+            uint256 _tokenRequired0;
+            uint256 _credits0;
+            uint256 _tokenRequired1;
+            uint256 _credits1;
+            {
+                TokenId tokenId = positionIdList[i];
+                PositionBalance positionBalance = positionBalanceArray[i];
+                uint128 positionSize = positionBalance.positionSize();
+                int24 _atTick = atTick;
 
-            int16 utilization0 = int16(positionBalance.utilization0());
-            int16 utilization1 = int16(positionBalance.utilization1());
-
-            uint256 _tokenRequired0 = _getRequiredCollateralAtTickSinglePosition(
-                tokenId,
-                positionSize,
-                atTick,
-                utilization0,
-                true
-            );
-
-            uint256 _tokenRequired1 = _getRequiredCollateralAtTickSinglePosition(
-                tokenId,
-                positionSize,
-                atTick,
-                utilization1,
-                false
-            );
-
-            unchecked {
-                tokenRequired0 += _tokenRequired0;
-                tokenRequired1 += _tokenRequired1;
+                {
+                    // Use the global utilizations for all positions
+                    int16 utilization0 = int16(globalUtilizations.utilization0());
+                    (_tokenRequired0, _credits0) = _getRequiredCollateralAtTickSinglePosition(
+                        tokenId,
+                        positionSize,
+                        _atTick,
+                        utilization0,
+                        true
+                    );
+                }
+                {
+                    // Use the global utilizations for all positions
+                    int16 utilization1 = int16(globalUtilizations.utilization1());
+                    (_tokenRequired1, _credits1) = _getRequiredCollateralAtTickSinglePosition(
+                        tokenId,
+                        positionSize,
+                        _atTick,
+                        utilization1,
+                        false
+                    );
+                }
             }
+            tokensRequired = tokensRequired
+                .addToRightSlot(_tokenRequired0.toUint128())
+                .addToLeftSlot(_tokenRequired1.toUint128());
+            creditAmounts = creditAmounts.addToRightSlot(_credits0.toUint128()).addToLeftSlot(
+                _credits1.toUint128()
+            );
+
             unchecked {
                 ++i;
             }
@@ -820,13 +909,23 @@ contract RiskEngine {
         int24 atTick,
         int16 poolUtilization,
         bool underlyingIsToken0
-    ) internal view returns (uint256 tokenRequired) {
+    ) internal view returns (uint256 tokenRequired, uint256 credits) {
         uint256 numLegs = tokenId.countLegs();
 
         unchecked {
             for (uint256 index = 0; index < numLegs; ++index) {
                 if (tokenId.tokenType(index) != (underlyingIsToken0 ? 0 : 1)) continue;
 
+                if (tokenId.width(index) == 0 && tokenId.isLong(index) == 1) {
+                    LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
+                        tokenId,
+                        positionSize,
+                        index
+                    );
+                    credits = tokenId.tokenType(index) == 0
+                        ? amountsMoved.rightSlot()
+                        : amountsMoved.leftSlot();
+                }
                 // Increment the tokenRequired accumulator
                 tokenRequired += _getRequiredCollateralSingleLeg(
                     tokenId,
@@ -921,13 +1020,12 @@ contract RiskEngine {
                     isLong,
                     poolUtilization
                 );
+                (int24 tickLower, int24 tickUpper) = tokenId.asTicks(index);
+                int24 strike = tokenId.strike(index);
 
                 if (isLong == 0) {
                     // if position is short, check whether the position is out-the-money
 
-                    (int24 tickLower, int24 tickUpper) = tokenId.asTicks(index);
-
-                    int24 strike = tokenId.strike(index);
                     // if position is ITM or ATM, then the collateral requirement depends on price:
 
                     // compute the ratio of strike to price for calls (or price to strike for puts)
@@ -942,8 +1040,8 @@ contract RiskEngine {
                             int24(
                                 Math.bound(
                                     2 * (atTick - strike),
-                                    Constants.MIN_V3POOL_TICK,
-                                    Constants.MAX_V3POOL_TICK
+                                    Constants.MIN_POOL_TICK,
+                                    Constants.MAX_POOL_TICK
                                 )
                             )
                         ) // puts ->  price/strike
@@ -951,8 +1049,8 @@ contract RiskEngine {
                             int24(
                                 Math.bound(
                                     2 * (strike - atTick),
-                                    Constants.MIN_V3POOL_TICK,
-                                    Constants.MAX_V3POOL_TICK
+                                    Constants.MIN_POOL_TICK,
+                                    Constants.MAX_POOL_TICK
                                 )
                             )
                         ); // calls -> strike/price
@@ -978,18 +1076,58 @@ contract RiskEngine {
                         // collateral requirement at the lowerTick and the one at the upperTick. We use that interpolation as
                         // the collateral requirement when in-range, which always over-estimates the amount of token required
                         // Specifically:
-                        //  required = amountMoved * (scaleFactor - ratio) / (scaleFactor + 1) + sellCollateralRatio*amountMoved
-                        uint160 scaleFactor = Math.getSqrtRatioAtTick(tickUpper - tickLower);
+
+                        uint160 scaleFactor = Math.getSqrtRatioAtTick((tickUpper - tickLower));
+                        uint256 base = (r0 * DECIMALS) / amountMoved;
                         r2 =
                             Math.mulDivRoundingUp(
-                                amountMoved,
-                                scaleFactor - ratio,
-                                scaleFactor + Constants.FP96
+                                amountMoved * (DECIMALS - base),
+                                (scaleFactor - ratio),
+                                DECIMALS * (scaleFactor + Constants.FP96)
                             ) +
-                            required;
+                            r0;
                     }
-
                     required = Math.max(Math.max(r2, r1), r0);
+                } else {
+                    uint256 positionHalfWidth = uint256(uint24(tickUpper - tickLower)) / 2;
+
+                    uint256 distanceFromStrike = Math.max(
+                        positionHalfWidth,
+                        atTick > strike
+                            ? uint256(uint24(atTick - strike))
+                            : uint256(uint24(strike - atTick))
+                    );
+
+                    // Calculate the exponent: distance / width
+
+                    uint256 expValue;
+                    {
+                        uint256 scaledRatio = (distanceFromStrike * DECIMALS) /
+                            (2 * positionHalfWidth);
+                        // Divide by ln(2) to get the number of doublings
+                        // LN2_SCALED = ln(2) * DECIMALS
+                        uint256 shifts = scaledRatio / LN2_SCALED;
+                        uint256 remainder = scaledRatio % LN2_SCALED;
+
+                        // Calculate e^(remainder/DECIMALS) - now always less than e^(ln(2)) = 2
+                        // This means Taylor expansion is very accurate
+                        uint256 expFractional = Math.sTaylorCompounded(remainder, DECIMALS);
+                        // Combine: e^x = 2^shifts * e^remainder
+                        // We divide by DECIMALS at the end to maintain precision
+                        if (shifts < 256) {
+                            // Prevent overflow
+                            expValue = (expFractional << shifts);
+                        } else {
+                            expValue = type(uint256).max; // Cap at max value
+                        }
+                    }
+                    // Apply the exponential decay to required collateral
+                    required = Math.min(
+                        required,
+                        (2 * DECIMALS * required * positionHalfWidth) /
+                            (distanceFromStrike * expValue) +
+                            TEN_BPS
+                    );
                 }
             }
         }
@@ -1036,7 +1174,10 @@ contract RiskEngine {
         // - Delayed Swap (credit at one strike, loan at another; different amounts = effective swap) = requirement is max(loan0 - convert1to0(credit), 1) or max(loan1 - convert0to1(credit), 1)
         {
             // only proceed if the partners have the same asset
-            if (tokenId.asset(partnerIndex) == tokenId.asset(index)) {
+            if (
+                tokenId.asset(partnerIndex) == tokenId.asset(index) &&
+                tokenId.optionRatio(partnerIndex) == tokenId.optionRatio(index)
+            ) {
                 // witdh of associated legs, true if greater than 0 (ie. it is an option leg)
                 bool _width = tokenId.width(index) > 0;
                 bool widthP = tokenId.width(partnerIndex) > 0;
@@ -1064,14 +1205,23 @@ contract RiskEngine {
                         } else if (_isLong != isLongP) {
                             // SYNTHETIC STOCK: different token types, one is long and the other is short
                             return
-                                // return the collateral requirement of the short leg only, the long leg is free!
-                                _isLong == 0
-                                    ? _getRequiredCollateralSingleLegNoPartner(
-                                        tokenId,
-                                        index,
-                                        positionSize,
-                                        atTick,
-                                        poolUtilization
+                                // return the largest collateral requirement of the two legs
+                                index < partnerIndex
+                                    ? Math.max(
+                                        _getRequiredCollateralSingleLegNoPartner(
+                                            tokenId,
+                                            index,
+                                            positionSize,
+                                            atTick,
+                                            poolUtilization
+                                        ),
+                                        _getRequiredCollateralSingleLegNoPartner(
+                                            tokenId,
+                                            partnerIndex,
+                                            positionSize,
+                                            atTick,
+                                            poolUtilization
+                                        )
                                     )
                                     : 0;
                         }
@@ -1086,6 +1236,7 @@ contract RiskEngine {
                                         positionSize,
                                         index,
                                         partnerIndex,
+                                        atTick,
                                         poolUtilization
                                     )
                                     : 0;
@@ -1103,9 +1254,7 @@ contract RiskEngine {
                                         tokenId,
                                         positionSize,
                                         index,
-                                        partnerIndex,
-                                        atTick,
-                                        poolUtilization
+                                        atTick
                                     )
                                     : 0;
                         } else {
@@ -1192,13 +1341,14 @@ contract RiskEngine {
         }
     }
 
-    /// @notice Calculate the required amount of collateral for the spread portion of the spread position.
-    /// @dev `max(long leg requirement, 100% collateralized risk)`
-    /// @dev May be higher than the requirement of an equivalent pair of non-risk-partnered legs if the spread is very wide (risky).
+    /// @notice Calculates the total collateral requirement for a defined-risk spread position.
+    /// @dev A spread's collateral is the minimum of its defined max loss or the sum of its legs' individual (unpartnered) requirements.
+    /// @dev This provides capital efficiency, as deep OTM spreads may require less collateral than their max loss due to OTM decay on the long leg.
     /// @param tokenId The option position
     /// @param positionSize The size of the position
     /// @param index The leg index of the LONG leg in the spread position
     /// @param partnerIndex The index of the partnered SHORT leg in the spread position
+    /// @param atTick the tick the requirement is evaluated at
     /// @param poolUtilization The pool utilization: how much funds are in the Panoptic pool versus the AMM pool
     /// @return spreadRequirement The required amount of collateral needed for the spread
     function _computeSpread(
@@ -1206,6 +1356,7 @@ contract RiskEngine {
         uint128 positionSize,
         uint256 index,
         uint256 partnerIndex,
+        int24 atTick,
         int16 poolUtilization
     ) internal view returns (uint256 spreadRequirement) {
         spreadRequirement = 1;
@@ -1213,44 +1364,79 @@ contract RiskEngine {
         // Since this is returning a collateral requirement, we want to return the amounts moved upon closure, not opening
         LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index, false);
 
+        uint256 splitRequirement;
         {
-            // This is a CALENDAR SPREAD adjustment, where the collateral requirement is the max loss of the position
-            // real formula is contractSize * (1/(sqrt(r1)+1) - 1/(sqrt(r2)+1))
-            // Taylor expand to get a rough approximation of: contractSize * ∆width * tickSpacing / 40000
-            // This is strictly larger than the real one, so OK to use that for a collateral requirement.
-            int24 deltaWidth = tokenId.width(index) - tokenId.width(partnerIndex);
-
-            // TODO check if same strike and same width is allowed
-            if (deltaWidth < 0) deltaWidth = -deltaWidth;
-
-            if (tokenId.tokenType(index) == 0) {
-                spreadRequirement +=
-                    (amountsMoved.rightSlot() *
-                        uint256(int256(deltaWidth * tokenId.tickSpacing()))) /
-                    80000;
-            } else {
-                spreadRequirement +=
-                    (amountsMoved.leftSlot() *
-                        uint256(int256(deltaWidth * tokenId.tickSpacing()))) /
-                    80000;
-            }
+            uint256 _required = _getRequiredCollateralSingleLegNoPartner(
+                tokenId,
+                index,
+                positionSize,
+                atTick,
+                poolUtilization
+            );
+            uint256 requiredPartner = _getRequiredCollateralSingleLegNoPartner(
+                tokenId,
+                partnerIndex,
+                positionSize,
+                atTick,
+                poolUtilization
+            );
+            splitRequirement = _required + requiredPartner;
         }
 
-        // compute the total amount of funds moved for the position's partner leg
-        LeftRightUnsigned amountsMovedPartner = PanopticMath.getAmountsMoved(
-            tokenId,
-            positionSize,
-            partnerIndex,
-            false
-        );
 
-        uint128 moved0 = amountsMoved.rightSlot();
-        uint128 moved1 = amountsMoved.leftSlot();
-
-        uint128 moved0Partner = amountsMovedPartner.rightSlot();
-        uint128 moved1Partner = amountsMovedPartner.leftSlot();
-
+        uint128 moved0;
+        uint128 moved1;
+        uint128 moved0Partner;
+        uint128 moved1Partner;
         uint256 tokenType = tokenId.tokenType(index);
+        {
+            // compute the total amount of funds moved for the position's current leg
+            LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
+                tokenId,
+                positionSize,
+                index,
+                false
+            );
+            {
+                // This is a CALENDAR SPREAD adjustment, where the collateral requirement is the max loss of the position
+                // real formula is contractSize * (1/(sqrt(r1)+1) - 1/(sqrt(r2)+1))
+                // Taylor expand to get a rough approximation of: contractSize * ∆width * tickSpacing / 40000
+                // This is strictly larger than the real one, so OK to use that for a collateral requirement.
+                TokenId _tokenId = tokenId;
+                int24 deltaWidth = _tokenId.width(index) - _tokenId.width(partnerIndex);
+
+                // TODO check if same strike and same width is allowed -> Think not from TokenId.sol?
+                if (deltaWidth < 0) deltaWidth = -deltaWidth;
+
+                if (tokenType == 0) {
+                    spreadRequirement +=
+                        (amountsMoved.rightSlot() *
+                            uint256(int256(deltaWidth * _tokenId.tickSpacing()))) /
+                        80000;
+                } else {
+                    spreadRequirement +=
+                        (amountsMoved.leftSlot() *
+                            uint256(int256(deltaWidth * _tokenId.tickSpacing()))) /
+                        80000;
+                }
+            }
+
+            moved0 = amountsMoved.rightSlot();
+            moved1 = amountsMoved.leftSlot();
+
+            {
+                // compute the total amount of funds moved for the position's partner leg
+                LeftRightUnsigned amountsMovedPartner = PanopticMath.getAmountsMoved(
+                    tokenId,
+                    positionSize,
+                    partnerIndex,
+                    false
+                );
+
+                moved0Partner = amountsMovedPartner.rightSlot();
+                moved1Partner = amountsMovedPartner.leftSlot();
+            }
+        }
 
         // compute the max loss of the spread
 
@@ -1290,6 +1476,8 @@ contract RiskEngine {
                     : Math.unsafeDivRoundingUp((notional - notionalP) * contracts, notional);
             }
         }
+
+        spreadRequirement = Math.min(splitRequirement, spreadRequirement);
     }
 
     /// @notice Calculate the required amount of collateral for a strangle leg.
@@ -1379,38 +1567,22 @@ contract RiskEngine {
         TokenId tokenId,
         uint128 positionSize,
         uint256 index,
-        uint256 partnerIndex,
-        int24 atTick,
-        int16 poolUtilization
+        int24 atTick
     ) internal view returns (uint256) {
         // can only be called when partnerIndex is the credit
-        // required amount for short option leg
+        // required amount for the option leg
+        // Assume 100% utilization, which means
+        //  - 100% collateralization for sold options (cash account requirement)
+        //  - more capital efficiency for long options because prepaid (5% vs 10% BPR)
         uint256 _required = _getRequiredCollateralSingleLegNoPartner(
             tokenId,
             index,
             positionSize,
             atTick,
-            poolUtilization
+            MAX_UTILIZATION
         );
 
-        // amount moved in the credit leg
-        LeftRightUnsigned amountsMovedCredit = PanopticMath.getAmountsMoved(
-            tokenId,
-            positionSize,
-            partnerIndex,
-            false
-        );
-
-        // get correct
-        uint128 amountMoved = tokenId.tokenType(partnerIndex) == 0
-            ? amountsMovedCredit.rightSlot()
-            : amountsMovedCredit.leftSlot();
-
-        if (_required > amountMoved) {
-            return _required - amountMoved;
-        } else {
-            return 0;
-        }
+        return _required;
     }
 
     function _computeDelayedSwap(
@@ -1420,6 +1592,7 @@ contract RiskEngine {
         uint256 partnerIndex,
         int24 atTick
     ) internal view returns (uint256) {
+        // can only be called when partnerIndex is the credit
         LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index, false);
 
         LeftRightUnsigned amountsMovedP = PanopticMath.getAmountsMoved(
@@ -1432,6 +1605,12 @@ contract RiskEngine {
         uint256 loanAmount = tokenId.tokenType(index) == 0
             ? amountsMoved.rightSlot()
             : amountsMoved.leftSlot();
+        uint256 required = Math.mulDivRoundingUp(
+            loanAmount,
+            SELLER_COLLATERAL_RATIO + DECIMALS,
+            DECIMALS
+        );
+
         uint256 creditAmount = tokenId.tokenType(partnerIndex) == 0
             ? amountsMovedP.rightSlot()
             : amountsMovedP.leftSlot();
@@ -1440,10 +1619,10 @@ contract RiskEngine {
             ? PanopticMath.convert0to1RoundingUp(creditAmount, Math.getSqrtRatioAtTick(atTick))
             : PanopticMath.convert1to0RoundingUp(creditAmount, Math.getSqrtRatioAtTick(atTick));
 
-        if (loanAmount > convertedCredit) {
-            return loanAmount - convertedCredit;
+        if (required > convertedCredit) {
+            return required;
         } else {
-            return 0;
+            return convertedCredit;
         }
     }
 
@@ -1553,13 +1732,59 @@ contract RiskEngine {
         }
     }
 
+    /// @notice Get the cross buffer ration for a given utilization
+    /// @dev This is computed using the global utilization of the user.
+    /// @param utilization The pool utilization of this collateral vault at the time the position is minted
+    /// @return crossBufferRatio The cross buffer ratio at `utilization`
+    function _crossBufferRatio(
+        int256 utilization,
+        uint256 crossBuffer
+    ) internal view returns (uint256 crossBufferRatio) {
+        // linear from crossBuffer to 0 between 50% and 90%
+        // the buy ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
+        //   (x0,y0) = (targetPoolUtilization, crossBuffer) and
+        //   (x1,y1) = (saturatedPoolUtilization, 0)
+        // note that y1<y0 so the slope is negative:
+        // aka the cross buffer starts high and drops to zero with increased utilization
+        // the line's formula: y = a * (x - x0) + y0, where a = (y1 - y0) / (x1 - x0)
+        // but since a<0, we rewrite as:
+        // y = a' * (x0 - x) + y0, where a' = (y0 - y1) / (x1 - x0)
+
+        /*
+          CROSS
+          BUFFER
+          RATIO
+                 ^
+                 |   cross_buffer = 80%
+           80% - |----------_
+                 |         . ¯-_
+                 |         .    ¯-_
+           0% -  +---------+-------∓---+--->   POOL_
+                          50%     90% 100%      UTILIZATION
+         */
+
+        uint256 utilizationScaled = uint256(utilization * 1_000);
+        // return the basal cross buffer ratio if pool utilization is lower than target
+        if (utilizationScaled < TARGET_POOL_UTIL) {
+            return crossBuffer;
+        }
+
+        // return 0 if pool utilization is above saturated pool utilization
+        if (utilizationScaled > SATURATED_POOL_UTIL) {
+            unchecked {
+                return 0;
+            }
+        }
+
+        unchecked {
+            return ((crossBuffer * (SATURATED_POOL_UTIL - utilizationScaled)) /
+                (SATURATED_POOL_UTIL - TARGET_POOL_UTIL));
+        }
+    }
+
     /*//////////////////////////////////////////////////////////////
                   ADAPTIVE INTEREST RATE MODEL
     //////////////////////////////////////////////////////////////*/
-
-    function interestRate(uint256 utilization) external returns (uint128) {
-        return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
-    }
 
     function interestRate(
         uint256 utilization,
@@ -1567,19 +1792,17 @@ contract RiskEngine {
     ) external view returns (uint128) {
         (uint256 avgRate, ) = _borrowRate(utilization, interestRateAccumulator);
         return uint128(avgRate);
-        //return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
     }
 
     function updateInterestRate(
         uint256 utilization,
         uint256 interestRateAccumulator
-    ) external returns (uint128, uint256) {
+    ) external view returns (uint128, uint256) {
         (uint256 avgRate, int256 endRateAtTarget) = _borrowRate(
             utilization,
             interestRateAccumulator
         );
         return (uint128(avgRate), uint256(endRateAtTarget));
-        //return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
     }
 
     /// @dev Returns avgRate and endRateAtTarget.
