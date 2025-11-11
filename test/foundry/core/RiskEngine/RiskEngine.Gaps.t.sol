@@ -73,14 +73,14 @@ contract RiskEngineCoverageGaps is Test {
         ids[1] = creditT1;
 
         // Give both legs a nonzero position size so PanopticMath.getAmountsMoved produces credits.
-        uint256[] memory arr = new uint256[](2);
-        arr[0] = PositionBalance.unwrap(PositionFactory.posBalance(uint128(5e9), 0, 0));
-        arr[1] = PositionBalance.unwrap(PositionFactory.posBalance(uint128(7e9), 0, 0));
+        PositionBalance[] memory arr = new PositionBalance[](2);
+        arr[0] = (PositionFactory.posBalance(uint128(5e9), 0, 0));
+        arr[1] = (PositionFactory.posBalance(uint128(7e9), 0, 0));
 
         LeftRightUnsigned zero = LeftRightUnsigned.wrap(0);
 
         // totalRequiredCollateral returns (requirements, credits)
-        (LeftRightUnsigned req0, LeftRightUnsigned req1) = E.totalRequiredCollateral(
+        (LeftRightUnsigned req0, LeftRightUnsigned req1, ) = E.totalRequiredCollateral(
             arr,
             ids,
             int24(0),

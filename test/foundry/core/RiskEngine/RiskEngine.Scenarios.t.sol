@@ -81,15 +81,15 @@ contract RiskEngineScenarios is Test {
         ids[0] = shortPut;
 
         PositionBalance pb = PositionFactory.posBalance(uint128(8e9), 1000, 1000);
-        uint256[] memory arr = new uint256[](1);
-        arr[0] = PositionBalance.unwrap(pb);
+        PositionBalance[] memory arr = new PositionBalance[](1);
+        arr[0] = (pb);
         LeftRightUnsigned zero = LeftRightUnsigned.wrap(0);
 
         bool s1 = E.isAccountSolvent(
-            user,
             arr,
-            int24(0),
             ids,
+            int24(0),
+            user,
             zero,
             zero,
             CollateralTracker(address(ct0)),
@@ -97,10 +97,10 @@ contract RiskEngineScenarios is Test {
             9_000_000
         );
         bool s2 = E.isAccountSolvent(
-            user,
             arr,
-            int24(0),
             ids,
+            int24(0),
+            user,
             zero,
             zero,
             CollateralTracker(address(ct0)),
@@ -108,10 +108,10 @@ contract RiskEngineScenarios is Test {
             10_000_000
         );
         bool s3 = E.isAccountSolvent(
-            user,
             arr,
-            int24(0),
             ids,
+            int24(0),
+            user,
             zero,
             zero,
             CollateralTracker(address(ct0)),

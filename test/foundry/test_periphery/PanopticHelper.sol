@@ -56,21 +56,23 @@ contract PanopticHelper {
         (
             LeftRightUnsigned shortPremium,
             LeftRightUnsigned longPremium,
-            uint256[] memory positionBalanceArray
+            PositionBalance[] memory positionBalanceArray
         ) = pool.getAccumulatedFeesAndPositionsData(account, false, positionIdList);
 
         PanopticPool _pool = pool;
         // Query the current and required collateral amounts for the two tokens
-        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = pool.riskEngine().getMargin(
-            account,
-            atTick,
-            positionIdList,
-            positionBalanceArray,
-            shortPremium,
-            longPremium,
-            _pool.collateralToken0(),
-            _pool.collateralToken1()
-        );
+        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = pool
+            .riskEngine()
+            .getMargin(
+                positionBalanceArray,
+                atTick,
+                account,
+                positionIdList,
+                shortPremium,
+                longPremium,
+                _pool.collateralToken0(),
+                _pool.collateralToken1()
+            );
 
         // convert (using atTick) and return the total collateral balance and required balance in terms of tokenType
         return
@@ -91,15 +93,12 @@ contract PanopticHelper {
         TokenId[] calldata positionIdList
     ) external view returns (int256 value0, int256 value1) {
         // Compute premia for all options (includes short+long premium)
-        (, , uint256[] memory positionBalanceArray) = pool.getAccumulatedFeesAndPositionsData(
-            account,
-            false,
-            positionIdList
-        );
+        (, , PositionBalance[] memory positionBalanceArray) = pool
+            .getAccumulatedFeesAndPositionsData(account, false, positionIdList);
 
         for (uint256 k = 0; k < positionIdList.length; ) {
             TokenId tokenId = positionIdList[k];
-            uint128 positionSize = LeftRightUnsigned.wrap(positionBalanceArray[k]).rightSlot();
+            uint128 positionSize = positionBalanceArray[k].positionSize();
             uint256 numLegs = tokenId.countLegs();
             for (uint256 leg = 0; leg < numLegs; ) {
                 LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
@@ -149,13 +148,10 @@ contract PanopticHelper {
         TokenId[] memory tokenIdList = new TokenId[](1);
         tokenIdList[0] = tokenId;
 
-        (, , uint256[] memory positionBalanceArray) = pool.getAccumulatedFeesAndPositionsData(
-            account,
-            false,
-            tokenIdList
-        );
+        (, , PositionBalance[] memory positionBalanceArray) = pool
+            .getAccumulatedFeesAndPositionsData(account, false, tokenIdList);
 
-        PositionBalance balanceAndUtilization = PositionBalance.wrap(positionBalanceArray[0]);
+        PositionBalance balanceAndUtilization = positionBalanceArray[0];
 
         return (
             balanceAndUtilization.positionSize(),
