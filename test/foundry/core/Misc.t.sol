@@ -4101,9 +4101,9 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(ct0), 1_000_000);
         token1.approve(address(ct1), 1_000_000);
 
-        // deposit bare minimum for covered mints
-        ct0.deposit(150504, Bob);
-        //ct1.deposit(0, Bob);
+        // deposit token1 because cross-margin is disabled
+        //ct0.deposit(150504, Bob);
+        ct1.deposit(150504, Bob);
 
         mintOptions(
             pp,
@@ -4282,9 +4282,9 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(ct0), 1_000_000);
         token1.approve(address(ct1), 1_000_000);
 
-        // deposit bare minimum for covered mints
-        //ct0.deposit(0, Bob);
-        ct1.deposit(136820, Bob);
+        // deposit token0 because no cross-collateral allowed
+        ct0.deposit(124745, Bob);
+        //ct1.deposit(100000, Bob);
 
         mintOptions(
             pp,
@@ -4624,8 +4624,8 @@ contract Misctest is Test, PositionUtils {
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
         //ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
 
-        // deposit only token1
-        ct0.deposit(196, Bob);
+        // deposit token0 because cross-margining is disabled
+        ct0.deposit(196_000, Bob);
         ct1.deposit(181_183, Bob); //
 
         // can mint covered positions
@@ -6100,7 +6100,7 @@ contract Misctest is Test, PositionUtils {
 
             // amount of other token when deep ITM
             // uint256 amountITM;
-            (, , uint256 _utilization) = tokenType == 0 ? ct0.getPoolData() : ct1.getPoolData();
+            (, , , uint256 _utilization) = tokenType == 0 ? ct0.getPoolData() : ct1.getPoolData();
 
             util = int256(_utilization);
             amountsMoved = PanopticMath.getAmountsMoved(tokenId, 3000, 0);
