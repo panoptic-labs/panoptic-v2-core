@@ -3076,7 +3076,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 TickMath.MAX_TICK
             );
 
-        LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, 0);
+        LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, 0, true);
 
         assertEq(
             totalSwapped.rightSlot(),
@@ -3130,7 +3130,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MAX_TICK
         );
 
-        _amountsMoved = PanopticMath.getAmountsMoved(tokenId.flipToBurnToken(), positionSize, 0);
+        _amountsMoved = PanopticMath.getAmountsMoved(tokenId.flipToBurnToken(), positionSize, 0, false);
 
         assertEq(
             totalSwapped.rightSlot(),

@@ -55,10 +55,11 @@ contract PanopticMathHarness is Test {
 
     function computeExercisedAmounts(
         TokenId tokenId,
-        uint128 positionSize
+        uint128 positionSize,
+        bool opening
     ) public pure returns (LeftRightSigned, LeftRightSigned) {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            .computeExercisedAmounts(tokenId, positionSize);
+            .computeExercisedAmounts(tokenId, positionSize, opening);
         return (longAmounts, shortAmounts);
     }
 
@@ -101,12 +102,14 @@ contract PanopticMathHarness is Test {
     function _getAmountsMoved(
         TokenId tokenId,
         uint128 positionSize,
-        uint256 legIndex
+        uint256 legIndex,
+        bool opening
     ) public pure returns (LeftRightUnsigned) {
         LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
             tokenId,
             positionSize,
-            legIndex
+            legIndex,
+            opening
         );
         return amountsMoved;
     }
@@ -115,9 +118,10 @@ contract PanopticMathHarness is Test {
     function getAmountsMoved(
         TokenId tokenId,
         uint128 positionSize,
-        uint256 legIndex
+        uint256 legIndex,
+        bool opening
     ) public view returns (LeftRightUnsigned) {
-        try this._getAmountsMoved(tokenId, positionSize, legIndex) returns (
+        try this._getAmountsMoved(tokenId, positionSize, legIndex, opening) returns (
             LeftRightUnsigned contractsNotional
         ) {
             return contractsNotional;
@@ -130,12 +134,14 @@ contract PanopticMathHarness is Test {
     function _calculateIOAmounts(
         TokenId tokenId,
         uint128 positionSize,
-        uint256 legIndex
+        uint256 legIndex,
+        bool opening
     ) public pure returns (LeftRightSigned, LeftRightSigned) {
         (LeftRightSigned longs, LeftRightSigned shorts) = PanopticMath._calculateIOAmounts(
             tokenId,
             positionSize,
-            legIndex
+            legIndex,
+            opening
         );
         return (longs, shorts);
     }
@@ -143,9 +149,10 @@ contract PanopticMathHarness is Test {
     function calculateIOAmounts(
         TokenId tokenId,
         uint128 positionSize,
-        uint256 legIndex
+        uint256 legIndex,
+        bool opening
     ) public view returns (LeftRightSigned, LeftRightSigned) {
-        try this._calculateIOAmounts(tokenId, positionSize, legIndex) returns (
+        try this._calculateIOAmounts(tokenId, positionSize, legIndex, opening) returns (
             LeftRightSigned longs,
             LeftRightSigned shorts
         ) {
