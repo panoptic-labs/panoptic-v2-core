@@ -920,7 +920,8 @@ contract RiskEngine {
                     LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
                         tokenId,
                         positionSize,
-                        index
+                        index,
+                        false
                     );
                     credits = tokenId.tokenType(index) == 0
                         ? amountsMoved.rightSlot()
@@ -989,7 +990,12 @@ contract RiskEngine {
 
         // compute the total amount of funds moved for that position
         // Since this is a collateral check, we want the amounts moved upon closure, not upon opening
-        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index, false);
+        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
+            tokenId,
+            positionSize,
+            index,
+            false
+        );
 
         // amount moved is right slot if tokenType=0, left slot otherwise
         uint128 amountMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();
@@ -1359,9 +1365,6 @@ contract RiskEngine {
         int16 poolUtilization
     ) internal view returns (uint256 spreadRequirement) {
         spreadRequirement = 1;
-        // compute the total amount of funds moved for the position's current leg
-        // Since this is returning a collateral requirement, we want to return the amounts moved upon closure, not opening
-        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index, false);
 
         uint256 splitRequirement;
         {
@@ -1382,7 +1385,6 @@ contract RiskEngine {
             splitRequirement = _required + requiredPartner;
         }
 
-
         uint128 moved0;
         uint128 moved1;
         uint128 moved0Partner;
@@ -1390,6 +1392,7 @@ contract RiskEngine {
         uint256 tokenType = tokenId.tokenType(index);
         {
             // compute the total amount of funds moved for the position's current leg
+            // Since this is returning a collateral requirement, we want to return the amounts moved upon closure, not opening
             LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
                 tokenId,
                 positionSize,
@@ -1592,7 +1595,12 @@ contract RiskEngine {
         int24 atTick
     ) internal view returns (uint256) {
         // can only be called when partnerIndex is the credit
-        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index, false);
+        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
+            tokenId,
+            positionSize,
+            index,
+            false
+        );
 
         LeftRightUnsigned amountsMovedP = PanopticMath.getAmountsMoved(
             tokenId,

@@ -751,7 +751,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                             emit InsolvencyPenaltyApplied(
                                 owner,
                                 userInterestOwed,
-                                burntInterestValue
+                                burntInterestValue,
+                                userBalance
                             );
 
                             /// Insolvent case: Pay what you can
