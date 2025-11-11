@@ -48,11 +48,11 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     }
 
     function _inAMM() external view returns (uint256) {
-        return s_inAMM;
+        return s_assetsInAMM;
     }
 
     function _poolAssets() external view returns (uint256) {
-        return s_poolAssets;
+        return s_depositedAssets;
     }
 
     function _interestRateAccumulator() external view returns (uint256) {
@@ -64,7 +64,7 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     }
 
     function _availableAssets() external view returns (uint256) {
-        return s_poolAssets;
+        return s_depositedAssets;
     }
 
     function burnShares(address owner, uint256 shares) external {
@@ -76,15 +76,19 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     }
 
     function setPoolAssets(uint256 amount) external {
-        s_poolAssets = uint128(amount);
+        s_depositedAssets = uint128(amount);
     }
 
     function setTotalSupply(uint256 amount) external {
-        totalSupply = amount;
+        _internalSupply = amount;
     }
 
     function setInAMM(int128 amount) external {
-        s_inAMM = uint128(int128(s_inAMM) + amount);
+        s_assetsInAMM = uint128(int128(s_assetsInAMM) + amount);
+    }
+
+    function setCreditedShares(int256 amount) external {
+        s_creditedShares = uint256(amount);
     }
 
     function setInterestRateAccumulator(uint256 amount) external {
@@ -184,6 +188,23 @@ contract RiskEngineHarness is RiskEngine {
         int16 utilization
     ) external view returns (uint256 required) {
         return _getRequiredCollateralAtUtilization(amount, isLong, utilization);
+    }
+
+    function getRequiredCollateralAtTickSinglePosition(
+        TokenId tokenId,
+        uint128 positionSize,
+        int24 atTick,
+        int16 poolUtilization,
+        bool underlyingIsToken0
+    ) external view returns (uint256) {
+        (uint256 tokensRequired, ) = _getRequiredCollateralAtTickSinglePosition(
+            tokenId,
+            positionSize,
+            atTick,
+            poolUtilization,
+            underlyingIsToken0
+        );
+        return tokensRequired;
     }
 
     function sellCollateralRatio(int256 utilization) external view returns (uint256) {
@@ -1294,7 +1315,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         console2.log("after accru", uint128(collateralToken0._interestRateAccumulator()));
 
         {
-            (, , uint256 utilization) = collateralToken0.getPoolData();
+            (, , , uint256 utilization) = collateralToken0.getPoolData();
             assertGt(utilization, 0, "FAIL: Utilization should be positive after borrow");
         }
 
@@ -1467,7 +1488,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         console2.log("after accru", uint128(collateralToken0._interestRateAccumulator()));
 
         {
-            (, , uint256 utilization) = collateralToken0.getPoolData();
+            (, , , uint256 utilization) = collateralToken0.getPoolData();
             assertGt(utilization, 0, "FAIL: Utilization should be positive after borrow");
         }
 
@@ -3926,14 +3947,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, strike, width);
         positionIdList.push(tokenId);
 
-        collateralToken0.setInAMM(-300);
-
-        vm.expectRevert(Errors.InsufficientCreditLiquidity.selector);
         mintOptions(
             panopticPool,
             positionIdList,
             500,
             type(uint64).max,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+        positionIdList1.push(tokenId);
+        positionIdList.pop();
+
+        collateralToken0.setCreditedShares(0);
+
+        console2.log("ffo");
+        vm.expectRevert(Errors.InsufficientCreditLiquidity.selector);
+        burnOptions(
+            panopticPool,
+            positionIdList1,
+            positionIdList,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -3981,7 +4014,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         positionIdList.pop();
 
-        vm.expectRevert(Errors.InsufficientCreditLiquidity.selector);
+        vm.expectRevert(Errors.CastingError.selector);
         burnOptions(
             panopticPool,
             tokenId,
@@ -7557,7 +7590,17 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint128 poolUtilizations = uint128(poolUtilization0 == 0 ? 1 : poolUtilization0) +
                 (uint128(poolUtilization1 == 0 ? 1 : poolUtilization1) << 64);
 
-            required = _spreadTokensRequired(tokenId1, positionSize0 / 2, poolUtilizations);
+            required = uint128(
+                riskEngine.getRequiredCollateralAtTickSinglePosition(
+                    tokenId1,
+                    positionSize0 / 2,
+                    currentTick,
+                    int16(uint16(poolUtilizations)),
+                    true
+                )
+            );
+
+            //required = _spreadTokensRequired(tokenId1, positionSize0 / 2, poolUtilizations);
             console2.log("required-spreads", required);
         }
 
@@ -8613,8 +8656,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 collateralToken1
             );
 
-            (, , uint256 utilization0) = collateralToken0.getPoolData();
-            (, , uint256 utilization1) = collateralToken1.getPoolData();
+            (, , , uint256 utilization0) = collateralToken0.getPoolData();
+            (, , , uint256 utilization1) = collateralToken1.getPoolData();
 
             // check user packed utilization
             assertApproxEqAbs(targetUtilization, utilization0, 1, "utilization ct 0");
@@ -9907,7 +9950,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             assertEq(
                 poolUtilization0,
                 Math.mulDivRoundingUp(
-                    uint128(shortAmountsAlice.rightSlot() - longAmounts.rightSlot()),
+                    uint128(shortAmountsAlice.rightSlot()),
                     10000,
                     collateralToken0.totalAssets()
                 ),
@@ -9916,7 +9959,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             assertEq(
                 poolUtilization1,
                 Math.mulDivRoundingUp(
-                    uint128(shortAmountsAlice.leftSlot() - longAmounts.leftSlot()),
+                    uint128(shortAmountsAlice.leftSlot()),
                     10000,
                     collateralToken1.totalAssets()
                 ),
@@ -10321,7 +10364,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             assertEq(balanceData0, calcBalanceCross, "0");
             assertEq(thresholdData0, calcThresholdCross, "1");
         }
-        assertTrue(false);
     }
 
     // check force exercise range changes
@@ -11271,8 +11313,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
             expectedTotalBalance
         );
 
-        (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = collateralToken0
-            .getPoolData();
+        (
+            uint256 poolAssets,
+            uint256 insideAMM,
+            uint256 creditedShares,
+            uint256 currentPoolUtilization
+        ) = collateralToken0.getPoolData();
 
         assertEq(expectedBal, poolAssets);
         assertEq(expectedInAMM, insideAMM);

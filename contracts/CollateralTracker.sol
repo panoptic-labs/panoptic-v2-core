@@ -85,10 +85,13 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Cached amount of assets accounted to be held by the Panoptic Pool — ignores donations, pending fee payouts, and other untracked balance changes.
-    uint128 internal s_poolAssets;
+    uint128 internal s_depositedAssets;
 
     /// @notice Amount of assets moved from the Panoptic Pool to the AMM.
-    uint128 internal s_inAMM;
+    uint128 internal s_assetsInAMM;
+
+    /// @notice Amount of shares credited to the protocol, includes credits and purchased option liquidity above the rehypothecation threshold.
+    uint256 internal s_creditedShares;
 
     /*//////////////////////////////////////////////////////////////
                            UNISWAP POOL DATA
@@ -238,11 +241,11 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
         // these virtual shares function as a multiplier for the capital requirement to manipulate the pool price
         // e.g. if the virtual shares are 10**6, then the capital requirement to manipulate the price to 10**12 is 10**18
-        totalSupply = 10 ** 6;
+        _internalSupply = 10 ** 6;
 
         // set total assets to 1
         // the initial share price is defined by 1/virtualShares
-        s_poolAssets = 1;
+        s_depositedAssets = 1;
 
         // store the initial block and initialize the borrowIndex
         s_interestRateAccumulator = (uint256(uint32(block.timestamp)) << 80) + uint80(WAD);
@@ -253,17 +256,24 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Get information about the utilization of this collateral vault.
-    /// @return poolAssets Cached amount of assets accounted to be held by the Panoptic Pool — ignores donations, pending fee payouts, and other untracked balance changes
+    /// @return depositedAssets Cached amount of assets accounted to be held by the Panoptic Pool — ignores donations, pending fee payouts, and other untracked balance changes
     /// @return insideAMM The underlying token amount held in the AMM
-    /// @return currentPoolUtilization The pool utilization defined as`s_inAMM * 10_000 / totalAssets()`,
+    /// @return creditedShares The amount of shares currently held as credit
+    /// @return currentPoolUtilization The pool utilization defined as`s_assetsInAMM * 10_000 / totalAssets()`,
     /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
     function getPoolData()
         external
         view
-        returns (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization)
+        returns (
+            uint256 depositedAssets,
+            uint256 insideAMM,
+            uint256 creditedShares,
+            uint256 currentPoolUtilization
+        )
     {
-        poolAssets = s_poolAssets;
-        insideAMM = s_inAMM;
+        depositedAssets = s_depositedAssets;
+        insideAMM = s_assetsInAMM;
+        creditedShares = s_creditedShares;
         currentPoolUtilization = _poolUtilization();
     }
 
@@ -383,7 +393,13 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @return The total amount of assets managed by the CollateralTracker vault
     function totalAssets() public view returns (uint256) {
         unchecked {
-            return uint256(s_poolAssets) + s_inAMM + (s_interestRateAccumulator >> 150);
+            return uint256(s_depositedAssets) + s_assetsInAMM + (s_interestRateAccumulator >> 150);
+        }
+    }
+
+    function totalSupply() public view returns (uint256) {
+        unchecked {
+            return _internalSupply + s_creditedShares;
         }
     }
 
@@ -391,14 +407,14 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param assets The amount of assets to be deposited
     /// @return shares The amount of shares that can be minted
     function convertToShares(uint256 assets) public view returns (uint256 shares) {
-        return Math.mulDiv(assets, totalSupply, totalAssets());
+        return Math.mulDiv(assets, totalSupply(), totalAssets());
     }
 
     /// @notice Returns the amount of assets that can be redeemed for the given amount of shares.
     /// @param shares The amount of shares to be redeemed
     /// @return assets The amount of assets that can be redeemed
     function convertToAssets(uint256 shares) public view returns (uint256 assets) {
-        return Math.mulDiv(shares, totalAssets(), totalSupply);
+        return Math.mulDiv(shares, totalAssets(), totalSupply());
     }
 
     /// @notice Returns the amount of assets that can be redeem by the user.
@@ -418,7 +434,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param assets The amount of assets to be deposited
     /// @return shares The amount of shares that can be minted
     function previewDeposit(uint256 assets) public view returns (uint256 shares) {
-        shares = Math.mulDiv(assets, totalSupply, totalAssets());
+        shares = Math.mulDiv(assets, totalSupply(), totalAssets());
     }
 
     /// @notice Deposit underlying tokens (assets) to the Panoptic pool from the LP and mint corresponding amount of shares.
@@ -446,7 +462,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         _mint(receiver, shares);
 
         // update tracked asset balance
-        s_poolAssets += uint128(assets);
+        s_depositedAssets += uint128(assets);
 
         emit Deposit(msg.sender, receiver, assets, shares);
     }
@@ -463,7 +479,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     function previewMint(uint256 shares) public view returns (uint256 assets) {
         // round up depositing assets to avoid protocol loss
         // This prevents minting of shares where the assets provided is rounded down to zero
-        assets = Math.mulDivRoundingUp(shares, totalAssets(), totalSupply);
+        assets = Math.mulDivRoundingUp(shares, totalAssets(), totalSupply());
     }
 
     /// @notice Deposit required amount of assets to receive specified amount of shares.
@@ -492,7 +508,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         _mint(receiver, shares);
 
         // update tracked asset balance
-        s_poolAssets += uint128(assets);
+        s_depositedAssets += uint128(assets);
 
         emit Deposit(msg.sender, receiver, assets, shares);
     }
@@ -503,9 +519,9 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param owner The address being withdrawn for
     /// @return maxAssets The maximum amount of assets that can be withdrawn
     function maxWithdraw(address owner) public view returns (uint256 maxAssets) {
-        uint256 poolAssets = s_poolAssets;
+        uint256 depositedAssets = s_depositedAssets;
         unchecked {
-            uint256 available = poolAssets > 0 ? poolAssets - 1 : 0;
+            uint256 available = depositedAssets > 0 ? depositedAssets - 1 : 0;
             uint256 balance = convertToAssets(balanceOf[owner]);
             return panopticPool().numberOfLegs(owner) == 0 ? Math.min(available, balance) : 0;
         }
@@ -515,7 +531,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param assets The amount of assets to be withdrawn
     /// @return shares The amount of shares that would be burned
     function previewWithdraw(uint256 assets) public view returns (uint256 shares) {
-        uint256 supply = totalSupply; // Saves an extra SLOAD if totalSupply is non-zero.
+        uint256 supply = totalSupply(); // Saves an extra SLOAD if totalSupply() is non-zero.
 
         return Math.mulDivRoundingUp(assets, supply, totalAssets());
     }
@@ -549,7 +565,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
         // update tracked asset balance
         unchecked {
-            s_poolAssets -= uint128(assets);
+            s_depositedAssets -= uint128(assets);
         }
 
         // transfer assets (underlying token funds) from the PanopticPool to the LP
@@ -594,7 +610,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         _burn(owner, shares);
 
         // update tracked asset balance
-        s_poolAssets -= uint128(assets);
+        s_depositedAssets -= uint128(assets);
 
         // reverts if account is not solvent/eligible to withdraw
         panopticPool().validateCollateralWithdrawable(owner, positionIdList, usePremiaAsCollateral);
@@ -615,9 +631,9 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param owner The redeeming address
     /// @return maxShares The maximum amount of shares that can be redeemed by `owner`
     function maxRedeem(address owner) public view returns (uint256 maxShares) {
-        uint256 poolAssets = s_poolAssets;
+        uint256 depositedAssets = s_depositedAssets;
         unchecked {
-            uint256 available = convertToShares(poolAssets > 0 ? poolAssets - 1 : 0);
+            uint256 available = convertToShares(depositedAssets > 0 ? depositedAssets - 1 : 0);
             uint256 balance = balanceOf[owner];
             return panopticPool().numberOfLegs(owner) == 0 ? Math.min(available, balance) : 0;
         }
@@ -659,7 +675,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
         // update tracked asset balance
         unchecked {
-            s_poolAssets -= uint128(assets);
+            s_depositedAssets -= uint128(assets);
         }
 
         // transfer assets (underlying token funds) from the PanopticPool to the LP
@@ -688,12 +704,12 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param owner the account which calls accrue interest
     function _accrueInterest(address owner) internal {
         unchecked {
-            uint128 inAMM = s_inAMM;
+            uint128 _assetsInAMM = s_assetsInAMM;
             (
                 uint128 currentBorrowIndex,
                 uint128 _unrealizedGlobalInterest,
                 uint256 currentTime
-            ) = _calculateCurrentInterestState(inAMM, _updateInterestRate());
+            ) = _calculateCurrentInterestState(_assetsInAMM, _updateInterestRate());
 
             // USER
             LeftRightSigned userState = s_interestState[owner];
@@ -702,11 +718,13 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             if (netBorrows > 0) {
                 uint128 userInterestOwed = _getUserInterest(userState, currentBorrowIndex);
                 if (userInterestOwed != 0) {
-                    uint256 _totalAssets = s_poolAssets + inAMM + _unrealizedGlobalInterest;
+                    uint256 _totalAssets = s_depositedAssets +
+                        _assetsInAMM +
+                        _unrealizedGlobalInterest;
 
                     uint256 shares = Math.mulDivRoundingUp(
                         userInterestOwed,
-                        totalSupply,
+                        totalSupply(),
                         _totalAssets
                     );
 
@@ -717,7 +735,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                         if (shares > userBalance) {
                             // update the accrual of interest paid
                             burntInterestValue = Math
-                                .mulDiv(userBalance, _totalAssets, totalSupply)
+                                .mulDiv(userBalance, _totalAssets, totalSupply())
                                 .toUint128();
                             /// Insolvent case: Pay what you can
                             _burn(_owner, userBalance);
@@ -750,13 +768,13 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
     /// @notice Calculates the current interest state without modifying storage
     /// @dev Simulates interest accrual from last interaction to current timestamp
-    /// @param inAMM Amount of assets currently deployed in AMM positions
+    /// @param _assetsInAMM Amount of assets currently deployed in AMM positions
     /// @param interestRateSnapshot The current interest rate to evaluate at
     /// @return currentBorrowIndex Updated global borrow index after simulated accrual
     /// @return _unrealizedGlobalInterest Total unrealized interest including new accrual
     /// @return currentTime Current block timestamp
     function _calculateCurrentInterestState(
-        uint128 inAMM,
+        uint128 _assetsInAMM,
         uint128 interestRateSnapshot
     )
         internal
@@ -778,7 +796,9 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                 ).toUint128();
                 // Calculate interest owed on borrowed amount
 
-                uint128 interestOwed = Math.mulDivWadRoundingUp(inAMM, rawInterest).toUint128();
+                uint128 interestOwed = Math
+                    .mulDivWadRoundingUp(_assetsInAMM, rawInterest)
+                    .toUint128();
                 _unrealizedGlobalInterest += interestOwed;
 
                 // Update borrow index
@@ -865,7 +885,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     function _owedInterest(address owner) internal view returns (uint128) {
         LeftRightSigned userState = s_interestState[owner];
         (uint128 currentBorrowIndex, , ) = _calculateCurrentInterestState(
-            s_inAMM,
+            s_assetsInAMM,
             _interestRateView(_poolUtilizationWAD())
         );
         return _getUserInterest(userState, currentBorrowIndex);
@@ -876,7 +896,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @return The borrow index as if interest was compounded at current timestamp
     function _calculateCurrentBorrowIndex() internal view returns (uint256) {
         (uint128 currentBorrowIndex, , ) = _calculateCurrentInterestState(
-            s_inAMM,
+            s_assetsInAMM,
             _interestRateView(_poolUtilizationWAD())
         );
         return currentBorrowIndex;
@@ -902,7 +922,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         unchecked {
             return
                 Math.mulDivRoundingUp(
-                    s_inAMM + (s_interestRateAccumulator >> 150),
+                    s_assetsInAMM + (s_interestRateAccumulator >> 150),
                     DECIMALS,
                     totalAssets()
                 );
@@ -915,7 +935,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         unchecked {
             return
                 Math.mulDivRoundingUp(
-                    s_inAMM + (s_interestRateAccumulator >> 150),
+                    s_assetsInAMM + (s_interestRateAccumulator >> 150),
                     WAD,
                     totalAssets()
                 );
@@ -965,14 +985,14 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
             _mint(liquidatee, convertToShares(bonusAbs));
 
-            s_poolAssets += uint128(bonusAbs);
+            s_depositedAssets += uint128(bonusAbs);
 
             uint256 liquidateeBalance = balanceOf[liquidatee];
 
             if (type(uint248).max > liquidateeBalance) {
                 balanceOf[liquidatee] = 0;
                 unchecked {
-                    totalSupply += type(uint248).max - liquidateeBalance;
+                    _internalSupply += type(uint248).max - liquidateeBalance;
                 }
             } else {
                 unchecked {
@@ -984,7 +1004,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
             if (type(uint248).max > liquidateeBalance) {
                 unchecked {
-                    totalSupply += type(uint248).max - liquidateeBalance;
+                    _internalSupply += type(uint248).max - liquidateeBalance;
                 }
                 liquidateeBalance = 0;
             } else {
@@ -1013,7 +1033,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                 // N = (ZY - ZT) / (X - Z)
                 // N = Z(Y - T) / (X - Z)
                 // subtract delegatee balance from N since it was already transferred to the delegator
-                uint256 _totalSupply = totalSupply;
+                uint256 _totalSupply = totalSupply();
                 unchecked {
                     _mint(
                         liquidator,
@@ -1064,14 +1084,14 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param optionOwner The user minting the option
     /// @param longAmount The amount of longs
     /// @param shortAmount The amount of shorts
-    /// @param swappedAmount The amount of tokens moved during creation of the option position
+    /// @param ammDeltaAmount The amount of tokens moved during creation of the option position
     ///
     function _updateBalancesAndSettle(
         bool isCreation,
         address optionOwner,
         int128 longAmount,
         int128 shortAmount,
-        int128 swappedAmount,
+        int128 ammDeltaAmount,
         int128 realizedPremium
     ) internal returns (uint32, uint128, int128) {
         _accrueInterest(optionOwner);
@@ -1079,12 +1099,11 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             int256 tokenToPay;
             uint128 commission;
 
-            // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
-            int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
+            int128 netBorrows = isCreation ? shortAmount - longAmount : longAmount - shortAmount;
 
             if (isCreation) {
                 {
-                    int256 intrinsicValue = int256(swappedAmount) - (shortAmount - longAmount);
+                    int256 intrinsicValue = int256(ammDeltaAmount) - netBorrows;
                     // the swap commission is paid on the intrinsic value (if a swap occurred; users who mint covered options with their own collateral do not pay this fee)
                     commission = uint128(
                         Math.unsafeDivRoundingUp(
@@ -1096,15 +1115,26 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                 }
             } else {
                 // add premium and token deltas not covered by swap to be paid/collected on position close
-                tokenToPay = int256(swappedAmount) - (longAmount - shortAmount) - realizedPremium;
+                tokenToPay = int256(ammDeltaAmount) - netBorrows - realizedPremium;
             }
+
+            /// Snapshot state variables to compute the price per share
+            uint256 _totalAssets = totalAssets();
+            uint256 _totalSupply = totalSupply();
+
+            // compute creditDelta with the snapshotted values
+            uint256 creditDelta = Math.mulDiv(
+                uint256(uint128(longAmount)),
+                _totalSupply,
+                _totalAssets
+            );
 
             // Mint/Burn Shares
             if (tokenToPay > 0) {
                 uint256 sharesToBurn = Math.mulDivRoundingUp(
                     uint256(tokenToPay),
-                    totalSupply,
-                    totalAssets()
+                    _totalSupply,
+                    _totalAssets
                 );
                 address _optionOwner = optionOwner;
                 if (balanceOf[_optionOwner] < sharesToBurn)
@@ -1114,26 +1144,42 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                         convertToAssets(balanceOf[_optionOwner])
                     );
 
-                _burn(optionOwner, sharesToBurn);
+                _burn(_optionOwner, sharesToBurn);
             } else if (tokenToPay < 0) {
-                uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
-                _mint(optionOwner, sharesToMint);
+                uint256 sharesToMint = Math.mulDiv(
+                    uint256(-tokenToPay),
+                    _totalSupply,
+                    _totalAssets
+                );
+                address _optionOwner = optionOwner;
+                _mint(_optionOwner, sharesToMint);
             }
 
             // Update Pool Assets
-            if (isCreation) {
-                s_poolAssets = uint256(updatedAssets).toUint128();
-            } else {
-                s_poolAssets = uint256(updatedAssets + realizedPremium).toUint128();
+            // use current available assets belonging to PLPs (updated after settlement)
+            /// @dev realizedPremium is 0 for mints, so can add it here
+            s_depositedAssets = uint256(
+                int256(uint256(s_depositedAssets)) - ammDeltaAmount + realizedPremium
+            ).toUint128();
+
+            // Update s_assetsInAMM:
+            // isCreation: Add short amounts == tokens moved into the AMM or used to create loans
+            // !isCreation: remove short amounts == tokens moved out of the AMM or repaid when the position is closed
+            {
+                int256 newAssetsInAmm = int256(uint256(s_assetsInAMM));
+                newAssetsInAmm += isCreation ? int256(shortAmount) : -int256(shortAmount);
+                s_assetsInAMM = uint256(newAssetsInAmm).toUint128();
             }
-            int128 netBorrows = isCreation ? shortAmount - longAmount : longAmount - shortAmount;
 
-            int256 _inAMM = int256(uint256(s_inAMM));
-
-            if (_inAMM + netBorrows < 0) revert Errors.InsufficientCreditLiquidity();
-
-            // Update s_inAMM
-            s_inAMM = uint256(_inAMM + netBorrows).toUint128();
+            if (!isCreation) {
+                // check that there is no underflow (necessary?)
+                if (s_creditedShares < creditDelta) revert Errors.InsufficientCreditLiquidity();
+                // update s_creditedShares: add long amounts == tokens moved into AMM or received when the position is closed
+                s_creditedShares -= creditDelta;
+            } else {
+                // update s_creditedShares: Add long amounts == tokens moved out of AMM or paid when creating credits
+                s_creditedShares += creditDelta;
+            }
 
             {
                 address _optionOwner = optionOwner;
@@ -1151,20 +1197,20 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param optionOwner The user minting the option
     /// @param longAmount The amount of longs
     /// @param shortAmount The amount of shorts
-    /// @param swappedAmount The amount of tokens moved during creation of the option position
+    /// @param ammDeltaAmount The amount of tokens moved during creation of the option position
     /// @return The final utilization of the collateral vault (rightSlot) and the total amount of commission (base rate + ITM spread) paid (leftSlot)
     function settleMint(
         address optionOwner,
         int128 longAmount,
         int128 shortAmount,
-        int128 swappedAmount
+        int128 ammDeltaAmount
     ) external onlyPanopticPool returns (LeftRightUnsigned, int128) {
         (uint32 utilization, uint128 commission, int128 tokenPaid) = _updateBalancesAndSettle(
             true, // isCreation = true
             optionOwner,
             longAmount,
             shortAmount,
-            swappedAmount,
+            ammDeltaAmount,
             0 // realizedPremium not used
         );
         return (
@@ -1178,14 +1224,14 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param optionOwner The owner of the option being burned
     /// @param longAmount The notional value of the long legs of the position (if any)
     /// @param shortAmount The notional value of the short legs of the position (if any)
-    /// @param swappedAmount The amount of tokens moved during the option close
+    /// @param ammDeltaAmount The amount of tokens moved during the option close
     /// @param realizedPremium Premium to settle on the current positions
     /// @return The amount of tokens paid when closing that position
     function settleBurn(
         address optionOwner,
         int128 longAmount,
         int128 shortAmount,
-        int128 swappedAmount,
+        int128 ammDeltaAmount,
         int128 realizedPremium
     ) external onlyPanopticPool returns (int128) {
         (, , int128 tokenPaid) = _updateBalancesAndSettle(
@@ -1193,7 +1239,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             optionOwner,
             longAmount,
             shortAmount,
-            swappedAmount,
+            ammDeltaAmount,
             realizedPremium
         );
         return tokenPaid;

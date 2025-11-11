@@ -630,7 +630,7 @@ contract PanopticPool is Clone, Multicall {
         uint8 safeMode
     ) internal returns (LeftRightSigned paidAmounts) {
         // Mint in the SFPM and update state of collateral
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned netAmmDelta) = SFPM
             .mintTokenizedPosition(poolKey(), tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
         _updateSettlementPostMint(
@@ -648,7 +648,7 @@ contract PanopticPool is Clone, Multicall {
             tokenId,
             positionSize,
             owner,
-            totalSwapped
+            netAmmDelta
         );
 
         if (safeMode > 0) poolUtilizations = uint32(10_000 + (10_000 << 16));
@@ -671,7 +671,7 @@ contract PanopticPool is Clone, Multicall {
     /// @param tokenId The option position
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param owner The owner of the option position to be minted
-    /// @param totalSwapped The amount of tokens moved during creation of the option position
+    /// @param netAmmDelta The amount of tokens moved during creation of the option position
     /// @return utilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as `(inAMM * 10_000) / totalAssets()`
     /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
@@ -681,7 +681,7 @@ contract PanopticPool is Clone, Multicall {
         TokenId tokenId,
         uint128 positionSize,
         address owner,
-        LeftRightSigned totalSwapped
+        LeftRightSigned netAmmDelta
     )
         internal
         returns (uint32 utilizations, LeftRightUnsigned commissions, LeftRightSigned paidAmounts)
@@ -695,7 +695,7 @@ contract PanopticPool is Clone, Multicall {
                     owner,
                     longAmounts.rightSlot(),
                     shortAmounts.rightSlot(),
-                    totalSwapped.rightSlot()
+                    netAmmDelta.rightSlot()
                 );
             utilizations = uint32(utilizationAndCommission0.rightSlot());
             commissions = commissions.addToRightSlot(utilizationAndCommission0.leftSlot());
@@ -707,7 +707,7 @@ contract PanopticPool is Clone, Multicall {
                     owner,
                     longAmounts.leftSlot(),
                     shortAmounts.leftSlot(),
-                    totalSwapped.leftSlot()
+                    netAmmDelta.leftSlot()
                 );
             utilizations += uint32(utilizationAndCommission1.rightSlot() << 16);
             commissions = commissions.addToLeftSlot(utilizationAndCommission1.leftSlot());
@@ -778,7 +778,7 @@ contract PanopticPool is Clone, Multicall {
         address owner,
         bool commitLongSettled
     ) internal returns (LeftRightSigned paidAmounts, LeftRightSigned[4] memory premiaByLeg) {
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned netAmmDelta) = SFPM
             .burnTokenizedPosition(poolKey(), tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
         LeftRightSigned realizedPremia;
@@ -798,7 +798,7 @@ contract PanopticPool is Clone, Multicall {
                 owner,
                 longAmounts.rightSlot(),
                 shortAmounts.rightSlot(),
-                totalSwapped.rightSlot(),
+                netAmmDelta.rightSlot(),
                 realizedPremia.rightSlot()
             );
             paidAmounts = paidAmounts.addToRightSlot(paid0);
@@ -809,7 +809,7 @@ contract PanopticPool is Clone, Multicall {
                 owner,
                 longAmounts.leftSlot(),
                 shortAmounts.leftSlot(),
-                totalSwapped.leftSlot(),
+                netAmmDelta.leftSlot(),
                 realizedPremia.leftSlot()
             );
             paidAmounts = paidAmounts.addToLeftSlot(paid1);
