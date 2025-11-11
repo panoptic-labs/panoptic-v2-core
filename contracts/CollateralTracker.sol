@@ -1033,7 +1033,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                 // N = (ZY - ZT) / (X - Z)
                 // N = Z(Y - T) / (X - Z)
                 // subtract delegatee balance from N since it was already transferred to the delegator
-                uint256 _totalSupply = _internalSupply;
+                uint256 _totalSupply = totalSupply();
                 unchecked {
                     _mint(
                         liquidator,
