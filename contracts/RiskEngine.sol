@@ -1028,13 +1028,12 @@ contract RiskEngine {
 
                     // if position is ITM or ATM, then the collateral requirement depends on price:
 
-                    // compute the ratio of strike to price for calls (or price to strike for puts)
+                    // We must first get the ratio of strike to price for calls (or price to strike for puts).
+                    // Both of these ratios decrease as the position becomes deeper ITM.
+                    // We must clamp the difference between atTick and strike to the min & max Uniswap ticks,
+                    // to conform with what getSqrtRatioAtTick can support.
+                    // This is acceptable because a higher ratio will result in an increased slope for the collateral requirement.
                     // (- and * 2 in tick space are / and ^ 2 in price space so sqrtRatioAtTick(2 *(a - b)) = a/b (*2^96)
-                    // both of these ratios decrease as the position becomes deeper ITM, and it is possible
-                    // for the ratio of the prices to go under the minimum price
-                    // (which is the limit of what getSqrtRatioAtTick supports)
-                    // so instead we cap it at the minimum price, which is acceptable because
-                    // a higher ratio will result in an increased slope for the collateral requirement
                     uint160 ratio = tokenType == 1 // tokenType
                         ? Math.getSqrtRatioAtTick(
                             int24(
