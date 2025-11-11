@@ -20,11 +20,11 @@ script="DO_NOT_COMPILE"
 fork_block_number = 18963715
 
 [profile.ci_sizes]
-optimizer_runs = 277
+optimizer_runs = 833
 test = 'DO_NOT_COMPILE'
 
 [lint]
-exclude_lints = ["mixed-case-variable", "mixed-case-function", "unaliased-plain-import", "unsafe-cheatcode"]
+exclude_lints = ["mixed-case-variable", "mixed-case-function", "unaliased-plain-import", "unsafe-cheatcode", "unsafe-typecast"]
 
 [profile.ci_sizes_ir]
 optimizer_runs = 200

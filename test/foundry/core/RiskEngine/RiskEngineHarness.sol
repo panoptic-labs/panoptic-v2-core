@@ -128,15 +128,7 @@ contract RiskEngineHarness is RiskEngine {
         int24 atTick,
         int16 poolUtilization
     ) external view returns (uint256) {
-        return
-            _computeCreditOptionComposite(
-                tokenId,
-                positionSize,
-                index,
-                partnerIndex,
-                atTick,
-                poolUtilization
-            );
+        return _computeCreditOptionComposite(tokenId, positionSize, index, atTick);
     }
 
     function computeDelayedSwap(

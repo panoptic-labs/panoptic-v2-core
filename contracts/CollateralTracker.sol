@@ -219,7 +219,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         _;
     }
 
-    function _onlyPanopticPool() internal {
+    function _onlyPanopticPool() internal view {
         if (msg.sender != address(panopticPool())) revert Errors.NotPanopticPool();
     }
 
@@ -382,7 +382,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
     /// @notice Get the token contract address of the underlying asset being managed.
     /// @return assetTokenAddress The address of the underlying asset
-    function asset() external view returns (address assetTokenAddress) {
+    function asset() external pure returns (address assetTokenAddress) {
         return underlyingToken();
     }
 

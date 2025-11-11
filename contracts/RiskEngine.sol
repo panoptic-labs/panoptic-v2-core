@@ -1249,9 +1249,7 @@ contract RiskEngine {
                                         tokenId,
                                         positionSize,
                                         index,
-                                        partnerIndex,
-                                        atTick,
-                                        poolUtilization
+                                        atTick
                                     )
                                     : 0;
                         } else {
@@ -1558,9 +1556,7 @@ contract RiskEngine {
         TokenId tokenId,
         uint128 positionSize,
         uint256 index,
-        uint256 partnerIndex,
-        int24 atTick,
-        int16 poolUtilization
+        int24 atTick
     ) internal view returns (uint256) {
         // can only be called when partnerIndex is the credit
         // required amount for the option leg
