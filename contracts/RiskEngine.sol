@@ -65,6 +65,10 @@ contract RiskEngine {
     /// @notice Decimals for WAD calculations.
     int256 internal constant WAD = 1e18;
 
+    /// @notice Constant, in seconds, used to determine the max elapsed time between adaptive interest rate updates.
+    /// @dev the time elapsed will be capped at IRM_MAX_ELAPSED_TIME
+    int256 constant IRM_MAX_ELAPSED_TIME = 4096;
+
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS
     //////////////////////////////////////////////////////////////*/
@@ -1827,8 +1831,12 @@ contract RiskEngine {
             ? WAD - TARGET_UTILIZATION
             : TARGET_UTILIZATION;
         int256 err = Math.wDivToZero(_utilization - TARGET_UTILIZATION, errNormFactor);
+
+        // 38-bit rateAtTarget, 32-bit epoch<<2 in accumulator
         int256 startRateAtTarget = int256(uint256((interestRateAccumulator >> 112) % 2 ** 38));
-        uint256 previousTime = uint32(interestRateAccumulator >> 80);
+
+        // convert from epoch to time. Used to avoid Y2K38
+        uint256 previousTime = uint256(uint32(interestRateAccumulator >> 80)) << 2;
 
         int256 avgRateAtTarget;
         int256 endRateAtTarget;
@@ -1842,7 +1850,11 @@ contract RiskEngine {
             // So the rate is always underestimated.
             int256 speed = Math.wMulToZero(ADJUSTMENT_SPEED, err);
             // Safe "unchecked" cast because block.timestamp - market.lastUpdate <= block.timestamp <= type(int256).max.
-            int256 elapsed = int256(block.timestamp) - int256(previousTime);
+            // Cap the elapsed time to prevent IRM drift
+            int256 elapsed = Math.min(
+                int256(block.timestamp) - int256(previousTime),
+                IRM_MAX_ELAPSED_TIME
+            );
             int256 linearAdaptation = speed * elapsed;
 
             if (linearAdaptation == 0) {

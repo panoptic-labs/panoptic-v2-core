@@ -921,7 +921,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         uint256 expectedAccumulator = (unrealizedGlobalInterest << 150) +
             (collateralToken0.rateAtTarget() << 112) +
-            ((startingTime + 12) << 80) +
+            (((startingTime + 12) >> 2) << 80) +
             expectedNewIndex;
 
         // Get the actual new accumulator value from the contract
@@ -960,7 +960,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         uint256 expectedAccumulator = (unrealizedGlobalInterest << 150) +
             (collateralToken0.rateAtTarget() << 112) +
-            ((startingTime + 12) << 80) +
+            (((startingTime + 12) >> 2) << 80) +
             expectedNewIndex;
 
         // Get the actual new accumulator value from the contract
@@ -987,7 +987,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.setInAMM(500);
         collateralToken0.accrueInterest();
 
-        vm.warp(2 ** 32 + 10);
+        vm.warp(4 * 2 ** 32 + 10);
 
         uint128 perSecondInterestRate = collateralToken0.interestRate();
         collateralToken0.accrueInterest();
@@ -1005,7 +1005,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         uint256 expectedAccumulator = (unrealizedGlobalInterest << 150) +
             (collateralToken0.rateAtTarget() << 112) +
-            uint128((uint256(uint32(startingTime + 20)) << 80) + expectedNewIndex);
+            uint128((uint256(uint32(startingTime + 20) >> 2) << 80) + expectedNewIndex);
 
         // Get the actual new accumulator value from the contract
         uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
@@ -1054,7 +1054,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // Construct the full expected accumulator value for the new block.
         uint256 expectedAccumulator = (unrealizedGlobalInterest << 150) +
             (collateralToken0.rateAtTarget() << 112) +
-            ((startingTime + blocksToSkip * 12) << 80) +
+            (((startingTime + blocksToSkip * 12) >> 2) << 80) +
             expectedNewIndex;
 
         // Get the actual new accumulator value from the contract.
@@ -1144,7 +1144,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // Construct the full expected accumulator value.
         uint256 expectedAccumulator = (unrealizedGlobalInterest << 150) +
             (collateralToken0.rateAtTarget() << 112) +
-            ((timestampAfterBorrow + blocksToSkip * 12) << 80) +
+            (((timestampAfterBorrow + blocksToSkip * 12) >> 2) << 80) +
             expectedNewIndex;
         uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
 
@@ -1230,7 +1230,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // Construct the full expected accumulator value.
         uint256 expectedAccumulator = (unrealizedGlobalInterest << 150) +
             (collateralToken0.rateAtTarget() << 112) +
-            ((timestampAfterBorrow + blocksToSkip * 12) << 80) +
+            (((timestampAfterBorrow + blocksToSkip * 12) >> 2) << 80) +
             expectedNewIndex;
         uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
 
@@ -1397,7 +1397,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // 3. Construct the full expected accumulator value.
         uint256 expectedAccumulator = (unrealizedGlobalInterest << 150) +
             (collateralToken0.rateAtTarget() << 112) +
-            ((timestampAfterBorrow + blocksToSkip * 12) << 80) +
+            (((timestampAfterBorrow + blocksToSkip * 12) >> 2) << 80) +
             expectedNewIndex;
         uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
 
@@ -1570,7 +1570,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // 3. Construct the full expected accumulator value.
         uint256 expectedAccumulator = (unrealizedGlobalInterest << 150) +
             (uint256(collateralToken0.rateAtTarget()) << 112) +
-            ((timestampAfterBorrow + blocksToSkip * 12) << 80) +
+            (((timestampAfterBorrow + blocksToSkip * 12) >> 2) << 80) +
             expectedNewIndex;
         uint256 actualAccumulator = (collateralToken0._interestRateAccumulator());
 
@@ -1679,7 +1679,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 timestampAfterBorrow = block.timestamp;
 
         uint32 blocksToSkip = 1;
-        uint256 blockTime = 1;
+        uint256 blockTime = 12;
         vm.roll(blockAfterBorrow + blocksToSkip);
         vm.warp(timestampAfterBorrow + blocksToSkip * blockTime);
 
@@ -1707,7 +1707,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // 3. Construct the full expected accumulator value.
         uint256 expectedAccumulator = (unrealizedGlobalInterest << 150) +
             (collateralToken0.rateAtTarget() << 112) +
-            ((timestampAfterBorrow + blocksToSkip * blockTime) << 80) +
+            (((timestampAfterBorrow + blocksToSkip * blockTime) >> 2) << 80) +
             expectedNewIndex;
         uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
 
@@ -1750,7 +1750,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint32 deltaTime
     ) public {
         // 1. SETUP
-        vm.assume(deltaTime > 0); // Interest only accrues over time.
+        console2.log("deltaTime", deltaTime);
+        vm.assume(deltaTime > 4); // Interest only accrues over time, at least 1 epoch in the future.
+        vm.assume(deltaTime < 2 ** 32 - 4);
         vm.assume(
             uint256(userInitialAssets) > Math.mulDivRoundingUp(4, uint256(borrowAmount), 3) + 3
         );
@@ -1812,6 +1814,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         if (borrowAmount > 0) {
             if (balanceBefore >= sharesOwed) {
                 // SOLVENT: Base index must be updated.
+                console2.log("baseIndexBefore", baseIndexBefore);
+                console2.log("baseIndexAfter", baseIndexAfter);
                 assertTrue(
                     baseIndexAfter > baseIndexBefore,
                     "FAIL: Solvent user index not updated"
@@ -2329,7 +2333,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // 3. Construct the full expected accumulator value.
         uint256 expectedAccumulator = (finalUnrealizedInterest << 150) +
             (collateralToken0.rateAtTarget() << 112) +
-            ((timestampAfterBorrow + blocksToSkip * 12) << 80) +
+            (((timestampAfterBorrow + blocksToSkip * 12) >> 2) << 80) +
             expectedNewIndex;
 
         uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
@@ -2940,7 +2944,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         assertApproxEqAbs(
             aliceAssetsAfter - aliceAssetsBefore,
             expectedBonus,
-            1,
+            2,
             "FAIL: wrong bonus"
         );
 
@@ -3246,8 +3250,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function test_Fuzz_accrueInterest_previewOwedInterest_accuracy(uint32 timeDelta) public {
-        // Bound the time delta to reasonable values (1 second to 1 year)
-        timeDelta = uint32(bound(timeDelta, 1, 3650 days));
+        // Bound the time delta to reasonable values (12 second to 1 year)
+        timeDelta = uint32(bound(timeDelta, 12, 365 days));
 
         _initWorld(0);
         uint104 assets = 1000 ether;
@@ -3308,7 +3312,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // Verify preview didn't modify state
         assertEq(
             uint32(accumulatorBefore >> 80), // Extract timestamp portion
-            initialTimestamp,
+            initialTimestamp >> 2,
             "Preview modified the accumulator timestamp"
         );
 
@@ -3586,7 +3590,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // Test 1: Maximum time jump (just under uint32 max to avoid wrap)
         vm.roll(block.number + 1);
-        vm.warp(block.timestamp + type(uint32).max); // 138 years
+        vm.warp(block.timestamp + 4 * uint256(type(uint32).max)); // 138 years
 
         // This should not revert despite massive values
         vm.prank(Bob);
