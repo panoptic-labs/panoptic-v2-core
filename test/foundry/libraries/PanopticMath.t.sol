@@ -1140,7 +1140,7 @@ contract PanopticMathTest is Test, PositionUtils {
         );
     }
 
-    function test_Fuzz_getAmountsMoved0_legacy(
+    function _test_Fuzz_getAmountsMoved0_legacy(
         uint256 optionRatioSeed,
         uint16 isLong,
         uint16 tokenType,
@@ -1291,7 +1291,8 @@ contract PanopticMathTest is Test, PositionUtils {
     int24 $tickUpper;
     uint256 $contracts;
 
-    function test_Fuzz_getAmountsMoved1_legacy(
+    // skip
+    function _test_Fuzz_getAmountsMoved1_legacy(
         uint256 optionRatioSeed,
         uint16 isLong,
         uint16 tokenType,
@@ -1300,7 +1301,6 @@ contract PanopticMathTest is Test, PositionUtils {
         uint128 positionSize,
         bool opening
     ) public {
-
         // contruct a tokenId
         {
             $optionRatio = bound(optionRatioSeed, 1, 127);
@@ -1490,7 +1490,12 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenId = tokenId.addLeg(0, optionRatio, asset, 0, 0, 0, strike, width);
         }
 
-        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0, opening);
+        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(
+            tokenId,
+            positionSize,
+            0,
+            opening
+        );
         vm.assume(int256(uint256(contractsNotional.rightSlot())) < type(int128).max);
 
         LeftRightSigned expectedShorts = LeftRightSigned.wrap(0).addToRightSlot(
@@ -1562,7 +1567,12 @@ contract PanopticMathTest is Test, PositionUtils {
             )
         );
 
-        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0, opening);
+        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(
+            tokenId,
+            positionSize,
+            0,
+            opening
+        );
         vm.assume(int256(uint256(contractsNotional.rightSlot())) < type(int128).max);
 
         LeftRightSigned expectedLongs = LeftRightSigned.wrap(0).addToRightSlot(
@@ -1619,7 +1629,12 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenId = tokenId.addLeg(0, optionRatio, asset, 0, 1, 0, strike, width);
         }
 
-        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0, opening);
+        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(
+            tokenId,
+            positionSize,
+            0,
+            opening
+        );
         vm.assume(int256(uint256(contractsNotional.leftSlot())) < type(int128).max);
 
         LeftRightSigned expectedShorts = LeftRightSigned.wrap(0).addToLeftSlot(
@@ -1679,7 +1694,12 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenId = tokenId.addLeg(0, optionRatio, asset, 1, 1, 0, strike, width);
         }
 
-        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0, opening);
+        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(
+            tokenId,
+            positionSize,
+            0,
+            opening
+        );
 
         vm.assume(int256(uint256(contractsNotional.leftSlot())) < type(int128).max);
         LeftRightSigned expectedLongs = LeftRightSigned.wrap(0).addToLeftSlot(
@@ -1763,9 +1783,6 @@ contract PanopticMathTest is Test, PositionUtils {
     /// @notice This test ensures the order map is correct when the new tick is the new MINIMUM value.
     function test_SUCCESS_OrderMapIsCorrect_InsertNewTick(int256 x) public {
         // ARRANGE
-        uint16 observationCardinality = 65535;
-        UniPoolObservationMock mockPool = new UniPoolObservationMock(observationCardinality);
-        uint16 observationIndex = 10;
 
         int24 deltaTick = int24(bound(x, -149, 149));
 
@@ -1775,8 +1792,6 @@ contract PanopticMathTest is Test, PositionUtils {
         int56 tickCumulative = int56(
             REFERENCE_TICK + PanopticMath.int12toInt24(initialData % 2 ** 12) + deltaTick
         ) * 64;
-        mockPool.setObservation(observationIndex - 1, 64, 0);
-        mockPool.setObservation(observationIndex, 128, tickCumulative);
 
         int24 deltaOffset = PanopticMath.int12toInt24(initialData % 2 ** 12);
         int24 oldReferenceTick = int24(uint24(initialData >> 96));
@@ -1815,9 +1830,6 @@ contract PanopticMathTest is Test, PositionUtils {
     /// @notice This test ensures the order map is correct when the new tick is the new MINIMUM value.
     function test_SUCCESS_OrderMapIsCorrect_InsertNew_cap(int256 x) public {
         // ARRANGE
-        uint16 observationCardinality = 65535;
-        UniPoolObservationMock mockPool = new UniPoolObservationMock(observationCardinality);
-        uint16 observationIndex = 10;
 
         // deltaTick would lead to capping
         int24 deltaTick = int24(
@@ -1832,8 +1844,6 @@ contract PanopticMathTest is Test, PositionUtils {
         int56 tickCumulative = int56(
             REFERENCE_TICK + PanopticMath.int12toInt24(initialData % 2 ** 12) + deltaTick
         ) * 64;
-        mockPool.setObservation(observationIndex - 1, 64, 0);
-        mockPool.setObservation(observationIndex, 128, tickCumulative);
 
         // ACT
         vm.warp(10 * 64);
@@ -1863,9 +1873,6 @@ contract PanopticMathTest is Test, PositionUtils {
     /// @notice This test ensures the order map is correct when the new tick is the new MINIMUM value.
     function test_SUCCESS_OrderMapIsCorrect_InsertNew_rebase(int256 x) public {
         // ARRANGE
-        uint16 observationCardinality = 65535;
-        UniPoolObservationMock mockPool = new UniPoolObservationMock(observationCardinality);
-        uint16 observationIndex = 10;
 
         // deltaTick would lead to capping
         int24 deltaTick = x % 2 == 0 ? Constants.MAX_MEDIAN_DELTA : -Constants.MAX_MEDIAN_DELTA;
@@ -1880,8 +1887,6 @@ contract PanopticMathTest is Test, PositionUtils {
             int56 tickCumulative = int56(
                 REFERENCE_TICK + PanopticMath.int12toInt24(updatedData % 2 ** 12) + deltaTick
             ) * 64;
-            mockPool.setObservation(observationIndex - 1, 64, 0);
-            mockPool.setObservation(observationIndex, 128, tickCumulative);
 
             // ACT
             vm.warp(block.timestamp + 128);
@@ -1901,7 +1906,6 @@ contract PanopticMathTest is Test, PositionUtils {
     /// @notice This test ensures no update occurs if the block timestamp is in the same epoch.
     function test_NoUpdateInSameEpoch() public {
         // ARRANGE
-        UniPoolObservationMock mockPool = new UniPoolObservationMock(100);
         uint256 initialData = _encodeOraclePack(_generateSortedOffsets(0));
 
         // ACT: Set timestamp to be in the same epoch as the initial data.

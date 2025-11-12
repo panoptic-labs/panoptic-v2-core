@@ -42,8 +42,12 @@ contract RiskEngineHarness is RiskEngine {
         return _buyCollateralRatio(util);
     }
 
-    function reqAtUtil(uint128 amount, uint256 isLong, int16 util) external view returns (uint256) {
-        return _getRequiredCollateralAtUtilization(amount, isLong, util);
+    function reqAtUtil(
+        uint128 amount,
+        uint256 isLong,
+        int16 util
+    ) external view returns (uint256 required) {
+        (required, ) = _getRequiredCollateralAtUtilization(amount, isLong, util);
     }
 
     function reqSingleNoPartner(
@@ -167,12 +171,13 @@ contract RiskEngineHarness is RiskEngine {
         CollateralTracker ct0,
         CollateralTracker ct1
     ) external view returns (LeftRightUnsigned, LeftRightUnsigned, PositionBalance) {
+        address _user = user;
         return
             _getMargin(
                 positionBalanceArray,
                 positionIdList,
                 atTick,
-                user,
+                _user,
                 shortPremia,
                 longPremia,
                 ct0,

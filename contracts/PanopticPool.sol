@@ -838,19 +838,20 @@ contract PanopticPool is Clone, Multicall {
 
         (atTicks, oraclePack) = riskEngine().getSolvencyTicks(currentTick, s_oraclePack);
 
-        uint256 solvent = _checkSolvencyAtTicks(
-            user,
-            safeMode,
-            positionIdList,
-            currentTick,
-            atTicks,
-            usePremiaAsCollateral,
-            buffer
-        );
-        uint256 numberOfTicks = atTicks.length;
+        if (positionIdList.length != 0) {
+            uint256 solvent = _checkSolvencyAtTicks(
+                user,
+                safeMode,
+                positionIdList,
+                currentTick,
+                atTicks,
+                usePremiaAsCollateral,
+                buffer
+            );
+            uint256 numberOfTicks = atTicks.length;
 
-        if (solvent != numberOfTicks) revert Errors.AccountInsolvent(solvent, numberOfTicks);
-
+            if (solvent != numberOfTicks) revert Errors.AccountInsolvent(solvent, numberOfTicks);
+        }
         return oraclePack;
     }
 

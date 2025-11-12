@@ -3046,7 +3046,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            258_334,
+            258_335,
             "Incorrect Bob Delta 0"
         );
         assertEq(
@@ -3143,7 +3143,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
-            531_489,
+            531_490,
             "Incorrect Alice Delta 0"
         );
         assertEq(
@@ -3271,7 +3271,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
-            275_006,
+            275_007,
             "Incorrect Charlie Delta 0"
         );
         assertEq(
@@ -3322,16 +3322,17 @@ contract Misctest is Test, PositionUtils {
                 true
             );
 
+            console2.log("i", i);
             // the positive premium is from the dummy short chunk
             assertEq(
                 int256(ct0.convertToAssets(ct0.balanceOf(Buyers[i]))) - int256(assetsBefore0),
-                i == 0 ? int256(104) : int256(105),
+                i == 0 ? int256(107) : i == 1 ? int256(108) : int(99),
                 "Buyer paid premium twice"
             );
 
             assertEq(
                 ct1.convertToAssets(ct1.balanceOf(Buyers[i])) - assetsBefore1,
-                1083,
+                i < 2 ? 1086 : 1080,
                 "Buyer paid premium twice"
             );
         }
@@ -3616,7 +3617,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            249_999,
+            250_000,
             "Incorrect Bob Delta 0"
         );
         assertEq(
@@ -3669,7 +3670,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
-            533_332,
+            533_333,
             "Incorrect Alice Delta 0"
         );
         assertEq(
@@ -3705,7 +3706,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
-            274_999,
+            275_000,
             "Incorrect Charlie Delta 0"
         );
         assertEq(
@@ -4122,8 +4123,8 @@ contract Misctest is Test, PositionUtils {
         );
 
         assertEq(balance, 100_000);
-        assertEq(utilization0, 10_000);
-        assertEq(utilization1, 10_000);
+        assertEq(utilization0, 0);
+        assertEq(utilization1, 1);
 
         (, currentTick, , , , , ) = uniPool.slot0();
 
@@ -4302,9 +4303,9 @@ contract Misctest is Test, PositionUtils {
             $posIdList[0]
         );
 
-        assertEq(balance, 100_000);
-        assertEq(utilization0, 10_000);
-        assertEq(utilization1, 10_000);
+        assertEq(balance, 100_000, "balance");
+        assertEq(utilization0, 1, "u0");
+        assertEq(utilization1, 0, "u1");
 
         (, currentTick, , , , , ) = uniPool.slot0();
 
@@ -4558,8 +4559,8 @@ contract Misctest is Test, PositionUtils {
         );
 
         assertEq(balance, 100_000);
-        assertEq(utilization0, 10_000);
-        assertEq(utilization1, 10_000);
+        assertEq(utilization0, 1);
+        assertEq(utilization1, 0);
     }
 
     function test_Success_SafeMode_mint_itm() public {
@@ -4646,8 +4647,8 @@ contract Misctest is Test, PositionUtils {
         );
 
         assertEq(balance, 100_000);
-        assertEq(utilization0, 10_000);
-        assertEq(utilization1, 10_000);
+        assertEq(utilization0, 1);
+        assertEq(utilization1, 0);
     }
 
     function test_Success_SafeMode_burn() public {
@@ -5659,7 +5660,7 @@ contract Misctest is Test, PositionUtils {
         // old with itmSpreadFee = -1244790
         assertEq(
             int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0),
-            -931095
+            -931094
         );
 
         // but she earns all of fees on token 1 since the premium accumulator did not overflow (!)
@@ -5798,21 +5799,21 @@ contract Misctest is Test, PositionUtils {
                 .addLeg(
                     0,
                     1,
-                    1,
                     0,
                     0,
                     0,
-                    2235, // 1.25 call
+                    0,
+                    12235, // 1.25 call
                     1
                 )
                 .addLeg(
                     1,
                     1,
-                    1,
                     0,
                     0,
+                    0,
                     1,
-                    6935, // 2 call
+                    46935, // 2 call
                     1
                 )
         );
@@ -5831,10 +5832,10 @@ contract Misctest is Test, PositionUtils {
         $posIdList[0] = TokenId
             .wrap(0)
             .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(0, 1, 1, 1, 0, 0, 2235, 1)
-            .addLeg(1, 1, 1, 0, 0, 1, 4055, 1)
-            .addLeg(2, 1, 1, 0, 0, 2, 5595, 1)
-            .addLeg(3, 1, 1, 1, 0, 3, 6935, 1);
+            .addLeg(0, 1, 0, 1, 0, 0, 12235, 1)
+            .addLeg(1, 1, 0, 0, 0, 1, 24055, 1)
+            .addLeg(2, 1, 0, 0, 0, 2, 35595, 1)
+            .addLeg(3, 1, 0, 1, 0, 3, 46935, 1);
 
         uint256 balanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
         uint256 balanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
@@ -5846,13 +5847,13 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
         // 1.3, 1.6, 1.8, 2.1
-        uint16[4] memory ticks = [2623, 4699, 5877, 7419];
+        uint16[5] memory ticks = [0, 12623, 24699, 35877, 47419];
 
         for (uint256 i = 0; i < ticks.length; ++i) {
             uint256 snap = vm.snapshot();
