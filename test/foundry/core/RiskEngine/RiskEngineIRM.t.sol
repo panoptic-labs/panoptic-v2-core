@@ -41,7 +41,7 @@ contract RiskEngineIRMTest is Test {
     /// time -> uint32(interestRateAccumulator >> 80)
     function _packAccumulator(int256 rateAtTarget, uint32 time) internal pure returns (uint256) {
         // Pack rate at bits 112-149 and time at bits 80-111
-        return (uint256((uint256(rateAtTarget)) % 2 ** 38) << 112) | (uint256(time) << 80);
+        return (uint256((uint256(rateAtTarget)) % 2 ** 38) << 112) | (uint256(time / 4) << 80);
     }
 
     /// @notice Packs all fields into the accumulator format.
@@ -301,7 +301,7 @@ contract RiskEngineIRMTest is Test {
         int256 startRate
     ) public {
         // Constrain inputs
-        elapsed = uint64(bound(elapsed, 0, 365 days));
+        elapsed = uint64(bound(elapsed, 12, 365 days));
         // Bound utilOffset to be within [0, 1e18]
         utilOffset = bound(utilOffset, -TARGET_UTILIZATION, WAD - TARGET_UTILIZATION);
         // Bound startRate to be within the allowed min/max

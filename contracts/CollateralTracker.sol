@@ -197,7 +197,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @dev Layout:
     ///      - Left slot (106 bits): Accumulated unrealized interest that hasn't been distributed (max deposit is 2**104)
     ///      - Next 38 bits: the rateAtTarget value in WAD (2**38 = 800% interest rate)
-    ///      - Next lowest 32 bits: Last interaction timestamp (block.timestamp)
+    ///      - Next lowest 32 bits: Last interaction epoch (1 epoch = block.timestamp/4)
     ///      - Lowest 80 bits: Global borrow index in WAD (starts at 1e18). 2**80 = 1.75 years at 800% interest
     ///      The borrow index tracks the compound growth factor since protocol inception.
     ///      A user's current debt = originalDebt * (currentBorrowIndex / userBorrowIndexSnapshot)
@@ -261,7 +261,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         s_depositedAssets = 1;
 
         // store the initial block and initialize the borrowIndex
-        s_interestRateAccumulator = (uint256(uint32(block.timestamp)) << 80) + uint80(WAD);
+        s_interestRateAccumulator = (uint256(uint32(block.timestamp >> 2)) << 80) + uint80(WAD);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -293,14 +293,14 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @notice Returns the global borrow index that tracks compound interest growth
     /// @dev The index starts at 1e18 and compounds continuously. Represents how much 1 unit of debt has grown since inception
     /// @return The current global borrow index in WAD (18 decimals)
-    function borrowIndex() external view returns (uint96) {
+    function borrowIndex() external view returns (uint80) {
         return uint80(s_interestRateAccumulator);
     }
 
     /// @notice Returns the last time at which interest rates were compounded.
     /// @return The last time at which the interest rates were compounded
     function lastInteractionTimestamp() external view returns (uint256) {
-        return uint32(s_interestRateAccumulator >> 80);
+        return uint32((s_interestRateAccumulator >> 80)) << 2;
     }
 
     /// @notice Returns the accumulated unrealized global interest
@@ -718,7 +718,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             (
                 uint128 currentBorrowIndex,
                 uint128 _unrealizedGlobalInterest,
-                uint256 currentTime
+                uint256 currentEpoch
             ) = _calculateCurrentInterestState(_assetsInAMM, _updateInterestRate());
 
             // USER
@@ -780,32 +780,36 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             s_interestRateAccumulator =
                 (uint256(_unrealizedGlobalInterest) << 150) +
                 (s_interestRateAccumulator & (~TARGET_RATE_MASK)) +
-                (uint256(uint32(currentTime)) << 80) +
+                (uint256(uint32(currentEpoch)) << 80) +
                 uint80(currentBorrowIndex);
         }
     }
 
     /// @notice Calculates the current interest state without modifying storage
-    /// @dev Simulates interest accrual from last interaction to current timestamp
+    /// @dev Simulates interest accrual from last interaction to current epoch
     /// @param _assetsInAMM Amount of assets currently deployed in AMM positions
     /// @param interestRateSnapshot The current interest rate to evaluate at
     /// @return currentBorrowIndex Updated global borrow index after simulated accrual
     /// @return _unrealizedGlobalInterest Total unrealized interest including new accrual
-    /// @return currentTime Current block timestamp
+    /// @return currentEpoch Current epoch = block timestamp / 4
     function _calculateCurrentInterestState(
         uint128 _assetsInAMM,
         uint128 interestRateSnapshot
     )
         internal
         view
-        returns (uint128 currentBorrowIndex, uint128 _unrealizedGlobalInterest, uint256 currentTime)
+        returns (
+            uint128 currentBorrowIndex,
+            uint128 _unrealizedGlobalInterest,
+            uint256 currentEpoch
+        )
     {
         unchecked {
             uint256 accumulator = s_interestRateAccumulator;
 
-            currentTime = block.timestamp;
-            uint256 previousTime = uint32(accumulator >> 80);
-            uint128 deltaTime = uint32(currentTime - previousTime);
+            currentEpoch = block.timestamp >> 2;
+            uint256 previousEpoch = uint32(accumulator >> 80);
+            uint128 deltaTime = uint32(currentEpoch - previousEpoch) << 2;
             currentBorrowIndex = uint128(uint80(accumulator));
             _unrealizedGlobalInterest = uint128(accumulator >> 150);
             if (deltaTime > 0) {
@@ -916,8 +920,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     }
 
     /// @notice Calculates the current borrow index including uncompounded time
-    /// @dev Simulates interest accrual up to the current block timestamp
-    /// @return The borrow index as if interest was compounded at current timestamp
+    /// @dev Simulates interest accrual up to the current block epoch
+    /// @return The borrow index as if interest was compounded at current epoch
     function _calculateCurrentBorrowIndex() internal view returns (uint256) {
         (uint128 currentBorrowIndex, , ) = _calculateCurrentInterestState(
             s_assetsInAMM,
@@ -929,7 +933,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @notice Previews the interest that would be owed if compounded now
     /// @dev Simulates interest accrual without modifying state
     /// @param owner Address of the user to preview interest for
-    /// @return The amount of interest that would be owed if accrued at current timestamp
+    /// @return The amount of interest that would be owed if accrued at current epoch
     function previewOwedInterest(address owner) public view returns (uint128) {
         uint256 simulatedBorrowIndex = _calculateCurrentBorrowIndex();
         LeftRightSigned userState = s_interestState[owner];
