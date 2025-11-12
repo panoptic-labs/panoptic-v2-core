@@ -920,6 +920,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
 
         uint256 expectedAccumulator = (unrealizedGlobalInterest << 150) +
+            (collateralToken0.rateAtTarget() << 112) +
             ((startingTime + 12) << 80) +
             expectedNewIndex;
 
@@ -934,6 +935,49 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
     }
 
+    function test_Success_accrueInterest_IRM() public {
+        _initWorld(0);
+        uint256 startingTime = block.timestamp;
+        uint128 initialBorrowIndex = 1e18;
+        collateralToken0.setPoolAssets(500);
+        collateralToken0.setInAMM(500);
+
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 12 seconds);
+
+        uint128 perSecondInterestRate = collateralToken0.interestRate();
+        collateralToken0.accrueInterest();
+        // Calculate the expected new borrow index
+        uint256 interestForPeriod = Math.wTaylorCompounded(uint256(perSecondInterestRate), 12);
+        uint256 expectedNewIndex = Math.mulDivWadRoundingUp(
+            initialBorrowIndex,
+            1e18 + interestForPeriod
+        );
+        uint256 unrealizedGlobalInterest = Math.mulDivWadRoundingUp(
+            collateralToken0._inAMM(),
+            interestForPeriod
+        );
+
+        uint256 expectedAccumulator = (unrealizedGlobalInterest << 150) +
+            (collateralToken0.rateAtTarget() << 112) +
+            ((startingTime + 12) << 80) +
+            expectedNewIndex;
+
+        // Get the actual new accumulator value from the contract
+        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+
+        // Assert they are equal
+        assertEq(
+            actualAccumulator,
+            expectedAccumulator,
+            "Interest did not accrue correctly for one block"
+        );
+
+        vm.roll(block.number + 100);
+        vm.warp(block.timestamp + 1200 seconds);
+        collateralToken0.accrueInterest();
+    }
+
     function test_Success_accrueInterest_loop() public {
         vm.warp(2 ** 32 - 10);
         _initWorld(0);
@@ -941,6 +985,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 initialBorrowIndex = 1e18;
         collateralToken0.setPoolAssets(500);
         collateralToken0.setInAMM(500);
+        collateralToken0.accrueInterest();
 
         vm.warp(2 ** 32 + 10);
 
@@ -959,11 +1004,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
 
         uint256 expectedAccumulator = (unrealizedGlobalInterest << 150) +
+            (collateralToken0.rateAtTarget() << 112) +
             uint128((uint256(uint32(startingTime + 20)) << 80) + expectedNewIndex);
 
         // Get the actual new accumulator value from the contract
         uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
 
+        console2.log("collateralToken0.rateAtTarget()", collateralToken0.rateAtTarget());
         // Assert they are equal
         assertEq(
             actualAccumulator,
@@ -1006,6 +1053,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // Construct the full expected accumulator value for the new block.
         uint256 expectedAccumulator = (unrealizedGlobalInterest << 150) +
+            (collateralToken0.rateAtTarget() << 112) +
             ((startingTime + blocksToSkip * 12) << 80) +
             expectedNewIndex;
 
@@ -1025,7 +1073,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint104 assets = 1000 ether; // Use a fixed deposit amount
 
         // Get the initial borrow index right after initialization
-        uint256 initialAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 initialAccumulator = collateralToken0._interestRateAccumulator() % 2 ** 80;
         uint80 initialBorrowIndex = uint80(collateralToken0._interestRateAccumulator());
 
         // --- Alice deposits ---
@@ -1046,7 +1094,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 currentRate = collateralToken0.interestRate();
 
         // Get the final borrow index.
-        uint128 finalAccumulator = uint128(collateralToken0._interestRateAccumulator());
+        uint128 finalAccumulator = uint128(collateralToken0._interestRateAccumulator()) % 2 ** 80;
 
         // 4. Assert that the index has not changed from its initial value.
         assertEq(
@@ -1095,6 +1143,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
         // Construct the full expected accumulator value.
         uint256 expectedAccumulator = (unrealizedGlobalInterest << 150) +
+            (collateralToken0.rateAtTarget() << 112) +
             ((timestampAfterBorrow + blocksToSkip * 12) << 80) +
             expectedNewIndex;
         uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
@@ -1180,6 +1229,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
         // Construct the full expected accumulator value.
         uint256 expectedAccumulator = (unrealizedGlobalInterest << 150) +
+            (collateralToken0.rateAtTarget() << 112) +
             ((timestampAfterBorrow + blocksToSkip * 12) << 80) +
             expectedNewIndex;
         uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
@@ -1217,7 +1267,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
         actualAccumulator = collateralToken0._interestRateAccumulator();
 
-        uint256 unrealizedGlobalInterestAfter = actualAccumulator >> 128;
+        uint256 unrealizedGlobalInterestAfter = actualAccumulator >> 150;
 
         assertEq(unrealizedGlobalInterestAfter, 0, "FAIL: unrealized interest is not zero");
 
@@ -1242,7 +1292,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
         console2.log("DONE", Bob);
         actualAccumulator = collateralToken0._interestRateAccumulator();
-        unrealizedGlobalInterestAfter = actualAccumulator >> 128;
+        unrealizedGlobalInterestAfter = actualAccumulator >> 150;
         assertEq(unrealizedGlobalInterestAfter, 0, "FAIL: unrealized interest is not zero");
 
         console2.log(
@@ -1346,6 +1396,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // 3. Construct the full expected accumulator value.
         uint256 expectedAccumulator = (unrealizedGlobalInterest << 150) +
+            (collateralToken0.rateAtTarget() << 112) +
             ((timestampAfterBorrow + blocksToSkip * 12) << 80) +
             expectedNewIndex;
         uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
@@ -1511,17 +1562,23 @@ contract CollateralTrackerTest is Test, PositionUtils {
             initialBorrowIndex,
             1e18 + interestForPeriod
         );
-
+        uint256 unrealizedGlobalInterest = Math.mulDivWadRoundingUp(
+            collateralToken0._inAMM(),
+            interestForPeriod
+        );
+        console2.log("collateralToken0.rateAtTarget()", collateralToken0.rateAtTarget());
         // 3. Construct the full expected accumulator value.
-        uint256 expectedAccumulator = ((timestampAfterBorrow + blocksToSkip * 12) << 80) +
+        uint256 expectedAccumulator = (unrealizedGlobalInterest << 150) +
+            (uint256(collateralToken0.rateAtTarget()) << 112) +
+            ((timestampAfterBorrow + blocksToSkip * 12) << 80) +
             expectedNewIndex;
-        uint256 actualAccumulator = uint128(collateralToken0._interestRateAccumulator());
+        uint256 actualAccumulator = (collateralToken0._interestRateAccumulator());
 
         // 4. Assert the final state is correct.
         assertEq(
             actualAccumulator,
             expectedAccumulator,
-            "FAIL: Interest did not accrue correctly after borrow was made"
+            "FAIL: Interest did not accrue correctly after borrow was made 1"
         );
         console2.log(
             "aa",
@@ -1649,6 +1706,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // 3. Construct the full expected accumulator value.
         uint256 expectedAccumulator = (unrealizedGlobalInterest << 150) +
+            (collateralToken0.rateAtTarget() << 112) +
             ((timestampAfterBorrow + blocksToSkip * blockTime) << 80) +
             expectedNewIndex;
         uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
@@ -1682,7 +1740,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         actualAccumulator = collateralToken0._interestRateAccumulator();
 
-        assertEq(actualAccumulator >> 128, 0, "FAIL: still outstanding interest");
+        assertEq(actualAccumulator >> 150, 0, "FAIL: still outstanding interest");
         assertEq(actualAccumulator % 2 ** 80, expectedNewIndex, "Fail: wrong index");
     }
 
@@ -2270,6 +2328,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // 3. Construct the full expected accumulator value.
         uint256 expectedAccumulator = (finalUnrealizedInterest << 150) +
+            (collateralToken0.rateAtTarget() << 112) +
             ((timestampAfterBorrow + blocksToSkip * 12) << 80) +
             expectedNewIndex;
 
@@ -2918,7 +2977,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         vm.startPrank(Charlie);
         _grantTokens(Charlie);
         IERC20Partial(token0).approve(address(collateralToken0), assets * 10);
-        collateralToken0.deposit(assets * 10, Charlie);
+        collateralToken0.deposit(assets, Charlie);
         vm.stopPrank();
 
         // Alice th eliquidator does not deposit or provide liquidity
@@ -2940,7 +2999,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
 
-        uint128 size = 100 ether;
+        uint128 size = 500 ether;
 
         // Bob borrows a significant amount
         mintOptions(
@@ -3192,6 +3251,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         _initWorld(0);
         uint104 assets = 1000 ether;
+        console2.log("lastTime", collateralToken0.lastInteractionTimestamp(), block.timestamp);
 
         // Alice deposits for liquidity
         vm.startPrank(Alice);
@@ -3240,6 +3300,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // Actually accrue interest
         collateralToken0.accrueInterest();
+        console2.log("lastTime", collateralToken0.lastInteractionTimestamp(), block.timestamp);
 
         // Get actual interest after accrual
         uint128 actualInterest = collateralToken0.owedInterest(Bob);
@@ -3272,6 +3333,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // Edge case: preview immediately after accrual (deltaTime = 0)
         {
             collateralToken0.accrueInterest();
+            console2.log("lastTime", collateralToken0.lastInteractionTimestamp(), block.timestamp);
             uint128 immediatePreview = collateralToken0.previewOwedInterest(Bob);
             uint128 immediateOwed = collateralToken0.owedInterest(Bob);
             assertEq(
@@ -3280,6 +3342,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 "Preview with deltaTime=0 should match owedInterest"
             );
         }
+
         // Test with varying borrow amounts by having Bob adjust position
         if (timeDelta < 30 days) {
             // Only do this for shorter time periods to avoid overflow
@@ -3310,12 +3373,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             // Move forward again
-            vm.warp(block.timestamp + timeDelta);
+            vm.warp(block.timestamp + 2 * timeDelta);
 
             vm.stopPrank();
             // Preview should account for the new borrow amount
             uint128 previewAfterIncrease = collateralToken0.previewOwedInterest(Bob);
             collateralToken0.accrueInterest();
+            console2.log("lastTime", collateralToken0.lastInteractionTimestamp(), block.timestamp);
             uint128 actualAfterIncrease = collateralToken0.owedInterest(Bob);
 
             assertEq(
@@ -3328,10 +3392,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // Verify mathematical properties
         if (timeDelta > 1) {
             // Interest should be monotonically increasing with time
-            vm.warp(initialTimestamp + (timeDelta / 2));
+            vm.warp(block.timestamp + (timeDelta / 2));
             uint128 halfTimePreview = collateralToken0.previewOwedInterest(Bob);
 
-            vm.warp(initialTimestamp + timeDelta);
+            vm.warp(block.timestamp + timeDelta);
             uint128 fullTimePreview = collateralToken0.previewOwedInterest(Bob);
 
             assertGe(

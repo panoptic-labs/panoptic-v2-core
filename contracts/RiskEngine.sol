@@ -1822,7 +1822,6 @@ contract RiskEngine {
         uint256 interestRateAccumulator
     ) internal view returns (uint256, int256) {
         // Safe "unchecked" cast because the utilization is smaller than 1 (scaled by WAD).
-
         int256 _utilization = int256(utilization);
         int256 errNormFactor = int256(_utilization) > TARGET_UTILIZATION
             ? WAD - TARGET_UTILIZATION
@@ -1843,7 +1842,7 @@ contract RiskEngine {
             // So the rate is always underestimated.
             int256 speed = Math.wMulToZero(ADJUSTMENT_SPEED, err);
             // Safe "unchecked" cast because block.timestamp - market.lastUpdate <= block.timestamp <= type(int256).max.
-            int256 elapsed = int256(block.timestamp - previousTime);
+            int256 elapsed = int256(block.timestamp) - int256(previousTime);
             int256 linearAdaptation = speed * elapsed;
 
             if (linearAdaptation == 0) {

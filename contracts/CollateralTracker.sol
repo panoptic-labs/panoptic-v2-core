@@ -779,6 +779,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
             s_interestRateAccumulator =
                 (uint256(_unrealizedGlobalInterest) << 150) +
+                (s_interestRateAccumulator & (~TARGET_RATE_MASK)) +
                 (uint256(uint32(currentTime)) << 80) +
                 uint80(currentBorrowIndex);
         }
@@ -843,6 +844,11 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             s_interestRateAccumulator
         );
         return avgRate;
+    }
+
+    /// @notice Returns the rate at the target utilization
+    function rateAtTarget() public view returns (uint256) {
+        return (s_interestRateAccumulator >> 112) % 2 ** 38;
     }
 
     /// @notice Returns the interest rate per second based on pool utilization
