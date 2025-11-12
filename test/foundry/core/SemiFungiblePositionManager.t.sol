@@ -3086,16 +3086,17 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         vm.assume(expectedLiq > 0);
 
         int256 amountMoved0 = SqrtPriceMath.getAmount0Delta(
-            sqrtLower < currentSqrtPriceX96 ? currentSqrtPriceX96 : sqrtLower,
+            sqrtLower,
             sqrtUpper,
             int128(expectedLiq * ratio)
         );
         int256 amountMoved1 = SqrtPriceMath.getAmount1Delta(
             sqrtLower,
-            sqrtUpper > currentSqrtPriceX96 ? currentSqrtPriceX96 : sqrtUpper,
+            sqrtUpper,
             int128(expectedLiq * ratio)
         );
 
+        console2.log("ratio", ratio);
         vm.assume((amountMoved0 <= type(int128).max - 4) && (amountMoved1 < type(int128).max - 4));
 
         console2.log("aM0", amountMoved0);

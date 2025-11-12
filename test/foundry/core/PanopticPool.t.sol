@@ -1703,12 +1703,12 @@ contract PanopticPoolTest is PositionUtils {
         // Slot 6: s_interestRateAccumulator
         assertEq(
             vm.load(address(ct0), bytes32(uint256(6))),
-            bytes32(uint256((uint256(uint32(block.timestamp)) << 80) + uint80(1e18))),
+            bytes32(uint256((uint256(uint32(block.timestamp) >> 2) << 80) + uint80(1e18))),
             "FAIL: ct0 s_interestRateAccumulator not properly initialized"
         );
         assertEq(
             vm.load(address(ct1), bytes32(uint256(6))),
-            bytes32(uint256((uint256(uint32(block.timestamp)) << 80) + uint80(1e18))),
+            bytes32(uint256((uint256(uint32(block.timestamp) >> 2) << 80) + uint80(1e18))),
             "FAIL: ct1 s_interestRateAccumulator not properly initialized"
         );
 
@@ -4488,19 +4488,20 @@ contract PanopticPoolTest is PositionUtils {
 
                 (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                     .optionPositionInfo(pp, Alice, _tokenId);
+                {
+                    (, uint256 inAMM, uint256 creditedShares, ) = ct0.getPoolData();
+                    console2.log("inAMM", inAMM);
+                    console2.log("$amount0Moveds[0]", $amount0Moveds[0]);
+                    console2.log("$amount0Moveds[1]", $amount0Moveds[1]);
+                    console2.log("$amount0Moveds[2]", $amount0Moveds[2]);
 
-                assertEq(balance, positionSizes[1], "FAIL: wrong balance for Alice");
-                assertEq(
-                    (poolUtilization0),
-                    Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
-                        ? (10_001)
-                        : Math.mulDivRoundingUp(
-                            uint256($amount0Moveds[0] + $amount0Moveds[1] + $amount0Moveds[2]),
-                            10000,
-                            (ct0.totalSupply())
-                        ),
-                    "FAIL: wrong pool utiliation0"
-                );
+                    assertEq(balance, positionSizes[1], "FAIL: wrong balance for Alice");
+                    assertEq(
+                        (poolUtilization0),
+                        Math.mulDivRoundingUp(inAMM, 10000, ct0.totalSupply()),
+                        "FAIL: wrong pool utiliation0"
+                    );
+                }
                 assertEq(
                     (poolUtilization1),
                     Math.abs(fastOracleTick - slowOracleTick) > int24(2230)

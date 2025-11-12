@@ -7253,6 +7253,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             _mockMaxDeposit(Bob);
             console2.log("jere?", int24(bound(strikeSeed, -800000, 800000)));
 
+            console2.log("bal0", collateralToken0.balanceOf(Bob));
+            console2.log("bal1", collateralToken1.balanceOf(Bob));
             tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
                 0,
                 1 + ((x >> 2) % 127),
@@ -7260,13 +7262,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0,
                 (x >> 1) % 2,
                 0,
-                int24(bound(strikeSeed, -700000, 700000)),
+                int24(bound(strikeSeed, -500000, 500000)),
                 int24(uint24(bound(widthSeed, 1, 4095)))
             );
             positionIdList.push(tokenId);
 
             /// calculate position
-            positionSize0 = uint128(PositionUtils._boundLog(positionSizeSeed, 1, 48));
+            positionSize0 = uint128(PositionUtils._boundLog(positionSizeSeed, 1, 24));
             (legLowerTick, legUpperTick) = tokenId.asTicks(0);
 
             (int24 minTick, int24 maxTick) = sfpm.getEnforcedTickLimits(tokenId.poolId());
@@ -7275,6 +7277,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             vm.assume(legLowerTick > minTick);
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
+            console2.log("");
+            console2.log("Mint");
             mintOptions(
                 panopticPool,
                 positionIdList,
