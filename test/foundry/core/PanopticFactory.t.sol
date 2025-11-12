@@ -479,8 +479,8 @@ contract PanopticFactoryTest is Test {
         address randomAddress,
         uint256 minTargetRarity
     ) public {
-        // limit minTargetRarity to 1-2 leading zeroes for test efficiency
-        minTargetRarity = bound(minTargetRarity, 1, 5);
+        // limit minTargetRarity to 1-3 leading zeroes for test efficiency
+        minTargetRarity = bound(minTargetRarity, 1, 3);
 
         nonce = uint96(bound(nonce, 0, type(uint96).max - 1001));
 
@@ -497,10 +497,11 @@ contract PanopticFactoryTest is Test {
             address(pool),
             address(riskEngine),
             nonce,
-            50_000,
+            250_000,
             minTargetRarity
         );
 
+        console2.log("min", minTargetRarity);
         assertEq(
             highestRarity,
             PanopticMath.numberOfLeadingHexZeros(

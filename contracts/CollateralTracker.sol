@@ -1117,35 +1117,49 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             int256 tokenToPay;
             uint128 commission;
 
-            int128 netBorrows = isCreation ? shortAmount - longAmount : longAmount - shortAmount;
-
-            if (isCreation) {
-                {
-                    int256 intrinsicValue = int256(ammDeltaAmount) - netBorrows;
-                    // the swap commission is paid on the intrinsic value (if a swap occurred; users who mint covered options with their own collateral do not pay this fee)
-                    commission = uint128(
-                        Math.unsafeDivRoundingUp(
-                            uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
-                            DECIMALS
-                        )
-                    );
-                    tokenToPay = intrinsicValue + int128(commission);
-                }
-            } else {
-                // add premium and token deltas not covered by swap to be paid/collected on position close
-                tokenToPay = int256(ammDeltaAmount) - netBorrows - realizedPremium;
-            }
-
             /// Snapshot state variables to compute the price per share
             uint256 _totalAssets = totalAssets();
             uint256 _totalSupply = totalSupply();
 
             // compute creditDelta with the snapshotted values
-            uint256 creditDelta = Math.mulDiv(
-                uint256(uint128(longAmount)),
-                _totalSupply,
-                _totalAssets
-            );
+            uint256 creditDelta = isCreation
+                ? Math.mulDivRoundingUp(uint256(uint128(longAmount)), _totalSupply, _totalAssets)
+                : Math.mulDiv(uint256(uint128(longAmount)), _totalSupply, _totalAssets);
+
+            if (!isCreation) {
+                // update s_creditedShares: add long amounts == tokens moved into AMM or received when the position is closed
+                //
+                // An underflow is possible because Uniswap rounds long position DOWN when minting and UP when burning LP positions.
+                // For examples, for a long position, the amount of credited shares at MINT will be lower than the ones repaid back at BURN,
+                // which means the s_creditedShares tracker will become negative (the protocol lost ~1 asset worth of shares).
+                // Consequently, those shares must also be burnt, and we're making those shares come out of the option owner.
+                uint256 _creditedShares = s_creditedShares;
+                if (_creditedShares < creditDelta) {
+                    s_creditedShares = 0;
+                    // re-use the commission variable to handle, this is in reality a rounding haircut paid by the option owner at close
+                    // rounding up again during conversion potentially add another `1` extra share as ceil*ceil is not idempotent
+                    commission += Math
+                        .mulDivRoundingUp(creditDelta - _creditedShares, _totalAssets, _totalSupply)
+                        .toUint128();
+                } else {
+                    s_creditedShares -= creditDelta;
+                }
+            } else {
+                // update s_creditedShares: Add long amounts == tokens moved out of AMM or paid when creating credits
+                s_creditedShares += creditDelta;
+
+                // pay commission only when opening a new position
+                commission += uint128(
+                    Math.unsafeDivRoundingUp(
+                        uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
+                        DECIMALS
+                    )
+                );
+            }
+
+            int128 netBorrows = isCreation ? shortAmount - longAmount : longAmount - shortAmount;
+
+            tokenToPay = int256(ammDeltaAmount) - netBorrows - realizedPremium + int128(commission);
 
             // Mint/Burn Shares
             if (tokenToPay > 0) {
@@ -1187,16 +1201,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                 int256 newAssetsInAmm = int256(uint256(s_assetsInAMM));
                 newAssetsInAmm += isCreation ? int256(shortAmount) : -int256(shortAmount);
                 s_assetsInAMM = uint256(newAssetsInAmm).toUint128();
-            }
-
-            if (!isCreation) {
-                // check that there is no underflow (necessary?)
-                if (s_creditedShares < creditDelta) revert Errors.InsufficientCreditLiquidity();
-                // update s_creditedShares: add long amounts == tokens moved into AMM or received when the position is closed
-                s_creditedShares -= creditDelta;
-            } else {
-                // update s_creditedShares: Add long amounts == tokens moved out of AMM or paid when creating credits
-                s_creditedShares += creditDelta;
             }
 
             {

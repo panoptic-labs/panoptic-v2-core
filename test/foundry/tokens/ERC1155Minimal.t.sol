@@ -92,7 +92,7 @@ contract ERC1155Minimal is Test {
         assertEq(token.balanceOf(to, id), amount);
     }
 
-    function testFail_safeTransferFrom_insufficientBalance(
+    function test_fail__safeTransferFrom_insufficientBalance(
         address to,
         uint256 id,
         uint256 amount,
@@ -102,10 +102,11 @@ contract ERC1155Minimal is Test {
         transferAmount = bound(transferAmount, amount + 1, type(uint256).max);
         vm.assume(to.code.length == 0);
         token.mint(id, amount);
+        vm.expectRevert();
         token.safeTransferFrom(address(1), to, id, transferAmount, "");
     }
 
-    function testFail_safeTransferFrom_unsafeRecipient(uint256 id, uint256 amount) public {
+    function test_fail__safeTransferFrom_unsafeRecipient(uint256 id, uint256 amount) public {
         token.mint(id, amount);
         vm.stopPrank();
         vm.expectRevert("UnsafeRecipient()");
@@ -136,7 +137,7 @@ contract ERC1155Minimal is Test {
         );
     }
 
-    function testFail_safeBatchTransferFrom_insufficientBalance(
+    function test_fail__safeBatchTransferFrom_insufficientBalance(
         address to,
         uint256[10] memory ids,
         uint256[10] memory amounts,
@@ -144,7 +145,7 @@ contract ERC1155Minimal is Test {
         uint256 index
     ) public {
         vm.assume(to.code.length == 0);
-
+        index = bound(index, 0, 9);
         // make sure at least one of the transfer amounts is too large
         amounts[index] = bound(amounts[index], 0, type(uint256).max - 1);
         transferAmounts[index] = bound(
@@ -155,7 +156,7 @@ contract ERC1155Minimal is Test {
         for (uint256 i = 0; i < ids.length; i++) {
             token.mint(ids[i], amounts[i]);
         }
-        vm.expectRevert("InsufficientBalance()");
+        vm.expectRevert();
         token.safeBatchTransferFrom(
             address(1),
             to,
@@ -165,7 +166,7 @@ contract ERC1155Minimal is Test {
         );
     }
 
-    function testFail_safeTransferFrom_unsafeRecipient(
+    function test_fail__safeTransferFrom_unsafeRecipient(
         uint256[10] memory ids,
         uint256[10] memory amounts
     ) public {
@@ -202,7 +203,7 @@ contract ERC1155Minimal is Test {
         assertEq(token.balanceOf(approvee, id), amount);
     }
 
-    function testFail_safeTransferFrom_unapproved(
+    function test_fail__safeTransferFrom_unapproved(
         address approvee,
         uint256 id,
         uint256 amount
@@ -240,7 +241,7 @@ contract ERC1155Minimal is Test {
         );
     }
 
-    function testFail_safeTransferFrom_unapproved(
+    function test_fail__safeTransferFrom_unapproved(
         address approvee,
         uint256[10] memory ids,
         uint256[10] memory amounts

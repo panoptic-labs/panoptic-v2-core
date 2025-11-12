@@ -889,7 +889,6 @@ contract RiskEngine {
             creditAmounts = creditAmounts.addToRightSlot(_credits0.toUint128()).addToLeftSlot(
                 _credits1.toUint128()
             );
-
             unchecked {
                 ++i;
             }
@@ -1020,12 +1019,17 @@ contract RiskEngine {
                 // required collateral is at least 1
                 required = 1;
 
-                // start with base requirement, which is based on isLong value
-                required += _getRequiredCollateralAtUtilization(
-                    amountMoved,
-                    isLong,
-                    poolUtilization
-                );
+                uint256 baseCollateralRatio;
+                {
+                    uint256 baseRequired;
+                    // start with base requirement, which is based on isLong value
+                    (baseRequired, baseCollateralRatio) = _getRequiredCollateralAtUtilization(
+                        amountMoved,
+                        isLong,
+                        poolUtilization
+                    );
+                    required += baseRequired;
+                }
                 (int24 tickLower, int24 tickUpper) = tokenId.asTicks(index);
                 int24 strike = tokenId.strike(index);
 
@@ -1083,10 +1087,9 @@ contract RiskEngine {
                         // Specifically:
 
                         uint160 scaleFactor = Math.getSqrtRatioAtTick((tickUpper - tickLower));
-                        uint256 base = (r0 * DECIMALS) / amountMoved;
                         r2 =
                             Math.mulDivRoundingUp(
-                                amountMoved * (DECIMALS - base),
+                                amountMoved * (DECIMALS - baseCollateralRatio),
                                 (scaleFactor - ratio),
                                 DECIMALS * (scaleFactor + Constants.FP96)
                             ) +
@@ -1094,10 +1097,10 @@ contract RiskEngine {
                     }
                     required = Math.max(Math.max(r2, r1), r0);
                 } else {
-                    uint256 positionHalfWidth = uint256(uint24(tickUpper - tickLower)) / 2;
+                    uint256 positionWidth = uint256(uint24(tickUpper - tickLower));
 
                     uint256 distanceFromStrike = Math.max(
-                        positionHalfWidth,
+                        positionWidth / 2,
                         atTick > strike
                             ? uint256(uint24(atTick - strike))
                             : uint256(uint24(strike - atTick))
@@ -1107,8 +1110,7 @@ contract RiskEngine {
 
                     uint256 expValue;
                     {
-                        uint256 scaledRatio = (distanceFromStrike * DECIMALS) /
-                            (2 * positionHalfWidth);
+                        uint256 scaledRatio = (distanceFromStrike * DECIMALS) / (positionWidth);
                         // Divide by ln(2) to get the number of doublings
                         // LN2_SCALED = ln(2) * DECIMALS
                         uint256 shifts = scaledRatio / LN2_SCALED;
@@ -1119,17 +1121,18 @@ contract RiskEngine {
                         uint256 expFractional = Math.sTaylorCompounded(remainder, DECIMALS);
                         // Combine: e^x = 2^shifts * e^remainder
                         // We divide by DECIMALS at the end to maintain precision
-                        if (shifts < 256) {
+                        if (shifts < 128) {
                             // Prevent overflow
                             expValue = (expFractional << shifts);
                         } else {
-                            expValue = type(uint256).max; // Cap at max value
+                            expValue = type(uint128).max; // Cap at uint128 max value
                         }
                     }
                     // Apply the exponential decay to required collateral
+                    uint256 _required = required;
                     required = Math.min(
                         required,
-                        (2 * DECIMALS * required * positionHalfWidth) /
+                        (DECIMALS * _required * positionWidth) /
                             (distanceFromStrike * expValue) +
                             TEN_BPS
                     );
@@ -1321,27 +1324,27 @@ contract RiskEngine {
         uint128 amount,
         uint256 isLong,
         int16 utilization
-    ) internal view returns (uint256 required) {
+    ) internal view returns (uint256 required, uint256 baseCollateralRatio) {
         // if position is short, use sell collateral ratio
 
         if (isLong == 0) {
             // compute the sell collateral ratio, which depends on the pool utilization
-            uint256 sellCollateral = _sellCollateralRatio(utilization);
+            baseCollateralRatio = _sellCollateralRatio(utilization);
 
             // compute required as amount*collateralRatio
             // can use unsafe because denominator is always nonzero
             unchecked {
-                required = Math.unsafeDivRoundingUp(amount * sellCollateral, DECIMALS);
+                required = Math.unsafeDivRoundingUp(amount * baseCollateralRatio, DECIMALS);
             }
         } else if (isLong == 1) {
             // if options is long, use buy collateral ratio
             // compute the buy collateral ratio, which depends on the pool utilization
-            uint256 buyCollateral = _buyCollateralRatio(uint16(utilization));
+            baseCollateralRatio = _buyCollateralRatio(uint16(utilization));
 
             // compute required as amount*collateralRatio
             // can use unsafe because denominator is always nonzero
             unchecked {
-                required = Math.unsafeDivRoundingUp(amount * buyCollateral, DECIMALS);
+                required = Math.unsafeDivRoundingUp(amount * baseCollateralRatio, DECIMALS);
             }
         }
     }
