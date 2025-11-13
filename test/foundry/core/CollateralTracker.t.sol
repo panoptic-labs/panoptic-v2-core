@@ -3249,6 +3249,105 @@ contract CollateralTrackerTest is Test, PositionUtils {
         assertLe(uint128(baseIndex), collateralToken0.borrowIndex(), "Bob's index should be stale");
     }
 
+    function test_Success_accrueInterest_deposit_does_not_crystallize_insolvency() public {
+        _initWorld(0);
+        uint104 assets = 1000 ether;
+
+        // Charlie the PLP deposits to provide liquidity
+        vm.startPrank(Charlie);
+        _grantTokens(Charlie);
+        IERC20Partial(token0).approve(address(collateralToken0), assets * 10);
+        collateralToken0.deposit(100 ether, Charlie);
+        vm.stopPrank();
+
+        // Alice (liquidator) does not deposit
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        vm.stopPrank();
+
+        // Bob deposits and borrows in a way that will make him insolvent over time
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(100 ether, Bob); // initial collateral
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        strike = 198600 + 6000;
+        width = 2;
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        // Bob borrows aggressively
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            100 ether, // borrow against the deposit
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+        collateralToken0.burnShares(Bob, collateralToken0.balanceOf(Bob));
+        vm.stopPrank();
+
+        // Let time pass so interest explodes and Bob becomes insolvent
+        vm.warp(block.timestamp + 365 days);
+
+        // Preview the full mathematical interest owed
+        uint128 previewedInterestBefore = collateralToken0.previewOwedInterest(Bob);
+        assertGt(previewedInterestBefore, 0, "Bob should owe non-zero interest");
+
+        uint256 sharesOwed = collateralToken0.convertToShares(previewedInterestBefore);
+        uint256 bobBalanceBefore = collateralToken0.balanceOf(Bob);
+        assertGt(sharesOwed, bobBalanceBefore, "Bob must be insolvent for this test");
+
+        // Sanity: preview says he owes more than he can pay at current balance
+        uint256 maxBobCanPay = collateralToken0.convertToAssets(bobBalanceBefore);
+        assertGt(previewedInterestBefore, maxBobCanPay, "Interest owed should exceed Bob's assets");
+
+        // Take a snapshot of Bob's interest state
+        (int128 baseIndexBefore, int128 netBorrowsBefore) = collateralToken0.interestState(Bob);
+
+        // Compute expected shares from a fresh deposit
+        uint256 depositAssets = 10 ether;
+        uint256 depositShares = collateralToken0.previewDeposit(depositAssets);
+
+        // Bob deposits to "cure" while insolvent
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), depositAssets);
+        collateralToken0.deposit(depositAssets, Bob);
+        vm.stopPrank();
+
+        // 1) Existing shares should NOT be burned: total shares = old + depositShares (up to rounding)
+        uint256 bobBalanceAfter = collateralToken0.balanceOf(Bob);
+        assertApproxEqAbs(
+            collateralToken0.convertToAssets(bobBalanceAfter),
+            collateralToken0.convertToAssets(bobBalanceBefore) + depositAssets,
+            1,
+            "Deposit should not burn Bob's existing shares when insolvent"
+        );
+
+        // 2) Interest preview should be unchanged (no settlement on deposit-path insolvency)
+        uint128 previewedInterestAfter = collateralToken0.previewOwedInterest(Bob);
+        assertApproxEqAbs(
+            previewedInterestAfter,
+            previewedInterestBefore,
+            1,
+            "Deposit should not settle or reduce Bob's interest when insolvent"
+        );
+
+        // 3) Interest state: same netBorrows and same stale baseIndex
+        (int128 baseIndexAfter, int128 netBorrowsAfter) = collateralToken0.interestState(Bob);
+        assertEq(netBorrowsAfter, netBorrowsBefore, "netBorrows should remain unchanged");
+        assertEq(
+            uint128(baseIndexAfter),
+            uint128(baseIndexBefore),
+            "baseIndex should remain stale"
+        );
+    }
+
     function test_Fuzz_accrueInterest_previewOwedInterest_accuracy(uint32 timeDelta) public {
         // Bound the time delta to reasonable values (12 second to 1 year)
         timeDelta = uint32(bound(timeDelta, 12, 365 days));
