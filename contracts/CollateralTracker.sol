@@ -93,6 +93,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     uint256 internal constant TARGET_RATE_MASK =
         0xFFFFFFFFFFFFFFFFFFFFFFFFFFC000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
+    bool internal constant IS_NOT_DEPOSIT = false;
+    bool internal constant IS_DEPOSIT = true;
     /*//////////////////////////////////////////////////////////////
                            PANOPTIC POOL DATA
     //////////////////////////////////////////////////////////////*/
@@ -359,7 +361,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         address recipient,
         uint256 amount
     ) public override(ERC20Minimal) returns (bool) {
-        _accrueInterest(msg.sender);
+        _accrueInterest(msg.sender, IS_NOT_DEPOSIT);
         // make sure the caller does not have any open option positions
         // if they do: we don't want them sending panoptic pool shares to others
         // as this would reduce their amount of collateral against the opened positions
@@ -379,7 +381,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         address to,
         uint256 amount
     ) public override(ERC20Minimal) returns (bool) {
-        _accrueInterest(from);
+        _accrueInterest(from, IS_NOT_DEPOSIT);
         // make sure the sender does not have any open option positions
         // if they do: we don't want them sending panoptic pool shares to others
         // as this would reduce their amount of collateral against the opened positions
@@ -457,7 +459,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param receiver User to receive the shares
     /// @return shares The amount of Panoptic pool shares that were minted to the recipient
     function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
-        _accrueInterest(msg.sender);
+        _accrueInterest(msg.sender, IS_DEPOSIT);
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
         if (assets == 0) revert Errors.BelowMinimumRedemption();
 
@@ -503,7 +505,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param receiver User to receive the shares
     /// @return assets The amount of assets deposited to mint the desired amount of shares
     function mint(uint256 shares, address receiver) external returns (uint256 assets) {
-        _accrueInterest(msg.sender);
+        _accrueInterest(msg.sender, IS_DEPOSIT);
         assets = previewMint(shares);
 
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
@@ -562,7 +564,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         address receiver,
         address owner
     ) external returns (uint256 shares) {
-        _accrueInterest(owner);
+        _accrueInterest(owner, IS_NOT_DEPOSIT);
         if (assets > maxWithdraw(owner)) revert Errors.ExceedsMaximumRedemption();
         if (assets == 0) revert Errors.BelowMinimumRedemption();
 
@@ -610,7 +612,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         TokenId[] calldata positionIdList,
         bool usePremiaAsCollateral
     ) external returns (uint256 shares) {
-        _accrueInterest(owner);
+        _accrueInterest(owner, IS_NOT_DEPOSIT);
         shares = previewWithdraw(assets);
         if (assets == 0) revert Errors.BelowMinimumRedemption();
 
@@ -672,7 +674,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         address receiver,
         address owner
     ) external returns (uint256 assets) {
-        _accrueInterest(owner);
+        _accrueInterest(owner, IS_NOT_DEPOSIT);
         if (shares > maxRedeem(owner)) revert Errors.ExceedsMaximumRedemption();
 
         // check/update allowance for approved redeem
@@ -706,13 +708,13 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
     /// @notice Accrues protocol-wide interest.
     function accrueInterest() public {
-        _accrueInterest(msg.sender);
+        _accrueInterest(msg.sender, IS_NOT_DEPOSIT);
     }
 
     /// @notice Accrues protocol-wide interest and settles a specific user's interest.
     /// @dev This function should be called before any user action that affects their borrow balance.
     /// @param owner the account which calls accrue interest
-    function _accrueInterest(address owner) internal {
+    function _accrueInterest(address owner, bool isDeposit) internal {
         unchecked {
             uint128 _assetsInAMM = s_assetsInAMM;
             (
@@ -743,23 +745,32 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                         address _owner = owner;
                         uint256 userBalance = balanceOf[_owner];
                         if (shares > userBalance) {
-                            // update the accrual of interest paid
-                            burntInterestValue = Math
-                                .mulDiv(userBalance, _totalAssets, totalSupply())
-                                .toUint128();
+                            if (!isDeposit) {
+                                // update the accrual of interest paid
+                                burntInterestValue = Math
+                                    .mulDiv(userBalance, _totalAssets, totalSupply())
+                                    .toUint128();
 
-                            emit InsolvencyPenaltyApplied(
-                                owner,
-                                userInterestOwed,
-                                burntInterestValue,
-                                userBalance
-                            );
+                                emit InsolvencyPenaltyApplied(
+                                    owner,
+                                    userInterestOwed,
+                                    burntInterestValue,
+                                    userBalance
+                                );
 
-                            /// Insolvent case: Pay what you can
-                            _burn(_owner, userBalance);
+                                /// Insolvent case: Pay what you can
+                                _burn(_owner, userBalance);
 
-                            /// @dev DO NOT update index. By keeping the user's old baseIndex, their debt continues to compound correctly from the original point in time.
-                            userBorrowIndex = userState.rightSlot();
+                                /// @dev DO NOT update index. By keeping the user's old baseIndex, their debt continues to compound correctly from the original point in time.
+                                userBorrowIndex = userState.rightSlot();
+                            } else {
+                                // set interest paid to zero
+                                burntInterestValue = 0;
+
+                                // we effectively **did not settle** this user:
+                                // we keep their old baseIndex so future interest is computed correctly.
+                                userBorrowIndex = userState.rightSlot();
+                            }
                         } else {
                             // Solvent case: Pay in full.
                             _burn(_owner, shares);
@@ -1122,7 +1133,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         int128 ammDeltaAmount,
         int128 realizedPremium
     ) internal returns (uint32, uint128, int128) {
-        _accrueInterest(optionOwner);
+        _accrueInterest(optionOwner, IS_NOT_DEPOSIT);
         unchecked {
             int256 tokenToPay;
             uint128 commission;
