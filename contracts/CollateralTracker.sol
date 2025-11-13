@@ -741,40 +741,39 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                     );
 
                     uint128 burntInterestValue = userInterestOwed;
-                    if (shares > 0) {
-                        address _owner = owner;
-                        uint256 userBalance = balanceOf[_owner];
-                        if (shares > userBalance) {
-                            if (!isDeposit) {
-                                // update the accrual of interest paid
-                                burntInterestValue = Math
-                                    .mulDiv(userBalance, _totalAssets, totalSupply())
-                                    .toUint128();
 
-                                emit InsolvencyPenaltyApplied(
-                                    owner,
-                                    userInterestOwed,
-                                    burntInterestValue,
-                                    userBalance
-                                );
+                    address _owner = owner;
+                    uint256 userBalance = balanceOf[_owner];
+                    if (shares > userBalance) {
+                        if (!isDeposit) {
+                            // update the accrual of interest paid
+                            burntInterestValue = Math
+                                .mulDiv(userBalance, _totalAssets, totalSupply())
+                                .toUint128();
 
-                                /// Insolvent case: Pay what you can
-                                _burn(_owner, userBalance);
+                            emit InsolvencyPenaltyApplied(
+                                owner,
+                                userInterestOwed,
+                                burntInterestValue,
+                                userBalance
+                            );
 
-                                /// @dev DO NOT update index. By keeping the user's old baseIndex, their debt continues to compound correctly from the original point in time.
-                                userBorrowIndex = userState.rightSlot();
-                            } else {
-                                // set interest paid to zero
-                                burntInterestValue = 0;
+                            /// Insolvent case: Pay what you can
+                            _burn(_owner, userBalance);
 
-                                // we effectively **did not settle** this user:
-                                // we keep their old baseIndex so future interest is computed correctly.
-                                userBorrowIndex = userState.rightSlot();
-                            }
+                            /// @dev DO NOT update index. By keeping the user's old baseIndex, their debt continues to compound correctly from the original point in time.
+                            userBorrowIndex = userState.rightSlot();
                         } else {
-                            // Solvent case: Pay in full.
-                            _burn(_owner, shares);
+                            // set interest paid to zero
+                            burntInterestValue = 0;
+
+                            // we effectively **did not settle** this user:
+                            // we keep their old baseIndex so future interest is computed correctly.
+                            userBorrowIndex = userState.rightSlot();
                         }
+                    } else {
+                        // Solvent case: Pay in full.
+                        _burn(_owner, shares);
                     }
 
                     _unrealizedGlobalInterest = burntInterestValue > _unrealizedGlobalInterest
