@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 // Interfaces
+import "forge-std/Test.sol";
 import {PanopticPool} from "./PanopticPool.sol";
 import {RiskEngine} from "./RiskEngine.sol";
 // Inherited implementations
@@ -700,8 +701,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             s_depositedAssets -= uint128(assets);
         }
 
-        _poolUtilization();
-
         // transfer assets (underlying token funds) from the PanopticPool to the LP
         SafeTransferLib.safeTransferFrom(
             underlyingToken(),
@@ -975,6 +974,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
         poolUtilization = _poolUtilizationView();
 
+        console2.log("stored, u", storedUtilization, poolUtilization);
         if (storedUtilization > poolUtilization) {
             return storedUtilization;
         } else {
