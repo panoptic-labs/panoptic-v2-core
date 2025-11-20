@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 // Interfaces
+import "forge-std/Test.sol";
 import {PanopticPool} from "./PanopticPool.sol";
 import {RiskEngine} from "./RiskEngine.sol";
 // Inherited implementations
@@ -95,6 +96,11 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
     bool internal constant IS_NOT_DEPOSIT = false;
     bool internal constant IS_DEPOSIT = true;
+
+    /// @notice Transient storage slot for the utilization
+    bytes32 internal constant UTILIZATION_TRANSIENT_SLOT =
+        keccak256("panoptic.utilization.snapshot");
+
     /*//////////////////////////////////////////////////////////////
                            PANOPTIC POOL DATA
     //////////////////////////////////////////////////////////////*/
@@ -289,7 +295,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         depositedAssets = s_depositedAssets;
         insideAMM = s_assetsInAMM;
         creditedShares = s_creditedShares;
-        currentPoolUtilization = _poolUtilization();
+        currentPoolUtilization = _poolUtilizationView();
     }
 
     /// @notice Returns the global borrow index that tracks compound interest growth
@@ -854,7 +860,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
     function interestRate() public view returns (uint128) {
         uint128 avgRate = riskEngine().interestRate(
-            _poolUtilizationWAD(),
+            _poolUtilizationWadView(),
             s_interestRateAccumulator
         );
         return avgRate;
@@ -866,10 +872,11 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     }
 
     /// @notice Returns the interest rate per second based on pool utilization
+    /// @dev uses the maximum utilization during this transaction, users to prevent flash deposits from loweing the interest rate
     /// @return The interest rate per second in 18 decimal precision
     function _updateInterestRate() internal returns (uint128) {
         (uint128 avgRate, uint256 endRateAtTarget) = riskEngine().updateInterestRate(
-            _poolUtilizationWAD(),
+            _poolUtilizationWad(),
             s_interestRateAccumulator
         );
         s_interestRateAccumulator =
@@ -924,7 +931,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         LeftRightSigned userState = s_interestState[owner];
         (uint128 currentBorrowIndex, , ) = _calculateCurrentInterestState(
             s_assetsInAMM,
-            _interestRateView(_poolUtilizationWAD())
+            _interestRateView(_poolUtilizationWadView())
         );
         return _getUserInterest(userState, currentBorrowIndex);
     }
@@ -935,7 +942,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     function _calculateCurrentBorrowIndex() internal view returns (uint256) {
         (uint128 currentBorrowIndex, , ) = _calculateCurrentInterestState(
             s_assetsInAMM,
-            _interestRateView(_poolUtilizationWAD())
+            _interestRateView(_poolUtilizationWadView())
         );
         return currentBorrowIndex;
     }
@@ -944,7 +951,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @dev Simulates interest accrual without modifying state
     /// @param owner Address of the user to preview interest for
     /// @return The amount of interest that would be owed if accrued at current epoch
-    function previewOwedInterest(address owner) public view returns (uint128) {
+    function previewOwedInterest(address owner) external view returns (uint128) {
         uint256 simulatedBorrowIndex = _calculateCurrentBorrowIndex();
         LeftRightSigned userState = s_interestState[owner];
         return _getUserInterest(userState, simulatedBorrowIndex);
@@ -955,11 +962,35 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Get the pool utilization defined by the ratio of assets in the AMM to total assets.
+    /// @dev calling this function will also store the utilization in the UTILIZATION_TRANSIENT_SLOT as DECIMALS
+    /// if the current one is higher than the one already stored. This ensures that flash deposits can't lower the utilization for a single tx
     /// @return poolUtilization The pool utilization in basis points
-    function _poolUtilization() internal view returns (uint256 poolUtilization) {
+    function _poolUtilization() internal returns (uint256 poolUtilization) {
+        uint256 storedUtilization;
+        bytes32 slot = UTILIZATION_TRANSIENT_SLOT;
+        assembly {
+            storedUtilization := tload(slot)
+        }
+
+        poolUtilization = _poolUtilizationView();
+
+        console2.log("stored, u", storedUtilization, poolUtilization);
+        if (storedUtilization > poolUtilization) {
+            return storedUtilization;
+        } else {
+            assembly {
+                tstore(slot, poolUtilization)
+            }
+            return poolUtilization;
+        }
+    }
+
+    /// @notice Get the pool utilization defined by the ratio of assets in the AMM to total assets.
+    /// @return poolUtilization The pool utilization in basis points
+    function _poolUtilizationView() internal view returns (uint256 poolUtilization) {
         unchecked {
             return
-                Math.mulDivRoundingUp(
+                poolUtilization = Math.mulDivRoundingUp(
                     s_assetsInAMM + (s_interestRateAccumulator >> 150),
                     DECIMALS,
                     totalAssets()
@@ -968,8 +999,39 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     }
 
     /// @notice Get the pool utilization defined by the ratio of assets in the AMM to total assets.
+    /// @dev calling this function will also store the utilization in the UTILIZATION_TRANSIENT_SLOT as DECIMALS
+    /// if the current one is higher than the one already stored. This ensures that flash deposits can't lower the utilization for a single tx
+    /// @return poolUtilization The pool utilization in basis points
+    function _poolUtilizationWad() internal returns (uint256 poolUtilization) {
+        uint256 storedUtilization;
+        bytes32 slot = UTILIZATION_TRANSIENT_SLOT;
+        assembly {
+            storedUtilization := tload(slot)
+        }
+
+        unchecked {
+            // convert to WAD
+            storedUtilization = (storedUtilization * WAD) / DECIMALS;
+        }
+        poolUtilization = _poolUtilizationWadView();
+
+        if (storedUtilization > poolUtilization) {
+            return storedUtilization;
+        } else {
+            unchecked {
+                // store the utilization as DECIMALS
+                poolUtilization = (poolUtilization * DECIMALS) / WAD;
+            }
+            assembly {
+                tstore(slot, poolUtilization)
+            }
+            return poolUtilization;
+        }
+    }
+
+    /// @notice Get the pool utilization defined by the ratio of assets in the AMM to total assets.
     /// @return poolUtilization The pool utilization in WAD
-    function _poolUtilizationWAD() internal view returns (uint256 poolUtilization) {
+    function _poolUtilizationWadView() internal view returns (uint256 poolUtilization) {
         unchecked {
             return
                 Math.mulDivRoundingUp(
@@ -1230,7 +1292,10 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                     netBorrows
                 );
             }
-            uint32 utilization = isCreation ? uint32(_poolUtilization()) : 0;
+
+            // get the utilization, store the current one in transient storage
+            uint32 utilization = uint32(_poolUtilization());
+
             return (utilization, commission, int128(tokenToPay));
         }
     }

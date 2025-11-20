@@ -100,7 +100,21 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     }
 
     function poolUtilizationHook() external view returns (int128) {
-        return int128(int256(_poolUtilization()));
+        return int128(int256(_poolUtilizationView()));
+    }
+
+    function readUtilizationSlot() external view returns (uint128 u) {
+        bytes32 slot = keccak256("panoptic.utilization.snapshot");
+        assembly {
+            u := tload(slot)
+        }
+    }
+
+    function wipeUtilizationSlot() external returns (uint128 u) {
+        bytes32 slot = keccak256("panoptic.utilization.snapshot");
+        assembly {
+            tstore(slot, 0)
+        }
     }
 }
 
@@ -300,6 +314,62 @@ contract UniswapV3PoolMock {
     function setSlot0(int24 _tick) external {
         slot0.tick = _tick;
         slot0.sqrtPriceX96 = TickMath.getSqrtRatioAtTick(_tick);
+    }
+}
+
+contract Attacker {
+    CollateralTracker internal collateralToken;
+    IERC20Partial internal underlyingToken;
+    PanopticPool internal panopticPool;
+
+    constructor(CollateralTracker _collateral, IERC20Partial _token, PanopticPool _panopticPool) {
+        collateralToken = _collateral;
+        underlyingToken = _token;
+        panopticPool = _panopticPool;
+    }
+
+    /// @notice This function performs the attack sequence in a single transaction
+    function attackUtilizationRate(
+        uint256 depositAmount,
+        TokenId tokenId,
+        uint128 positionSize
+    ) public {
+        // 1. Approve the collateral token to take the funds
+        underlyingToken.approve(address(collateralToken), depositAmount);
+
+        // 2. Deposit funds to ARTIFICIALLY LOWER utilization
+        uint256 shares = collateralToken.deposit(depositAmount, address(this));
+
+        // 3. Call the target function.
+        // The new transient storage defense should be active here.
+        // It should see the "real" utilization from before the deposit.
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+
+        uint128[] memory sizeList = new uint128[](1);
+        sizeList[0] = positionSize;
+
+        int24[2][] memory tickLimits = new int24[2][](1);
+        tickLimits[0][0] = Constants.MAX_POOL_TICK;
+        tickLimits[0][1] = Constants.MIN_POOL_TICK;
+
+        panopticPool.dispatch(posIdList, posIdList, sizeList, new uint64[](1), tickLimits, true);
+
+        (, , , , int256 u0, int256 u1, uint128 positionSize) = panopticPool.positionData(
+            address(this),
+            tokenId
+        );
+
+        // 4. Withdraw the funds immediately
+        // We use redeem to pull out the exact shares we just minted
+        collateralToken.withdraw(
+            collateralToken.convertToAssets(collateralToken.balanceOf(address(this))) -
+                positionSize,
+            address(this),
+            address(this),
+            posIdList,
+            true
+        );
     }
 }
 
@@ -1153,6 +1223,154 @@ contract CollateralTrackerTest is Test, PositionUtils {
             actualAccumulator,
             expectedAccumulator,
             "FAIL: Interest did not accrue correctly after borrow was made"
+        );
+    }
+
+    // This is the new test function
+    function test_Success_Defend_FlashDeposit_mintOptions() public {
+        _initWorld(0);
+        uint104 assets = 1000 ether; // Total LP assets
+
+        // --- Alice and Bob deposit to provide initial liquidity ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(assets, Alice);
+        vm.stopPrank();
+
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(assets, Bob);
+        vm.stopPrank();
+
+        // --- Set up HIGH UTILIZATION state ---
+        // We set 80% of the pool to be "in the AMM" (i.e., borrowed)
+        uint128 totalPoolAssets = uint128(collateralToken0.totalAssets());
+        uint128 amountToBorrow = (totalPoolAssets * 8) / 10; // 80% utilization
+        collateralToken0.setPoolAssets(totalPoolAssets - amountToBorrow);
+        collateralToken0.setInAMM(int128(amountToBorrow));
+
+        // Check that utilization is high and rate is positive
+        (, , , uint256 utilization) = collateralToken0.getPoolData();
+
+        uint256 preAttackUtilization = utilization;
+        uint128 preAttackRate = collateralToken0.interestRate();
+        assertGe(preAttackUtilization, 8000, "FAIL: Utilization should be ~80%");
+        assertGt(preAttackRate, 0, "FAIL: Rate should be positive");
+
+        // --- Warp time forward to accrue interest ---
+        uint256 blockAfterBorrow = block.number;
+        uint256 timestampAfterBorrow = block.timestamp;
+        uint32 blocksToSkip = 7200;
+        vm.roll(blockAfterBorrow + blocksToSkip);
+        vm.warp(timestampAfterBorrow + 12 * blocksToSkip);
+
+        // Fund the attacker with a massive amount of tokens
+        uint256 attackDepositAmount = 1_000_000 ether;
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+
+        strike = 198600 + 6000;
+        width = 2;
+
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        // --- 1. CALCULATE EXPECTED RESULT (No attack) ---
+        // This is what the accumulator SHOULD be, based on the high utilization rate
+
+        uint256 snapshot = vm.snapshot();
+        {
+            vm.startPrank(Alice);
+
+            // 1. Approve the collateral token to take the funds
+            IERC20Partial(token0).approve(address(collateralToken0), attackDepositAmount);
+            // 2. Deposit funds to ARTIFICIALLY LOWER utilization
+
+            uint256 shares = collateralToken0.deposit(attackDepositAmount, Alice);
+            collateralToken0.wipeUtilizationSlot();
+
+            (, , , utilization) = collateralToken0.getPoolData();
+            uint256 postDepositUtilization = utilization;
+            uint128 postDepositRate = collateralToken0.interestRate();
+
+            assertLe(postDepositUtilization, 20, "FAIL: Utilization should be <0.2%");
+            assertGt(preAttackRate, postDepositRate, "FAIL: Rate should be lower after deposit");
+            vm.roll(block.number + 1);
+            vm.warp(block.timestamp + 12 seconds);
+
+            // 3. Call the target function.
+            // The new transient storage defense should NOT be active here.
+            // It should see the "real" utilization from before the deposit.
+            uint128 _assets = assets / 2;
+            console2.log("mint");
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                _assets,
+                0,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
+            );
+            collateralToken0.wipeUtilizationSlot();
+
+            console2.log("get u");
+            (, , , , int256 u0, int256 u1, uint128 positionSize) = panopticPool.positionData(
+                Alice,
+                tokenId
+            );
+            console2.log("burn");
+            burnOptions(
+                panopticPool,
+                positionIdList,
+                new TokenId[](0),
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
+            );
+            collateralToken0.wipeUtilizationSlot();
+
+            assertLe(u0, 21, "FAIL: utilization is less than 0.2% 1");
+
+            // 4. Withdraw the funds immediately
+            // We use redeem to pull out the exact shares we just minted
+            //collateralToken0.redeem(shares, Alice, Alice);
+        }
+
+        uint256 expectedAccumulator = collateralToken0._interestRateAccumulator();
+
+        vm.stopPrank();
+        vm.revertTo(snapshot);
+        // --- 2. RUN THE ATTACK ---
+        (, , , utilization) = collateralToken0.getPoolData();
+
+        preAttackUtilization = utilization;
+        assertEq(preAttackUtilization, 8000, "FAIL: Utilization should be at 80%");
+        console2.log("preAttack", preAttackUtilization);
+        Attacker attacker = new Attacker(collateralToken0, IERC20Partial(token0), panopticPool);
+
+        _grantTokens(address(attacker));
+
+        // Prank as the attacker and run the attack function
+        vm.prank(address(attacker));
+        uint128 _assets = assets;
+        attacker.attackUtilizationRate(attackDepositAmount, tokenId, _assets / 2);
+        (, , , , int256 u0, int256 u1, uint128 positionSize) = panopticPool.positionData(
+            address(attacker),
+            tokenId
+        );
+        assertGe(u0, 8000, "FAIL: utilization is more than 80%");
+        // --- 3. ASSERT THE RESULT ---
+        // The transient storage should have protected the state.
+        // The final accumulator should match the one we calculated
+        // using the *high* utilization rate.
+        uint256 attackAccumulator = collateralToken0._interestRateAccumulator();
+
+        assertTrue(
+            attackAccumulator != expectedAccumulator,
+            "FAIL: Attack was successful! Accumulator was manipulated."
         );
     }
 
