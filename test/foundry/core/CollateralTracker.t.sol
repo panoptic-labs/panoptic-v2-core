@@ -40,7 +40,12 @@ import {PositionUtils, MiniPositionManager} from "../testUtils/PositionUtils.sol
 // CollateralTracker with extended functionality intended to expose internal data
 contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPositionManager {
     //constructor() CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000) {}
-    constructor() CollateralTracker(10) {}
+    constructor() CollateralTracker(10) {
+        bytes32 slot = keccak256("panoptic.utilization.snapshot");
+        assembly {
+            tstore(slot, 0)
+        }
+    }
 
     // whether the token has been initialized already or not
     function initalized() external view returns (bool) {
@@ -110,7 +115,7 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
         }
     }
 
-    function wipeUtilizationSlot() external returns (uint128 u) {
+    function wipeUtilizationSlot() external {
         bytes32 slot = keccak256("panoptic.utilization.snapshot");
         assembly {
             tstore(slot, 0)
@@ -537,8 +542,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         mintList[0] = tokenId;
         tickLimits[0][0] = tickLimitLow;
         tickLimits[0][1] = tickLimitHigh;
-        collateralToken0.wipeUtilizationSlot();
-        collateralToken1.wipeUtilizationSlot();
+
         pp.dispatch(mintList, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
         collateralToken0.wipeUtilizationSlot();
         collateralToken1.wipeUtilizationSlot();
@@ -562,8 +566,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         burnList[0] = tokenId;
         tickLimits[0][0] = tickLimitLow;
         tickLimits[0][1] = tickLimitHigh;
-        collateralToken0.wipeUtilizationSlot();
-        collateralToken1.wipeUtilizationSlot();
         pp.dispatch(burnList, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
         collateralToken0.wipeUtilizationSlot();
         collateralToken1.wipeUtilizationSlot();
@@ -586,8 +588,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             tickLimits[i][1] = tickLimitHigh;
         }
 
-        collateralToken0.wipeUtilizationSlot();
-        collateralToken1.wipeUtilizationSlot();
         pp.dispatch(tokenIds, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
         collateralToken0.wipeUtilizationSlot();
         collateralToken1.wipeUtilizationSlot();
@@ -662,6 +662,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1)
         );
         collateralToken0.wipeUtilizationSlot();
+        collateralToken1.wipeUtilizationSlot();
     }
 
     function _initWorld(uint256 seed) internal {
@@ -2515,6 +2516,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         {
             uint256 charlieBalanceBefore1 = collateralToken0.balanceOf(Charlie);
             vm.startPrank(Charlie);
+            console2.log("previewOwedInterest", collateralToken0.previewOwedInterest(Charlie));
             collateralToken0.accrueInterest();
             vm.stopPrank();
             uint256 charlieBalanceAfter1 = collateralToken0.balanceOf(Charlie);
@@ -2532,6 +2534,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         {
             (int128 baseIndexBefore, int128 netBorrowsBefore) = collateralToken0.interestState(Bob);
 
+            console2.log("accrue here?");
+            console2.log("previewOwedInterest", collateralToken0.previewOwedInterest(Bob));
             collateralToken0.accrueInterest();
 
             uint256 balanceBobAfter = collateralToken0.balanceOf(Bob);
@@ -2550,6 +2554,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
         }
         vm.stopPrank();
+        console2.log("here2?");
 
         // 2. Calculate the expected interest for the period.
         uint256 interestForPeriod = Math.wTaylorCompounded(
@@ -2592,6 +2597,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint256 newAssets = 5000 ether;
             _grantTokens(Bob);
             IERC20Partial(token0).approve(address(collateralToken0), newAssets);
+            console2.log("deposit here?");
+            console2.log("previewOwedInterest", collateralToken0.previewOwedInterest(Bob));
             collateralToken0.deposit(newAssets, Bob);
         }
         (int128 stuckBaseIndex, ) = collateralToken0.interestState(Bob); // His index is still old
@@ -2604,6 +2611,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         {
             uint256 charlieBalanceBefore2 = collateralToken0.balanceOf(Charlie);
             vm.startPrank(Charlie);
+            console2.log("previewOwedInterest", collateralToken0.previewOwedInterest(Charlie));
             collateralToken0.accrueInterest();
             vm.stopPrank();
             uint256 charlieBalanceAfter2 = collateralToken0.balanceOf(Charlie);
@@ -2614,6 +2622,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // NOW, BOB PAYS HIS ACCUMULATED DEBT
         // Since he has funds, this should succeed and take the SOLVENT path
         vm.startPrank(Bob);
+        console2.log("previewOwedInterest", collateralToken0.previewOwedInterest(Bob));
+        console2.log("interest here again?");
         collateralToken0.accrueInterest();
 
         uint256 bobFinalPayment;
@@ -4998,6 +5008,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // first try to mint a position with the wrong tokenId
         tokenId = TokenId.wrap(0).addPoolId(poolId + 1).addLeg(0, 1, 0, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
+        console2.log("0");
 
         vm.expectRevert(Errors.WrongPoolId.selector);
         mintOptions(
@@ -5014,6 +5025,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
 
+        console2.log("1");
         mintOptions(
             panopticPool,
             positionIdList,
@@ -10324,7 +10336,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList.push(tokenIdc);
 
             positionSize0 = uint128(bound(x >> 128, 10 ** 15, 10 ** 18));
-
+            collateralToken0.wipeUtilizationSlot();
+            collateralToken1.wipeUtilizationSlot();
             mintOptions(
                 panopticPool,
                 positionIdList,
@@ -10382,6 +10395,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 console2.log(depositedAssets, insideAMM, creditedShares, currentPoolUtilization);
             }
             console2.log("foo", positionSize0);
+            collateralToken0.wipeUtilizationSlot();
+            collateralToken1.wipeUtilizationSlot();
             mintOptions(
                 panopticPool,
                 positionIdList,

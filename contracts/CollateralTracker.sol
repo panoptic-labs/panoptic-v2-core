@@ -781,9 +781,17 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                         _burn(_owner, shares);
                     }
 
-                    _unrealizedGlobalInterest = burntInterestValue > _unrealizedGlobalInterest
-                        ? 0
-                        : _unrealizedGlobalInterest - burntInterestValue;
+                    // Due to repeated rounding up when:
+                    //  - compounding the global borrow index (multiplicative propagation of rounding error), and
+                    //  - converting a user's interest into shares,
+                    // burntInterestValue can exceed _unrealizedGlobalInterest by a few wei (because that accumulator calculates interest additively).
+                    // In that case, treat all remaining unrealized interest as consumed
+                    // and clamp the bucket to zero; otherwise subtract normally.
+                    if (burntInterestValue > _unrealizedGlobalInterest) {
+                        _unrealizedGlobalInterest = 0;
+                    } else {
+                        _unrealizedGlobalInterest = _unrealizedGlobalInterest - burntInterestValue;
+                    }
                 }
             }
 
