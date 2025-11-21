@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 // Interfaces
-import "forge-std/Test.sol";
 import {PanopticPool} from "./PanopticPool.sol";
 import {RiskEngine} from "./RiskEngine.sol";
 // Inherited implementations
@@ -872,7 +871,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     }
 
     /// @notice Returns the interest rate per second based on pool utilization
-    /// @dev uses the maximum utilization during this transaction, users to prevent flash deposits from loweing the interest rate
+    /// @dev uses the maximum utilization during this transaction, users to prevent flash deposits from lowering the interest rate
     /// @return The interest rate per second in 18 decimal precision
     function _updateInterestRate() internal returns (uint128) {
         (uint128 avgRate, uint256 endRateAtTarget) = riskEngine().updateInterestRate(
@@ -974,7 +973,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
         poolUtilization = _poolUtilizationView();
 
-        console2.log("stored, u", storedUtilization, poolUtilization);
         if (storedUtilization > poolUtilization) {
             return storedUtilization;
         } else {
@@ -1002,7 +1000,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @dev calling this function will also store the utilization in the UTILIZATION_TRANSIENT_SLOT as DECIMALS
     /// if the current one is higher than the one already stored. This ensures that flash deposits can't lower the utilization for a single tx
     /// @return poolUtilization The pool utilization in basis points
-    function _poolUtilizationWad() internal returns (uint256 poolUtilization) {
+    function _poolUtilizationWad() internal returns (uint256) {
         uint256 storedUtilization;
         bytes32 slot = UTILIZATION_TRANSIENT_SLOT;
         assembly {
@@ -1013,17 +1011,14 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             // convert to WAD
             storedUtilization = (storedUtilization * WAD) / DECIMALS;
         }
-        poolUtilization = _poolUtilizationWadView();
+        uint256 poolUtilization = _poolUtilizationWadView();
 
         if (storedUtilization > poolUtilization) {
             return storedUtilization;
         } else {
-            unchecked {
-                // store the utilization as DECIMALS
-                poolUtilization = (poolUtilization * DECIMALS) / WAD;
-            }
+            // store the utilization as DECIMALS
             assembly {
-                tstore(slot, poolUtilization)
+                tstore(slot, div(mul(poolUtilization, DECIMALS), WAD))
             }
             return poolUtilization;
         }

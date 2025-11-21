@@ -67,7 +67,7 @@ contract RiskEngine {
 
     /// @notice Constant, in seconds, used to determine the max elapsed time between adaptive interest rate updates.
     /// @dev the time elapsed will be capped at IRM_MAX_ELAPSED_TIME
-    int256 constant IRM_MAX_ELAPSED_TIME = 4096;
+    int256 public constant IRM_MAX_ELAPSED_TIME = 4096;
 
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS

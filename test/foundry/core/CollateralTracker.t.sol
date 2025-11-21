@@ -537,8 +537,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         mintList[0] = tokenId;
         tickLimits[0][0] = tickLimitLow;
         tickLimits[0][1] = tickLimitHigh;
-
+        collateralToken0.wipeUtilizationSlot();
+        collateralToken1.wipeUtilizationSlot();
         pp.dispatch(mintList, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
+        collateralToken0.wipeUtilizationSlot();
+        collateralToken1.wipeUtilizationSlot();
     }
 
     function burnOptions(
@@ -559,7 +562,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         burnList[0] = tokenId;
         tickLimits[0][0] = tickLimitLow;
         tickLimits[0][1] = tickLimitHigh;
+        collateralToken0.wipeUtilizationSlot();
+        collateralToken1.wipeUtilizationSlot();
         pp.dispatch(burnList, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
+        collateralToken0.wipeUtilizationSlot();
+        collateralToken1.wipeUtilizationSlot();
     }
 
     function burnOptions(
@@ -579,7 +586,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             tickLimits[i][1] = tickLimitHigh;
         }
 
+        collateralToken0.wipeUtilizationSlot();
+        collateralToken1.wipeUtilizationSlot();
         pp.dispatch(tokenIds, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
+        collateralToken0.wipeUtilizationSlot();
+        collateralToken1.wipeUtilizationSlot();
     }
 
     function liquidate(
@@ -590,6 +601,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
         uint64[] memory spreadList = new uint64[](1);
+        collateralToken0.wipeUtilizationSlot();
+        collateralToken1.wipeUtilizationSlot();
 
         pp.dispatchFrom(
             liquidatorList,
@@ -598,6 +611,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             new TokenId[](0),
             LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1)
         );
+        collateralToken0.wipeUtilizationSlot();
+        collateralToken1.wipeUtilizationSlot();
     }
 
     function forceExercise(
@@ -612,6 +627,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint64[] memory spreadList = new uint64[](1);
 
         TokenId[] memory targetList = new TokenId[](1);
+        collateralToken0.wipeUtilizationSlot();
+        collateralToken1.wipeUtilizationSlot();
 
         pp.dispatchFrom(
             exercisorList,
@@ -620,6 +637,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             exerciseeList,
             LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1)
         );
+        collateralToken0.wipeUtilizationSlot();
+        collateralToken1.wipeUtilizationSlot();
     }
 
     function settleLongPremium(
@@ -642,6 +661,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             settleeList,
             LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1)
         );
+        collateralToken0.wipeUtilizationSlot();
     }
 
     function _initWorld(uint256 seed) internal {
@@ -1185,8 +1205,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint32 blocksToSkip = 7200;
         vm.roll(blockAfterBorrow + blocksToSkip);
         vm.warp(timestampAfterBorrow + 12 * blocksToSkip);
+        console2.log("read rate");
         uint128 perSecondInterestRate = collateralToken0.interestRate();
         console2.log("perS1", perSecondInterestRate);
+        console2.log("");
+        console2.log("accrueInterest rate");
         collateralToken0.accrueInterest();
 
         assertGt(perSecondInterestRate, 0, "FAIL: Rate should be positive after borrow");
@@ -1194,7 +1217,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // Calculate the expected interest for the period.
         uint256 interestForPeriod = Math.wTaylorCompounded(
             uint256(perSecondInterestRate),
-            blocksToSkip * 12
+            ((blocksToSkip * 12) >> 2) << 2
         );
         uint256 expectedNewIndex = Math.mulDivWadRoundingUp(
             initialBorrowIndex,
@@ -10343,6 +10366,21 @@ contract CollateralTrackerTest is Test, PositionUtils {
             vm.assume(uint128(longAmounts.rightSlot()) < type(uint104).max);
             vm.assume(uint128(longAmounts.leftSlot()) < type(uint104).max);
 
+            {
+                (, , , , int256 u0, int256 u1, uint128 ps) = panopticPool.positionData(
+                    Bob,
+                    tokenId
+                );
+                console2.log("u0", u0);
+                console2.log("u1", u1);
+                (
+                    uint256 depositedAssets,
+                    uint256 insideAMM,
+                    uint256 creditedShares,
+                    uint256 currentPoolUtilization
+                ) = collateralToken1.getPoolData();
+                console2.log(depositedAssets, insideAMM, creditedShares, currentPoolUtilization);
+            }
             console2.log("foo", positionSize0);
             mintOptions(
                 panopticPool,
@@ -10385,6 +10423,21 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 collateralToken1
             );
 
+            {
+                (, , , , int256 u0, int256 u1, uint128 ps) = panopticPool.positionData(
+                    Bob,
+                    tokenId
+                );
+                console2.log("u0", u0);
+                console2.log("u1", u1);
+                (
+                    uint256 depositedAssets,
+                    uint256 insideAMM,
+                    uint256 creditedShares,
+                    uint256 currentPoolUtilization
+                ) = collateralToken1.getPoolData();
+                console2.log(depositedAssets, insideAMM, creditedShares, currentPoolUtilization);
+            }
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
                 .optionPositionInfo(panopticPool, Bob, tokenId);
 
@@ -10395,6 +10448,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 uint128(shortAmountsAlice.rightSlot() - longAmounts.rightSlot())
             );
             console2.log("inAMM1", uint128(shortAmountsAlice.leftSlot() - longAmounts.leftSlot()));
+
+            console2.log("totalA1", collateralToken1.totalAssets());
             // check user packed utilization
             assertEq(
                 poolUtilization0,
