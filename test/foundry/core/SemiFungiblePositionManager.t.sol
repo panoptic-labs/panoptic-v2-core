@@ -223,7 +223,10 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     /// @notice Populate world state with data from a given pool
     function _cacheWorldState(IUniswapV3Pool _pool) internal {
         pool = _pool;
-        poolId = PanopticMath.getPoolId(address(_pool), _pool.tickSpacing());
+        {
+            poolId = uint64(uint160(address(_pool)) >> 112);
+            poolId += uint64(uint24(_pool.tickSpacing())) << 48;
+        }
         token0 = _pool.token0();
         token1 = _pool.token1();
         isWETH = token0 == address(WETH) ? 0 : 1;
@@ -891,22 +894,18 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
     function test_Success_initializeAMMPool_Single(uint256 x) public {
         _initPool(x);
+        uint64 poolId;
+
+        {
+            poolId = uint64(uint160(address(pool)) >> 112);
+            poolId += uint64(uint24(pool.tickSpacing())) << 48;
+        }
 
         // Check that the pool address is set correctly
-        assertEq(
-            address(
-                sfpm.getUniswapV3PoolFromId(
-                    PanopticMath.getPoolId(address(pool), pool.tickSpacing())
-                )
-            ),
-            address(pool)
-        );
+        assertEq(address(sfpm.getUniswapV3PoolFromId(poolId)), address(pool));
 
         // Check that the pool ID is set correctly
-        assertEq(
-            sfpm.addrToPoolId(address(pool)),
-            PanopticMath.getPoolId(address(pool), pool.tickSpacing()) + 2 ** 255
-        );
+        assertEq(sfpm.addrToPoolId(address(pool)), poolId + 2 ** 255);
     }
 
     function test_Success_initializeAMMPool_Multiple() public {
@@ -914,22 +913,18 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         for (uint256 i = 0; i < pools.length; i++) {
             _cacheWorldState(pools[i]);
             sfpm.initializeAMMPool(token0, token1, fee);
+            uint64 poolId;
+
+            {
+                poolId = uint64(uint160(address(pool)) >> 112);
+                poolId += uint64(uint24(pool.tickSpacing())) << 48;
+            }
 
             // Check that the pool address is set correctly
-            assertEq(
-                address(
-                    sfpm.getUniswapV3PoolFromId(
-                        PanopticMath.getPoolId(address(pool), pool.tickSpacing())
-                    )
-                ),
-                address(pool)
-            );
+            assertEq(address(sfpm.getUniswapV3PoolFromId(poolId)), address(pool));
 
             // Check that the pool ID is set correctly
-            assertEq(
-                sfpm.addrToPoolId(address(pool)),
-                PanopticMath.getPoolId(address(pool), pool.tickSpacing()) + 2 ** 255
-            );
+            assertEq(sfpm.addrToPoolId(address(pool)), poolId + 2 ** 255);
         }
     }
 

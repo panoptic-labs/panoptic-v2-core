@@ -497,7 +497,12 @@ contract PanopticPoolTest is PositionUtils {
 
     function _cacheWorldState(IUniswapV3Pool _pool) internal {
         pool = _pool;
-        poolId = PanopticMath.getPoolId(address(_pool), _pool.tickSpacing());
+
+        {
+            poolId = uint64(uint160(address(_pool)) >> 112);
+            poolId += uint64(uint24(_pool.tickSpacing())) << 48;
+        }
+
         token0 = _pool.token0();
         token1 = _pool.token1();
         isWETH = token0 == address(WETH) ? 0 : 1;

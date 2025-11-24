@@ -183,6 +183,10 @@ contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     ) external view returns (LeftRightUnsigned shortAndNetLiquidity) {
         return s_accountLiquidity[positionKey];
     }
+
+    function __getPoolId(address pool, int24 tickSpacing) external view returns (uint64 poolId) {
+        poolId = _getPoolId(pool, tickSpacing);
+    }
 }
 
 contract RiskEngineHarness is RiskEngine {
@@ -674,7 +678,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function _cacheWorldState(IUniswapV3Pool _pool) internal {
         pool = _pool;
-        poolId = PanopticMath.getPoolId(address(_pool), _pool.tickSpacing());
+        {
+            poolId = uint64(uint160(address(_pool)) >> 112);
+            poolId += uint64(uint24(_pool.tickSpacing())) << 48;
+        }
         token0 = _pool.token0();
         token1 = _pool.token1();
         isWETH = token0 == address(WETH) ? 0 : 1;
@@ -694,7 +701,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         sfpm = new SemiFungiblePositionManagerHarness(V3FACTORY);
         // enforce token sort like the factory does
         (address t0, address t1) = _token0 < _token1 ? (_token0, _token1) : (_token1, _token0);
-        uint64 poolId = sfpm.initializeAMMPool(t0, t1, fee);
+        poolId = sfpm.initializeAMMPool(t0, t1, fee);
 
         // 2) Risk engine
         riskEngine = new RiskEngineHarness(10_000_000, 10_000_000);
@@ -786,7 +793,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         sfpm = new SemiFungiblePositionManagerHarness(V3FACTORY);
         // enforce token sort like the factory does
         (address t0, address t1) = _token0 < _token1 ? (_token0, _token1) : (_token1, _token0);
-        uint64 poolId = sfpm.initializeAMMPool(t0, t1, fee);
+        poolId = sfpm.initializeAMMPool(t0, t1, fee);
 
         // 2) Risk engine
         riskEngine = new RiskEngineHarness(crossBuffer0, crossBuffer1);

@@ -360,7 +360,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         // The base poolId is composed as follows:
         // [tickSpacing][pool pattern]
         // [16 bit tickSpacing][most significant 48 bits of the pool address]
-        poolId = PanopticMath.getPoolId(univ3pool, tickSpacing);
+        poolId = _getPoolId(univ3pool, tickSpacing);
 
         // There are 281,474,976,710,655 possible pool patterns.
         // A modern GPU can generate a collision in such a space relatively quickly,
@@ -409,6 +409,30 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         }
 
         emit PoolInitialized(univ3pool, poolId, minEnforcedTick, maxEnforcedTick);
+    }
+
+    /// @notice Given an address to a Uniswap V3 pool, return its 64-bit ID as used in the `TokenId` of Panoptic.
+    // Example:
+    //      the 64 bits are the 48 *last* (most significant) bits - and thus corresponds to the *first* 12 hex characters (reading left to right)
+    //      of the Uniswap V3 pool address, with the tickSpacing written in the highest 16 bits (i.e, max tickSpacing is 32767)
+    //      e.g.:
+    //        univ3pool   = 0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8
+    //        tickSpacing = 60
+    //      the returned id is then:
+    //        poolPattern = 0x00008ad599c3A0ff
+    //        tickSpacing = 0x003c000000000000    +
+    //        --------------------------------------------
+    //        poolId      = 0x003c8ad599c3A0ff
+    //
+    /// @param univ3pool The address of the Uniswap V3 pool to get the ID of
+    /// @param tickSpacing The tick spacing of `univ3pool`
+    /// @return A uint64 representing a fingerprint of the Uniswap V3 pool address
+    function _getPoolId(address univ3pool, int24 tickSpacing) internal pure returns (uint64) {
+        unchecked {
+            uint64 poolId = uint64(uint160(univ3pool) >> 112);
+            poolId += uint64(uint24(tickSpacing)) << 48;
+            return poolId;
+        }
     }
 
     /// @notice Recomputes and decreases `minEnforcedTick` and/or increases `maxEnforcedTick` for a given `poolId` if certain conditions are met.
