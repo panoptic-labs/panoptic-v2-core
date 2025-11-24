@@ -583,6 +583,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
         return
             _createPositionInAMM(
+                poolKey,
                 slippageTickLimitLow,
                 slippageTickLimitHigh,
                 positionSize,
@@ -614,6 +615,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
         return
             _createPositionInAMM(
+                poolKey,
                 slippageTickLimitLow,
                 slippageTickLimitHigh,
                 positionSize,
@@ -750,6 +752,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
     /// @notice Create the position in the AMM defined by `tokenId`.
     /// @dev Loops over each leg in the tokenId and calls _createLegInAMM for each, which does the mint/burn in the AMM.
+    /// @param poolKey The abi.encode(address) of the Uniswap V3 Pool
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @param positionSize The size of the option position
@@ -758,6 +761,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @return collectedByLeg An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
     /// @return totalMoved The net amount of funds moved to/from Uniswap
     function _createPositionInAMM(
+        bytes calldata poolKey,
         int24 tickLimitLow,
         int24 tickLimitHigh,
         uint128 positionSize,
@@ -874,7 +878,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         }
 
         // Get the current tick of the Uniswap pool, check slippage
-        (, int24 currentTick, , , , , ) = poolData.pool().slot0();
+        int24 currentTick = getCurrentTick(poolKey);
 
         if ((currentTick >= tickLimitHigh) || (currentTick <= tickLimitLow))
             revert Errors.PriceBoundFail(currentTick);
@@ -1487,7 +1491,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         poolId = uint64(s_AddrToPoolIdData[univ3pool]);
     }
 
-    function getCurrentTick(bytes calldata poolKey) external view returns (int24 currentTick) {
+    function getCurrentTick(bytes calldata poolKey) public view returns (int24 currentTick) {
         IUniswapV3Pool univ3pool = IUniswapV3Pool(abi.decode(poolKey, (address)));
         (, currentTick, , , , , ) = univ3pool.slot0();
     }
