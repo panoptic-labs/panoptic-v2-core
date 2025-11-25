@@ -2,19 +2,15 @@
 pragma solidity ^0.8.24;
 // Interfaces
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
-import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
-import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 // Inherited implementations
 import {ERC1155} from "@tokens/ERC1155Minimal.sol";
 import {Multicall} from "@base/Multicall.sol";
 import {TransientReentrancyGuard} from "solmate/utils/TransientReentrancyGuard.sol";
 // Libraries
-import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {Constants} from "@libraries/Constants.sol";
 import {EfficientHash} from "@libraries/EfficientHash.sol";
 import {Errors} from "@libraries/Errors.sol";
-import {FeesCalc} from "@libraries/FeesCalc.sol";
 import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
@@ -163,7 +159,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Retrieve the SFPM PoolIdData struct associated with a given Uniswap V4 poolId.
-    mapping(PoolId idV4 => PoolData poolIdData) internal s_V4toSFPMIdData;
+    mapping(PoolId idV4 => PoolData poolData) internal s_V4toSFPMIdData;
 
     /// @notice Retrieve the Uniswap V4 pool key corresponding to a given poolId.
     mapping(uint64 poolId => PoolKey key) internal s_poolIdToKey;
@@ -336,12 +332,12 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         PoolId idV4 = key.toId();
 
         if (V4StateReader.getSqrtPriceX96(POOL_MANAGER_V4, idV4) == 0)
-            revert Errors.UniswapPoolNotInitialized();
+            revert Errors.PoolNotInitialized();
 
         // return if the pool has already been initialized in SFPM
         // pools can be initialized from the Panoptic Factory or by calling initializeAMMPool directly, so reverting
         // could prevent a PanopticPool from being deployed on a previously initialized but otherwise valid pool
-        if (s_V4toSFPMIdData[idV4].initialized) return;
+        if (s_V4toSFPMIdData[idV4].initialized()) return s_V4toSFPMIdData[idV4].poolId();
 
         // The base poolId is composed as follows:
         // [tickSpacing][pool pattern]
@@ -354,8 +350,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         while (s_poolIdToKey[poolId].tickSpacing != 0) {
             poolId = PanopticMath.incrementPoolPattern(poolId);
         }
-
-        s_poolIdToKey[poolId] = key;
 
         uint128 maxLiquidityPerTick = Math.getMaxLiquidityPerTick(key.tickSpacing);
 
@@ -389,10 +383,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         }
 
         s_V4toSFPMIdData[idV4] = PoolDataLibrary.storePoolData(
-            idV4,
+            maxLiquidityPerTick,
+            poolId,
             minEnforcedTick,
-            maxEnforcedTick
+            maxEnforcedTick,
+            true
         );
+
+        s_poolIdToKey[poolId] = key;
 
         emit PoolInitialized(idV4, poolId, minEnforcedTick, maxEnforcedTick);
     }
@@ -429,12 +427,12 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
         PoolData dataOld = s_V4toSFPMIdData[idV4];
 
-        if (!dataOld.initialized) revert Errors.PoolNotInitialized();
+        if (!dataOld.initialized()) revert Errors.PoolNotInitialized();
 
         // tick spacing is stored in the highest 16 bits of the poolId
-        int24 tickSpacing = int24(uint24(dataOld.poolId >> 48));
+        int24 tickSpacing = int24(uint24(dataOld.poolId() >> 48));
 
-        uint128 maxLiquidityPerTick = dataOld.maxLiquidityPerTick;
+        uint128 maxLiquidityPerTick = dataOld.maxLiquidityPerTick();
 
         int24 minEnforcedTick;
         int24 maxEnforcedTick;
@@ -464,6 +462,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                                 (IERC20Partial(Currency.unwrap(key.currency0)).totalSupply() *
                                     SUPPLY_MULTIPLIER_TICKFILL) / 10_000
                             ),
+                        tickSpacing,
                         maxLiquidityPerTick
                     )
                 )
@@ -471,12 +470,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         }
 
         s_V4toSFPMIdData[idV4] = PoolDataLibrary.storePoolData(
-            dataOld.pool(),
+            maxLiquidityPerTick,
+            dataOld.poolId(),
             minEnforcedTick,
-            maxEnforcedTick
+            maxEnforcedTick,
+            dataOld.initialized()
         );
 
-        emit EnforcedTicksUpdated(address(dataOld.pool()), minEnforcedTick, maxEnforcedTick);
+        emit EnforcedTicksUpdated(idV4, minEnforcedTick, maxEnforcedTick);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -493,7 +494,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @return An array of LeftRight encoded words containing the amount of currency0 and currency1 collected as fees for each leg
     /// @return The net amount of currency0 and currency1 moved to/from the Uniswap V4 pool
     function _unlockAndCreatePositionInAMM(
-        PoolKey calldata key,
+        bytes calldata key,
         int24 tickLimitLow,
         int24 tickLimitHigh,
         uint128 positionSize,
@@ -719,15 +720,15 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                     zeroForOne,
                     swapAmount,
                     zeroForOne
-                        ? Constants.MIN_V4POOL_SQRT_RATIO + 1
-                        : Constants.MAX_V4POOL_SQRT_RATIO - 1
+                        ? Constants.MIN_POOL_SQRT_RATIO + 1
+                        : Constants.MAX_POOL_SQRT_RATIO - 1
                 ),
                 ""
             );
 
             // return token deltas
             return
-                LeftRightSigned.wrap(0).toRightSlot(-swapDelta.amount0()).toLeftSlot(
+                LeftRightSigned.wrap(0).addToRightSlot(-swapDelta.amount0()).addToLeftSlot(
                     -swapDelta.amount1()
                 );
         }
@@ -753,24 +754,19 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         TokenId tokenId,
         bool isBurn
     ) internal returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalMoved) {
-        // Revert if the pool not been previously initialized
-        //if (poolData.pool() == IUniswapV3Pool(address(0)))
-        //    revert Errors.UniswapPoolNotInitialized();
-
         // upper bound on amount of tokens contained across all legs of the position at any given tick
         uint256 amount0;
         uint256 amount1;
 
         LeftRightSigned itmAmounts;
         LeftRightUnsigned totalCollected;
-        uint256 numLegs = tokenId.countLegs();
 
         {
-            PoolData poolIdData = s_V4toSFPMIdData[key.toId()];
-            if (poolIdData.poolId != tokenId.poolId() || poolIdData.poolId == 0)
-                revert Errors.InvalidTokenIdParameter(0);
+            PoolData poolData = s_V4toSFPMIdData[key.toId()];
+            if (poolData.poolId() != tokenId.poolId() || !poolData.initialized())
+                revert Errors.WrongUniswapPool();
 
-            for (uint256 leg = 0; leg < numLegs; ) {
+            for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
                 address _account = account;
                 PoolKey memory _key = key;
                 LiquidityChunk liquidityChunk;
@@ -787,8 +783,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                     if (
                         tickLower % tickSpacing != 0 ||
                         tickUpper % tickSpacing != 0 ||
-                        tickLower < poolIdData.minEnforcedTick ||
-                        tickUpper > poolIdData.maxEnforcedTick
+                        tickLower < poolData.minEnforcedTick() ||
+                        tickUpper > poolData.maxEnforcedTick()
                     ) revert Errors.InvalidTickBound();
                 }
                 unchecked {
@@ -818,8 +814,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 // if tokenType is 0, and we transacted some currency1: then this leg is ITM
                 itmAmounts = itmAmounts.add(
                     _tokenId.tokenType(leg) == 0
-                        ? LeftRightSigned.wrap(0).toLeftSlot(movedLeg.leftSlot())
-                        : LeftRightSigned.wrap(0).toRightSlot(movedLeg.rightSlot())
+                        ? LeftRightSigned.wrap(0).addToLeftSlot(movedLeg.leftSlot())
+                        : LeftRightSigned.wrap(0).addToRightSlot(movedLeg.rightSlot())
                 );
 
                 unchecked {
@@ -837,7 +833,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         if (tickLimitLow > tickLimitHigh) {
             // if the in-the-money amount is not zero (i.e. positions were minted ITM) and the user did provide tick limits LOW > HIGH, then swap necessary amounts
             if ((LeftRightSigned.unwrap(itmAmounts) != 0)) {
-                totalMoved = totalMoved.add(swapInAMM(key, itmAmounts));
+                totalMoved = totalMoved.add(swapInAMM(key, itmAmounts, tokenId.asset(0)));
             }
 
             (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
@@ -873,10 +869,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             );
         }
 
-        PoolKey memory __key = key;
-
         // Get the current tick of the Uniswap pool, check slippage
-        int24 currentTick = getCurrentTick(__key);
+        int24 currentTick = getCurrentTick(key);
 
         if ((currentTick >= tickLimitHigh) || (currentTick <= tickLimitLow))
             revert Errors.PriceBoundFail(currentTick);
@@ -900,7 +894,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     function _createLegInAMM(
         address account,
         PoolKey memory key,
-        IUniswapV3Pool univ3pool,
         TokenId tokenId,
         uint256 leg,
         LiquidityChunk liquidityChunk,
@@ -1018,16 +1011,16 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         unchecked {
             moved = LeftRightSigned
                 .wrap(0)
-                .toRightSlot(feesAccrued.amount0() - delta.amount0())
-                .toLeftSlot(feesAccrued.amount1() - delta.amount1());
+                .addToRightSlot(feesAccrued.amount0() - delta.amount0())
+                .addToLeftSlot(feesAccrued.amount1() - delta.amount1());
         }
 
         // (premium can only be collected if liquidity existed in the chunk prior to this mint)
         if (currentLiquidity.rightSlot() > 0) {
             collectedSingleLeg = LeftRightUnsigned
                 .wrap(0)
-                .toRightSlot(uint128(feesAccrued.amount0()))
-                .toLeftSlot(uint128(feesAccrued.amount1()));
+                .addToRightSlot(uint128(feesAccrued.amount0()))
+                .addToLeftSlot(uint128(feesAccrued.amount1()));
 
             _updateStoredPremia(positionKey, currentLiquidity, collectedSingleLeg);
         }
@@ -1182,7 +1175,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @dev If an atTick parameter is provided that is different from `type(int24).max`, then it will update the premium up to the current
     /// block at the provided atTick value. We do this because this may be called immediately after the Uniswap V4 pool has been touched,
     /// so no need to read the feeGrowths from the Uniswap V4 pool.
-    /// @param poolKey The Uniswap V4 pool id to query
+    /// @param idV4 The Uniswap V4 pool id to query
     /// @param owner The address of the account that is queried
     /// @param tokenType The tokenType of the position
     /// @param tickLower The lower end of the tick range for the position
@@ -1192,7 +1185,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @return The amount of premium (per liquidity X64) for currency0 = `sum(feeGrowthLast0X128)` over every block where the position has been touched
     /// @return The amount of premium (per liquidity X64) for currency1 = `sum(feeGrowthLast0X128)` over every block where the position has been touche
     function getAccountPremium(
-        bytes calldata poolKey,
+        PoolId idV4,
         address owner,
         uint256 tokenType,
         int24 tickLower,
@@ -1200,7 +1193,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         int24 atTick,
         uint256 isLong
     ) external view returns (uint128, uint128) {
-        PoolId idV4 = abi.decode(poolKey);
         bytes32 positionKey = EfficientHash.efficientKeccak256(
             abi.encodePacked(idV4, owner, tokenType, tickLower, tickUpper)
         );
@@ -1243,7 +1235,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                                 )
                             )
                         )
-                        .toLeftSlot(
+                        .addToLeftSlot(
                             uint128(
                                 Math.mulDiv128(
                                     feeGrowthInside1X128 - feeGrowthInside1LastX128,
@@ -1286,23 +1278,23 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         return s_poolIdToKey[poolId];
     }
 
-    /// @notice Returns the current enforced tick limits for a given `poolId`.
-    /// @param poolId The unique pool identifier for a Uniswap V3 pool
+    /// @notice Returns the current enforced tick limits for a given idV4 `poolId`.
+    /// @param idV4 The unique pool identifier for a Uniswap V4 pool
     /// @return The minimum enforced tick for chunks created in the pool corresponding to `poolId`
     /// @return The maximum enforced tick for chunks created in the pool corresponding to `poolId`
-    function getEnforcedTickLimits(uint64 poolId) external view returns (int24, int24) {
-        PoolData poolData = s_V4toSFPMIdData[poolId];
+    function getEnforcedTickLimits(PoolId idV4) external view returns (int24, int24) {
+        PoolData poolData = s_V4toSFPMIdData[idV4];
         return (poolData.minEnforcedTick(), poolData.maxEnforcedTick());
     }
 
     /// @notice Returns the `poolId` for a given Uniswap pool.
     /// @param idV4 The id of the Uniswap Pool
-    /// @return poolId The unique pool identifier corresponding to `univ3pool`
+    /// @return poolId The unique pool identifier corresponding to a idV4
     function getPoolId(PoolId idV4) external view returns (uint64) {
-        return s_V4toSFPMIdData[idV4].poolId;
+        return s_V4toSFPMIdData[idV4].poolId();
     }
 
-    function getCurrentTick(bytes calldata poolKey) public view returns (int24 currentTick) {
+    function getCurrentTick(PoolKey memory poolKey) public view returns (int24 currentTick) {
         currentTick = V4StateReader.getTick(POOL_MANAGER_V4, poolKey.toId());
     }
 }

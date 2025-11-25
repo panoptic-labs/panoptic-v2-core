@@ -80,6 +80,9 @@ library Errors {
     /// @notice Uniswap pool has already been initialized in the SFPM or created in the factory
     error PoolAlreadyInitialized();
 
+    /// @notice The Uniswap Pool has not been created, so it cannot be used in the SFPM or have a PanopticPool created for it by the factory
+    error PoolNotInitialized();
+
     /// @notice CollateralTracker: The user has open/active option positions, so they cannot transfer collateral shares
     error PositionCountNotZero();
 
@@ -107,11 +110,11 @@ library Errors {
     /// or one of the ticks exceeds the `MIN_TICK` or `MAX_TICK` bounds
     error InvalidTickBound();
 
+    /// @notice An unlock callback was attempted from an address other than the canonical Uniswap V4 pool manager
+    error UnauthorizedUniswapCallback();
+
     /// @notice An operation in a library has failed due to an underflow or overflow
     error UnderOverFlow();
-
-    /// @notice The Uniswap Pool has not been created, so it cannot be used in the SFPM or have a PanopticPool created for it by the factory
-    error UniswapPoolNotInitialized();
 
     /// @notice PanopticPool: The supplied poolId does not match the poolId for that Uniswap Pool
     error WrongPoolId();
