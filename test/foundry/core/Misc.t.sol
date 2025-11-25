@@ -155,6 +155,7 @@ contract Misctest is Test, PositionUtils {
 
     uint256 oraclePack;
     uint64 $poolId;
+    uint64 poolId;
     uint256 medianData;
 
     uint256 assetsBefore0;
@@ -523,19 +524,20 @@ contract Misctest is Test, PositionUtils {
         uint256 positionCount = 6;
 
         for (uint256 i = 0; i < positionCount; i++) {
-            TokenId posId = TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg({
-                    legIndex: 0,
-                    _optionRatio: 1,
-                    _asset: 1,
-                    _isLong: 0,
-                    _tokenType: 0,
-                    _riskPartner: 0,
-                    _strike: 0,
-                    _width: int24(uint24(2 * (4 * i + 1)))
-                });
+            {
+                poolId = uint64(uint160(address(uniPool)) >> 112);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+            TokenId posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
+                legIndex: 0,
+                _optionRatio: 1,
+                _asset: 1,
+                _isLong: 0,
+                _tokenType: 0,
+                _riskPartner: 0,
+                _strike: 0,
+                _width: int24(uint24(2 * (4 * i + 1)))
+            });
             posId = posId.addLeg({
                 legIndex: 1,
                 _optionRatio: 1,
@@ -583,19 +585,21 @@ contract Misctest is Test, PositionUtils {
             );
 
             if (i == positionCount - 1) {
-                posId = TokenId
-                    .wrap(0)
-                    .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                    .addLeg({
-                        legIndex: 0,
-                        _optionRatio: 1,
-                        _asset: 1,
-                        _isLong: 0,
-                        _tokenType: 0,
-                        _riskPartner: 0,
-                        _strike: 0,
-                        _width: int24(uint24(2 * (4 * i + 1)))
-                    });
+                {
+                    poolId = uint64(uint160(address(uniPool)) >> 112);
+                    poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+                }
+
+                posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
+                    legIndex: 0,
+                    _optionRatio: 1,
+                    _asset: 1,
+                    _isLong: 0,
+                    _tokenType: 0,
+                    _riskPartner: 0,
+                    _strike: 0,
+                    _width: int24(uint24(2 * (4 * i + 1)))
+                });
                 posId = posId.addLeg({
                     legIndex: 1,
                     _optionRatio: 1,
@@ -663,19 +667,20 @@ contract Misctest is Test, PositionUtils {
         uint256 positionCount = 25;
 
         for (uint256 i = 0; i < positionCount; i++) {
-            TokenId posId = TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg({
-                    legIndex: 0,
-                    _optionRatio: 1,
-                    _asset: 1,
-                    _isLong: 0,
-                    _tokenType: 0,
-                    _riskPartner: 0,
-                    _strike: 0,
-                    _width: int24(uint24(2 * (i + 1)))
-                });
+            {
+                poolId = uint64(uint160(address(uniPool)) >> 112);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+            TokenId posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
+                legIndex: 0,
+                _optionRatio: 1,
+                _asset: 1,
+                _isLong: 0,
+                _tokenType: 0,
+                _riskPartner: 0,
+                _strike: 0,
+                _width: int24(uint24(2 * (i + 1)))
+            });
 
             $posIdList.push(posId);
 
@@ -692,19 +697,20 @@ contract Misctest is Test, PositionUtils {
             );
 
             if (i == positionCount - 1) {
-                posId = TokenId
-                    .wrap(0)
-                    .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                    .addLeg({
-                        legIndex: 0,
-                        _optionRatio: 1,
-                        _asset: 1,
-                        _isLong: 0,
-                        _tokenType: 0,
-                        _riskPartner: 0,
-                        _strike: 0,
-                        _width: int24(uint24(2 * (i + 1)))
-                    });
+                {
+                    poolId = uint64(uint160(address(uniPool)) >> 112);
+                    poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+                }
+                posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
+                    legIndex: 0,
+                    _optionRatio: 1,
+                    _asset: 1,
+                    _isLong: 0,
+                    _tokenType: 0,
+                    _riskPartner: 0,
+                    _strike: 0,
+                    _width: int24(uint24(2 * (i + 1)))
+                });
                 $posIdList[positionCount - 1] = posId;
             }
 
@@ -741,19 +747,20 @@ contract Misctest is Test, PositionUtils {
         uint256 positionCount = 6;
 
         for (uint256 i = 0; i < positionCount; i++) {
-            TokenId posId = TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg({
-                    legIndex: 0,
-                    _optionRatio: 1,
-                    _asset: 1,
-                    _isLong: 0,
-                    _tokenType: 0,
-                    _riskPartner: 0,
-                    _strike: 0,
-                    _width: int24(uint24(2 * (4 * i + 1)))
-                });
+            {
+                poolId = uint64(uint160(address(uniPool)) >> 112);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+            TokenId posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
+                legIndex: 0,
+                _optionRatio: 1,
+                _asset: 1,
+                _isLong: 0,
+                _tokenType: 0,
+                _riskPartner: 0,
+                _strike: 0,
+                _width: int24(uint24(2 * (4 * i + 1)))
+            });
             posId = posId.addLeg({
                 legIndex: 1,
                 _optionRatio: 1,
@@ -800,19 +807,20 @@ contract Misctest is Test, PositionUtils {
                 true
             );
 
-            posId = TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg({
-                    legIndex: 0,
-                    _optionRatio: 1,
-                    _asset: 1,
-                    _isLong: 1,
-                    _tokenType: 0,
-                    _riskPartner: 0,
-                    _strike: 0,
-                    _width: int24(uint24(2 * (4 * i + 1)))
-                });
+            {
+                poolId = uint64(uint160(address(uniPool)) >> 112);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+            posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
+                legIndex: 0,
+                _optionRatio: 1,
+                _asset: 1,
+                _isLong: 1,
+                _tokenType: 0,
+                _riskPartner: 0,
+                _strike: 0,
+                _width: int24(uint24(2 * (4 * i + 1)))
+            });
             posId = posId.addLeg({
                 legIndex: 1,
                 _optionRatio: 1,
@@ -845,19 +853,20 @@ contract Misctest is Test, PositionUtils {
             });
 
             if (i == 0) {
-                posId = TokenId
-                    .wrap(0)
-                    .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                    .addLeg({
-                        legIndex: 0,
-                        _optionRatio: 1,
-                        _asset: 1,
-                        _isLong: 0,
-                        _tokenType: 0,
-                        _riskPartner: 0,
-                        _strike: 0,
-                        _width: int24(uint24(2 * (4 * i + 1)))
-                    });
+                {
+                    poolId = uint64(uint160(address(uniPool)) >> 112);
+                    poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+                }
+                posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
+                    legIndex: 0,
+                    _optionRatio: 1,
+                    _asset: 1,
+                    _isLong: 0,
+                    _tokenType: 0,
+                    _riskPartner: 0,
+                    _strike: 0,
+                    _width: int24(uint24(2 * (4 * i + 1)))
+                });
                 posId = posId.addLeg({
                     legIndex: 1,
                     _optionRatio: 1,
@@ -925,19 +934,20 @@ contract Misctest is Test, PositionUtils {
         uint256 positionCount = 25;
 
         for (uint256 i = 0; i < positionCount; i++) {
-            TokenId posId = TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg({
-                    legIndex: 0,
-                    _optionRatio: 1,
-                    _asset: 1,
-                    _isLong: 0,
-                    _tokenType: 0,
-                    _riskPartner: 0,
-                    _strike: 0,
-                    _width: int24(uint24(2 * (i + 1)))
-                });
+            {
+                poolId = uint64(uint160(address(uniPool)) >> 112);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+            TokenId posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
+                legIndex: 0,
+                _optionRatio: 1,
+                _asset: 1,
+                _isLong: 0,
+                _tokenType: 0,
+                _riskPartner: 0,
+                _strike: 0,
+                _width: int24(uint24(2 * (i + 1)))
+            });
 
             $setupIdList.push(posId);
 
@@ -953,34 +963,36 @@ contract Misctest is Test, PositionUtils {
                 true
             );
 
-            posId = TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg({
+            {
+                poolId = uint64(uint160(address(uniPool)) >> 112);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+            posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
+                legIndex: 0,
+                _optionRatio: 1,
+                _asset: 1,
+                _isLong: 1,
+                _tokenType: 0,
+                _riskPartner: 0,
+                _strike: 0,
+                _width: int24(uint24(2 * (i + 1)))
+            });
+
+            if (i == 0) {
+                {
+                    poolId = uint64(uint160(address(uniPool)) >> 112);
+                    poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+                }
+                posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
                     legIndex: 0,
                     _optionRatio: 1,
                     _asset: 1,
-                    _isLong: 1,
+                    _isLong: 0,
                     _tokenType: 0,
                     _riskPartner: 0,
                     _strike: 0,
                     _width: int24(uint24(2 * (i + 1)))
                 });
-
-            if (i == 0) {
-                posId = TokenId
-                    .wrap(0)
-                    .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                    .addLeg({
-                        legIndex: 0,
-                        _optionRatio: 1,
-                        _asset: 1,
-                        _isLong: 0,
-                        _tokenType: 0,
-                        _riskPartner: 0,
-                        _strike: 0,
-                        _width: int24(uint24(2 * (i + 1)))
-                    });
             }
 
             $posIdList.push(posId);
@@ -1059,9 +1071,11 @@ contract Misctest is Test, PositionUtils {
 
         uint256 expectedDOSCost = Math.max(2100 * 10 ** 18, token0Supply);
 
-        (int24 tickLimitLower, int24 tickLimitUpper) = sfpm.getEnforcedTickLimits(
-            PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing())
-        );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+        (int24 tickLimitLower, int24 tickLimitUpper) = sfpm.getEnforcedTickLimits(poolId);
 
         (uint256 maxDOSCost, ) = Math.getAmountsForLiquidity(
             -100_000,
@@ -1132,46 +1146,48 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Alice);
 
-        TokenId tickPosition = TokenId
-            .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(
-                0,
-                1,
-                0,
-                0,
-                0,
-                0,
-                (tickLimitUpper / uniPool.tickSpacing()) *
-                    uniPool.tickSpacing() +
-                    int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
-                1
-            );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+        TokenId tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            (tickLimitUpper / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() +
+                int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
+            1
+        );
 
         vm.expectRevert(Errors.InvalidTickBound.selector);
         sfpm.mintTokenizedPosition(
-            new bytes(0),
+            abi.encode(uniPool),
             tickPosition,
             1_000_000,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK
         );
 
-        tickPosition = TokenId
-            .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(
-                0,
-                1,
-                0,
-                0,
-                0,
-                0,
-                (tickLimitUpper / uniPool.tickSpacing()) *
-                    uniPool.tickSpacing() -
-                    int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
-                1
-            );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+        tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            (tickLimitUpper / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() -
+                int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
+            1
+        );
 
         if (
             (tickLimitUpper / uniPool.tickSpacing()) *
@@ -1181,7 +1197,7 @@ contract Misctest is Test, PositionUtils {
             uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
-                new bytes(0),
+                abi.encode(uniPool),
                 tickPosition,
                 1_000_000,
                 Constants.MIN_POOL_TICK,
@@ -1194,47 +1210,49 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Alice);
 
-        tickPosition = TokenId
-            .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(
-                0,
-                1,
-                1,
-                0,
-                0,
-                0,
-                (tickLimitLower / uniPool.tickSpacing()) *
-                    uniPool.tickSpacing() -
-                    int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
-                1
-            );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+        tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            (tickLimitLower / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() -
+                int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
+            1
+        );
 
         vm.expectRevert(Errors.InvalidTickBound.selector);
         sfpm.mintTokenizedPosition(
-            new bytes(0),
+            abi.encode(uniPool),
             tickPosition,
             1_000_000,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK
         );
 
-        tickPosition = TokenId
-            .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(
-                0,
-                1,
-                1,
-                0,
-                0,
-                0,
-                (tickLimitLower / uniPool.tickSpacing()) *
-                    uniPool.tickSpacing() +
-                    uniPool.tickSpacing() /
-                    2,
-                1
-            );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+        tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            (tickLimitLower / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() +
+                uniPool.tickSpacing() /
+                2,
+            1
+        );
 
         if (
             (tickLimitUpper / uniPool.tickSpacing()) *
@@ -1244,7 +1262,7 @@ contract Misctest is Test, PositionUtils {
             uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
-                new bytes(0),
+                abi.encode(uniPool),
                 tickPosition,
                 1_000_000,
                 Constants.MIN_POOL_TICK,
@@ -1291,9 +1309,11 @@ contract Misctest is Test, PositionUtils {
         token0.editSupply(token0Supply);
         token1.editSupply(token1Supply);
 
-        sfpm.expandEnforcedTickRange(
-            PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing())
-        );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+        sfpm.expandEnforcedTickRange(poolId);
 
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
@@ -1312,9 +1332,12 @@ contract Misctest is Test, PositionUtils {
             Math.min(token0Supply, token0SupplyOrig)
         );
 
-        (int24 tickLimitLower, int24 tickLimitUpper) = sfpm.getEnforcedTickLimits(
-            PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing())
-        );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        (int24 tickLimitLower, int24 tickLimitUpper) = sfpm.getEnforcedTickLimits(poolId);
 
         (uint256 maxDOSCost, ) = Math.getAmountsForLiquidity(
             -100_000,
@@ -1385,46 +1408,50 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Alice);
 
-        TokenId tickPosition = TokenId
-            .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(
-                0,
-                1,
-                0,
-                0,
-                0,
-                0,
-                (tickLimitUpper / uniPool.tickSpacing()) *
-                    uniPool.tickSpacing() +
-                    int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
-                1
-            );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        TokenId tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            (tickLimitUpper / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() +
+                int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
+            1
+        );
 
         vm.expectRevert(Errors.InvalidTickBound.selector);
         sfpm.mintTokenizedPosition(
-            new bytes(0),
+            abi.encode(uniPool),
             tickPosition,
             1_000_000,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK
         );
 
-        tickPosition = TokenId
-            .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(
-                0,
-                1,
-                0,
-                0,
-                0,
-                0,
-                (tickLimitUpper / uniPool.tickSpacing()) *
-                    uniPool.tickSpacing() -
-                    int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
-                1
-            );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            (tickLimitUpper / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() -
+                int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
+            1
+        );
 
         if (
             (tickLimitUpper / uniPool.tickSpacing()) *
@@ -1434,7 +1461,7 @@ contract Misctest is Test, PositionUtils {
             uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
-                new bytes(0),
+                abi.encode(uniPool),
                 tickPosition,
                 1_000_000,
                 Constants.MIN_POOL_TICK,
@@ -1447,47 +1474,51 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Alice);
 
-        tickPosition = TokenId
-            .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(
-                0,
-                1,
-                1,
-                0,
-                0,
-                0,
-                (tickLimitLower / uniPool.tickSpacing()) *
-                    uniPool.tickSpacing() -
-                    int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
-                1
-            );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            (tickLimitLower / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() -
+                int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
+            1
+        );
 
         vm.expectRevert(Errors.InvalidTickBound.selector);
         sfpm.mintTokenizedPosition(
-            new bytes(0),
+            abi.encode(uniPool),
             tickPosition,
             1_000_000,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK
         );
 
-        tickPosition = TokenId
-            .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(
-                0,
-                1,
-                1,
-                0,
-                0,
-                0,
-                (tickLimitLower / uniPool.tickSpacing()) *
-                    uniPool.tickSpacing() +
-                    uniPool.tickSpacing() /
-                    2,
-                1
-            );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            (tickLimitLower / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() +
+                uniPool.tickSpacing() /
+                2,
+            1
+        );
 
         if (
             (tickLimitUpper / uniPool.tickSpacing()) *
@@ -1497,7 +1528,7 @@ contract Misctest is Test, PositionUtils {
             uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
-                new bytes(0),
+                abi.encode(uniPool),
                 tickPosition,
                 1_000_000,
                 Constants.MIN_POOL_TICK,
@@ -1514,13 +1545,23 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // mint OTM position
         $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 1, 15, 1)
-                .addLeg(1, 1, 1, 0, 1, 0, 15, 1)
+            TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 1, 15, 1).addLeg(
+                1,
+                1,
+                1,
+                0,
+                1,
+                0,
+                15,
+                1
+            )
         );
 
         vm.startPrank(Bob);
@@ -1553,13 +1594,23 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // mint OTM position
         $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 1, 15, 1)
-                .addLeg(1, 1, 1, 0, 1, 0, -15, 1)
+            TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 1, 15, 1).addLeg(
+                1,
+                1,
+                1,
+                0,
+                1,
+                0,
+                -15,
+                1
+            )
         );
 
         vm.startPrank(Bob);
@@ -1587,12 +1638,12 @@ contract Misctest is Test, PositionUtils {
     function test_fail_mint0liquidity_SFPM() public {
         vm.startPrank(Seller);
 
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 0, 0, 0, 0, -224040, 3540)
-        );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, -224040, 3540));
 
         vm.expectRevert(Errors.ChunkHasZeroLiquidity.selector);
         mintOptions(pp, $posIdList, 537, 0, Constants.MIN_POOL_TICK, Constants.MAX_POOL_TICK, true);
@@ -1607,11 +1658,13 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         vm.startPrank(Alice);
-        $posIdList[0] = TokenId
-            .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(0, 1, 0, 1, 0, 0, -224040, 3540);
+        $posIdList[0] = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, -224040, 3540);
 
         vm.expectRevert(Errors.ChunkHasZeroLiquidity.selector);
         mintOptions(pp, $posIdList, 537, 0, Constants.MIN_POOL_TICK, Constants.MAX_POOL_TICK, true);
@@ -1627,12 +1680,12 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Seller);
 
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, 35, 1)
-        );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 35, 1));
 
         mintOptions(
             pp,
@@ -1644,12 +1697,22 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // mint OTM position
-        $posIdList[0] = TokenId
-            .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(0, 1, 1, 0, 0, 1, 15, 1)
-            .addLeg(1, 1, 1, 1, 0, 0, 35, 1);
+        $posIdList[0] = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 1, 15, 1).addLeg(
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            35,
+            1
+        );
 
         vm.startPrank(Bob);
 
@@ -1683,12 +1746,12 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Seller);
 
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 1, 0, -35, 1)
-        );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, -35, 1));
 
         mintOptions(
             pp,
@@ -1701,11 +1764,16 @@ contract Misctest is Test, PositionUtils {
         );
 
         // mint OTM position
-        $posIdList[0] = TokenId
-            .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(0, 1, 1, 0, 1, 1, -15, 1)
-            .addLeg(1, 1, 1, 1, 1, 0, -35, 1);
+        $posIdList[0] = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 1, -15, 1).addLeg(
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            -35,
+            1
+        );
 
         vm.startPrank(Bob);
 
@@ -1738,12 +1806,12 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, 15, 1)
-        );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
 
         vm.startPrank(Seller);
 
@@ -1757,10 +1825,12 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        $posIdList[0] = TokenId
-            .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(0, 1, 1, 1, 0, 0, 15, 1);
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        $posIdList[0] = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 15, 1);
 
         vm.startPrank(Alice);
         mintOptions(
@@ -1817,18 +1887,12 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
-        $posIdList.push(
-            TokenId.wrap(0).addPoolId(sfpm.getPoolId(address(uniPool))).addLeg(
-                0,
-                1,
-                1,
-                0,
-                1,
-                0,
-                -35,
-                1
-            )
-        );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, -35, 1));
 
         vm.startPrank(Seller);
         mintOptions(
@@ -1882,18 +1946,12 @@ contract Misctest is Test, PositionUtils {
 
         $tempIdList = $posIdList;
 
-        $posIdList.push(
-            TokenId.wrap(0).addPoolId(sfpm.getPoolId(address(uniPool))).addLeg(
-                0,
-                1,
-                1,
-                1,
-                1,
-                0,
-                -35,
-                1
-            )
-        );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 1, 0, -35, 1));
 
         mintOptions(
             pp,
@@ -2153,18 +2211,12 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
-        $posIdList.push(
-            TokenId.wrap(0).addPoolId(sfpm.getPoolId(address(uniPool))).addLeg(
-                0,
-                1,
-                1,
-                0,
-                0,
-                0,
-                15,
-                1
-            )
-        );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
 
         vm.startPrank(Seller);
 
@@ -2177,6 +2229,11 @@ contract Misctest is Test, PositionUtils {
             Constants.MAX_POOL_TICK,
             true
         );
+
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
 
         $posIdList[0] = TokenId.wrap(0).addPoolId(sfpm.getPoolId(address(uniPool))).addLeg(
             0,
@@ -2248,20 +2305,15 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
-        // mint OTM position
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, 15, 1)
-        );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
 
-        $tempIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 1, 0, 0, 15, 1)
-        );
+        // mint OTM position
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
+
+        $tempIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 15, 1));
 
         vm.startPrank(Alice);
         mintOptions(
@@ -2297,13 +2349,13 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // mint OTM position
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, 15, 1)
-        );
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
 
         vm.startPrank(Alice);
         mintOptions(
@@ -2318,11 +2370,22 @@ contract Misctest is Test, PositionUtils {
 
         TokenId[] memory longPositionList = new TokenId[](256);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         for (uint256 i; i < 256; ++i) {
-            TokenId tempTokenId = TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, int24(int256(10 * i)), 2);
+            TokenId tempTokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                int24(int256(10 * i)),
+                2
+            );
 
             longPositionList[i] = tempTokenId;
         }
@@ -2381,27 +2444,17 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // mint OTM position
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, 15, 1)
-        );
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
 
-        $tempIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, 15, 1)
-        );
+        $tempIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
 
-        $tempIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 1, 0, 0, 15, 1)
-        );
+        $tempIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 15, 1));
 
         assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
         assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
@@ -2516,13 +2569,13 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // mint OTM position
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, 15, 1)
-        );
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
 
         $tempIdList = $posIdList;
 
@@ -2538,12 +2591,12 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 1, 0, 0, 15, 1)
-        );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 15, 1));
 
         // the collectedAmount will always be a round number, so it's actually not possible to get a greater grossPremium than sum(collected, owed)
         // (owed and gross are both calculated from collectedAmount)
@@ -2619,13 +2672,13 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // mint OTM position
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, 15, 1)
-        );
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
 
         $tempIdList = $posIdList;
 
@@ -2641,12 +2694,12 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 1, 0, 0, 15, 1)
-        );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 15, 1));
 
         // only 20 tokens actually settled, but 22 owed... 2 tokens taken from PLPs
         // we may need to redefine availablePremium as max(availablePremium, settledTokens)
@@ -2695,13 +2748,13 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // sell primary chunk
-        $posIdLists[0].push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, 15, 1)
-        );
+        $posIdLists[0].push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
 
         // mint some amount of liquidity with Alice owning 1/2 and Bob and Charlie owning 1/4 respectively
         // then, remove 9.737% of that liquidity at the same ratio
@@ -2747,12 +2800,12 @@ contract Misctest is Test, PositionUtils {
         // sell unrelated, non-overlapping, dummy chunk (to buy for match testing)
         vm.startPrank(Seller);
 
-        $posIdLists[1].push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 1, 0, -15, 1)
-        );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        $posIdLists[1].push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, -15, 1));
 
         mintOptions(
             pp,
@@ -2764,13 +2817,13 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // position type A: 1-leg long primary
-        $posIdLists[2].push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 1, 0, 0, 15, 1)
-        );
+        $posIdLists[2].push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 15, 1));
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
             vm.startPrank(Buyers[i]);
@@ -2783,15 +2836,25 @@ contract Misctest is Test, PositionUtils {
                 Constants.MIN_POOL_TICK,
                 true
             );
+        }
+
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
         // position type B: 2-leg long primary and long dummy
         $posIdLists[2].push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 1, 0, 0, 15, 1)
-                .addLeg(1, 1, 1, 1, 1, 1, -15, 1)
+            TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 15, 1).addLeg(
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                -15,
+                1
+            )
         );
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
@@ -2805,15 +2868,25 @@ contract Misctest is Test, PositionUtils {
                 Constants.MIN_POOL_TICK,
                 true
             );
+        }
+
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
         // position type C: 2-leg long primary and short dummy
         $posIdLists[2].push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 1, 0, 0, 15, 1)
-                .addLeg(1, 1, 1, 0, 1, 1, -15, 1)
+            TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 15, 1).addLeg(
+                1,
+                1,
+                1,
+                0,
+                1,
+                1,
+                -15,
+                1
+            )
         );
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
@@ -2829,13 +2902,13 @@ contract Misctest is Test, PositionUtils {
             );
         }
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // position type D: 1-leg long dummy
-        $posIdLists[2].push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 1, 1, 0, -15, 1)
-        );
+        $posIdLists[2].push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 1, 0, -15, 1));
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
             vm.startPrank(Buyers[i]);
@@ -3058,12 +3131,17 @@ contract Misctest is Test, PositionUtils {
         // sell unrelated, non-overlapping, dummy chunk to replenish removed liquidity
         vm.startPrank(Seller);
 
-        $posIdLists[1].push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, 15, 1)
-        );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        $posIdLists[1].push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
 
         mintOptions(
             pp,
@@ -3501,13 +3579,13 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // mint OTM position
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, 15, 1)
-        );
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
 
         // mint some amount of liquidity with Alice owning 1/2 and Bob and Charlie owning 1/4 respectively
         // then, remove 9.737% of that liquidity at the same ratio
@@ -3555,12 +3633,12 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 1, 0, 0, 15, 1)
-        );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 15, 1));
 
         vm.startPrank(Alice);
 
@@ -3724,13 +3802,13 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // mint OTM position
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, 15, 1)
-        );
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
 
         vm.startPrank(Bob);
 
@@ -3758,13 +3836,13 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // mint OTM position
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, 15, 1)
-        );
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
 
         vm.startPrank(Bob);
 
@@ -3792,13 +3870,13 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // mint OTM position
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, 15, 1)
-        );
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
 
         vm.startPrank(Bob);
 
@@ -3829,13 +3907,13 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // mint OTM position
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, 15, 1)
-        );
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
 
         vm.startPrank(Bob);
 
@@ -3876,13 +3954,24 @@ contract Misctest is Test, PositionUtils {
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         int24 tickSpacing = uniPool.tickSpacing();
         // mint ITM position
         $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 1, 0, (0 / tickSpacing) * tickSpacing, 2)
+            TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                (0 / tickSpacing) * tickSpacing,
+                2
+            )
         );
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
@@ -3935,13 +4024,24 @@ contract Misctest is Test, PositionUtils {
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         int24 tickSpacing = uniPool.tickSpacing();
         // mint ITM position
         $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, (0 / tickSpacing) * tickSpacing, 2)
+            TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                (0 / tickSpacing) * tickSpacing,
+                2
+            )
         );
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
@@ -3993,13 +4093,24 @@ contract Misctest is Test, PositionUtils {
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         int24 tickSpacing = uniPool.tickSpacing();
         // mint ITM position
         $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 1, 0, (0 / tickSpacing) * tickSpacing, 2)
+            TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                (0 / tickSpacing) * tickSpacing,
+                2
+            )
         );
 
         (, int24 staleTick, , , , , ) = uniPool.slot0();
@@ -4160,13 +4271,24 @@ contract Misctest is Test, PositionUtils {
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         int24 tickSpacing = uniPool.tickSpacing();
         // mint ITM position
         $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, (0 / tickSpacing) * tickSpacing, 2)
+            TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                (0 / tickSpacing) * tickSpacing,
+                2
+            )
         );
 
         (, int24 staleTick, , , , , ) = uniPool.slot0();
@@ -4331,13 +4453,13 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // mint OTM position
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, 15, 1)
-        );
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
 
         vm.startPrank(Bob);
 
@@ -4489,13 +4611,24 @@ contract Misctest is Test, PositionUtils {
         assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation 0");
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         int24 tickSpacing = uniPool.tickSpacing();
         // mint OTM position
         $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, (-900 / tickSpacing) * tickSpacing, 2)
+            TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                (-900 / tickSpacing) * tickSpacing,
+                2
+            )
         );
 
         vm.startPrank(Bob);
@@ -4590,13 +4723,24 @@ contract Misctest is Test, PositionUtils {
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
         assertTrue(pp.isSafeMode() > 0, "in safe mode");
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         int24 tickSpacing = uniPool.tickSpacing();
         // mint ITM position
         $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, (-2500 / tickSpacing) * tickSpacing, 2)
+            TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                (-2500 / tickSpacing) * tickSpacing,
+                2
+            )
         );
 
         vm.startPrank(Bob);
@@ -4671,13 +4815,24 @@ contract Misctest is Test, PositionUtils {
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         int24 tickSpacing = uniPool.tickSpacing();
         // mint OTM position
         $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 1, 0, (-500 / tickSpacing) * tickSpacing, 2)
+            TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                (-500 / tickSpacing) * tickSpacing,
+                2
+            )
         );
 
         vm.startPrank(Bob);
@@ -4765,13 +4920,13 @@ contract Misctest is Test, PositionUtils {
 
         (, , slowOracleTick, , oraclePack) = pp.getOracleTicks();
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // mint OTM position
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, 15, 4095)
-        );
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 4095));
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
         vm.warp(block.timestamp + 63);
@@ -4872,13 +5027,13 @@ contract Misctest is Test, PositionUtils {
 
         (, , slowOracleTick, , oraclePack) = pp.getOracleTicks();
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // mint OTM position
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, 15, 4095)
-        );
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 4095));
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
@@ -4975,13 +5130,13 @@ contract Misctest is Test, PositionUtils {
 
         (, , slowOracleTick, , oraclePack) = pp.getOracleTicks();
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // mint OTM position
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 0, 0, 15, 4095)
-        );
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 4095));
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
@@ -5064,7 +5219,11 @@ contract Misctest is Test, PositionUtils {
         token1.mint(Swapper, type(uint128).max);
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
-        uint64 poolId = PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing());
+
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
 
         uint256 n;
         int24 minTick;
@@ -5177,7 +5336,12 @@ contract Misctest is Test, PositionUtils {
         token1.mint(Swapper, type(uint128).max);
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
-        uint64 poolId = PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing());
+
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         uint256 n;
         int24 minTick;
         {
@@ -5349,7 +5513,13 @@ contract Misctest is Test, PositionUtils {
         token1.mint(Swapper, type(uint128).max);
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
-        $poolId = PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing());
+
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        $poolId = poolId;
         uint256 n;
         {
             int24 minTick;
@@ -5566,10 +5736,12 @@ contract Misctest is Test, PositionUtils {
         // L = 1
         uniPool.liquidity();
 
-        TokenId tokenId = TokenId
-            .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(0, 1, 1, 0, 0, 0, 0, 4094);
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 0, 4094);
 
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
@@ -5682,10 +5854,15 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Seller);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         $posIdList.push(
             TokenId
                 .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
+                .addPoolId(poolId)
                 .addLeg(
                     0,
                     1,
@@ -5718,10 +5895,15 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // long put = 1.5, short put 1.25, short call 0.75, long call 0.5
         $posIdList[0] = TokenId
             .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
+            .addPoolId(poolId)
             .addLeg(0, 1, 1, 1, 1, 0, 4055, 1)
             .addLeg(1, 1, 1, 0, 1, 1, 2235, 1)
             .addLeg(2, 1, 1, 0, 0, 2, -2875, 1)
@@ -5792,10 +5974,15 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Seller);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         $posIdList.push(
             TokenId
                 .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
+                .addPoolId(poolId)
                 .addLeg(
                     0,
                     1,
@@ -5828,10 +6015,15 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         // long call = 1.25, short call = 1.5, short call = 1.75, long call = 2
         $posIdList[0] = TokenId
             .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
+            .addPoolId(poolId)
             .addLeg(0, 1, 0, 1, 0, 0, 12235, 1)
             .addLeg(1, 1, 0, 0, 0, 1, 24055, 1)
             .addLeg(2, 1, 0, 0, 0, 2, 35595, 1)
@@ -5894,20 +6086,22 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Seller);
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(
-                    0,
-                    1,
-                    1,
-                    0,
-                    1,
-                    0,
-                    -13_865, // 0.25 put
-                    1
-                )
+            TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                -13_865, // 0.25 put
+                1
+            )
         );
 
         mintOptions(
@@ -5923,7 +6117,7 @@ contract Misctest is Test, PositionUtils {
         // long put = 0.25, short put = 0.5, short put = 0.75, short call = 0.9
         $posIdList[0] = TokenId
             .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
+            .addPoolId(poolId)
             .addLeg(0, 1, 1, 1, 1, 0, -13_865, 1)
             .addLeg(1, 1, 1, 0, 1, 1, -6935, 1)
             .addLeg(2, 1, 1, 0, 1, 2, -2875, 1)
@@ -6004,12 +6198,12 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 1, 0, 1, 0, -15, 1)
-        );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, -15, 1));
 
         uint256 totalSupplyBefore = ct1.totalSupply() - ct1.convertToShares(1_003_003);
 
@@ -6058,10 +6252,22 @@ contract Misctest is Test, PositionUtils {
         for (uint256 i; i < 4; ++i) {
             uint256 asset = i % 2;
             uint256 tokenType = i / 2;
-            TokenId tokenId = TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, asset, 0, tokenType, 0, 0, 2);
+
+            {
+                poolId = uint64(uint160(address(uniPool)) >> 112);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+
+            TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                asset,
+                0,
+                tokenType,
+                0,
+                0,
+                2
+            );
 
             TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
@@ -6200,10 +6406,22 @@ contract Misctest is Test, PositionUtils {
 
         uint256 asset = 0;
         uint256 tokenType = 0;
-        TokenId tokenId = TokenId
-            .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(0, 1, asset, 0, tokenType, 0, 0, 2);
+
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            asset,
+            0,
+            tokenType,
+            0,
+            0,
+            2
+        );
 
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
@@ -6270,10 +6488,22 @@ contract Misctest is Test, PositionUtils {
 
         uint256 asset = 0;
         uint256 tokenType = 0;
-        TokenId tokenId = TokenId
-            .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(0, 1, asset, 0, tokenType, 0, 0, 2);
+
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            asset,
+            0,
+            tokenType,
+            0,
+            0,
+            2
+        );
 
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
@@ -6298,10 +6528,16 @@ contract Misctest is Test, PositionUtils {
 
         posIdList2[0] = tokenId;
 
-        TokenId tokenId2 = TokenId
-            .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(0, 2, asset, 0, tokenType, 0, 0, 2);
+        TokenId tokenId2 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            2,
+            asset,
+            0,
+            tokenType,
+            0,
+            0,
+            2
+        );
 
         posIdList2[1] = tokenId2;
 
@@ -6367,10 +6603,21 @@ contract Misctest is Test, PositionUtils {
 
         uint256 asset = 0;
         uint256 tokenType = 0;
-        TokenId tokenId = TokenId
-            .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(0, 1, asset, 0, tokenType, 0, 0, 100);
+
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            asset,
+            0,
+            tokenType,
+            0,
+            0,
+            100
+        );
 
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
@@ -6506,10 +6753,22 @@ contract Misctest is Test, PositionUtils {
 
         uint256 asset = 0;
         uint256 tokenType = 0;
-        TokenId tokenId = TokenId
-            .wrap(0)
-            .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(0, 1, asset, 0, tokenType, 0, 0, 100);
+
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            asset,
+            0,
+            tokenType,
+            0,
+            0,
+            100
+        );
 
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
@@ -6639,10 +6898,22 @@ contract Misctest is Test, PositionUtils {
         for (uint256 i; i < 4; ++i) {
             uint256 asset = i % 2;
             uint256 tokenType = i / 2;
-            TokenId tokenId = TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, asset, 0, tokenType, 0, 0, 2);
+
+            {
+                poolId = uint64(uint160(address(uniPool)) >> 112);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+
+            TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                asset,
+                0,
+                tokenType,
+                0,
+                0,
+                2
+            );
             //.addLeg(legIndex, optionRatio, asset, isLong, tokenType, riskPartner, strike, width);
 
             TokenId[] memory posIdList = new TokenId[](1);
@@ -6726,10 +6997,22 @@ contract Misctest is Test, PositionUtils {
         for (uint256 i; i < 4; ++i) {
             uint256 asset = i % 2;
             uint256 tokenType = i / 2;
-            TokenId tokenId = TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, asset, 0, tokenType, 0, 0, 2);
+
+            {
+                poolId = uint64(uint160(address(uniPool)) >> 112);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+
+            TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                asset,
+                0,
+                tokenType,
+                0,
+                0,
+                2
+            );
             //.addLeg(legIndex, optionRatio, asset, isLong, tokenType, riskPartner, strike, width);
 
             TokenId[] memory posIdList = new TokenId[](1);
@@ -6819,11 +7102,15 @@ contract Misctest is Test, PositionUtils {
         for (uint256 i; i < 8; ++i) {
             uint256 asset = i % 2;
             uint256 tokenType = ((i % 4) / 2);
+
+            {
+                poolId = uint64(uint160(address(uniPool)) >> 112);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+
             TokenId tokenId;
             {
-                tokenId = TokenId.wrap(0).addPoolId(
-                    PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing())
-                );
+                tokenId = TokenId.wrap(0).addPoolId(poolId);
                 tokenId = tokenId.addLeg(
                     0,
                     1,
@@ -6923,11 +7210,15 @@ contract Misctest is Test, PositionUtils {
         for (uint256 i; i < 8; ++i) {
             uint256 asset = i % 2;
             uint256 tokenType = ((i % 4) / 2);
+
+            {
+                poolId = uint64(uint160(address(uniPool)) >> 112);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+
             TokenId tokenId;
             {
-                tokenId = TokenId.wrap(0).addPoolId(
-                    PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing())
-                );
+                tokenId = TokenId.wrap(0).addPoolId(poolId);
                 tokenId = tokenId.addLeg(
                     0,
                     1,
@@ -7028,11 +7319,15 @@ contract Misctest is Test, PositionUtils {
         for (uint256 i; i < 8; ++i) {
             uint256 asset = i % 2;
             uint256 tokenType = ((i % 4) / 2);
+
+            {
+                poolId = uint64(uint160(address(uniPool)) >> 112);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+
             TokenId tokenId;
             {
-                tokenId = TokenId.wrap(0).addPoolId(
-                    PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing())
-                );
+                tokenId = TokenId.wrap(0).addPoolId(poolId);
                 tokenId = tokenId.addLeg(
                     0,
                     1,
@@ -7143,10 +7438,22 @@ contract Misctest is Test, PositionUtils {
         for (uint256 i; i < 4; ++i) {
             uint256 asset = i % 2;
             uint256 tokenType = i / 2;
-            TokenId tokenId = TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, asset, 0, tokenType, 0, 0, 2);
+
+            {
+                poolId = uint64(uint160(address(uniPool)) >> 112);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+
+            TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                asset,
+                0,
+                tokenType,
+                0,
+                0,
+                2
+            );
             //.addLeg(legIndex, optionRatio, asset, isLong, tokenType, riskPartner, strike, width);
 
             TokenId[] memory posIdList = new TokenId[](1);
@@ -7222,10 +7529,22 @@ contract Misctest is Test, PositionUtils {
         for (uint256 i; i < 4; ++i) {
             uint256 asset = i % 2;
             uint256 tokenType = i / 2;
-            TokenId tokenId = TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, asset, 0, tokenType, 0, 0, 2);
+
+            {
+                poolId = uint64(uint160(address(uniPool)) >> 112);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+
+            TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                asset,
+                0,
+                tokenType,
+                0,
+                0,
+                2
+            );
             //.addLeg(legIndex, optionRatio, asset, isLong, tokenType, riskPartner, strike, width);
 
             TokenId[] memory posIdList = new TokenId[](1);
@@ -7310,11 +7629,15 @@ contract Misctest is Test, PositionUtils {
         for (uint256 i; i < 4; ++i) {
             uint256 asset = i % 2;
             uint256 tokenType = (i / 2);
+
+            {
+                poolId = uint64(uint160(address(uniPool)) >> 112);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+
             TokenId tokenId;
             {
-                tokenId = TokenId.wrap(0).addPoolId(
-                    PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing())
-                );
+                tokenId = TokenId.wrap(0).addPoolId(poolId);
                 tokenId = tokenId.addLeg(
                     0,
                     1,
@@ -7409,11 +7732,15 @@ contract Misctest is Test, PositionUtils {
         for (uint256 i; i < 4; ++i) {
             uint256 asset = i % 2;
             uint256 tokenType = (i / 2);
+
+            {
+                poolId = uint64(uint160(address(uniPool)) >> 112);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+
             TokenId tokenId;
             {
-                tokenId = TokenId.wrap(0).addPoolId(
-                    PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing())
-                );
+                tokenId = TokenId.wrap(0).addPoolId(poolId);
                 tokenId = tokenId.addLeg(
                     0,
                     1,
@@ -7506,11 +7833,15 @@ contract Misctest is Test, PositionUtils {
         for (uint256 i; i < 4; ++i) {
             uint256 asset = i % 2;
             uint256 tokenType = (i / 2);
+
+            {
+                poolId = uint64(uint160(address(uniPool)) >> 112);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+
             TokenId tokenId;
             {
-                tokenId = TokenId.wrap(0).addPoolId(
-                    PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing())
-                );
+                tokenId = TokenId.wrap(0).addPoolId(poolId);
                 tokenId = tokenId.addLeg(
                     0,
                     1,
@@ -7609,9 +7940,12 @@ contract Misctest is Test, PositionUtils {
                 // sell long leg
                 vm.startPrank(Charlie);
 
-                tokenId = TokenId.wrap(0).addPoolId(
-                    PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing())
-                );
+                {
+                    poolId = uint64(uint160(address(uniPool)) >> 112);
+                    poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+                }
+
+                tokenId = TokenId.wrap(0).addPoolId(poolId);
                 tokenId = tokenId.addLeg(
                     0,
                     1,
@@ -7635,10 +7969,13 @@ contract Misctest is Test, PositionUtils {
                     true
                 );
 
+                {
+                    poolId = uint64(uint160(address(uniPool)) >> 112);
+                    poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+                }
+
                 // create spread tokenId
-                tokenId = TokenId.wrap(0).addPoolId(
-                    PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing())
-                );
+                tokenId = TokenId.wrap(0).addPoolId(poolId);
                 tokenId = tokenId.addLeg(
                     0,
                     1,
@@ -7743,9 +8080,12 @@ contract Misctest is Test, PositionUtils {
                 // sell long leg
                 vm.startPrank(Charlie);
 
-                tokenId = TokenId.wrap(0).addPoolId(
-                    PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing())
-                );
+                {
+                    poolId = uint64(uint160(address(uniPool)) >> 112);
+                    poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+                }
+
+                tokenId = TokenId.wrap(0).addPoolId(poolId);
                 tokenId = tokenId.addLeg(
                     0,
                     1,
@@ -7770,9 +8110,7 @@ contract Misctest is Test, PositionUtils {
                 );
 
                 // create spread tokenId
-                tokenId = TokenId.wrap(0).addPoolId(
-                    PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing())
-                );
+                tokenId = TokenId.wrap(0).addPoolId(poolId);
                 tokenId = tokenId.addLeg(
                     0,
                     1,
@@ -7878,9 +8216,12 @@ contract Misctest is Test, PositionUtils {
                 // sell long leg
                 vm.startPrank(Charlie);
 
-                tokenId = TokenId.wrap(0).addPoolId(
-                    PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing())
-                );
+                {
+                    poolId = uint64(uint160(address(uniPool)) >> 112);
+                    poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+                }
+
+                tokenId = TokenId.wrap(0).addPoolId(poolId);
                 tokenId = tokenId.addLeg(
                     0,
                     1,
@@ -7905,9 +8246,7 @@ contract Misctest is Test, PositionUtils {
                 );
 
                 // create spread tokenId
-                tokenId = TokenId.wrap(0).addPoolId(
-                    PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing())
-                );
+                tokenId = TokenId.wrap(0).addPoolId(poolId);
                 tokenId = tokenId.addLeg(
                     0,
                     1,

@@ -54,10 +54,17 @@ contract ReenterBurn {
     fallback() external {
         bool reenter = !activated;
         activated = true;
+        uint64 poolId;
+
+        {
+            poolId = uint64(uint160(address(this)) >> 112);
+            poolId += uint64(uint24(tickSpacing)) << 48;
+        }
+
         if (reenter)
             SemiFungiblePositionManagerHarness(msg.sender).burnTokenizedPosition(
                 new bytes(0),
-                TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(this), tickSpacing)),
+                TokenId.wrap(0).addPoolId(poolId),
                 0,
                 0,
                 0
@@ -114,11 +121,17 @@ contract ReenterMint {
     fallback() external {
         bool reenter = !activated;
         activated = true;
+        uint64 poolId;
+
+        {
+            poolId = uint64(uint160(address(this)) >> 112);
+            poolId += uint64(uint24(tickSpacing)) << 48;
+        }
 
         if (reenter)
             SemiFungiblePositionManagerHarness(msg.sender).mintTokenizedPosition(
                 new bytes(0),
-                TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(this), tickSpacing)),
+                TokenId.wrap(0).addPoolId(poolId),
                 0,
                 0,
                 0
@@ -175,14 +188,18 @@ contract ReenterTransferSingle {
     fallback() external {
         bool reenter = !activated;
         activated = true;
+        uint64 poolId;
+
+        {
+            poolId = uint64(uint160(address(this)) >> 112);
+            poolId += uint64(uint24(tickSpacing)) << 48;
+        }
 
         if (reenter)
             SemiFungiblePositionManagerHarness(msg.sender).safeTransferFrom(
                 address(0),
                 address(0),
-                TokenId.unwrap(
-                    TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(this), tickSpacing))
-                ),
+                TokenId.unwrap(TokenId.wrap(0).addPoolId(poolId)),
                 0,
                 ""
             );
@@ -238,11 +255,15 @@ contract ReenterTransferBatch {
     fallback() external {
         bool reenter = !activated;
         activated = true;
+        uint64 poolId;
+
+        {
+            poolId = uint64(uint160(address(this)) >> 112);
+            poolId += uint64(uint24(tickSpacing)) << 48;
+        }
 
         uint256[] memory ids = new uint256[](1);
-        ids[0] = TokenId.unwrap(
-            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(this), tickSpacing))
-        );
+        ids[0] = TokenId.unwrap(TokenId.wrap(0).addPoolId(poolId));
         if (reenter)
             SemiFungiblePositionManagerHarness(msg.sender).safeBatchTransferFrom(
                 address(0),

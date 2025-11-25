@@ -116,6 +116,9 @@ library Errors {
     /// @notice PanopticPool: The supplied poolId does not match the poolId for that Uniswap Pool
     error WrongPoolId();
 
+    /// @notice SFPM: The poolId's don't match
+    error WrongUniswapPool();
+
     /// @notice PanopticFactory: the zero address was supplied as a parameter
     error ZeroAddress();
 
