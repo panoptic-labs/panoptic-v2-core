@@ -988,7 +988,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     //////////////////////////////////////////////////////////////*/
 
     function test_Fail_initializeAMMPool_uniswapPoolNotInitialized() public {
-        vm.expectRevert(Errors.UniswapPoolNotInitialized.selector);
+        vm.expectRevert(Errors.PoolNotInitialized.selector);
 
         // These values are zero at this point; thus there is no corresponding uni pool and we should revert
         sfpm.initializeAMMPool(token0, token1, fee);

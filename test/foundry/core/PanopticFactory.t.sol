@@ -324,7 +324,7 @@ contract PanopticFactoryTest is Test {
         uint96 salt = uint96(block.timestamp);
 
         // Deploy invalid pool (uninitalized tokens and fee)
-        vm.expectRevert(Errors.UniswapPoolNotInitialized.selector);
+        vm.expectRevert(Errors.PoolNotInitialized.selector);
         panopticFactory.deployNewPool(token0, token1, fee, riskEngine, salt);
     }
 

@@ -347,7 +347,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         address univ3pool = FACTORY.getPool(token0, token1, fee);
 
         // reverts if the Uniswap V3 pool has not been initialized
-        if (univ3pool == address(0)) revert Errors.UniswapPoolNotInitialized();
+        if (univ3pool == address(0)) revert Errors.PoolNotInitialized();
 
         // return if the pool has already been initialized in SFPM
         // pools can be initialized from the Panoptic Factory or by calling initializeAMMPool directly, so reverting
@@ -444,7 +444,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         address univ3pool = s_poolIdToAddress[poolId];
         PoolData dataOld = s_addressToPoolData[univ3pool];
 
-        if (!dataOld.initialized()) revert Errors.UniswapPoolNotInitialized();
+        if (!dataOld.initialized()) revert Errors.PoolNotInitialized();
 
         // tick spacing is stored in the highest 16 bits of the poolId
         int24 tickSpacing = int24(uint24(poolId >> 48));
