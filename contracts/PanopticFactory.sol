@@ -5,6 +5,7 @@ pragma solidity ^0.8.24;
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
@@ -32,6 +33,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @param uniswapPool Address of the underlying Uniswap V3 pool
     /// @param collateralTracker0 Address of the collateral tracker contract for token0
     /// @param collateralTracker1 Address of the collateral tracker contract for token1
+    /// @param riskEngine Address of the risk engine used
     event PoolDeployed(
         PanopticPool indexed poolAddress,
         IUniswapV3Pool indexed uniswapPool,
@@ -150,17 +152,37 @@ contract PanopticFactory is FactoryNFT, Multicall {
         // this allows us to link the PanopticPool into the CollateralTrackers as an immutable arg without advance knowledge of their addresses
         newPoolContract = PanopticPool(ClonesWithImmutableArgs.addressOfClone3(salt32));
 
+        uint24 _fee = fee;
         // Deploy collateral token proxies
         CollateralTracker collateralTracker0 = CollateralTracker(
             COLLATERAL_REFERENCE.clone2(
-                abi.encodePacked(newPoolContract, true, token0, token0, token1, riskEngine, fee)
+                abi.encodePacked(
+                    newPoolContract,
+                    true,
+                    token0,
+                    token0,
+                    token1,
+                    riskEngine,
+                    address(0),
+                    _fee
+                )
             )
         );
         CollateralTracker collateralTracker1 = CollateralTracker(
             COLLATERAL_REFERENCE.clone2(
-                abi.encodePacked(newPoolContract, false, token1, token0, token1, riskEngine, fee)
+                abi.encodePacked(
+                    newPoolContract,
+                    false,
+                    token1,
+                    token0,
+                    token1,
+                    riskEngine,
+                    address(0),
+                    _fee
+                )
             )
         );
+
         // This creates a new Panoptic Pool (proxy to the PanopticPool implementation)
         newPoolContract = PanopticPool(
             POOL_REFERENCE.clone3(

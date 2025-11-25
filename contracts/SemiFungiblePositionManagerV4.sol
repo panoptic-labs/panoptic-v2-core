@@ -13,7 +13,6 @@ import {EfficientHash} from "@libraries/EfficientHash.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
-import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 import {V4StateReader} from "@libraries/V4StateReader.sol";
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned, LeftRightLibrary} from "@types/LeftRight.sol";

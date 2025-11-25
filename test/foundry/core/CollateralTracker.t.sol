@@ -737,6 +737,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     t0, // ct.token0()
                     t1, // ct.token1()
                     riskEngine, // risk engine
+                    address(0), // no pool manager
                     fee // pool fee
                 )
             )
@@ -752,6 +753,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     t0, // ct.token0()
                     t1, // ct.token1()
                     riskEngine, // risk engine
+                    address(0), // no pool manager
                     fee // pool fee
                 )
             )
@@ -829,6 +831,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     t0, // ct.token0()
                     t1, // ct.token1()
                     riskEngine, // risk engine
+                    address(0), // no pool manager
                     fee // pool fee
                 )
             )
@@ -844,6 +847,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     t0, // ct.token0()
                     t1, // ct.token1()
                     riskEngine, // risk engine
+                    address(0), // no pool manager
                     fee // pool fee
                 )
             )
