@@ -767,57 +767,84 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 revert Errors.WrongUniswapPool();
 
             for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
-                address _account = account;
-                PoolKey memory _key = key;
-                LiquidityChunk liquidityChunk;
-                {
-                    uint128 _positionSize = positionSize;
-                    liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, leg, _positionSize);
+                if (tokenId.width(leg) == 0) {
+                    uint256 isLong = tokenId.isLong(leg);
+                    LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
+                        tokenId,
+                        positionSize,
+                        leg,
+                        true
+                    );
+                    int128 signMultiplier = isLong == 0 ? int128(-1) : int128(1);
+
+                    {
+                        uint256 tokenType = tokenId.tokenType(leg);
+                        int128 itm0 = tokenType == 1
+                            ? int128(0)
+                            : signMultiplier * int128(amountsMoved.rightSlot());
+
+                        int128 itm1 = tokenType == 0
+                            ? int128(0)
+                            : signMultiplier * int128(amountsMoved.leftSlot());
+
+                        itmAmounts = itmAmounts.addToRightSlot(itm0).addToLeftSlot(itm1);
+                    }
+                } else {
+                    address _account = account;
+                    PoolKey memory _key = key;
+                    LiquidityChunk liquidityChunk;
+                    {
+                        uint128 _positionSize = positionSize;
+                        liquidityChunk = PanopticMath.getLiquidityChunk(
+                            tokenId,
+                            leg,
+                            _positionSize
+                        );
+                    }
+                    // validate tick range for newly minted positions
+                    if (!isBurn) {
+                        int24 tickSpacing = tokenId.tickSpacing();
+                        int24 tickLower = liquidityChunk.tickLower();
+                        int24 tickUpper = liquidityChunk.tickUpper();
+
+                        if (
+                            tickLower % tickSpacing != 0 ||
+                            tickUpper % tickSpacing != 0 ||
+                            tickLower < poolData.minEnforcedTick() ||
+                            tickUpper > poolData.maxEnforcedTick()
+                        ) revert Errors.InvalidTickBound();
+                    }
+                    unchecked {
+                        // increment accumulators of the upper bound on tokens contained across all legs of the position at any given tick
+                        amount0 += Math.getAmount0ForLiquidity(liquidityChunk);
+
+                        amount1 += Math.getAmount1ForLiquidity(liquidityChunk);
+                    }
+
+                    LeftRightSigned movedLeg;
+                    TokenId _tokenId = tokenId;
+                    bool _isBurn = isBurn;
+
+                    (movedLeg, collectedByLeg[leg]) = _createLegInAMM(
+                        _account,
+                        _key,
+                        _tokenId,
+                        leg,
+                        liquidityChunk,
+                        _isBurn
+                    );
+
+                    totalMoved = totalMoved.add(movedLeg);
+                    totalCollected = totalCollected.add(collectedByLeg[leg]);
+
+                    // if tokenType is 1, and we transacted some currency0: then this leg is ITM
+                    // if tokenType is 0, and we transacted some currency1: then this leg is ITM
+                    itmAmounts = itmAmounts.add(
+                        _tokenId.tokenType(leg) == 0
+                            ? LeftRightSigned.wrap(0).addToLeftSlot(movedLeg.leftSlot())
+                            : LeftRightSigned.wrap(0).addToRightSlot(movedLeg.rightSlot())
+                    );
                 }
-                // validate tick range for newly minted positions
-                if (!isBurn) {
-                    int24 tickSpacing = tokenId.tickSpacing();
-                    int24 tickLower = liquidityChunk.tickLower();
-                    int24 tickUpper = liquidityChunk.tickUpper();
-
-                    if (
-                        tickLower % tickSpacing != 0 ||
-                        tickUpper % tickSpacing != 0 ||
-                        tickLower < poolData.minEnforcedTick() ||
-                        tickUpper > poolData.maxEnforcedTick()
-                    ) revert Errors.InvalidTickBound();
-                }
-                unchecked {
-                    // increment accumulators of the upper bound on tokens contained across all legs of the position at any given tick
-                    amount0 += Math.getAmount0ForLiquidity(liquidityChunk);
-
-                    amount1 += Math.getAmount1ForLiquidity(liquidityChunk);
-                }
-
-                LeftRightSigned movedLeg;
-                TokenId _tokenId = tokenId;
-                bool _isBurn = isBurn;
-
-                (movedLeg, collectedByLeg[leg]) = _createLegInAMM(
-                    _account,
-                    _key,
-                    _tokenId,
-                    leg,
-                    liquidityChunk,
-                    _isBurn
-                );
-
-                totalMoved = totalMoved.add(movedLeg);
-                totalCollected = totalCollected.add(collectedByLeg[leg]);
-
-                // if tokenType is 1, and we transacted some currency0: then this leg is ITM
-                // if tokenType is 0, and we transacted some currency1: then this leg is ITM
-                itmAmounts = itmAmounts.add(
-                    _tokenId.tokenType(leg) == 0
-                        ? LeftRightSigned.wrap(0).addToLeftSlot(movedLeg.leftSlot())
-                        : LeftRightSigned.wrap(0).addToRightSlot(movedLeg.rightSlot())
-                );
-
                 unchecked {
                     ++leg;
                 }
