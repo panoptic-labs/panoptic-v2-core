@@ -32,10 +32,6 @@ import {Pointer} from "@types/Pointer.sol";
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory, 10 ** 13, 0) {}
-
-    function addrToPoolId(address pool) public view returns (uint256) {
-        return s_AddrToPoolIdData[pool];
-    }
 }
 
 contract PanopticPoolHarness is PanopticPool {
@@ -2223,7 +2219,7 @@ contract PanopticPoolTest is PositionUtils {
 
                 vm.startPrank(address(pp));
                 (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
-                    new bytes(0),
+                    abi.encode(pool),
                     tokenId,
                     positionSize,
                     TickMath.MAX_TICK,
@@ -2402,7 +2398,7 @@ contract PanopticPoolTest is PositionUtils {
 
                 vm.startPrank(address(pp));
                 (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
-                    new bytes(0),
+                    abi.encode(pool),
                     tokenId,
                     positionSize,
                     TickMath.MAX_TICK,
@@ -2798,7 +2794,7 @@ contract PanopticPoolTest is PositionUtils {
                 TokenId _tokenId = tokenId;
                 vm.startPrank(address(pp));
                 (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
-                    new bytes(0),
+                    abi.encode(pool),
                     _tokenId,
                     positionSize,
                     TickMath.MAX_TICK,
@@ -3973,7 +3969,7 @@ contract PanopticPoolTest is PositionUtils {
 
                 vm.startPrank(address(pp));
                 (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
-                    new bytes(0),
+                    abi.encode(pool),
                     tokenId,
                     positionSize,
                     TickMath.MAX_TICK,
@@ -4409,7 +4405,7 @@ contract PanopticPoolTest is PositionUtils {
                     TokenId _tokenId = tokenId;
                     vm.startPrank(address(pp));
                     (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
-                        new bytes(0),
+                        abi.encode(pool),
                         _tokenId,
                         positionSizes[1],
                         TickMath.MAX_TICK,

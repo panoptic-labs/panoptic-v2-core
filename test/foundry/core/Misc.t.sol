@@ -1165,7 +1165,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.expectRevert(Errors.InvalidTickBound.selector);
         sfpm.mintTokenizedPosition(
-            new bytes(0),
+            abi.encode(uniPool),
             tickPosition,
             1_000_000,
             Constants.MIN_POOL_TICK,
@@ -1197,7 +1197,7 @@ contract Misctest is Test, PositionUtils {
             uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
-                new bytes(0),
+                abi.encode(uniPool),
                 tickPosition,
                 1_000_000,
                 Constants.MIN_POOL_TICK,
@@ -1229,7 +1229,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.expectRevert(Errors.InvalidTickBound.selector);
         sfpm.mintTokenizedPosition(
-            new bytes(0),
+            abi.encode(uniPool),
             tickPosition,
             1_000_000,
             Constants.MIN_POOL_TICK,
@@ -1262,7 +1262,7 @@ contract Misctest is Test, PositionUtils {
             uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
-                new bytes(0),
+                abi.encode(uniPool),
                 tickPosition,
                 1_000_000,
                 Constants.MIN_POOL_TICK,
@@ -1428,7 +1428,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.expectRevert(Errors.InvalidTickBound.selector);
         sfpm.mintTokenizedPosition(
-            new bytes(0),
+            abi.encode(uniPool),
             tickPosition,
             1_000_000,
             Constants.MIN_POOL_TICK,
@@ -1461,7 +1461,7 @@ contract Misctest is Test, PositionUtils {
             uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
-                new bytes(0),
+                abi.encode(uniPool),
                 tickPosition,
                 1_000_000,
                 Constants.MIN_POOL_TICK,
@@ -1494,7 +1494,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.expectRevert(Errors.InvalidTickBound.selector);
         sfpm.mintTokenizedPosition(
-            new bytes(0),
+            abi.encode(uniPool),
             tickPosition,
             1_000_000,
             Constants.MIN_POOL_TICK,
@@ -1528,7 +1528,7 @@ contract Misctest is Test, PositionUtils {
             uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
-                new bytes(0),
+                abi.encode(uniPool),
                 tickPosition,
                 1_000_000,
                 Constants.MIN_POOL_TICK,
