@@ -1496,7 +1496,7 @@ contract PanopticPool is Clone, Multicall {
 
     /// @notice Get the oracle price used to check solvency in liquidations.
     /// @return twapTick The current oracle price used to check solvency in liquidations
-    function getTWAP() internal view returns (int24 twapTick) {
+    function getTWAP() public view returns (int24 twapTick) {
         twapTick = riskEngine().twapEMA(s_oraclePack);
     }
 

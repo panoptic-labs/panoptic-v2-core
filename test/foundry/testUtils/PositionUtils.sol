@@ -14,6 +14,16 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {Math} from "@libraries/Math.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
+import {PoolId} from "v4-core/types/PoolId.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
+import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
+import {V4StateReader} from "@libraries/V4StateReader.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {PoolManager} from "v4-core/PoolManager.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
+import {V4RouterSimple} from "../testUtils/V4RouterSimple.sol";
 
 contract MiniPositionManager {
     struct CallbackData {
@@ -1310,6 +1320,287 @@ contract PositionUtils is Test {
                 ? (amountIn, uint256(-amountSpecified[1]))
                 : (uint256(-amountSpecified[1]), amountIn);
         }
+    }
+
+    // UPD
+    function simulateSwap(
+        PoolKey memory key,
+        int24 tickLower,
+        int24 tickUpper,
+        uint128 liquidity,
+        V4RouterSimple routerV4,
+        bool zeroForOne,
+        int256 amountSpecified
+    ) public returns (uint256, uint256) {
+        vm.snapshot();
+
+        vm.startPrank(address(0x123456789));
+
+        routerV4.modifyLiquidity(address(0), key, tickLower, tickUpper, int128(liquidity));
+
+        (int256 delta0, int256 delta1) = routerV4.swap(
+            address(0),
+            key,
+            amountSpecified,
+            zeroForOne
+        );
+
+        vm.revertTo(0);
+        return (uint256(Math.abs(delta0)), uint256(Math.abs(delta1)));
+    }
+
+    // UPD
+    function simulateSwap(
+        PoolKey memory key,
+        int24 tickLower,
+        int24 tickUpper,
+        int128 liquidity,
+        bytes32 positionKey,
+        V4RouterSimple routerV4,
+        bool zeroForOne,
+        int256 amountSpecified
+    ) external returns (uint256, uint256) {
+        snap = vm.snapshot();
+
+        vm.startPrank(address(0x123456789));
+
+        // make it so we can burn existing liq from caller
+        vm.etch(msg.sender, address(routerV4).code);
+
+        IERC20Partial(Currency.unwrap(key.currency0)).approve(msg.sender, type(uint256).max);
+        IERC20Partial(Currency.unwrap(key.currency1)).approve(msg.sender, type(uint256).max);
+
+        V4RouterSimple(msg.sender).modifyLiquidityWithSalt(
+            address(0),
+            key,
+            tickLower,
+            tickUpper,
+            liquidity,
+            positionKey
+        );
+
+        (int256 delta0, int256 delta1) = routerV4.swap(
+            address(0),
+            key,
+            amountSpecified,
+            zeroForOne
+        );
+
+        vm.revertTo(snap);
+
+        return (uint256(Math.abs(delta0)), uint256(Math.abs(delta1)));
+    }
+
+    function simulateSwap(
+        PoolKey memory key,
+        int24[2] memory tickLower,
+        int24[2] memory tickUpper,
+        uint128[2] memory liquidity,
+        V4RouterSimple routerV4,
+        bool zeroForOne,
+        int256 amountSpecified
+    ) public returns (int256, int256) {
+        vm.snapshot();
+
+        vm.startPrank(address(0x123456789));
+
+        routerV4.modifyLiquidity(address(0), key, tickLower[0], tickUpper[0], int128(liquidity[0]));
+        routerV4.modifyLiquidity(address(0), key, tickLower[1], tickUpper[1], int128(liquidity[1]));
+
+        (int256 delta0, int256 delta1) = routerV4.swap(
+            address(0),
+            key,
+            amountSpecified,
+            zeroForOne
+        );
+
+        vm.revertTo(0);
+
+        return (-delta0, -delta1);
+    }
+
+    function simulateSwapLong(
+        PoolKey memory key,
+        int24[2] memory tickLower,
+        int24[2] memory tickUpper,
+        int128[2] memory liquidity,
+        bytes32[2] memory positionKeys,
+        V4RouterSimple routerV4,
+        bool zeroForOne,
+        int256 amountSpecified
+    ) external returns (int256, int256) {
+        vm.snapshot();
+
+        vm.startPrank(address(0x123456789));
+
+        IERC20Partial(Currency.unwrap(key.currency0)).approve(msg.sender, type(uint256).max);
+        IERC20Partial(Currency.unwrap(key.currency1)).approve(msg.sender, type(uint256).max);
+
+        // make it so we can burn existing liq from caller
+        vm.etch(msg.sender, address(routerV4).code);
+
+        V4RouterSimple(msg.sender).modifyLiquidityWithSalt(
+            address(0),
+            key,
+            tickLower[0],
+            tickUpper[0],
+            liquidity[0],
+            positionKeys[0]
+        );
+
+        V4RouterSimple(msg.sender).modifyLiquidityWithSalt(
+            address(0),
+            key,
+            tickLower[1],
+            tickUpper[1],
+            liquidity[1],
+            positionKeys[1]
+        );
+
+        (int256 delta0, int256 delta1) = V4RouterSimple(msg.sender).swap(
+            address(0),
+            key,
+            amountSpecified,
+            zeroForOne
+        );
+
+        vm.revertTo(0);
+
+        return (-delta0, -delta1);
+    }
+
+    // UPD
+    function simulateSwap(
+        PoolKey memory key,
+        int24 tickLower,
+        int24 tickUpper,
+        uint128 liquidity,
+        V4RouterSimple routerV4,
+        bool[2] memory zeroForOne,
+        int256[2] memory amountSpecified
+    ) public returns (uint256[2] memory amount0, uint256[2] memory amount1) {
+        vm.startPrank(address(0x123456789));
+
+        routerV4.modifyLiquidity(address(0), key, tickLower, tickUpper, int128(liquidity));
+
+        (int256 delta0, int256 delta1) = routerV4.swap(
+            address(0),
+            key,
+            amountSpecified[0],
+            zeroForOne[0]
+        );
+
+        amount0[0] = uint256(Math.abs(delta0));
+        amount1[0] = uint256(Math.abs(delta1));
+
+        routerV4.modifyLiquidity(address(0), key, tickLower, tickUpper, -int128(liquidity));
+
+        (delta0, delta1) = routerV4.swap(address(0), key, amountSpecified[1], zeroForOne[1]);
+
+        amount0[1] = uint256(Math.abs(delta0));
+        amount1[1] = uint256(Math.abs(delta1));
+    }
+
+    // UPD
+    function simulateSwap(
+        PoolKey memory key,
+        int24 tickLower,
+        int24 tickUpper,
+        uint128[2] memory liquidity,
+        V4RouterSimple routerV4,
+        bool[2] memory zeroForOne,
+        int256[2] memory amountSpecified
+    ) public returns (uint256[2] memory amount0, uint256[2] memory amount1) {
+        vm.startPrank(address(0x123456789));
+
+        routerV4.modifyLiquidity(address(0), key, tickLower, tickUpper, int128(liquidity[0]));
+
+        (int256 delta0, int256 delta1) = routerV4.swap(
+            address(0),
+            key,
+            amountSpecified[0],
+            zeroForOne[0]
+        );
+
+        amount0[0] = uint256(Math.abs(delta0));
+        amount1[0] = uint256(Math.abs(delta1));
+
+        routerV4.modifyLiquidity(address(0), key, tickLower, tickUpper, -int128(liquidity[1]));
+
+        (delta0, delta1) = routerV4.swap(address(0), key, amountSpecified[1], zeroForOne[1]);
+
+        amount0[1] = uint256(Math.abs(delta0));
+        amount1[1] = uint256(Math.abs(delta1));
+    }
+
+    // this only works if the position is in-range
+    function accruePoolFeesInRange(
+        IPoolManager manager,
+        PoolKey memory key,
+        uint256 posLiq,
+        uint256 posFees0,
+        uint256 posFees1
+    ) public {
+        uint256 feeGrowthAdd0X128 = FullMath.mulDiv(posFees0, 2 ** 128, posLiq);
+        uint256 feeGrowthAdd1X128 = FullMath.mulDiv(posFees1, 2 ** 128, posLiq);
+
+        uint128 _liquidity = StateLibrary.getLiquidity(manager, key.toId());
+        // distribute accrued fee amount to Uniswap pool
+        deal(
+            Currency.unwrap(key.currency0),
+            address(manager),
+            IERC20Partial(Currency.unwrap(key.currency0)).balanceOf(address(manager)) +
+                (_liquidity * posFees0) /
+                posLiq
+        );
+        deal(
+            Currency.unwrap(key.currency1),
+            address(manager),
+            IERC20Partial(Currency.unwrap(key.currency1)).balanceOf(address(manager)) +
+                (_liquidity * posFees1) /
+                posLiq
+        );
+
+        PoolId poolId = key.toId();
+        // update global fees
+        vm.store(
+            address(manager),
+            bytes32(
+                uint256(StateLibrary._getPoolStateSlot(poolId)) +
+                    StateLibrary.FEE_GROWTH_GLOBAL0_OFFSET
+            ),
+            bytes32(
+                uint256(
+                    vm.load(
+                        address(manager),
+                        bytes32(
+                            uint256(StateLibrary._getPoolStateSlot(poolId)) +
+                                StateLibrary.FEE_GROWTH_GLOBAL0_OFFSET
+                        )
+                    )
+                ) + feeGrowthAdd0X128
+            )
+        );
+        vm.store(
+            address(manager),
+            bytes32(
+                uint256(StateLibrary._getPoolStateSlot(poolId)) +
+                    StateLibrary.FEE_GROWTH_GLOBAL0_OFFSET +
+                    1
+            ),
+            bytes32(
+                uint256(
+                    vm.load(
+                        address(manager),
+                        bytes32(
+                            uint256(StateLibrary._getPoolStateSlot(poolId)) +
+                                StateLibrary.FEE_GROWTH_GLOBAL0_OFFSET +
+                                1
+                        )
+                    )
+                ) + feeGrowthAdd1X128
+            )
+        );
     }
 
     // this only works if the position is in-range

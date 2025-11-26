@@ -695,17 +695,17 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 // ensure the tokens are swapped from the correct asset.
                 if (asset == 0) {
                     zeroForOne = itm0 < 0;
-                    swapAmount = -itm0;
+                    swapAmount = itm0;
                 } else {
                     zeroForOne = itm1 > 0;
-                    swapAmount = -itm1;
+                    swapAmount = itm1;
                 }
             } else if (itm0 != 0) {
                 zeroForOne = itm0 < 0;
-                swapAmount = -itm0;
+                swapAmount = itm0;
             } else {
                 zeroForOne = itm1 > 0;
-                swapAmount = -itm1;
+                swapAmount = itm1;
             }
 
             // NOTE: can occur if itm0 and itm1 have the same value
@@ -723,7 +723,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 ),
                 ""
             );
-
             // return token deltas
             return
                 LeftRightSigned.wrap(0).addToRightSlot(-swapDelta.amount0()).addToLeftSlot(
@@ -858,7 +857,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         if (tickLimitLow > tickLimitHigh) {
             // if the in-the-money amount is not zero (i.e. positions were minted ITM) and the user did provide tick limits LOW > HIGH, then swap necessary amounts
             if ((LeftRightSigned.unwrap(itmAmounts) != 0)) {
-                totalMoved = totalMoved.add(swapInAMM(key, itmAmounts, tokenId.asset(0)));
+                totalMoved = swapInAMM(key, itmAmounts, tokenId.asset(0)).add(totalMoved);
             }
 
             (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
