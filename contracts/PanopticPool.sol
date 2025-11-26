@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
+import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
 // Inherited implementations
 import {Clone} from "clones-with-immutable-args/Clone.sol";
 import {Multicall} from "@base/Multicall.sol";
@@ -143,7 +143,7 @@ contract PanopticPool is Clone, Multicall {
     uint256 internal constant NO_BUFFER = 10_000_000;
 
     /// @notice The "engine" of Panoptic - manages AMM liquidity and executes all mints/burns/exercises.
-    SemiFungiblePositionManager internal immutable SFPM;
+    ISemiFungiblePositionManager internal immutable SFPM;
 
     /*//////////////////////////////////////////////////////////////
                                 STORAGE
@@ -275,7 +275,7 @@ contract PanopticPool is Clone, Multicall {
         uint256 start = offset + 92;
         uint256 len;
         assembly {
-            len := sub(calldatasize(), start)
+            len := sub(sub(calldatasize(), start), 2)
             key.offset := start
             key.length := len
         }
@@ -287,7 +287,7 @@ contract PanopticPool is Clone, Multicall {
 
     /// @notice Store the address of the canonical SemiFungiblePositionManager (SFPM) contract.
     /// @param _sfpm The address of the SFPM
-    constructor(SemiFungiblePositionManager _sfpm) {
+    constructor(ISemiFungiblePositionManager _sfpm) {
         SFPM = _sfpm;
     }
 

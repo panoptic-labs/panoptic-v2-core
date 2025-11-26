@@ -6,7 +6,7 @@ import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 // Inherited implementations
 import {ERC1155} from "@tokens/ERC1155Minimal.sol";
 import {Multicall} from "@base/Multicall.sol";
-import {TransientReentrancyGuard} from "solmate/utils/TransientReentrancyGuard.sol";
+import {TransientReentrancyGuard} from "solmate/src/utils/TransientReentrancyGuard.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {EfficientHash} from "@libraries/EfficientHash.sol";
@@ -896,7 +896,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         }
 
         // Get the current tick of the Uniswap pool, check slippage
-        int24 currentTick = getCurrentTick(key);
+        int24 currentTick = getCurrentTick(abi.encode(key));
 
         if ((currentTick >= tickLimitHigh) || (currentTick <= tickLimitLow))
             revert Errors.PriceBoundFail(currentTick);
@@ -1175,24 +1175,26 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Return the liquidity associated with a given liquidity chunk/tokenType for a user on a Uniswap pool.
-    /// @param idV4 The Uniswap V4 pool id to query
+    /// @param poolKey the poolKey of the UniswapV4 pool
     /// @param owner The address of the account that is queried
     /// @param tokenType The tokenType of the position
     /// @param tickLower The lower end of the tick range for the position
     /// @param tickUpper The upper end of the tick range for the position
     /// @return accountLiquidities The amount of liquidity that held in and removed from Uniswap for that chunk (netLiquidity:removedLiquidity -> rightSlot:leftSlot)
     function getAccountLiquidity(
-        PoolId idV4,
+        bytes calldata poolKey,
         address owner,
         uint256 tokenType,
         int24 tickLower,
         int24 tickUpper
     ) external view returns (LeftRightUnsigned accountLiquidities) {
+        PoolKey memory key = abi.decode(poolKey, (PoolKey));
+
         // Extract the account liquidity for a given Uniswap pool, owner, token type, and ticks
         // tokenType input here is the asset of the positions minted, this avoids put liquidity to be used for call, and vice-versa
         accountLiquidities = s_accountLiquidity[
             EfficientHash.efficientKeccak256(
-                abi.encodePacked(idV4, owner, tokenType, tickLower, tickUpper)
+                abi.encodePacked(key.toId(), owner, tokenType, tickLower, tickUpper)
             )
         ];
     }
@@ -1201,7 +1203,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @dev If an atTick parameter is provided that is different from `type(int24).max`, then it will update the premium up to the current
     /// block at the provided atTick value. We do this because this may be called immediately after the Uniswap V4 pool has been touched,
     /// so no need to read the feeGrowths from the Uniswap V4 pool.
-    /// @param idV4 The Uniswap V4 pool id to query
+    /// @param poolKey the poolKey of the UniswapV4 pool
     /// @param owner The address of the account that is queried
     /// @param tokenType The tokenType of the position
     /// @param tickLower The lower end of the tick range for the position
@@ -1211,7 +1213,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @return The amount of premium (per liquidity X64) for currency0 = `sum(feeGrowthLast0X128)` over every block where the position has been touched
     /// @return The amount of premium (per liquidity X64) for currency1 = `sum(feeGrowthLast0X128)` over every block where the position has been touche
     function getAccountPremium(
-        PoolId idV4,
+        bytes calldata poolKey,
         address owner,
         uint256 tokenType,
         int24 tickLower,
@@ -1219,8 +1221,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         int24 atTick,
         uint256 isLong
     ) external view returns (uint128, uint128) {
+        PoolKey memory key = abi.decode(poolKey, (PoolKey));
         bytes32 positionKey = EfficientHash.efficientKeccak256(
-            abi.encodePacked(idV4, owner, tokenType, tickLower, tickUpper)
+            abi.encodePacked(key.toId(), owner, tokenType, tickLower, tickUpper)
         );
 
         LeftRightUnsigned acctPremia;
@@ -1233,7 +1236,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             // unique key to identify the liquidity chunk in this Uniswap pool
             LeftRightUnsigned amountToCollect;
             {
-                PoolId _idV4 = idV4;
+                PoolId _idV4 = key.toId();
                 int24 _tickLower = tickLower;
                 int24 _tickUpper = tickUpper;
                 int24 _atTick = atTick;
@@ -1320,7 +1323,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         return s_V4toSFPMIdData[idV4].poolId();
     }
 
-    function getCurrentTick(PoolKey memory poolKey) public view returns (int24 currentTick) {
-        currentTick = V4StateReader.getTick(POOL_MANAGER_V4, poolKey.toId());
+    /// @param poolKey the poolKey of the UniswapV4 pool
+    function getCurrentTick(bytes memory poolKey) public view returns (int24 currentTick) {
+        PoolKey memory key = abi.decode(poolKey, (PoolKey));
+        currentTick = V4StateReader.getTick(POOL_MANAGER_V4, key.toId());
     }
 }

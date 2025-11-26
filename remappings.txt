@@ -1,6 +1,6 @@
 forge-std/=lib/forge-std/src/
 @openzeppelin/=lib/v4-core/lib/openzeppelin-contracts/
-solmate/=lib/solmate/src
+solmate/=lib/solmate/
 clones-with-immutable-args/=lib/clones-with-immutable-args/src/
 univ3-core/=lib/v3-core/contracts
 univ3-periphery/=lib/v3-periphery/contracts

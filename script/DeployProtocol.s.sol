@@ -7,6 +7,7 @@ import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
+import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
 import {Pointer, PointerLibrary} from "@types/Pointer.sol";
@@ -90,7 +91,7 @@ contract DeployProtocol is Script {
         new PanopticFactory(
             sfpm,
             uniFactory,
-            address(new PanopticPool(sfpm)),
+            address(new PanopticPool(ISemiFungiblePositionManager(address(sfpm)))),
             address(new CollateralTracker(10)),
             props,
             indices,

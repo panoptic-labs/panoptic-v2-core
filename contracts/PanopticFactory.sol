@@ -63,9 +63,6 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @notice Reference implementation of the `CollateralTracker` to clone.
     address internal immutable COLLATERAL_REFERENCE;
 
-    /// @notice The `observationCardinalityNext` to set on the Uniswap pool when a new PanopticPool is deployed.
-    uint16 internal constant CARDINALITY_INCREASE = 51;
-
     /*//////////////////////////////////////////////////////////////
                                 STORAGE
     //////////////////////////////////////////////////////////////*/
@@ -201,11 +198,6 @@ contract PanopticFactory is FactoryNFT, Multicall {
         collateralTracker1.initialize();
 
         s_getPanopticPool[v3Pool][riskEngine] = newPoolContract;
-
-        // The Panoptic pool won't be safe to use until the observation cardinality is at least CARDINALITY_INCREASE
-        // If this is not the case, we increase the next cardinality during deployment so the cardinality can catch up over time
-        // When that happens, there will be a period of time where the PanopticPool is deployed, but not (safely) usable
-        //v3Pool.increaseObservationCardinalityNext(CARDINALITY_INCREASE);
 
         // Issue reward NFT to donor
         uint256 tokenId = uint256(uint160(address(newPoolContract)));

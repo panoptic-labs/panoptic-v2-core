@@ -21,7 +21,6 @@ import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.so
 import {Constants} from "@libraries/Constants.sol";
 // Panoptic Interfaces
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
-import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol"; //
 // Uniswap - Panoptic's version 0.8
 import {FullMath} from "v3-core/libraries/FullMath.sol";
 // Uniswap Libraries
@@ -35,6 +34,7 @@ import {ClonesWithImmutableArgs} from "clones-with-immutable-args/ClonesWithImmu
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
 import {IUniswapV3Factory} from "v3-core/interfaces/IUniswapV3Factory.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
+import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
 
 import {PositionUtils, MiniPositionManager} from "../testUtils/PositionUtils.sol";
 
