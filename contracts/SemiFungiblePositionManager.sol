@@ -1492,9 +1492,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     }
 
     /// @notice Returns the `poolId` for a given Uniswap pool.
-    /// @param univ3pool The address of the Uniswap Pool
+    /// @param id The address of the Uniswap Pool
     /// @return poolId The unique pool identifier corresponding to `univ3pool`
-    function getPoolId(address univ3pool) external view returns (uint64 poolId) {
+    function getPoolId(bytes memory id) external view returns (uint64 poolId) {
+        address univ3pool = abi.decode(id, (address));
         poolId = s_addressToPoolData[univ3pool].poolId();
     }
 

@@ -207,7 +207,7 @@ contract Misctest is Test, PositionUtils {
 
         sfpm = new SemiFungiblePositionManager(V3FACTORY, 10 ** 13, 0);
 
-        ph = new PanopticHelper(sfpm);
+        ph = new PanopticHelper(ISemiFungiblePositionManager(address(sfpm)));
 
         // deploy reference pool and collateral token
         poolReference = address(new PanopticPool(ISemiFungiblePositionManager(address(sfpm))));
@@ -2236,16 +2236,10 @@ contract Misctest is Test, PositionUtils {
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
-        $posIdList[0] = TokenId.wrap(0).addPoolId(sfpm.getPoolId(address(uniPool))).addLeg(
-            0,
-            1,
-            1,
-            1,
-            0,
-            0,
-            15,
-            1
-        );
+        $posIdList[0] = TokenId
+            .wrap(0)
+            .addPoolId(sfpm.getPoolId(abi.encode(address(uniPool))))
+            .addLeg(0, 1, 1, 1, 0, 0, 15, 1);
 
         vm.startPrank(Alice);
         mintOptions(
@@ -3431,7 +3425,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, 2 ** 96);
 
         $posIdLists[0].push(
-            TokenId.wrap(0).addPoolId(sfpm.getPoolId(address(uniPool))).addLeg(
+            TokenId.wrap(0).addPoolId(sfpm.getPoolId(abi.encode(address(uniPool)))).addLeg(
                 0,
                 1,
                 1,
@@ -3456,7 +3450,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         $posIdLists[1].push(
-            TokenId.wrap(0).addPoolId(sfpm.getPoolId(address(uniPool))).addLeg(
+            TokenId.wrap(0).addPoolId(sfpm.getPoolId(abi.encode(address(uniPool)))).addLeg(
                 0,
                 1,
                 1,

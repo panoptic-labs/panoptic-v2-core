@@ -629,7 +629,7 @@ contract PanopticPoolTest is PositionUtils {
     function setUp() public {
         sfpm = new SemiFungiblePositionManagerHarness(V3FACTORY);
 
-        ph = new PanopticHelper(sfpm);
+        ph = new PanopticHelper(ISemiFungiblePositionManager(address(sfpm)));
 
         // deploy reference pool and collateral token
         poolReference = address(new PanopticPoolHarness(sfpm));

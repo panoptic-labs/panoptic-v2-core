@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
+import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Math} from "@libraries/Math.sol";
@@ -18,7 +19,7 @@ import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.so
 /// @title Utility contract for token ID construction and advanced queries.
 /// @author Axicon Labs Limited
 contract PanopticHelper {
-    SemiFungiblePositionManager internal immutable SFPM;
+    ISemiFungiblePositionManager internal immutable SFPM;
 
     struct Leg {
         uint64 poolId;
@@ -35,7 +36,7 @@ contract PanopticHelper {
     /// @notice Construct the PanopticHelper contract
     /// @param _SFPM address of the SemiFungiblePositionManager
     /// @dev the SFPM is used to get the pool ID for a given address
-    constructor(SemiFungiblePositionManager _SFPM) payable {
+    constructor(ISemiFungiblePositionManager _SFPM) payable {
         SFPM = _SFPM;
     }
 
@@ -259,29 +260,6 @@ contract PanopticHelper {
         return int256(balanceCross) - int256(requiredCross);
     }
 
-    /// @notice Unwraps the contents of the tokenId into its legs.
-    /// @param tokenId the input tokenId
-    /// @return legs an array of leg structs
-    function unwrapTokenId(TokenId tokenId) public view returns (Leg[] memory) {
-        uint256 numLegs = tokenId.countLegs();
-        Leg[] memory legs = new Leg[](numLegs);
-
-        uint64 poolId = tokenId.poolId();
-        address UniswapV3Pool = address(SFPM.getUniswapV3PoolFromId(tokenId.poolId()));
-        for (uint256 i = 0; i < numLegs; ++i) {
-            legs[i].poolId = poolId;
-            legs[i].UniswapV3Pool = UniswapV3Pool;
-            legs[i].asset = tokenId.asset(i);
-            legs[i].optionRatio = tokenId.optionRatio(i);
-            legs[i].tokenType = tokenId.tokenType(i);
-            legs[i].isLong = tokenId.isLong(i);
-            legs[i].riskPartner = tokenId.riskPartner(i);
-            legs[i].strike = tokenId.strike(i);
-            legs[i].width = tokenId.width(i);
-        }
-        return legs;
-    }
-
     /// @notice Returns an estimate of the downside liquidation price for a given account on a given pool.
     /// @dev returns MIN_TICK if the LP is more than 100000 ticks below the current tick.
     /// @param pool address of the pool
@@ -469,7 +447,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (TokenId tokenId) {
         // Pool
-        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(abi.encode(univ3pool)));
 
         // A strangle is composed of
         // 1. a call with a higher strike price
@@ -520,7 +498,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (TokenId tokenId) {
         // Pool
-        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(abi.encode(univ3pool)));
 
         // A straddle is composed of
         // 1. a call with an identical strike price
@@ -553,7 +531,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (TokenId tokenId) {
         // Pool
-        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(abi.encode(univ3pool)));
 
         // A call spread is composed of
         // 1. a long call with a lower strike price
@@ -586,7 +564,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (TokenId tokenId) {
         // Pool
-        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(abi.encode(univ3pool)));
 
         // A put spread is composed of
         // 1. a long put with a higher strike price
@@ -621,7 +599,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (TokenId tokenId) {
         // Pool
-        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(abi.encode(univ3pool)));
 
         // A call diagonal spread is composed of
         // 1. a long call with a (lower/higher) strike price and (lower/higher) width(expiry)
@@ -674,7 +652,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (TokenId tokenId) {
         // Pool
-        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(abi.encode(univ3pool)));
 
         // A bearish diagonal spread is composed of
         // 1. a long put with a (higher/lower) strike price and (lower/higher) width(expiry)
@@ -983,7 +961,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (TokenId tokenId) {
         // Pool
-        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(abi.encode(univ3pool)));
 
         // a call ratio spread is composed of
         // 1. a long call
@@ -1016,7 +994,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (TokenId tokenId) {
         // Pool
-        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(abi.encode(univ3pool)));
 
         // a put ratio spread is composed of
         // 1. a long put
@@ -1049,7 +1027,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (TokenId tokenId) {
         // Pool
-        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(abi.encode(univ3pool)));
 
         // a call ZEBRA(zero extrinsic value back ratio spread) spread is composed of
         // 1. a short call
@@ -1082,7 +1060,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (TokenId tokenId) {
         // Pool
-        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(abi.encode(univ3pool)));
 
         // a put ZEBRA(zero extrinsic value back ratio spread) spread is composed of
         // 1. a short put

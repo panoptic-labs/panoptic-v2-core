@@ -5,7 +5,7 @@ pragma solidity ^0.8.24;
 import "forge-std/Test.sol";
 // Panoptic Core
 import {PanopticPool} from "@contracts/PanopticPool.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
+import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManagerV4.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
@@ -35,6 +35,17 @@ import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
 import {IUniswapV3Factory} from "v3-core/interfaces/IUniswapV3Factory.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
 import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
+// V4 types
+import {PoolId} from "v4-core/types/PoolId.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
+import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
+import {V4StateReader} from "@libraries/V4StateReader.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {PoolManager} from "v4-core/PoolManager.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
+import {V4RouterSimple} from "../testUtils/V4RouterSimple.sol";
 
 import {PositionUtils, MiniPositionManager} from "../testUtils/PositionUtils.sol";
 
@@ -179,7 +190,9 @@ contract PanopticPoolHarness is PanopticPool {
 }
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
-    constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory, 10 ** 13, 0) {}
+    constructor(
+        IPoolManager _manager
+    ) SemiFungiblePositionManager(_manager, 10 ** 13, 10 ** 13, 0) {}
 
     function accountLiquidity(
         bytes32 positionKey
@@ -187,8 +200,8 @@ contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
         return s_accountLiquidity[positionKey];
     }
 
-    function __getPoolId(address pool, int24 tickSpacing) external view returns (uint64 poolId) {
-        poolId = _getPoolId(pool, tickSpacing);
+    function __getPoolId(PoolId idV4, int24 tickSpacing) external view returns (uint64 poolId) {
+        poolId = _getPoolId(idV4, tickSpacing);
     }
 }
 
@@ -463,6 +476,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
     CollateralTrackerHarness collateralToken0;
     CollateralTrackerHarness collateralToken1;
 
+    IPoolManager manager;
+
+    V4RouterSimple routerV4;
+
+    PoolKey poolKey;
+
     /*//////////////////////////////////////////////////////////////
                             POSITION DATA
     //////////////////////////////////////////////////////////////*/
@@ -681,10 +700,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function _cacheWorldState(IUniswapV3Pool _pool) internal {
         pool = _pool;
-        {
-            poolId = uint64(uint160(address(_pool)) >> 112);
-            poolId += uint64(uint24(_pool.tickSpacing())) << 48;
-        }
         token0 = _pool.token0();
         token1 = _pool.token1();
         isWETH = token0 == address(WETH) ? 0 : 1;
@@ -693,6 +708,17 @@ contract CollateralTrackerTest is Test, PositionUtils {
         (currentSqrtPriceX96, currentTick, , , , , ) = _pool.slot0();
         feeGrowthGlobal0X128 = _pool.feeGrowthGlobal0X128();
         feeGrowthGlobal1X128 = _pool.feeGrowthGlobal1X128();
+        poolKey = PoolKey(
+            Currency.wrap(token0),
+            Currency.wrap(token1),
+            fee,
+            tickSpacing,
+            IHooks(address(0))
+        );
+        {
+            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId += uint64(uint24(_pool.tickSpacing())) << 48;
+        }
     }
 
     function _deployCustomPanopticPool(
@@ -700,34 +726,53 @@ contract CollateralTrackerTest is Test, PositionUtils {
         address _token1,
         IUniswapV3Pool uniswapPool // must already exist and be initialized
     ) internal {
-        // 1) SFPM and AMM pool init
-        sfpm = new SemiFungiblePositionManagerHarness(V3FACTORY);
-        // enforce token sort like the factory does
-        (address t0, address t1) = _token0 < _token1 ? (_token0, _token1) : (_token1, _token0);
-        poolId = sfpm.initializeAMMPool(t0, t1, fee);
+        manager = new PoolManager(address(0));
+        routerV4 = new V4RouterSimple(manager);
+
+        vm.startPrank(Swapper);
+
+        deal(token0, Swapper, type(uint248).max);
+        deal(token1, Swapper, type(uint248).max);
+
+        IERC20Partial(token0).approve(address(router), type(uint256).max);
+        IERC20Partial(token1).approve(address(router), type(uint256).max);
+
+        IERC20Partial(token0).approve(address(routerV4), type(uint256).max);
+        IERC20Partial(token1).approve(address(routerV4), type(uint256).max);
+
+        manager.initialize(poolKey, currentSqrtPriceX96);
+
+        routerV4.modifyLiquidity(
+            address(0),
+            poolKey,
+            (TickMath.MIN_TICK / tickSpacing) * tickSpacing,
+            (TickMath.MAX_TICK / tickSpacing) * tickSpacing,
+            1_000_000 ether
+        );
+
+        // deploy the semiFungiblePositionManager
+        sfpm = new SemiFungiblePositionManagerHarness(manager);
+
+        address t0 = address(uint160(poolKey.currency0.toId()));
+        address t1 = address(uint160(poolKey.currency1.toId()));
+        // Initialize the world pool
+        uint64 poolId = sfpm.initializeAMMPool(poolKey);
 
         // 2) Risk engine
         riskEngine = new RiskEngineHarness(10_000_000, 10_000_000);
 
-        // 3) Implementations (POOL_REFERENCE and COLLATERAL_REFERENCE stand-ins)
-        // If you already have shared references in your test suite, reuse them instead of deploying new ones.
-        CollateralTrackerHarness collateralImpl = new CollateralTrackerHarness();
-        panopticPool = new PanopticPoolHarness(sfpm); // acts as POOL_REFERENCE
+        panopticHelper = new PanopticHelper(ISemiFungiblePositionManager(address(sfpm)));
 
-        // 4) Deterministic salt like the factory (deployer + pool + risk + user salt=0)
-        bytes32 salt = bytes32(
-            abi.encodePacked(
-                uint80(uint160(address(this)) >> 80),
-                uint80(uint160(address(uniswapPool)) >> 40),
-                uint80(uint160(address(riskEngine)) >> 40),
-                uint96(0)
-            )
-        );
+        vm.startPrank(address(this));
 
-        // 5) Predict pool proxy address for embedding into collateral immutables
         PanopticPoolHarness predictedPool = PanopticPoolHarness(
-            ClonesWithImmutableArgs.addressOfClone3(salt)
+            ClonesWithImmutableArgs.addressOfClone3(PoolId.unwrap(poolKey.toId()))
         );
+
+        CollateralTrackerHarness collateralImpl = new CollateralTrackerHarness();
+
+        collateralToken0 = new CollateralTrackerHarness();
+        collateralToken1 = new CollateralTrackerHarness();
 
         // 6) Clone collateral trackers with immutables
         collateralToken0 = CollateralTrackerHarness(
@@ -740,7 +785,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     t0, // ct.token0()
                     t1, // ct.token1()
                     riskEngine, // risk engine
-                    address(0), // no pool manager
+                    manager, // pool manager
                     fee // pool fee
                 )
             )
@@ -756,34 +801,39 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     t0, // ct.token0()
                     t1, // ct.token1()
                     riskEngine, // risk engine
-                    address(0), // no pool manager
+                    manager, // pool manager
                     fee // pool fee
                 )
             )
         );
 
-        // 7) Clone the PanopticPool proxy with immutables
+        panopticPool = new PanopticPoolHarness(sfpm);
+
         panopticPool = PanopticPoolHarness(
             ClonesWithImmutableArgs.clone3(
-                address(panopticPool), // implementation = POOL_REFERENCE
+                address(panopticPool),
                 abi.encodePacked(
                     collateralToken0,
                     collateralToken1,
-                    riskEngine,
+                    pool,
                     uint256(poolId),
-                    abi.encode(uniswapPool) // v3 pool reference payload
+                    abi.encode(poolKey)
                 ),
-                salt
+                PoolId.unwrap(poolKey.toId())
             )
         );
 
-        // 8) Initialize pool and trackers, exactly like the factory path
+        vm.startPrank(Swapper);
+
         panopticPool.initialize();
+
         collateralToken0.initialize();
         collateralToken1.initialize();
 
+        // store panoptic pool address
+        panopticPoolAddress = address(panopticPool);
+
         // 9) Helpers wiring for tests
-        panopticHelper = new PanopticHelper(SemiFungiblePositionManager(sfpm));
         panopticPoolAddress = address(panopticPool);
     }
 
@@ -794,34 +844,53 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 crossBuffer0,
         uint256 crossBuffer1
     ) internal {
-        // 1) SFPM and AMM pool init
-        sfpm = new SemiFungiblePositionManagerHarness(V3FACTORY);
-        // enforce token sort like the factory does
-        (address t0, address t1) = _token0 < _token1 ? (_token0, _token1) : (_token1, _token0);
-        poolId = sfpm.initializeAMMPool(t0, t1, fee);
+        manager = new PoolManager(address(0));
+        routerV4 = new V4RouterSimple(manager);
+
+        vm.startPrank(Swapper);
+
+        deal(token0, Swapper, type(uint248).max);
+        deal(token1, Swapper, type(uint248).max);
+
+        IERC20Partial(token0).approve(address(router), type(uint256).max);
+        IERC20Partial(token1).approve(address(router), type(uint256).max);
+
+        IERC20Partial(token0).approve(address(routerV4), type(uint256).max);
+        IERC20Partial(token1).approve(address(routerV4), type(uint256).max);
+
+        manager.initialize(poolKey, currentSqrtPriceX96);
+
+        routerV4.modifyLiquidity(
+            address(0),
+            poolKey,
+            (TickMath.MIN_TICK / tickSpacing) * tickSpacing,
+            (TickMath.MAX_TICK / tickSpacing) * tickSpacing,
+            1_000_000 ether
+        );
+
+        // deploy the semiFungiblePositionManager
+        sfpm = new SemiFungiblePositionManagerHarness(manager);
+
+        address t0 = address(uint160(poolKey.currency0.toId()));
+        address t1 = address(uint160(poolKey.currency1.toId()));
+        // Initialize the world pool
+        uint64 poolId = sfpm.initializeAMMPool(poolKey);
 
         // 2) Risk engine
         riskEngine = new RiskEngineHarness(crossBuffer0, crossBuffer1);
 
-        // 3) Implementations (POOL_REFERENCE and COLLATERAL_REFERENCE stand-ins)
-        // If you already have shared references in your test suite, reuse them instead of deploying new ones.
-        CollateralTrackerHarness collateralImpl = new CollateralTrackerHarness();
-        panopticPool = new PanopticPoolHarness(sfpm); // acts as POOL_REFERENCE
+        panopticHelper = new PanopticHelper(ISemiFungiblePositionManager(address(sfpm)));
 
-        // 4) Deterministic salt like the factory (deployer + pool + risk + user salt=0)
-        bytes32 salt = bytes32(
-            abi.encodePacked(
-                uint80(uint160(address(this)) >> 80),
-                uint80(uint160(address(uniswapPool)) >> 40),
-                uint80(uint160(address(riskEngine)) >> 40),
-                uint96(0)
-            )
-        );
+        vm.startPrank(address(this));
 
-        // 5) Predict pool proxy address for embedding into collateral immutables
         PanopticPoolHarness predictedPool = PanopticPoolHarness(
-            ClonesWithImmutableArgs.addressOfClone3(salt)
+            ClonesWithImmutableArgs.addressOfClone3(PoolId.unwrap(poolKey.toId()))
         );
+
+        CollateralTrackerHarness collateralImpl = new CollateralTrackerHarness();
+
+        collateralToken0 = new CollateralTrackerHarness();
+        collateralToken1 = new CollateralTrackerHarness();
 
         // 6) Clone collateral trackers with immutables
         collateralToken0 = CollateralTrackerHarness(
@@ -834,7 +903,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     t0, // ct.token0()
                     t1, // ct.token1()
                     riskEngine, // risk engine
-                    address(0), // no pool manager
+                    manager, // pool manager
                     fee // pool fee
                 )
             )
@@ -850,34 +919,39 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     t0, // ct.token0()
                     t1, // ct.token1()
                     riskEngine, // risk engine
-                    address(0), // no pool manager
+                    manager, // pool manager
                     fee // pool fee
                 )
             )
         );
 
-        // 7) Clone the PanopticPool proxy with immutables
+        panopticPool = new PanopticPoolHarness(sfpm);
+
         panopticPool = PanopticPoolHarness(
             ClonesWithImmutableArgs.clone3(
-                address(panopticPool), // implementation = POOL_REFERENCE
+                address(panopticPool),
                 abi.encodePacked(
                     collateralToken0,
                     collateralToken1,
-                    riskEngine,
+                    pool,
                     uint256(poolId),
-                    abi.encode(uniswapPool) // v3 pool reference payload
+                    abi.encode(poolKey)
                 ),
-                salt
+                PoolId.unwrap(poolKey.toId())
             )
         );
 
-        // 8) Initialize pool and trackers, exactly like the factory path
+        vm.startPrank(Swapper);
+
         panopticPool.initialize();
+
         collateralToken0.initialize();
         collateralToken1.initialize();
 
+        // store panoptic pool address
+        panopticPoolAddress = address(panopticPool);
+
         // 9) Helpers wiring for tests
-        panopticHelper = new PanopticHelper(SemiFungiblePositionManager(sfpm));
         panopticPoolAddress = address(panopticPool);
     }
 

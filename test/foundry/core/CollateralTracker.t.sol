@@ -783,7 +783,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken1.initialize();
 
         // 9) Helpers wiring for tests
-        panopticHelper = new PanopticHelper(SemiFungiblePositionManager(sfpm));
+        panopticHelper = new PanopticHelper(ISemiFungiblePositionManager(address(sfpm)));
         panopticPoolAddress = address(panopticPool);
     }
 
@@ -877,7 +877,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken1.initialize();
 
         // 9) Helpers wiring for tests
-        panopticHelper = new PanopticHelper(SemiFungiblePositionManager(sfpm));
+        panopticHelper = new PanopticHelper(ISemiFungiblePositionManager(address(sfpm)));
         panopticPoolAddress = address(panopticPool);
     }
 

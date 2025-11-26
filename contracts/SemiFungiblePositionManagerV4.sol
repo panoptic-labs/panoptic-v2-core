@@ -1308,18 +1308,20 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     }
 
     /// @notice Returns the current enforced tick limits for a given idV4 `poolId`.
-    /// @param idV4 The unique pool identifier for a Uniswap V4 pool
+    /// @param poolId The unique pool identifier for a Uniswap V4 pool
     /// @return The minimum enforced tick for chunks created in the pool corresponding to `poolId`
     /// @return The maximum enforced tick for chunks created in the pool corresponding to `poolId`
-    function getEnforcedTickLimits(PoolId idV4) external view returns (int24, int24) {
-        PoolData poolData = s_V4toSFPMIdData[idV4];
+    function getEnforcedTickLimits(uint64 poolId) external view returns (int24, int24) {
+        PoolKey memory poolKey = s_poolIdToKey[poolId];
+        PoolData poolData = s_V4toSFPMIdData[poolKey.toId()];
         return (poolData.minEnforcedTick(), poolData.maxEnforcedTick());
     }
 
     /// @notice Returns the `poolId` for a given Uniswap pool.
-    /// @param idV4 The id of the Uniswap Pool
+    /// @param id The PoolId of the Uniswap V4 Pool
     /// @return poolId The unique pool identifier corresponding to a idV4
-    function getPoolId(PoolId idV4) external view returns (uint64) {
+    function getPoolId(bytes memory id) external view returns (uint64) {
+        PoolId idV4 = abi.decode(id, (PoolId));
         return s_V4toSFPMIdData[idV4].poolId();
     }
 
