@@ -420,8 +420,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// - The token supply for one of the tokens meeting the first condition has *decreased* significantly since the last call
     /// @dev This function *cannot* decrease the absolute value of either enforced tick, i.e., it can only widen the range of possible ticks.
     /// @dev The purpose of this function is to prevent pools created while a large amount of one of the tokens was flash-minted from being stuck in a narrow tick range.
-    /// @param key The key for the Uniswap V4 pool on which to expand the enforced tick range
-    function expandEnforcedTickRange(PoolKey calldata key) external {
+    /// @param poolId The poolId on which to expand the enforced tick range
+    function expandEnforcedTickRange(uint64 poolId) external {
+        PoolKey memory key = s_poolIdToKey[poolId];
         PoolId idV4 = key.toId();
 
         PoolData dataOld = s_V4toSFPMIdData[idV4];

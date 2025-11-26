@@ -86,6 +86,8 @@ interface ISemiFungiblePositionManager {
 
     function getCurrentTick(bytes memory poolKey) external view returns (int24 currentTick);
 
+    function expandEnforcedTickRange(uint64 poolId) external;
+
     /*//////////////////////////////////////////////////////////////
                             ERC1155 SUPPORT
     //////////////////////////////////////////////////////////////*/
