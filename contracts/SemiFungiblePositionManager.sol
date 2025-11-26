@@ -1499,7 +1499,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         poolId = s_addressToPoolData[univ3pool].poolId();
     }
 
-    function getCurrentTick(bytes calldata poolKey) public view returns (int24 currentTick) {
+    function getCurrentTick(bytes memory poolKey) public view returns (int24 currentTick) {
         IUniswapV3Pool univ3pool = IUniswapV3Pool(abi.decode(poolKey, (address)));
         (, currentTick, , , , , ) = univ3pool.slot0();
     }

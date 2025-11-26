@@ -493,7 +493,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @return An array of LeftRight encoded words containing the amount of currency0 and currency1 collected as fees for each leg
     /// @return The net amount of currency0 and currency1 moved to/from the Uniswap V4 pool
     function _unlockAndCreatePositionInAMM(
-        bytes calldata key,
+        PoolKey memory key,
         int24 tickLimitLow,
         int24 tickLimitHigh,
         uint128 positionSize,
@@ -525,7 +525,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @return `(LeftRightUnsigned[4] collectedByLeg, LeftRightSigned totalMoved)` An array of LeftRight encoded words containing the amount of currency0 and currency1 collected as fees for each leg and the net amount of currency0 and currency1 moved to/from the Uniswap V4 pool
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(POOL_MANAGER_V4)) revert Errors.UnauthorizedUniswapCallback();
-
         (
             address account,
             PoolKey memory key,
@@ -535,7 +534,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             TokenId tokenId,
             bool isBurn
         ) = abi.decode(data, (address, PoolKey, int24, int24, uint128, TokenId, bool));
-
         (
             LeftRightUnsigned[4] memory collectedByLeg,
             LeftRightSigned totalMoved
@@ -574,10 +572,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         _burn(msg.sender, TokenId.unwrap(tokenId), positionSize);
 
         emit TokenizedPositionBurnt(msg.sender, tokenId, positionSize);
-
+        PoolKey memory _key = abi.decode(poolKey, (PoolKey));
         return
             _unlockAndCreatePositionInAMM(
-                poolKey,
+                _key,
                 slippageTickLimitLow,
                 slippageTickLimitHigh,
                 positionSize,
@@ -607,10 +605,11 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
         // verify that the tokenId is correctly formatted and conforms to all enforced constraints
         tokenId.validate();
+        PoolKey memory _key = abi.decode(poolKey, (PoolKey));
 
         return
             _unlockAndCreatePositionInAMM(
-                poolKey,
+                _key,
                 slippageTickLimitLow,
                 slippageTickLimitHigh,
                 positionSize,

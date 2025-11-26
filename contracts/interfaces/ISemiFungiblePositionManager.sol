@@ -80,11 +80,11 @@ interface ISemiFungiblePositionManager {
         uint256 isLong
     ) external view returns (uint128 premium0, uint128 premium1);
 
-    function getPoolId(bytes calldata id) external view returns (uint64 poolId);
+    function getPoolId(bytes memory id) external view returns (uint64 poolId);
 
     function getEnforcedTickLimits(uint64 poolId) external view returns (int24, int24);
 
-    function getCurrentTick(bytes calldata poolKey) external view returns (int24 currentTick);
+    function getCurrentTick(bytes memory poolKey) external view returns (int24 currentTick);
 
     /*//////////////////////////////////////////////////////////////
                             ERC1155 SUPPORT

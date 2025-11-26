@@ -238,8 +238,8 @@ contract PanopticPool is Clone, Multicall {
     // The parameters will be encoded in calldata at `_getImmutableArgsOffset()` as follows:
     // abi.encodePacked(address collateralToken0, address collateralToken1, address oracleContract, uint256 poolId, abi.encode(PoolKey poolKey))
     // bytes: 0                    20                   40                   60                   92
-    //        |<---- 160 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 256 bits ---->|<---- 1280 bits ---->|
-    //           collateralToken0     collateralToken1       riskEngine             poolId               poolKey
+    //        |<---- 160 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 64 bits ---->|<---- 1280 bits ---->|
+    //           collateralToken0     collateralToken1       riskEngine             poolManager          poolId             poolKey
 
     /// @notice Get the collateral token corresponding to token0 of the Uniswap pool.
     /// @return Collateral token corresponding to token0 in Uniswap
@@ -253,16 +253,23 @@ contract PanopticPool is Clone, Multicall {
         return CollateralTracker(_getArgAddress(20));
     }
 
-    /// @notice Get the address of the external oracle contract used by this Panoptic Pool.
-    /// @return The external oracle contract used by this Panoptic Pool
+    /// @notice Get the address of the risk engine contract used by this Panoptic Pool.
+    /// @return The risk engine contract used by this Panoptic Pool
     function riskEngine() public pure returns (RiskEngine) {
         return RiskEngine(_getArgAddress(40));
+    }
+
+    /// @notice Retrieve the PoolManager associated with that CollateralTracker.
+    /// @dev stored as zero if not a Uniswap v4 pool
+    /// @return The PoolManager instance associated with that CollateralTracker's uniswap V4 pool
+    function poolManager() public pure returns (address) {
+        return address(_getArgAddress(60));
     }
 
     /// @notice Get the Uniswap Pool ID for the Uniswap pool used by this Panoptic.
     /// @return The Pool ID for this Panoptic Pool
     function poolId() public pure returns (uint64) {
-        return uint64(_getArgUint256(60));
+        return uint64(_getArgUint64(80));
     }
 
     /// @notice Get the pool key for the Uniswap pool used by this Panoptic Pool.
@@ -272,7 +279,7 @@ contract PanopticPool is Clone, Multicall {
     /// @return key The Pool Key for this Panoptic Pool.
     function poolKey() public pure returns (bytes calldata key) {
         uint256 offset = _getImmutableArgsOffset();
-        uint256 start = offset + 92;
+        uint256 start = offset + 88;
         uint256 len;
         assembly {
             len := sub(sub(calldatasize(), start), 2)
@@ -329,7 +336,8 @@ contract PanopticPool is Clone, Multicall {
             collateralToken0(),
             collateralToken1(),
             collateralToken0().token0(),
-            collateralToken0().token1()
+            collateralToken0().token1(),
+            poolManager()
         );
     }
 

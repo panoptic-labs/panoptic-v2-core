@@ -718,8 +718,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         bytes32 salt = bytes32(
             abi.encodePacked(
                 uint80(uint160(address(this)) >> 80),
-                uint80(uint160(address(uniswapPool)) >> 40),
-                uint80(uint160(address(riskEngine)) >> 40),
+                uint40(uint160(address(uniswapPool)) >> 120),
+                uint40(uint160(address(riskEngine)) >> 120),
                 uint96(0)
             )
         );
@@ -770,7 +770,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     collateralToken0,
                     collateralToken1,
                     riskEngine,
-                    uint256(poolId),
+                    address(0), // no pool manager
+                    poolId,
                     abi.encode(uniswapPool) // v3 pool reference payload
                 ),
                 salt
@@ -864,7 +865,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     collateralToken0,
                     collateralToken1,
                     riskEngine,
-                    uint256(poolId),
+                    address(0), // no pool manager
+                    poolId,
                     abi.encode(uniswapPool) // v3 pool reference payload
                 ),
                 salt

@@ -150,36 +150,40 @@ contract PanopticFactory is FactoryNFT, Multicall {
         // this allows us to link the PanopticPool into the CollateralTrackers as an immutable arg without advance knowledge of their addresses
         newPoolContract = PanopticPool(ClonesWithImmutableArgs.addressOfClone3(salt32));
 
-        uint24 fee = key.fee;
-        // Deploy collateral token proxies
-        CollateralTracker collateralTracker0 = CollateralTracker(
-            COLLATERAL_REFERENCE.clone2(
-                abi.encodePacked(
-                    newPoolContract,
-                    true,
-                    key.currency0,
-                    key.currency0,
-                    key.currency1,
-                    riskEngine,
-                    POOL_MANAGER_V4,
-                    fee
+        CollateralTracker collateralTracker0;
+        CollateralTracker collateralTracker1;
+        {
+            uint24 fee = key.fee;
+            // Deploy collateral token proxies
+            collateralTracker0 = CollateralTracker(
+                COLLATERAL_REFERENCE.clone2(
+                    abi.encodePacked(
+                        newPoolContract,
+                        true,
+                        key.currency0,
+                        key.currency0,
+                        key.currency1,
+                        riskEngine,
+                        POOL_MANAGER_V4,
+                        fee
+                    )
                 )
-            )
-        );
-        CollateralTracker collateralTracker1 = CollateralTracker(
-            COLLATERAL_REFERENCE.clone2(
-                abi.encodePacked(
-                    newPoolContract,
-                    false,
-                    key.currency1,
-                    key.currency0,
-                    key.currency1,
-                    riskEngine,
-                    POOL_MANAGER_V4,
-                    fee
+            );
+            collateralTracker1 = CollateralTracker(
+                COLLATERAL_REFERENCE.clone2(
+                    abi.encodePacked(
+                        newPoolContract,
+                        false,
+                        key.currency1,
+                        key.currency0,
+                        key.currency1,
+                        riskEngine,
+                        POOL_MANAGER_V4,
+                        fee
+                    )
                 )
-            )
-        );
+            );
+        }
 
         // This creates a new Panoptic Pool (proxy to the PanopticPool implementation)
         newPoolContract = PanopticPool(
@@ -188,7 +192,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
                     collateralTracker0,
                     collateralTracker1,
                     riskEngine,
-                    uint256(poolId),
+                    POOL_MANAGER_V4,
+                    poolId,
                     abi.encode(key)
                 ),
                 salt32

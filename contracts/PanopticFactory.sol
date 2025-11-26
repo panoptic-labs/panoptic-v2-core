@@ -186,7 +186,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
                     collateralTracker0,
                     collateralTracker1,
                     riskEngine,
-                    uint256(poolId),
+                    address(0),
+                    poolId,
                     abi.encode(v3Pool)
                 ),
                 salt32

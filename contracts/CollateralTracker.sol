@@ -167,13 +167,14 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     }
 
     /// @notice Retrieve the RiskEngine associated with that CollateralTracker.
-    /// @return The RiskEngine instance associated with that CollateralTrackerwap V3 pool
+    /// @return The RiskEngine instance associated with that CollateralTracker's uniswap pool
     function riskEngine() public pure returns (RiskEngine) {
         return RiskEngine(_getArgAddress(81));
     }
 
-    /// @notice Retrieve the RiskEngine associated with that CollateralTracker.
-    /// @return The RiskEngine instance associated with that CollateralTrackerwap V3 pool
+    /// @notice Retrieve the PoolManager associated with that CollateralTracker.
+    /// @dev stored as zero if not a Uniswap v4 pool
+    /// @return The PoolManager instance associated with that CollateralTracker's uniswap V4 pool
     function poolManager() public pure returns (IPoolManager) {
         return IPoolManager(_getArgAddress(101));
     }
@@ -713,7 +714,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         // check/update allowance for approved withdraw
         if (msg.sender != owner) {
             uint256 allowed = allowance[owner][msg.sender];
-
             if (allowed != type(uint256).max) allowance[owner][msg.sender] = allowed - shares; // Saves gas for unlimited approvals.
         }
 
