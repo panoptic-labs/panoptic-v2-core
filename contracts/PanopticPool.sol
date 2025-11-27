@@ -1091,7 +1091,12 @@ contract PanopticPool is Clone, Multicall {
         }
 
         // revoke delegated virtual shares and settle any bonus deltas with the liquidator
-        collateralToken0().settleLiquidation(msg.sender, liquidatee, bonusAmounts.rightSlot());
+        // native currency is represented as address(0), so it will always be currency0 alphanumerically
+        collateralToken0().settleLiquidation{value: msg.value}(
+            msg.sender,
+            liquidatee,
+            bonusAmounts.rightSlot()
+        );
         collateralToken1().settleLiquidation(msg.sender, liquidatee, bonusAmounts.leftSlot());
 
         emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
