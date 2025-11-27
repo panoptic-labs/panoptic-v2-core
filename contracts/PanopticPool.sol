@@ -889,7 +889,7 @@ contract PanopticPool is Clone, Multicall {
         TokenId[] calldata positionIdListTo,
         TokenId[] calldata positionIdListToFinal,
         LeftRightUnsigned usePremiaAsCollateral
-    ) external {
+    ) external payable {
         // Assert the account we are liquidating is actually insolvent
         int24 twapTick = getTWAP();
         int24 currentTick = SFPM.getCurrentTick(poolKey());

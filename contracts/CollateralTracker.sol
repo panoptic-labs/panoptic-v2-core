@@ -526,7 +526,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param assets Amount of assets deposited
     /// @param receiver User to receive the shares
     /// @return shares The amount of Panoptic pool shares that were minted to the recipient
-    function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
+    function deposit(uint256 assets, address receiver) external payable returns (uint256 shares) {
         _accrueInterest(msg.sender, IS_DEPOSIT);
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
         if (assets == 0) revert Errors.BelowMinimumRedemption();
@@ -580,7 +580,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param shares Amount of shares to be minted
     /// @param receiver User to receive the shares
     /// @return assets The amount of assets deposited to mint the desired amount of shares
-    function mint(uint256 shares, address receiver) external returns (uint256 assets) {
+    function mint(uint256 shares, address receiver) external payable returns (uint256 assets) {
         _accrueInterest(msg.sender, IS_DEPOSIT);
         assets = previewMint(shares);
 
@@ -1177,19 +1177,32 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         address liquidator,
         address liquidatee,
         int256 bonus
-    ) external onlyPanopticPool {
+    ) external payable onlyPanopticPool {
         if (bonus < 0) {
             uint256 bonusAbs;
 
             unchecked {
                 bonusAbs = uint256(-bonus);
             }
+            address _poolManager = address(poolManager());
 
-            uint256 underlyingTokenBalance = ERC20Minimal(underlyingToken()).balanceOf(liquidator);
-            if (underlyingTokenBalance < bonusAbs)
-                revert Errors.NotEnoughTokens(underlyingToken(), bonusAbs, underlyingTokenBalance);
-            SafeTransferLib.safeTransferFrom(underlyingToken(), liquidator, msg.sender, bonusAbs);
-
+            if (_poolManager == address(0)) {
+                uint256 underlyingTokenBalance = ERC20Minimal(underlyingToken()).balanceOf(
+                    liquidator
+                );
+                if (underlyingTokenBalance < bonusAbs)
+                    revert Errors.NotEnoughTokens(
+                        underlyingToken(),
+                        bonusAbs,
+                        underlyingTokenBalance
+                    );
+                SafeTransferLib.safeTransferFrom(
+                    underlyingToken(),
+                    liquidator,
+                    msg.sender,
+                    bonusAbs
+                );
+            }
             _mint(liquidatee, convertToShares(bonusAbs));
 
             s_depositedAssets += uint128(bonusAbs);
@@ -1205,6 +1218,9 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                 unchecked {
                     balanceOf[liquidatee] = liquidateeBalance - type(uint248).max;
                 }
+            }
+            if (_poolManager != address(0)) {
+                _settleCurrencyDelta(liquidator, int256(bonusAbs));
             }
         } else {
             uint256 liquidateeBalance = balanceOf[liquidatee];
@@ -1257,6 +1273,9 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             } else {
                 _transferFrom(liquidatee, liquidator, bonusShares);
             }
+
+            // refund liquidator if they attached value expecting to settle a negative bonus in the native currency
+            if (msg.value > 0) SafeTransferLib.safeTransferETH(liquidator, msg.value);
         }
     }
 

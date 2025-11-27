@@ -1933,6 +1933,7 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-35));
 
+        console2.log(" uniPool.liquidity() - 1", uniPool.liquidity() - 1);
         accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1_000_000, 1_000_000_000);
 
         swapperc.swapTo(uniPool, 2 ** 96);
@@ -1942,7 +1943,8 @@ contract Misctest is Test, PositionUtils {
 
         editCollateral(ct0, Bob, ct0.convertToShares(5000));
         editCollateral(ct1, Bob, ct1.convertToShares(5000));
-
+        console2.log("share0", ct0.convertToShares(5000));
+        console2.log("share1", ct1.convertToShares(5000));
         vm.startPrank(Bob);
 
         $tempIdList = $posIdList;
@@ -1954,6 +1956,8 @@ contract Misctest is Test, PositionUtils {
 
         $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 1, 0, -35, 1));
 
+        console2.log("");
+        console2.log("MINT");
         mintOptions(
             pp,
             $posIdList,
