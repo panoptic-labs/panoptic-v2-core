@@ -172,6 +172,7 @@ contract Misctest is Test, PositionUtils {
     int24 fastOracleTick;
     int24 lastObservedTick;
     int24 $strike;
+    int24 $width;
 
     uint256 oraclePack;
     uint64 $poolId;
@@ -5532,7 +5533,7 @@ contract Misctest is Test, PositionUtils {
                 (x >> 1) % 2,
                 0,
                 strike,
-                2
+                x % 8 == 0 ? int24(0) : int24(2)
             );
             uint128[] memory sizeList = new uint128[](1);
             uint64[] memory spreadList = new uint64[](1);
@@ -5565,14 +5566,25 @@ contract Misctest is Test, PositionUtils {
                     ct0,
                     ct1
                 );
+                amountsMoved = PanopticMath.getAmountsMoved($tokenIdShort, positionSize, 0, false);
 
+                console2.log("unwrap", LeftRightUnsigned.unwrap(amountsMoved));
+                console2.log("amount.r", amountsMoved.rightSlot());
+                console2.log("amount.l", amountsMoved.leftSlot());
+                console2.log("tokenData0", tokenData0.rightSlot(), tokenData0.leftSlot());
+                console2.log("tokenData1", tokenData1.rightSlot(), tokenData1.leftSlot());
+                console2.log("posoitionSize", positionSize);
                 (uint256 balanceCross, uint256 requiredCross) = PanopticMath.getCrossBalances(
                     tokenData0,
                     tokenData1,
                     Math.getSqrtRatioAtTick(currentTick)
                 );
 
-                assertTrue(requiredCross > 0, "zero collateral requirement");
+                assertTrue(
+                    (requiredCross > 0) ||
+                        (requiredCross == 0 && LeftRightUnsigned.unwrap(amountsMoved) == 0),
+                    "zero collateral requirement"
+                );
                 assertTrue(requiredCross <= balanceCross, "account is solvent");
 
                 burnOptions(pp, mintList, new TokenId[](0), int24(-887272), int24(887272), true);
@@ -5584,6 +5596,13 @@ contract Misctest is Test, PositionUtils {
                         console2.log("ChunkHasZeroLiquidity at strike:", strike);
                     } else if (receivedSelector == Errors.InvalidTickBound.selector) {
                         console2.log("InvalidTickBound at strike:", strike);
+                    } else if (receivedSelector == 0x93dafdf1) {
+                        console2.log("Uniswap constraint (SafeCastOverflow) at strike:", strike);
+                    } else if (receivedSelector == 0xb8e3c385) {
+                        console2.log(
+                            "Uniswap constraint (TickLiquidityOverflow) at strike:",
+                            strike
+                        );
                     } else if (receivedSelector == 0x08c379a0) {
                         console2.log("Uniswap constraint at strike:", strike);
                     } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
@@ -5621,24 +5640,27 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
+        console2.log("uniPool.tickSpacing", uniPool.tickSpacing());
+        int24 tickSpacing = 10;
         {
             poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
-            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            poolId += uint64(uint24(tickSpacing)) << 48;
         }
 
         uint256 n;
         int24 minTick;
         {
-            minTick = (-887272 / uniPool.tickSpacing() + 1) * uniPool.tickSpacing();
-            int24 maxTick = (887272 / uniPool.tickSpacing()) * uniPool.tickSpacing();
-            n = uint256(uint24(maxTick - minTick)) / uint24(1000 * uniPool.tickSpacing());
+            minTick = (-887272 / tickSpacing + 1) * tickSpacing;
+            int24 maxTick = (887272 / tickSpacing) * tickSpacing;
+            n = uint256(uint24(maxTick - minTick)) / uint24(1000 * tickSpacing);
         }
         vm.startPrank(Bob);
         uint128 positionSize = uint128(PositionUtils._boundLog(positionSizeSeed, 0, 128));
 
+        $width = x % 8 == 0 ? int24(0) : int24(2);
         for (uint256 i = 0; i < n; ++i) {
             // mint OTM position
-            int24 strike = int24(-887270 + int256(i + 1) * 1000 * uniPool.tickSpacing());
+            int24 strike = int24(-887270 + int256(i + 1) * 1000 * tickSpacing);
 
             $tokenIdShort = TokenId.wrap(0).addPoolId(poolId).addLeg(
                 0,
@@ -5648,7 +5670,7 @@ contract Misctest is Test, PositionUtils {
                 (x >> 1) % 2,
                 0,
                 strike,
-                2
+                $width
             );
             uint128[] memory sizeList = new uint128[](1);
             uint64[] memory spreadList = new uint64[](1);
@@ -5680,7 +5702,7 @@ contract Misctest is Test, PositionUtils {
                         tokenType,
                         0,
                         strike,
-                        2
+                        $width
                     );
                 }
                 mintList[0] = $tokenIdLong;
@@ -5708,7 +5730,11 @@ contract Misctest is Test, PositionUtils {
                         Math.getSqrtRatioAtTick(currentTick)
                     );
 
-                    assertTrue(requiredCross > 0, "zero collateral requirement");
+                    assertTrue(
+                        (requiredCross > 0) ||
+                            (requiredCross == 0 && LeftRightUnsigned.unwrap(amountsMoved) == 0),
+                        "zero collateral requirement"
+                    );
                     assertTrue(requiredCross <= balanceCross, "account is solvent");
 
                     burnOptions(
@@ -5759,6 +5785,13 @@ contract Misctest is Test, PositionUtils {
                         console2.log("ChunkHasZeroLiquidity at strike:", strike);
                     } else if (receivedSelector == Errors.InvalidTickBound.selector) {
                         console2.log("InvalidTickBound at strike:", strike);
+                    } else if (receivedSelector == 0x93dafdf1) {
+                        console2.log("Uniswap constraint (SafeCastOverflow) at strike:", strike);
+                    } else if (receivedSelector == 0xb8e3c385) {
+                        console2.log(
+                            "Uniswap constraint (TickLiquidityOverflow) at strike:",
+                            strike
+                        );
                     } else if (receivedSelector == 0x08c379a0) {
                         console2.log("Uniswap constraint at strike:", strike);
                     } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
@@ -5814,7 +5847,7 @@ contract Misctest is Test, PositionUtils {
             }
         }
         vm.startPrank(Bob);
-        uint128 positionSize = uint128(PositionUtils._boundLog(positionSizeSeed, 64, 128));
+        uint128 positionSize = uint128(PositionUtils._boundLog(positionSizeSeed, 0, 128));
         uint256 asset = x % 2;
         uint256 tokenType = (x >> 1) % 2;
 
@@ -5846,7 +5879,6 @@ contract Misctest is Test, PositionUtils {
             // Try to mint and check if it reverts
             try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
                 // SUCCESS CASE - mintOptions didn't revert
-
                 // Alice Buys
                 vm.startPrank(Alice);
 
@@ -5870,7 +5902,6 @@ contract Misctest is Test, PositionUtils {
                 }
                 mintList[0] = $tokenIdLong;
                 try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
-                    console2.log("");
                     console2.log("Found non-reverting strike:", $strike);
                     (, , PositionBalance[] memory positionBalanceArray) = pp
                         .getAccumulatedFeesAndPositionsData(Alice, false, mintList);
@@ -5890,10 +5921,6 @@ contract Misctest is Test, PositionUtils {
                                 ct1
                             );
 
-                        console2.log("positionSize", positionSize);
-
-                        console2.log("req0", tokenData0.leftSlot());
-                        console2.log("req1", tokenData1.leftSlot());
                         (uint256 balanceCross, uint256 requiredCross) = PanopticMath
                             .getCrossBalances(
                                 tokenData0,
@@ -5981,6 +6008,13 @@ contract Misctest is Test, PositionUtils {
                         console2.log("ChunkHasZeroLiquidity at strike:", $strike);
                     } else if (receivedSelector == Errors.InvalidTickBound.selector) {
                         console2.log("InvalidTickBound at strike:", $strike);
+                    } else if (receivedSelector == 0xb8e3c385) {
+                        console2.log(
+                            "Uniswap constraint (TickLiquidityOverflow) at strike:",
+                            $strike
+                        );
+                    } else if (receivedSelector == 0x93dafdf1) {
+                        console2.log("Uniswap constraint (SafeCastOverflow) at strike:", $strike);
                     } else if (receivedSelector == 0x08c379a0) {
                         console2.log("Uniswap constraint at strike:", $strike);
                     } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
