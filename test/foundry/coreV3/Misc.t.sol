@@ -2,18 +2,17 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManagerV4.sol";
+import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
-import {PanopticFactory} from "@contracts/PanopticFactoryV4.sol";
+import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
 import {IUniswapV3Factory} from "v3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
-import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
@@ -24,23 +23,11 @@ import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {Math} from "@libraries/Math.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
+import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
 import {Constants} from "@libraries/Constants.sol";
 import {Pointer} from "@types/Pointer.sol";
 import {ERC20S} from "../testUtils/ERC20S.sol";
 import {LiquidityChunk, LiquidityChunkLibrary} from "@types/LiquidityChunk.sol";
-import {V4RouterSimple} from "../testUtils/V4RouterSimple.sol";
-// V4 types
-import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-import {PoolId} from "v4-core/types/PoolId.sol";
-import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
-import {V4StateReader} from "@libraries/V4StateReader.sol";
-import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
-import {Currency} from "v4-core/types/Currency.sol";
-import {PoolManager} from "v4-core/PoolManager.sol";
-import {IHooks} from "v4-core/interfaces/IHooks.sol";
-import {V4RouterSimple} from "../testUtils/V4RouterSimple.sol";
 
 contract SwapperC {
     function uniswapV3SwapCallback(
@@ -160,19 +147,12 @@ contract Misctest is Test, PositionUtils {
     PanopticHelper ph;
     RiskEngine re;
 
-    IPoolManager manager;
-
-    V4RouterSimple routerV4;
-
-    PoolKey poolKey;
-
     int24 currentTick;
     int256 twapTick;
     int24 slowOracleTick;
     int24 fastOracleTick;
     int24 lastObservedTick;
     int24 $strike;
-    int24 $width;
 
     uint256 oraclePack;
     uint64 $poolId;
@@ -224,10 +204,8 @@ contract Misctest is Test, PositionUtils {
 
     function setUp() public {
         vm.startPrank(Deployer);
-        manager = new PoolManager(address(0));
-        routerV4 = new V4RouterSimple(manager);
 
-        sfpm = new SemiFungiblePositionManager(manager, 10 ** 13, 10 ** 13, 0);
+        sfpm = new SemiFungiblePositionManager(V3FACTORY, 10 ** 13, 0);
 
         ph = new PanopticHelper(ISemiFungiblePositionManager(address(sfpm)));
 
@@ -248,22 +226,13 @@ contract Misctest is Test, PositionUtils {
             10_000_000
         );
 
-        poolKey = PoolKey(
-            Currency.wrap(address(token0)),
-            Currency.wrap(address(token1)),
-            500,
-            10,
-            IHooks(address(0))
-        );
-
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
         token1.mint(Swapper, type(uint128).max);
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
-        token0.approve(address(routerV4), type(uint248).max);
-        token1.approve(address(routerV4), type(uint248).max);
+
         // This price causes exactly one unit of liquidity to be minted
         // above here reverts b/c 0 liquidity cannot be minted
         IUniswapV3Pool(uniPool).initialize(2 ** 96);
@@ -281,15 +250,11 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, 2 ** 96 + 2 ** 88);
 
-        manager.initialize(poolKey, 1 * 2 ** 96);
-
         swapperc.burn(uniPool, -887270, 887270, 10 ** 18);
 
         _createPanopticPool();
 
         swapperc.mint(uniPool, -887270, 887270, 1);
-
-        routerV4.modifyLiquidity(address(0), poolKey, -887270, 887270, 1);
 
         vm.startPrank(Alice);
 
@@ -370,7 +335,7 @@ contract Misctest is Test, PositionUtils {
 
         factory = new PanopticFactory(
             sfpm,
-            manager,
+            V3FACTORY,
             poolReference,
             collateralReference,
             new bytes32[](0),
@@ -383,11 +348,20 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(factory), type(uint104).max);
         token1.approve(address(factory), type(uint104).max);
 
-        pp = PanopticPool(address(factory.deployNewPool(poolKey, re, uint96(block.timestamp))));
+        pp = PanopticPool(
+            address(
+                factory.deployNewPool(
+                    address(token0),
+                    address(token1),
+                    500,
+                    re,
+                    uint96(block.timestamp)
+                )
+            )
+        );
 
         vm.startPrank(Swapper);
         swapperc.swapTo(uniPool, 2 ** 96);
-        routerV4.swapTo(address(0), poolKey, 2 ** 96);
 
         // Update median
         pp.pokeOracle();
@@ -552,7 +526,7 @@ contract Misctest is Test, PositionUtils {
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
-                poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                poolId = uint64(uint160(address(uniPool)) >> 112);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
             TokenId posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
@@ -613,7 +587,7 @@ contract Misctest is Test, PositionUtils {
 
             if (i == positionCount - 1) {
                 {
-                    poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                    poolId = uint64(uint160(address(uniPool)) >> 112);
                     poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
                 }
 
@@ -680,13 +654,7 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(ct0), type(uint104).max);
         token1.approve(address(ct1), type(uint104).max);
 
-        accruePoolFeesInRange(
-            manager,
-            poolKey,
-            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
-            10_000_000,
-            20_000_000
-        );
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 10_000_000, 20_000_000);
 
         editCollateral(ct0, Alice, 0);
         editCollateral(ct1, Alice, 0);
@@ -701,7 +669,7 @@ contract Misctest is Test, PositionUtils {
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
-                poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                poolId = uint64(uint160(address(uniPool)) >> 112);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
             TokenId posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
@@ -731,7 +699,7 @@ contract Misctest is Test, PositionUtils {
 
             if (i == positionCount - 1) {
                 {
-                    poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                    poolId = uint64(uint160(address(uniPool)) >> 112);
                     poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
                 }
                 posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
@@ -766,13 +734,7 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(ct0), type(uint104).max);
         token1.approve(address(ct1), type(uint104).max);
 
-        accruePoolFeesInRange(
-            manager,
-            poolKey,
-            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
-            10_000_000,
-            20_000_000
-        );
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 10_000_000, 20_000_000);
 
         editCollateral(ct0, Alice, 0);
         editCollateral(ct1, Alice, 0);
@@ -787,7 +749,7 @@ contract Misctest is Test, PositionUtils {
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
-                poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                poolId = uint64(uint160(address(uniPool)) >> 112);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
             TokenId posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
@@ -847,7 +809,7 @@ contract Misctest is Test, PositionUtils {
             );
 
             {
-                poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                poolId = uint64(uint160(address(uniPool)) >> 112);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
             posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
@@ -893,7 +855,7 @@ contract Misctest is Test, PositionUtils {
 
             if (i == 0) {
                 {
-                    poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                    poolId = uint64(uint160(address(uniPool)) >> 112);
                     poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
                 }
                 posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
@@ -959,13 +921,7 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(ct0), type(uint104).max);
         token1.approve(address(ct1), type(uint104).max);
 
-        accruePoolFeesInRange(
-            manager,
-            poolKey,
-            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
-            10_000_000,
-            20_000_000
-        );
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 10_000_000, 20_000_000);
 
         editCollateral(ct0, Alice, 0);
         editCollateral(ct1, Alice, 0);
@@ -980,7 +936,7 @@ contract Misctest is Test, PositionUtils {
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
-                poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                poolId = uint64(uint160(address(uniPool)) >> 112);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
             TokenId posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
@@ -1009,7 +965,7 @@ contract Misctest is Test, PositionUtils {
             );
 
             {
-                poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                poolId = uint64(uint160(address(uniPool)) >> 112);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
             posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
@@ -1025,7 +981,7 @@ contract Misctest is Test, PositionUtils {
 
             if (i == 0) {
                 {
-                    poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                    poolId = uint64(uint160(address(uniPool)) >> 112);
                     poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
                 }
                 posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
@@ -1061,13 +1017,7 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(ct0), type(uint104).max);
         token1.approve(address(ct1), type(uint104).max);
 
-        accruePoolFeesInRange(
-            manager,
-            poolKey,
-            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
-            10_000_000,
-            20_000_000
-        );
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 10_000_000, 20_000_000);
 
         editCollateral(ct0, Alice, 0);
         editCollateral(ct1, Alice, 0);
@@ -1080,9 +1030,9 @@ contract Misctest is Test, PositionUtils {
     function test_TickLimits_Initial(
         uint256 token0Supply,
         uint256 token1Supply,
-        uint256 tickSpacingSeed
+        uint256 feeTierSeed
     ) public {
-        sfpm = new SemiFungiblePositionManager(manager, 2100 * 10 ** 18, 2100 * 10 ** 18, 10_000);
+        sfpm = new SemiFungiblePositionManager(V3FACTORY, 2100 * 10 ** 18, 10_000);
 
         token0 = new ERC20S("token0", "T0", 18);
         token1 = new ERC20S("token1", "T1", 18);
@@ -1093,56 +1043,56 @@ contract Misctest is Test, PositionUtils {
         token0.editSupply(token0Supply);
         token1.editSupply(token1Supply);
 
-        int24 tickSpacing = int24(uint24(bound(tickSpacingSeed, 1, 32767)));
+        feeTierSeed = bound(feeTierSeed, 0, 3);
 
-        poolKey = PoolKey(
-            Currency.wrap(address(token0)),
-            Currency.wrap(address(token1)),
-            500,
-            tickSpacing,
-            IHooks(address(0))
-        );
+        uint24 feeTier;
 
-        manager.initialize(poolKey, 2 ** 96);
+        if (feeTierSeed == 0) feeTier = 100;
+        else if (feeTierSeed == 1) feeTier = 500;
+        else if (feeTierSeed == 2) feeTier = 3_000;
+        else if (feeTierSeed == 3) feeTier = 10_000;
 
-        sfpm.initializeAMMPool(poolKey);
+        uniPool = IUniswapV3Pool(V3FACTORY.createPool(address(token0), address(token1), feeTier));
+
+        IUniswapV3Pool(uniPool).initialize(2 ** 96);
+
+        sfpm.initializeAMMPool(address(token0), address(token1), feeTier);
 
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
         token1.mint(Swapper, type(uint128).max);
-        token0.approve(address(routerV4), type(uint128).max);
-        token1.approve(address(routerV4), type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
 
         vm.startPrank(Alice);
         token0.mint(Alice, uint256(type(uint104).max) * 2);
         token1.mint(Alice, uint256(type(uint104).max) * 2);
-        token0.approve(address(routerV4), type(uint256).max);
-        token1.approve(address(routerV4), type(uint256).max);
-        routerV4.mintCurrency(address(0), Currency.wrap(address(token0)), type(uint104).max);
-        routerV4.mintCurrency(address(0), Currency.wrap(address(token1)), type(uint104).max);
-        manager.setOperator(address(sfpm), true);
+        token0.approve(address(sfpm), type(uint256).max);
+        token1.approve(address(sfpm), type(uint256).max);
 
         uint256 expectedDOSCost = Math.max(2100 * 10 ** 18, token0Supply);
 
-        (int24 tickLimitLower, int24 tickLimitUpper) = sfpm.getEnforcedTickLimits(
-            sfpm.getPoolId(abi.encode(poolKey.toId()))
-        );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+        (int24 tickLimitLower, int24 tickLimitUpper) = sfpm.getEnforcedTickLimits(poolId);
 
         (uint256 maxDOSCost, ) = Math.getAmountsForLiquidity(
             -100_000,
             LiquidityChunkLibrary.createChunk(
-                -tickSpacing,
+                -uniPool.tickSpacing(),
                 0,
-                Math.getMaxLiquidityPerTick(tickSpacing)
+                uniPool.maxLiquidityPerTick()
             )
         );
 
         (uint256 actualDOSCost, ) = Math.getAmountsForLiquidity(
             -100_000,
             LiquidityChunkLibrary.createChunk(
-                tickLimitUpper - tickSpacing + 2,
+                tickLimitUpper - uniPool.tickSpacing() + 2,
                 tickLimitUpper + 2,
-                Math.getMaxLiquidityPerTick(tickSpacing)
+                uniPool.maxLiquidityPerTick()
             )
         );
 
@@ -1151,16 +1101,11 @@ contract Misctest is Test, PositionUtils {
         (actualDOSCost, ) = Math.getAmountsForLiquidity(
             -100_000,
             LiquidityChunkLibrary.createChunk(
-                tickLimitUpper - tickSpacing - 2,
+                tickLimitUpper - uniPool.tickSpacing() - 2,
                 tickLimitUpper - 2,
-                Math.getMaxLiquidityPerTick(tickSpacing)
+                uniPool.maxLiquidityPerTick()
             )
         );
-
-        console2.log("maxDOSCost", maxDOSCost);
-        console2.log("expectedDOSCost", expectedDOSCost);
-        console2.log("tickLimitUpper", tickLimitUpper);
-        console2.log("tickSpacing", tickSpacing);
 
         if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitUpper, 1);
         else assertGt(actualDOSCost, expectedDOSCost);
@@ -1171,8 +1116,8 @@ contract Misctest is Test, PositionUtils {
             100_000,
             LiquidityChunkLibrary.createChunk(
                 tickLimitLower - 2,
-                tickLimitLower + tickSpacing - 2,
-                Math.getMaxLiquidityPerTick(tickSpacing)
+                tickLimitLower + uniPool.tickSpacing() - 2,
+                uniPool.maxLiquidityPerTick()
             )
         );
 
@@ -1182,8 +1127,8 @@ contract Misctest is Test, PositionUtils {
             100_000,
             LiquidityChunkLibrary.createChunk(
                 tickLimitLower + 2,
-                tickLimitLower + tickSpacing + 2,
-                Math.getMaxLiquidityPerTick(tickSpacing)
+                tickLimitLower + uniPool.tickSpacing() + 2,
+                uniPool.maxLiquidityPerTick()
             )
         );
 
@@ -1191,65 +1136,69 @@ contract Misctest is Test, PositionUtils {
         else assertGt(actualDOSCost, expectedDOSCost);
 
         vm.startPrank(Swapper);
-        routerV4.modifyLiquidity(
-            address(0),
-            poolKey,
-            (-887272 / tickSpacing) * tickSpacing,
-            (887272 / tickSpacing) * tickSpacing,
+        swapperc.mint(
+            uniPool,
+            (-887272 / uniPool.tickSpacing()) * uniPool.tickSpacing(),
+            (887272 / uniPool.tickSpacing()) * uniPool.tickSpacing(),
             10 ** 18
         );
 
-        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(-100_000));
+        swapperc.swapTo(uniPool, TickMath.getSqrtRatioAtTick(-100_000));
 
         vm.startPrank(Alice);
 
-        TokenId tickPosition = TokenId
-            .wrap(0)
-            .addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId())))
-            .addLeg(
-                0,
-                1,
-                0,
-                0,
-                0,
-                0,
-                (tickLimitUpper / tickSpacing) *
-                    tickSpacing +
-                    int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
-                1
-            );
-
-        vm.expectRevert(Errors.InvalidTickBound.selector);
-        sfpm.mintTokenizedPosition(
-            abi.encode(poolKey),
-            tickPosition,
-            1_000_000,
-            Constants.MIN_POOL_TICK,
-            Constants.MAX_POOL_TICK
-        );
-
-        tickPosition = TokenId.wrap(0).addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()))).addLeg(
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+        TokenId tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
             0,
             1,
             0,
             0,
             0,
             0,
-            (tickLimitUpper / tickSpacing) *
-                tickSpacing -
-                int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
+            (tickLimitUpper / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() +
+                int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
+            1
+        );
+
+        vm.expectRevert(Errors.InvalidTickBound.selector);
+        sfpm.mintTokenizedPosition(
+            abi.encode(uniPool),
+            tickPosition,
+            1_000_000,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK
+        );
+
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+        tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            (tickLimitUpper / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() -
+                int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
             1
         );
 
         if (
-            (tickLimitUpper / tickSpacing) *
-                tickSpacing -
-                (tickLimitLower / tickSpacing) *
-                tickSpacing >=
-            tickSpacing
+            (tickLimitUpper / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() -
+                (tickLimitLower / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() >=
+            uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
-                abi.encode(poolKey),
+                abi.encode(uniPool),
                 tickPosition,
                 1_000_000,
                 Constants.MIN_POOL_TICK,
@@ -1258,52 +1207,63 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
 
-        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(100_000));
+        swapperc.swapTo(uniPool, TickMath.getSqrtRatioAtTick(100_000));
 
         vm.startPrank(Alice);
 
-        tickPosition = TokenId.wrap(0).addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()))).addLeg(
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+        tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
             0,
             1,
             1,
             0,
             0,
             0,
-            (tickLimitLower / tickSpacing) *
-                tickSpacing -
-                int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
+            (tickLimitLower / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() -
+                int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
             1
         );
 
         vm.expectRevert(Errors.InvalidTickBound.selector);
         sfpm.mintTokenizedPosition(
-            abi.encode(poolKey),
+            abi.encode(uniPool),
             tickPosition,
             1_000_000,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK
         );
 
-        tickPosition = TokenId.wrap(0).addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()))).addLeg(
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+        tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
             0,
             1,
             1,
             0,
             0,
             0,
-            (tickLimitLower / tickSpacing) * tickSpacing + tickSpacing / 2,
+            (tickLimitLower / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() +
+                uniPool.tickSpacing() /
+                2,
             1
         );
 
         if (
-            (tickLimitUpper / tickSpacing) *
-                tickSpacing -
-                (tickLimitLower / tickSpacing) *
-                tickSpacing >=
-            tickSpacing
+            (tickLimitUpper / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() -
+                (tickLimitLower / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() >=
+            uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
-                abi.encode(poolKey),
+                abi.encode(uniPool),
                 tickPosition,
                 1_000_000,
                 Constants.MIN_POOL_TICK,
@@ -1316,9 +1276,9 @@ contract Misctest is Test, PositionUtils {
         uint256 token1SupplyOrig,
         uint256 token0Supply,
         uint256 token1Supply,
-        uint256 tickSpacingSeed
+        uint256 feeTierSeed
     ) public {
-        sfpm = new SemiFungiblePositionManager(manager, 2100 * 10 ** 18, 2100 * 10 ** 18, 10_000);
+        sfpm = new SemiFungiblePositionManager(V3FACTORY, 2100 * 10 ** 18, 10_000);
 
         token0 = new ERC20S("token0", "T0", 18);
         token1 = new ERC20S("token1", "T1", 18);
@@ -1329,19 +1289,20 @@ contract Misctest is Test, PositionUtils {
         token0.editSupply(token0SupplyOrig);
         token1.editSupply(token1SupplyOrig);
 
-        int24 tickSpacing = int24(uint24(bound(tickSpacingSeed, 1, 32767)));
+        feeTierSeed = bound(feeTierSeed, 0, 3);
 
-        poolKey = PoolKey(
-            Currency.wrap(address(token0)),
-            Currency.wrap(address(token1)),
-            500,
-            tickSpacing,
-            IHooks(address(0))
-        );
+        uint24 feeTier;
 
-        manager.initialize(poolKey, 2 ** 96);
+        if (feeTierSeed == 0) feeTier = 100;
+        else if (feeTierSeed == 1) feeTier = 500;
+        else if (feeTierSeed == 2) feeTier = 3_000;
+        else if (feeTierSeed == 3) feeTier = 10_000;
 
-        sfpm.initializeAMMPool(poolKey);
+        uniPool = IUniswapV3Pool(V3FACTORY.createPool(address(token0), address(token1), feeTier));
+
+        IUniswapV3Pool(uniPool).initialize(2 ** 96);
+
+        sfpm.initializeAMMPool(address(token0), address(token1), feeTier);
 
         token0Supply = bound(token0Supply, 0, type(uint256).max / 10_000);
         token1Supply = bound(token1Supply, 0, type(uint256).max / 10_000);
@@ -1349,47 +1310,51 @@ contract Misctest is Test, PositionUtils {
         token0.editSupply(token0Supply);
         token1.editSupply(token1Supply);
 
-        sfpm.expandEnforcedTickRange(sfpm.getPoolId(abi.encode(poolKey.toId())));
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+        sfpm.expandEnforcedTickRange(poolId);
 
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
         token1.mint(Swapper, type(uint128).max);
-        token0.approve(address(routerV4), type(uint128).max);
-        token1.approve(address(routerV4), type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
 
         vm.startPrank(Alice);
         token0.mint(Alice, uint256(type(uint104).max) * 2);
         token1.mint(Alice, uint256(type(uint104).max) * 2);
-        token0.approve(address(routerV4), type(uint256).max);
-        token1.approve(address(routerV4), type(uint256).max);
-        routerV4.mintCurrency(address(0), Currency.wrap(address(token0)), type(uint104).max);
-        routerV4.mintCurrency(address(0), Currency.wrap(address(token1)), type(uint104).max);
-        manager.setOperator(address(sfpm), true);
+        token0.approve(address(sfpm), type(uint256).max);
+        token1.approve(address(sfpm), type(uint256).max);
 
         uint256 expectedDOSCost = Math.max(
             2100 * 10 ** 18,
             Math.min(token0Supply, token0SupplyOrig)
         );
 
-        (int24 tickLimitLower, int24 tickLimitUpper) = sfpm.getEnforcedTickLimits(
-            sfpm.getPoolId(abi.encode(poolKey.toId()))
-        );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        (int24 tickLimitLower, int24 tickLimitUpper) = sfpm.getEnforcedTickLimits(poolId);
 
         (uint256 maxDOSCost, ) = Math.getAmountsForLiquidity(
             -100_000,
             LiquidityChunkLibrary.createChunk(
-                -tickSpacing,
+                -uniPool.tickSpacing(),
                 0,
-                Math.getMaxLiquidityPerTick(tickSpacing)
+                uniPool.maxLiquidityPerTick()
             )
         );
 
         (uint256 actualDOSCost, ) = Math.getAmountsForLiquidity(
             -100_000,
             LiquidityChunkLibrary.createChunk(
-                tickLimitUpper - tickSpacing + 2,
+                tickLimitUpper - uniPool.tickSpacing() + 2,
                 tickLimitUpper + 2,
-                Math.getMaxLiquidityPerTick(tickSpacing)
+                uniPool.maxLiquidityPerTick()
             )
         );
 
@@ -1398,9 +1363,9 @@ contract Misctest is Test, PositionUtils {
         (actualDOSCost, ) = Math.getAmountsForLiquidity(
             -100_000,
             LiquidityChunkLibrary.createChunk(
-                tickLimitUpper - tickSpacing - 2,
+                tickLimitUpper - uniPool.tickSpacing() - 2,
                 tickLimitUpper - 2,
-                Math.getMaxLiquidityPerTick(tickSpacing)
+                uniPool.maxLiquidityPerTick()
             )
         );
 
@@ -1413,8 +1378,8 @@ contract Misctest is Test, PositionUtils {
             100_000,
             LiquidityChunkLibrary.createChunk(
                 tickLimitLower - 2,
-                tickLimitLower + tickSpacing - 2,
-                Math.getMaxLiquidityPerTick(tickSpacing)
+                tickLimitLower + uniPool.tickSpacing() - 2,
+                uniPool.maxLiquidityPerTick()
             )
         );
 
@@ -1424,8 +1389,8 @@ contract Misctest is Test, PositionUtils {
             100_000,
             LiquidityChunkLibrary.createChunk(
                 tickLimitLower + 2,
-                tickLimitLower + tickSpacing + 2,
-                Math.getMaxLiquidityPerTick(tickSpacing)
+                tickLimitLower + uniPool.tickSpacing() + 2,
+                uniPool.maxLiquidityPerTick()
             )
         );
 
@@ -1433,65 +1398,71 @@ contract Misctest is Test, PositionUtils {
         else assertGt(actualDOSCost, expectedDOSCost);
 
         vm.startPrank(Swapper);
-        routerV4.modifyLiquidity(
-            address(0),
-            poolKey,
-            (-887272 / tickSpacing) * tickSpacing,
-            (887272 / tickSpacing) * tickSpacing,
+        swapperc.mint(
+            uniPool,
+            (-887272 / uniPool.tickSpacing()) * uniPool.tickSpacing(),
+            (887272 / uniPool.tickSpacing()) * uniPool.tickSpacing(),
             10 ** 18
         );
 
-        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(-100_000));
+        swapperc.swapTo(uniPool, TickMath.getSqrtRatioAtTick(-100_000));
 
         vm.startPrank(Alice);
 
-        TokenId tickPosition = TokenId
-            .wrap(0)
-            .addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId())))
-            .addLeg(
-                0,
-                1,
-                0,
-                0,
-                0,
-                0,
-                (tickLimitUpper / tickSpacing) *
-                    tickSpacing +
-                    int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
-                1
-            );
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
 
-        vm.expectRevert(Errors.InvalidTickBound.selector);
-        sfpm.mintTokenizedPosition(
-            abi.encode(poolKey),
-            tickPosition,
-            1_000_000,
-            Constants.MIN_POOL_TICK,
-            Constants.MAX_POOL_TICK
-        );
-
-        tickPosition = TokenId.wrap(0).addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()))).addLeg(
+        TokenId tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
             0,
             1,
             0,
             0,
             0,
             0,
-            (tickLimitUpper / tickSpacing) *
-                tickSpacing -
-                int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
+            (tickLimitUpper / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() +
+                int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
+            1
+        );
+
+        vm.expectRevert(Errors.InvalidTickBound.selector);
+        sfpm.mintTokenizedPosition(
+            abi.encode(uniPool),
+            tickPosition,
+            1_000_000,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK
+        );
+
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            (tickLimitUpper / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() -
+                int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
             1
         );
 
         if (
-            (tickLimitUpper / tickSpacing) *
-                tickSpacing -
-                (tickLimitLower / tickSpacing) *
-                tickSpacing >=
-            tickSpacing
+            (tickLimitUpper / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() -
+                (tickLimitLower / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() >=
+            uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
-                abi.encode(poolKey),
+                abi.encode(uniPool),
                 tickPosition,
                 1_000_000,
                 Constants.MIN_POOL_TICK,
@@ -1500,229 +1471,70 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
 
-        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(100_000));
+        swapperc.swapTo(uniPool, TickMath.getSqrtRatioAtTick(100_000));
 
         vm.startPrank(Alice);
 
-        tickPosition = TokenId.wrap(0).addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()))).addLeg(
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
             0,
             1,
             1,
             0,
             0,
             0,
-            (tickLimitLower / tickSpacing) *
-                tickSpacing -
-                int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
+            (tickLimitLower / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() -
+                int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
             1
         );
 
         vm.expectRevert(Errors.InvalidTickBound.selector);
         sfpm.mintTokenizedPosition(
-            abi.encode(poolKey),
+            abi.encode(uniPool),
             tickPosition,
             1_000_000,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK
         );
 
-        tickPosition = TokenId.wrap(0).addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()))).addLeg(
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
             0,
             1,
             1,
             0,
             0,
             0,
-            (tickLimitLower / tickSpacing) * tickSpacing + tickSpacing / 2,
+            (tickLimitLower / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() +
+                uniPool.tickSpacing() /
+                2,
             1
         );
 
         if (
-            (tickLimitUpper / tickSpacing) *
-                tickSpacing -
-                (tickLimitLower / tickSpacing) *
-                tickSpacing >=
-            tickSpacing
+            (tickLimitUpper / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() -
+                (tickLimitLower / uniPool.tickSpacing()) *
+                uniPool.tickSpacing() >=
+            uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
-                abi.encode(poolKey),
+                abi.encode(uniPool),
                 tickPosition,
                 1_000_000,
                 Constants.MIN_POOL_TICK,
                 Constants.MAX_POOL_TICK
             );
-    }
-
-    function test_TickLimits_native(uint256 tickSpacingSeed) public {
-        sfpm = new SemiFungiblePositionManager(manager, 2100 * 10 ** 18, 21_000 * 10 ** 18, 10_000);
-
-        token0 = ERC20S(address(0));
-        token1 = new ERC20S("token1", "T1", 18);
-
-        int24 tickSpacing = int24(uint24(bound(tickSpacingSeed, 1, 32767)));
-
-        poolKey = PoolKey(
-            Currency.wrap(address(token0)),
-            Currency.wrap(address(token1)),
-            500,
-            tickSpacing,
-            IHooks(address(0))
-        );
-
-        manager.initialize(poolKey, 2 ** 96);
-
-        sfpm.initializeAMMPool(poolKey);
-
-        (, int24 tickLimitUpper) = sfpm.getEnforcedTickLimits(
-            sfpm.getPoolId(abi.encode(poolKey.toId()))
-        );
-
-        (uint256 actualDOSCost, ) = Math.getAmountsForLiquidity(
-            -100_000,
-            LiquidityChunkLibrary.createChunk(
-                tickLimitUpper - tickSpacing + 2,
-                tickLimitUpper + 2,
-                Math.getMaxLiquidityPerTick(tickSpacing)
-            )
-        );
-
-        assertLt(actualDOSCost, 21_000 * 10 ** 18);
-
-        (actualDOSCost, ) = Math.getAmountsForLiquidity(
-            -100_000,
-            LiquidityChunkLibrary.createChunk(
-                tickLimitUpper - tickSpacing - 2,
-                tickLimitUpper - 2,
-                Math.getMaxLiquidityPerTick(tickSpacing)
-            )
-        );
-
-        assertGt(actualDOSCost, 21_000 * 10 ** 18);
-    }
-
-    function test_CollateralLogic_native(uint256 nativeSeed, uint256 liqNativeSeed) public {
-        token0 = ERC20S(address(0));
-
-        poolKey = PoolKey(
-            Currency.wrap(address(token0)),
-            Currency.wrap(address(token1)),
-            100,
-            1,
-            IHooks(address(0))
-        );
-
-        manager.initialize(poolKey, 2 ** 96);
-
-        pp = PanopticPool(address(factory.deployNewPool(poolKey, re, uint96(block.timestamp))));
-
-        ct0 = pp.collateralToken0();
-        ct1 = pp.collateralToken1();
-
-        nativeSeed = bound(nativeSeed, 100 ether, type(uint128).max);
-
-        vm.deal(Alice, nativeSeed);
-
-        vm.startPrank(Alice);
-
-        ct0.deposit{value: nativeSeed}(100 ether, Alice);
-
-        assertEq(ct0.convertToAssets(ct0.balanceOf(Alice)), 100 ether, "cta");
-        assertEq(manager.balanceOf(address(pp), 0), 100 ether, "bal");
-        assertEq(Alice.balance, nativeSeed - 100 ether, "eth bal");
-
-        vm.deal(Alice, nativeSeed);
-
-        ct0.mint{value: nativeSeed}(ct0.convertToShares(100 ether), Alice);
-
-        assertEq(ct0.convertToAssets(ct0.balanceOf(Alice)), 200 ether, "cta2");
-        assertEq(manager.balanceOf(address(pp), 0), 200 ether, "bal2");
-        assertEq(Alice.balance, nativeSeed - 100 ether, "eth bal2");
-
-        vm.deal(Alice, 0);
-
-        ct0.withdraw(100 ether, Alice, Alice);
-
-        assertEq(ct0.convertToAssets(ct0.balanceOf(Alice)), 100 ether, "cta3");
-        assertEq(manager.balanceOf(address(pp), 0), 100 ether, "bal3");
-        assertEq(Alice.balance, 100 ether, "eth bal3");
-
-        ct0.redeem(ct0.balanceOf(Alice), Alice, Alice);
-
-        assertEq(ct0.balanceOf(Alice), 0, "bal4");
-        assertEq(manager.balanceOf(address(pp), 0), 0, "man bal");
-        assertEq(Alice.balance, 200 ether, "ali bal");
-
-        vm.deal(Alice, 100 ether);
-
-        console2.log("deposit Alice");
-        ct0.deposit{value: 100 ether}(100 ether, Alice);
-
-        token1.mint(Alice, 100 ether);
-
-        token1.approve(address(ct1), type(uint104).max);
-
-        ct1.deposit(100 ether, Alice);
-
-        vm.startPrank(Bob);
-
-        token1.mint(Bob, 3.1 ether);
-        token1.approve(address(ct1), type(uint104).max);
-
-        ct1.deposit(3.1 ether, Bob);
-
-        $posIdList.push(
-            TokenId.wrap(0).addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()))).addLeg(
-                0,
-                1,
-                0,
-                0,
-                0,
-                0,
-                -10,
-                1
-            )
-        );
-
-        mintOptions(
-            pp,
-            $posIdList,
-            3 ether,
-            0,
-            Constants.MIN_POOL_TICK,
-            Constants.MAX_POOL_TICK,
-            true
-        );
-        console2.log("BOB");
-
-        editCollateral(ct0, Bob, 0);
-        console2.log("BOB");
-
-        uint256 balancePrev = ct0.convertToAssets(ct0.balanceOf(Alice));
-
-        vm.startPrank(Charlie);
-
-        liqNativeSeed = bound(liqNativeSeed, 3 ether, type(uint128).max);
-
-        vm.deal(Charlie, liqNativeSeed);
-        console2.log("char", Charlie.balance);
-
-        // liquidate
-        pp.dispatchFrom{value: Charlie.balance}(
-            new TokenId[](0),
-            Bob,
-            $posIdList,
-            new TokenId[](0),
-            LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1)
-        );
-
-        // TODO: where is that `1` from?
-        assertEq(Charlie.balance, liqNativeSeed - 3 ether + 1, "cb");
-
-        assertEq(ct0.convertToAssets(ct0.balanceOf(Bob)), 0);
-
-        assertEq(ct0.convertToAssets(ct0.balanceOf(Alice)), balancePrev);
-
-        assertEq(manager.balanceOf(address(pp), 0), 103 ether - 1, "man bal");
     }
 
     // Test that risk-partnered positions can be minted/burned succesfully
@@ -1735,7 +1547,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1784,7 +1596,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1828,7 +1640,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Seller);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1848,7 +1660,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1870,7 +1682,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Seller);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1887,7 +1699,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1936,7 +1748,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Seller);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1996,7 +1808,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2014,8 +1826,13 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
         $posIdList[0] = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 15, 1);
-        console2.log("poolId", poolId);
+
         vm.startPrank(Alice);
         mintOptions(
             pp,
@@ -2072,7 +1889,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2115,36 +1932,25 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-35));
-        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(-35));
 
-        console2.log(
-            "StateLibrary.getLiquidity(manager, poolKey.toId()) - 1",
-            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1
-        );
-        accruePoolFeesInRange(
-            manager,
-            poolKey,
-            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
-            1_000_000,
-            1_000_000_000
-        );
+        console2.log(" uniPool.liquidity() - 1", uniPool.liquidity() - 1);
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1_000_000, 1_000_000_000);
 
         swapperc.swapTo(uniPool, 2 ** 96);
-        routerV4.swapTo(address(0), poolKey, 2 ** 96);
 
         editCollateral(ct0, Alice, ct0.convertToShares(5000));
         editCollateral(ct1, Alice, ct1.convertToShares(5000));
 
         editCollateral(ct0, Bob, ct0.convertToShares(5000));
         editCollateral(ct1, Bob, ct1.convertToShares(5000));
-        vm.startPrank(Bob);
-
         console2.log("share0", ct0.convertToShares(5000));
         console2.log("share1", ct1.convertToShares(5000));
+        vm.startPrank(Bob);
+
         $tempIdList = $posIdList;
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2176,8 +1982,6 @@ contract Misctest is Test, PositionUtils {
         settleLongPremium(pp, $posIdLists[0], $posIdList, Bob, 0, true);
 
         vm.revertToState(snap);
-        console2.log("here?");
-        console2.log("there?");
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -2413,7 +2217,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2431,7 +2235,15 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        $posIdList[0] = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 15, 1);
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        $posIdList[0] = TokenId
+            .wrap(0)
+            .addPoolId(sfpm.getPoolId(abi.encode(address(uniPool))))
+            .addLeg(0, 1, 1, 1, 0, 0, 15, 1);
 
         vm.startPrank(Alice);
         mintOptions(
@@ -2454,7 +2266,6 @@ contract Misctest is Test, PositionUtils {
         vm.roll(block.number + 1);
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(512));
-        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(512));
 
         pp.pokeOracle();
         vm.warp(block.timestamp + 600);
@@ -2465,8 +2276,6 @@ contract Misctest is Test, PositionUtils {
 
         (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
             .getOracleTicks();
-        currentTick = sfpm.getCurrentTick(abi.encode(poolKey));
-
         twapTick = re.twapEMA(oraclePack);
         console2.log("cur", currentTick);
         console2.log("twapTick", twapTick);
@@ -2496,7 +2305,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2540,7 +2349,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2561,7 +2370,7 @@ contract Misctest is Test, PositionUtils {
         TokenId[] memory longPositionList = new TokenId[](256);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2635,7 +2444,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2683,16 +2492,14 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
-        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(10) + 1);
 
         accruePoolFeesInRange(
             address(uniPool),
-            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
+            uniPool.liquidity() - 1,
             1_000_000_000_000_000_000_000,
             1_000_000_000_000
         );
         swapperc.swapTo(uniPool, 2 ** 96);
-        routerV4.swapTo(address(0), poolKey, 2 ** 96);
 
         uint256 snap = vm.snapshot();
         vm.startPrank(Charlie);
@@ -2762,7 +2569,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2784,7 +2591,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2818,17 +2625,9 @@ contract Misctest is Test, PositionUtils {
 
             vm.startPrank(Swapper);
             swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
-            routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(10) + 1);
             // 1998600539
-            accruePoolFeesInRange(
-                manager,
-                poolKey,
-                (StateLibrary.getLiquidity(manager, poolKey.toId()) * 2) / 3,
-                1,
-                1
-            );
+            accruePoolFeesInRange(address(uniPool), (uniPool.liquidity() * 2) / 3, 1, 1);
             swapperc.swapTo(uniPool, 2 ** 96);
-            routerV4.swapTo(address(0), poolKey, 2 ** 96);
 
             vm.startPrank(Bob);
             $tempIdList[0] = $posIdList[0];
@@ -2873,7 +2672,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2895,7 +2694,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2915,17 +2714,9 @@ contract Misctest is Test, PositionUtils {
             );
             vm.startPrank(Swapper);
             swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
-            routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(10) + 1);
             // 1998600539
-            accruePoolFeesInRange(
-                manager,
-                poolKey,
-                StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
-                1,
-                1
-            );
+            accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1, 1);
             swapperc.swapTo(uniPool, 2 ** 96);
-            routerV4.swapTo(address(0), poolKey, 2 ** 96);
             vm.startPrank(Bob);
             burnOptions(
                 pp,
@@ -2957,7 +2748,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -3009,7 +2800,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Seller);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -3026,7 +2817,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -3047,7 +2838,7 @@ contract Misctest is Test, PositionUtils {
         }
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -3079,7 +2870,7 @@ contract Misctest is Test, PositionUtils {
         }
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -3111,7 +2902,7 @@ contract Misctest is Test, PositionUtils {
         }
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -3151,38 +2942,22 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
-        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(10) + 1);
 
         // There are some precision issues with this (1B is not exactly 1B) but close enough to see the effects
-        accruePoolFeesInRange(
-            manager,
-            poolKey,
-            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
-            1_000_000,
-            1_000_000_000
-        );
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1_000_000, 1_000_000_000);
         console2.log("liquidity", uniPool.liquidity());
 
         // accumulate lower order of fees on dummy chunk
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-10));
-        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(-10));
 
-        accruePoolFeesInRange(
-            manager,
-            poolKey,
-            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
-            10_000,
-            100_000
-        );
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 10_000, 100_000);
         console2.log("liquidity", uniPool.liquidity());
 
         swapperc.swapTo(uniPool, 2 ** 96);
-        routerV4.swapTo(address(0), poolKey, 2 ** 96);
-
         {
             (, currentTick, , , , , ) = uniPool.slot0();
             LeftRightUnsigned accountLiquidityPrimary = sfpm.getAccountLiquidity(
-                abi.encode(poolKey),
+                abi.encode(address(uniPool)),
                 address(pp),
                 0,
                 10,
@@ -3195,7 +2970,7 @@ contract Misctest is Test, PositionUtils {
             console2.log("accountLiquidityPrimaryRemoved", accountLiquidityPrimary.leftSlot());
 
             (uint256 shortPremium0Primary, uint256 shortPremium1Primary) = sfpm.getAccountPremium(
-                abi.encode(poolKey),
+                abi.encode(address(uniPool)),
                 address(pp),
                 0,
                 10,
@@ -3218,7 +2993,7 @@ contract Misctest is Test, PositionUtils {
             );
 
             (uint256 longPremium0Primary, uint256 longPremium1Primary) = sfpm.getAccountPremium(
-                abi.encode(poolKey),
+                abi.encode(address(uniPool)),
                 address(pp),
                 0,
                 10,
@@ -3239,7 +3014,7 @@ contract Misctest is Test, PositionUtils {
 
         {
             LeftRightUnsigned accountLiquidityDummy = sfpm.getAccountLiquidity(
-                abi.encode(poolKey),
+                abi.encode(address(uniPool)),
                 address(pp),
                 1,
                 -20,
@@ -3253,7 +3028,7 @@ contract Misctest is Test, PositionUtils {
             console2.log("accountLiquidityDummyRemoved", accountLiquidityDummy.leftSlot());
 
             (uint256 shortPremium0Dummy, uint256 shortPremium1Dummy) = sfpm.getAccountPremium(
-                abi.encode(poolKey),
+                abi.encode(address(uniPool)),
                 address(pp),
                 1,
                 -20,
@@ -3276,7 +3051,7 @@ contract Misctest is Test, PositionUtils {
             );
 
             (uint256 longPremium0Dummy, uint256 longPremium1Dummy) = sfpm.getAccountPremium(
-                abi.encode(poolKey),
+                abi.encode(address(uniPool)),
                 address(pp),
                 1,
                 -20,
@@ -3356,12 +3131,12 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Seller);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -3649,14 +3424,12 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(100));
-        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(100));
         vm.warp(block.timestamp + 12);
         vm.roll(block.number + 1);
         swapperc.swapTo(uniPool, 2 ** 96);
-        routerV4.swapTo(address(0), poolKey, 2 ** 96);
 
         $posIdLists[0].push(
-            TokenId.wrap(0).addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()))).addLeg(
+            TokenId.wrap(0).addPoolId(sfpm.getPoolId(abi.encode(address(uniPool)))).addLeg(
                 0,
                 1,
                 1,
@@ -3681,7 +3454,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         $posIdLists[1].push(
-            TokenId.wrap(0).addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()))).addLeg(
+            TokenId.wrap(0).addPoolId(sfpm.getPoolId(abi.encode(address(uniPool)))).addLeg(
                 0,
                 1,
                 1,
@@ -3708,22 +3481,15 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
 
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(10) + 1);
+        //routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(10) + 1);
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
 
-        accruePoolFeesInRange(
-            manager,
-            poolKey,
-            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
-            1_000_000,
-            1_000_000_000
-        );
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1_000_000, 1_000_000_000);
 
         int256 premium0 = 10388;
         int256 premium1 = 10388989;
 
-        console2.log("TWAP", pp.getTWAP());
-        uint160 lastObservedPrice = Math.getSqrtRatioAtTick(pp.getTWAP());
+        uint160 lastObservedPrice = Math.getSqrtRatioAtTick(44);
 
         vm.startPrank(Alice);
 
@@ -3813,7 +3579,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -3867,7 +3633,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -3901,19 +3667,11 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
 
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(10) + 1);
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
 
         // There are some precision issues with this (1B is not exactly 1B) but close enough to see the effects
-        accruePoolFeesInRange(
-            manager,
-            poolKey,
-            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
-            1_000_000,
-            1_000_000_000
-        );
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1_000_000, 1_000_000_000);
 
-        routerV4.swapTo(address(0), poolKey, 2 ** 96);
         swapperc.swapTo(uniPool, 2 ** 96);
 
         vm.startPrank(Bob);
@@ -4044,7 +3802,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4078,7 +3836,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4112,7 +3870,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4149,7 +3907,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4194,10 +3952,9 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10000, 10000, 10 ** 18);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4217,7 +3974,6 @@ contract Misctest is Test, PositionUtils {
         );
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-955));
 
         assertTrue(pp.isSafeMode() > 0, "in safe mode");
 
@@ -4266,10 +4022,9 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10000, 10000, 10 ** 18);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4288,8 +4043,7 @@ contract Misctest is Test, PositionUtils {
             )
         );
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(955));
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(955));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
 
         assertTrue(pp.isSafeMode() > 0, "in safe mode");
 
@@ -4337,10 +4091,9 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10000, 10000, 10 ** 18);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4362,7 +4115,6 @@ contract Misctest is Test, PositionUtils {
         (, int24 staleTick, , , , , ) = uniPool.slot0();
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-952));
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-952));
 
         console2.log("isSafeMode", pp.isSafeMode() > 0 ? "safe mode ON" : "safe mode OFF");
         assertTrue(pp.isSafeMode() == 0, "safeMode");
@@ -4448,7 +4200,6 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-955));
 
         console2.log("isSafeMode", pp.isSafeMode() > 0 ? "safe mode ON" : "safe mode OFF");
         assertTrue(pp.isSafeMode() > 0);
@@ -4518,10 +4269,9 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10000, 10000, 10 ** 18);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4542,7 +4292,6 @@ contract Misctest is Test, PositionUtils {
 
         (, int24 staleTick, , , , , ) = uniPool.slot0();
 
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(952));
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(952));
         pp.pokeOracle();
         console2.log("safeMode level", pp.isSafeMode());
@@ -4643,7 +4392,6 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(954));
 
         console2.log("isSafeMode", pp.isSafeMode() > 0 ? "safe mode ON" : "safe mode OFF");
         assertTrue(pp.isSafeMode() > 0, "safe mode still");
@@ -4705,7 +4453,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4744,16 +4492,12 @@ contract Misctest is Test, PositionUtils {
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-952));
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-952));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
-
-        currentTick = sfpm.getCurrentTick(abi.encode(poolKey));
         assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-954));
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-954));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
@@ -4770,22 +4514,16 @@ contract Misctest is Test, PositionUtils {
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(953));
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(953));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
-        currentTick = sfpm.getCurrentTick(abi.encode(poolKey));
 
-        console2.log("slowOracleTick", slowOracleTick);
-        console2.log("currentTick", currentTick);
         assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation 0");
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(954));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(955));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
-        currentTick = sfpm.getCurrentTick(abi.encode(poolKey));
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation1 ");
         assertTrue(pp.isSafeMode() > 0, "in safe mode");
     }
@@ -4807,12 +4545,10 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-1060));
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-1060));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
@@ -4834,8 +4570,6 @@ contract Misctest is Test, PositionUtils {
         assertTrue(pp.isSafeMode() > 0, "slow oracle tick did not catch up 0");
 
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10000, 10000, 10 ** 18);
-
         vm.warp(block.timestamp + 120);
         vm.roll(block.number + 1);
         pp.pokeOracle();
@@ -4864,12 +4598,10 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-953));
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-953));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
         console2.log("cur", currentTick);
@@ -4879,7 +4611,7 @@ contract Misctest is Test, PositionUtils {
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4926,7 +4658,6 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-955));
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
         console2.log("currentTick", currentTick);
@@ -4981,12 +4712,10 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-955));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
@@ -4994,7 +4723,7 @@ contract Misctest is Test, PositionUtils {
         assertTrue(pp.isSafeMode() > 0, "in safe mode");
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -5082,12 +4811,11 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -5128,7 +4856,6 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-955));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
@@ -5186,7 +4913,6 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -100000, 100000, 10 ** 18);
         vm.warp((block.timestamp >> 6) * 64 + 128);
         vm.roll(block.number + 1);
         pp.pokeOracle();
@@ -5194,14 +4920,13 @@ contract Misctest is Test, PositionUtils {
         (, , slowOracleTick, , oraclePack) = pp.getOracleTicks();
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
         // mint OTM position
         $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 4095));
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-955));
 
         vm.warp(block.timestamp + 63);
         vm.roll(block.number + 1);
@@ -5293,7 +5018,6 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
         }
         swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -100000, 100000, 10 ** 18);
         vm.warp((block.timestamp >> 6) * 64 + 128);
         vm.roll(block.number + 1);
         pp.pokeOracle();
@@ -5303,7 +5027,7 @@ contract Misctest is Test, PositionUtils {
         (, , slowOracleTick, , oraclePack) = pp.getOracleTicks();
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -5311,7 +5035,6 @@ contract Misctest is Test, PositionUtils {
         $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 4095));
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-955));
 
         vm.warp(block.timestamp + 63);
         vm.roll(block.number + 1);
@@ -5399,7 +5122,6 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -100000, 100000, 10 ** 18);
         vm.warp(2 ** 30 - 1);
         vm.roll(block.number + 1);
         console2.log("START");
@@ -5408,7 +5130,7 @@ contract Misctest is Test, PositionUtils {
         (, , slowOracleTick, , oraclePack) = pp.getOracleTicks();
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -5416,7 +5138,6 @@ contract Misctest is Test, PositionUtils {
         $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 4095));
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-955));
 
         vm.startPrank(Alice);
 
@@ -5471,17 +5192,10 @@ contract Misctest is Test, PositionUtils {
         }
 
         (currentTick, , , , oraclePack) = pp.getOracleTicks();
-        console2.log("currentTick", currentTick);
 
         // swap to more than MAX_MEDIAN_DELTA ticks away
-        routerV4.swapTo(
-            address(0),
-            poolKey,
-            Math.getSqrtRatioAtTick(Constants.MAX_MEDIAN_DELTA + 10)
-        );
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(Constants.MAX_MEDIAN_DELTA + 10));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-Constants.MAX_MEDIAN_DELTA - 10));
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10000, 10000, 10 ** 18);
         vm.warp(block.timestamp + 120);
         vm.roll(block.number + 1);
         swapperc.burn(uniPool, -10000, 10000, 10 ** 18);
@@ -5491,7 +5205,7 @@ contract Misctest is Test, PositionUtils {
             .getOracleTicks();
 
         assertEq(
-            int24(uint24(oraclePack) % 2 ** 12) + Constants.MAX_MEDIAN_DELTA,
+            int24(uint24(oraclePack)) - Constants.MAX_MEDIAN_DELTA,
             int24(uint24(oraclePackNew)),
             "uncapped slow oracle update"
         );
@@ -5506,7 +5220,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -5533,7 +5247,7 @@ contract Misctest is Test, PositionUtils {
                 (x >> 1) % 2,
                 0,
                 strike,
-                x % 8 == 0 ? int24(0) : int24(2)
+                2
             );
             uint128[] memory sizeList = new uint128[](1);
             uint64[] memory spreadList = new uint64[](1);
@@ -5566,25 +5280,14 @@ contract Misctest is Test, PositionUtils {
                     ct0,
                     ct1
                 );
-                amountsMoved = PanopticMath.getAmountsMoved($tokenIdShort, positionSize, 0, false);
 
-                console2.log("unwrap", LeftRightUnsigned.unwrap(amountsMoved));
-                console2.log("amount.r", amountsMoved.rightSlot());
-                console2.log("amount.l", amountsMoved.leftSlot());
-                console2.log("tokenData0", tokenData0.rightSlot(), tokenData0.leftSlot());
-                console2.log("tokenData1", tokenData1.rightSlot(), tokenData1.leftSlot());
-                console2.log("posoitionSize", positionSize);
                 (uint256 balanceCross, uint256 requiredCross) = PanopticMath.getCrossBalances(
                     tokenData0,
                     tokenData1,
                     Math.getSqrtRatioAtTick(currentTick)
                 );
 
-                assertTrue(
-                    (requiredCross > 0) ||
-                        (requiredCross == 0 && LeftRightUnsigned.unwrap(amountsMoved) == 0),
-                    "zero collateral requirement"
-                );
+                assertTrue(requiredCross > 0, "zero collateral requirement");
                 assertTrue(requiredCross <= balanceCross, "account is solvent");
 
                 burnOptions(pp, mintList, new TokenId[](0), int24(-887272), int24(887272), true);
@@ -5596,13 +5299,6 @@ contract Misctest is Test, PositionUtils {
                         console2.log("ChunkHasZeroLiquidity at strike:", strike);
                     } else if (receivedSelector == Errors.InvalidTickBound.selector) {
                         console2.log("InvalidTickBound at strike:", strike);
-                    } else if (receivedSelector == 0x93dafdf1) {
-                        console2.log("Uniswap constraint (SafeCastOverflow) at strike:", strike);
-                    } else if (receivedSelector == 0xb8e3c385) {
-                        console2.log(
-                            "Uniswap constraint (TickLiquidityOverflow) at strike:",
-                            strike
-                        );
                     } else if (receivedSelector == 0x08c379a0) {
                         console2.log("Uniswap constraint at strike:", strike);
                     } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
@@ -5640,27 +5336,24 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
-        console2.log("uniPool.tickSpacing", uniPool.tickSpacing());
-        int24 tickSpacing = 10;
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
-            poolId += uint64(uint24(tickSpacing)) << 48;
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
         uint256 n;
         int24 minTick;
         {
-            minTick = (-887272 / tickSpacing + 1) * tickSpacing;
-            int24 maxTick = (887272 / tickSpacing) * tickSpacing;
-            n = uint256(uint24(maxTick - minTick)) / uint24(1000 * tickSpacing);
+            minTick = (-887272 / uniPool.tickSpacing() + 1) * uniPool.tickSpacing();
+            int24 maxTick = (887272 / uniPool.tickSpacing()) * uniPool.tickSpacing();
+            n = uint256(uint24(maxTick - minTick)) / uint24(1000 * uniPool.tickSpacing());
         }
         vm.startPrank(Bob);
         uint128 positionSize = uint128(PositionUtils._boundLog(positionSizeSeed, 0, 128));
 
-        $width = x % 8 == 0 ? int24(0) : int24(2);
         for (uint256 i = 0; i < n; ++i) {
             // mint OTM position
-            int24 strike = int24(-887270 + int256(i + 1) * 1000 * tickSpacing);
+            int24 strike = int24(-887270 + int256(i + 1) * 1000 * uniPool.tickSpacing());
 
             $tokenIdShort = TokenId.wrap(0).addPoolId(poolId).addLeg(
                 0,
@@ -5670,7 +5363,7 @@ contract Misctest is Test, PositionUtils {
                 (x >> 1) % 2,
                 0,
                 strike,
-                $width
+                2
             );
             uint128[] memory sizeList = new uint128[](1);
             uint64[] memory spreadList = new uint64[](1);
@@ -5702,7 +5395,7 @@ contract Misctest is Test, PositionUtils {
                         tokenType,
                         0,
                         strike,
-                        $width
+                        2
                     );
                 }
                 mintList[0] = $tokenIdLong;
@@ -5730,11 +5423,7 @@ contract Misctest is Test, PositionUtils {
                         Math.getSqrtRatioAtTick(currentTick)
                     );
 
-                    assertTrue(
-                        (requiredCross > 0) ||
-                            (requiredCross == 0 && LeftRightUnsigned.unwrap(amountsMoved) == 0),
-                        "zero collateral requirement"
-                    );
+                    assertTrue(requiredCross > 0, "zero collateral requirement");
                     assertTrue(requiredCross <= balanceCross, "account is solvent");
 
                     burnOptions(
@@ -5785,13 +5474,6 @@ contract Misctest is Test, PositionUtils {
                         console2.log("ChunkHasZeroLiquidity at strike:", strike);
                     } else if (receivedSelector == Errors.InvalidTickBound.selector) {
                         console2.log("InvalidTickBound at strike:", strike);
-                    } else if (receivedSelector == 0x93dafdf1) {
-                        console2.log("Uniswap constraint (SafeCastOverflow) at strike:", strike);
-                    } else if (receivedSelector == 0xb8e3c385) {
-                        console2.log(
-                            "Uniswap constraint (TickLiquidityOverflow) at strike:",
-                            strike
-                        );
                     } else if (receivedSelector == 0x08c379a0) {
                         console2.log("Uniswap constraint at strike:", strike);
                     } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
@@ -5832,7 +5514,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -5847,7 +5529,7 @@ contract Misctest is Test, PositionUtils {
             }
         }
         vm.startPrank(Bob);
-        uint128 positionSize = uint128(PositionUtils._boundLog(positionSizeSeed, 0, 128));
+        uint128 positionSize = uint128(PositionUtils._boundLog(positionSizeSeed, 64, 128));
         uint256 asset = x % 2;
         uint256 tokenType = (x >> 1) % 2;
 
@@ -5879,6 +5561,7 @@ contract Misctest is Test, PositionUtils {
             // Try to mint and check if it reverts
             try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
                 // SUCCESS CASE - mintOptions didn't revert
+
                 // Alice Buys
                 vm.startPrank(Alice);
 
@@ -5902,6 +5585,7 @@ contract Misctest is Test, PositionUtils {
                 }
                 mintList[0] = $tokenIdLong;
                 try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+                    console2.log("");
                     console2.log("Found non-reverting strike:", $strike);
                     (, , PositionBalance[] memory positionBalanceArray) = pp
                         .getAccumulatedFeesAndPositionsData(Alice, false, mintList);
@@ -5921,6 +5605,10 @@ contract Misctest is Test, PositionUtils {
                                 ct1
                             );
 
+                        console2.log("positionSize", positionSize);
+
+                        console2.log("req0", tokenData0.leftSlot());
+                        console2.log("req1", tokenData1.leftSlot());
                         (uint256 balanceCross, uint256 requiredCross) = PanopticMath
                             .getCrossBalances(
                                 tokenData0,
@@ -6008,13 +5696,6 @@ contract Misctest is Test, PositionUtils {
                         console2.log("ChunkHasZeroLiquidity at strike:", $strike);
                     } else if (receivedSelector == Errors.InvalidTickBound.selector) {
                         console2.log("InvalidTickBound at strike:", $strike);
-                    } else if (receivedSelector == 0xb8e3c385) {
-                        console2.log(
-                            "Uniswap constraint (TickLiquidityOverflow) at strike:",
-                            $strike
-                        );
-                    } else if (receivedSelector == 0x93dafdf1) {
-                        console2.log("Uniswap constraint (SafeCastOverflow) at strike:", $strike);
                     } else if (receivedSelector == 0x08c379a0) {
                         console2.log("Uniswap constraint at strike:", $strike);
                     } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
@@ -6050,13 +5731,12 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
 
         // L = 1
         uniPool.liquidity();
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -6071,17 +5751,15 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, -10 ** 18);
 
         // L = 2
         uniPool.liquidity();
 
         // accumulate the maximum fees per liq SFPM supports
-        accruePoolFeesInRange(manager, poolKey, 1, 2 ** 64 - 1, 0);
+        accruePoolFeesInRange(address(uniPool), 1, 2 ** 64 - 1, 0);
 
         vm.startPrank(Swapper);
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
 
         vm.startPrank(Bob);
         // works fine
@@ -6112,14 +5790,13 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, -10 ** 18);
 
         // overflow back to ~1_000_000_000_000 (fees per liq)
-        accruePoolFeesInRange(manager, poolKey, 412639631, 1_000_000_000_000, 1_000_000_000_000);
+        accruePoolFeesInRange(address(uniPool), 412639631, 1_000_000_000_000, 1_000_000_000_000);
 
         // this should behave like the actual accumulator does and rollover, not revert on overflow
         (uint256 premium0, uint256 premium1) = sfpm.getAccountPremium(
-            abi.encode(poolKey),
+            abi.encode(address(uniPool)),
             address(pp),
             0,
             -20470,
@@ -6132,7 +5809,6 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
         vm.startPrank(Alice);
 
         // tough luck... PLPs just stole ~2**64 tokens per liquidity Alice had because of an overflow
@@ -6155,7 +5831,7 @@ contract Misctest is Test, PositionUtils {
         // old with itmSpreadFee = -1244790
         assertEq(
             int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0),
-            -931093
+            -931094
         );
 
         // but she earns all of fees on token 1 since the premium accumulator did not overflow (!)
@@ -6174,12 +5850,11 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
 
         vm.startPrank(Seller);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -6220,7 +5895,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -6255,7 +5930,6 @@ contract Misctest is Test, PositionUtils {
             uint256 snap = vm.snapshot();
             vm.startPrank(Swapper);
             swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(ticks[i]));
-            routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(ticks[i]));
 
             vm.startPrank(Alice);
             burnOptions(
@@ -6296,12 +5970,11 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
 
         vm.startPrank(Seller);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -6342,7 +6015,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -6377,7 +6050,6 @@ contract Misctest is Test, PositionUtils {
             uint256 snap = vm.snapshot();
             vm.startPrank(Swapper);
             swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int16(ticks[i])));
-            routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(int16(ticks[i])));
 
             vm.startPrank(Alice);
             burnOptions(
@@ -6410,12 +6082,11 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
 
         vm.startPrank(Seller);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -6473,7 +6144,6 @@ contract Misctest is Test, PositionUtils {
             uint256 snap = vm.snapshot();
             vm.startPrank(Swapper);
             swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(ticks[i]));
-            routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(ticks[i]));
 
             vm.startPrank(Alice);
             burnOptions(
@@ -6528,7 +6198,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Bob);
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -6547,7 +6217,6 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.startPrank(Swapper);
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-800_000));
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-800_000));
         for (uint256 j = 0; j < 10000; ++j) {
             vm.warp(block.timestamp + 3600);
@@ -6572,7 +6241,6 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
         swapperc.mint(uniPool, -887270, 887270, 10 ** 24);
-        routerV4.modifyLiquidity(address(0), poolKey, -887270, 887270, 10 ** 24);
 
         // L = 1
         uniPool.liquidity();
@@ -6585,7 +6253,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = i / 2;
 
             {
-                poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                poolId = uint64(uint160(address(uniPool)) >> 112);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -6682,17 +6350,6 @@ contract Misctest is Test, PositionUtils {
                     )
                 )
             );
-            routerV4.swapTo(
-                address(0),
-                poolKey,
-                uint160(
-                    bound(
-                        prices[i],
-                        tokenType == 0 ? sqrtPriceTargetX96 * 2 : sqrtPriceTargetX96 / 5,
-                        tokenType == 0 ? sqrtPriceTargetX96 * 5 : sqrtPriceTargetX96 / 2
-                    )
-                )
-            );
 
             (, currentTick, , , , , ) = uniPool.slot0();
             (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
@@ -6742,7 +6399,6 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
         swapperc.mint(uniPool, -1000, 1000, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -1000, 1000, 10 ** 18);
 
         // L = 1
         uniPool.liquidity();
@@ -6751,7 +6407,7 @@ contract Misctest is Test, PositionUtils {
         uint256 tokenType = 0;
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -6772,7 +6428,6 @@ contract Misctest is Test, PositionUtils {
         (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(currentTick) + 950));
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(int24(currentTick) + 950));
 
         vm.warp(block.timestamp + 13);
         vm.roll(block.number + 1);
@@ -6824,7 +6479,6 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
         swapperc.mint(uniPool, -1000, 1000, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -1000, 1000, 10 ** 18);
 
         // L = 1
         uniPool.liquidity();
@@ -6835,7 +6489,7 @@ contract Misctest is Test, PositionUtils {
         uint256 tokenType = 0;
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -6892,8 +6546,7 @@ contract Misctest is Test, PositionUtils {
         (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
 
         vm.startPrank(Swapper);
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(currentTick) + 954));
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(int24(currentTick) + 954));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(currentTick) + 953));
 
         vm.warp(block.timestamp + 13);
         vm.roll(block.number + 1);
@@ -6941,7 +6594,6 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
         swapperc.mint(uniPool, -1000, 1000, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -1000, 1000, 10 ** 18);
 
         // L = 1
         uniPool.liquidity();
@@ -6952,7 +6604,7 @@ contract Misctest is Test, PositionUtils {
         uint256 tokenType = 0;
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
         TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
@@ -7003,12 +6655,6 @@ contract Misctest is Test, PositionUtils {
             uniPool,
             tokenType == 0 ? 89150978765690778389772763136 : 70025602285694849958832766976
         );
-        routerV4.swapTo(
-            address(0),
-            poolKey,
-            tokenType == 0 ? 89150978765690778389772763136 : 70025602285694849958832766976
-        );
-
         (, currentTick, , , , , ) = uniPool.slot0();
 
         (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
@@ -7064,7 +6710,6 @@ contract Misctest is Test, PositionUtils {
             assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable last!");
 
             swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(twapTick) - 500));
-            routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(int24(twapTick) - 500));
             (currentTick, , , , ) = pp.getOracleTicks();
 
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
@@ -7099,7 +6744,6 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
         swapperc.mint(uniPool, -1000, 1000, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -1000, 1000, 10 ** 18);
 
         // L = 1
         uniPool.liquidity();
@@ -7110,7 +6754,7 @@ contract Misctest is Test, PositionUtils {
         uint256 tokenType = 0;
 
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint64(uint160(address(uniPool)) >> 112);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -7162,12 +6806,6 @@ contract Misctest is Test, PositionUtils {
             uniPool,
             tokenType == 0 ? 87150978765690778389772763136 : 72025602285694849958832766976
         );
-        routerV4.swapTo(
-            address(0),
-            poolKey,
-            tokenType == 0 ? 87150978765690778389772763136 : 72025602285694849958832766976
-        );
-
         (, currentTick, , , , , ) = uniPool.slot0();
 
         (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
@@ -7221,7 +6859,6 @@ contract Misctest is Test, PositionUtils {
             // swap to 1.21*1.05 or 0.82/1.05, depending on tokenType
             vm.startPrank(Swapper);
             swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(twapTick) + t));
-            routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(int24(twapTick) + t));
 
             vm.startPrank(Alice);
             liquidate(pp, new TokenId[](0), Bob, posIdList);
@@ -7249,7 +6886,6 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
         swapperc.mint(uniPool, -1000, 1000, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -1000, 1000, 10 ** 18);
 
         // L = 1
         uniPool.liquidity();
@@ -7263,7 +6899,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = i / 2;
 
             {
-                poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                poolId = uint64(uint160(address(uniPool)) >> 112);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -7321,12 +6957,6 @@ contract Misctest is Test, PositionUtils {
                 uniPool,
                 tokenType == 0 ? 87150978765690778389772763136 : 72025602285694849958832766976
             );
-            routerV4.swapTo(
-                address(0),
-                poolKey,
-                tokenType == 0 ? 87150978765690778389772763136 : 72025602285694849958832766976
-            );
-
             (, currentTick, , , , , ) = uniPool.slot0();
 
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
@@ -7368,7 +6998,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = i / 2;
 
             {
-                poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                poolId = uint64(uint160(address(uniPool)) >> 112);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -7430,11 +7060,6 @@ contract Misctest is Test, PositionUtils {
                 uniPool,
                 tokenType == 0 ? 87150978765690778389772763136 : 72025602285694849958832766976
             );
-            routerV4.swapTo(
-                address(0),
-                poolKey,
-                tokenType == 0 ? 87150978765690778389772763136 : 72025602285694849958832766976
-            );
 
             (, currentTick, , , , , ) = uniPool.slot0();
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
@@ -7478,7 +7103,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = ((i % 4) / 2);
 
             {
-                poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                poolId = uint64(uint160(address(uniPool)) >> 112);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -7552,12 +7177,6 @@ contract Misctest is Test, PositionUtils {
                 i > 3 ? 110919427519970065594087112704 : 56591544653045956680544681984
             );
 
-            routerV4.swapTo(
-                address(0),
-                poolKey,
-                i > 3 ? 110919427519970065594087112704 : 56591544653045956680544681984
-            );
-
             (, currentTick, , , , , ) = uniPool.slot0();
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
@@ -7592,7 +7211,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = ((i % 4) / 2);
 
             {
-                poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                poolId = uint64(uint160(address(uniPool)) >> 112);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -7664,11 +7283,6 @@ contract Misctest is Test, PositionUtils {
                 uniPool,
                 i > 3 ? 110919427519970065594087112704 : 56591544653045956680544681984
             );
-            routerV4.swapTo(
-                address(0),
-                poolKey,
-                i > 3 ? 110919427519970065594087112704 : 56591544653045956680544681984
-            );
 
             (, currentTick, , , , , ) = uniPool.slot0();
             {
@@ -7706,7 +7320,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = ((i % 4) / 2);
 
             {
-                poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                poolId = uint64(uint160(address(uniPool)) >> 112);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -7778,11 +7392,6 @@ contract Misctest is Test, PositionUtils {
                 uniPool,
                 i > 3 ? 110919427519970065594087112704 : 56591544653045956680544681984
             );
-            routerV4.swapTo(
-                address(0),
-                poolKey,
-                i > 3 ? 110919427519970065594087112704 : 56591544653045956680544681984
-            );
 
             (, currentTick, , , , , ) = uniPool.slot0();
             {
@@ -7817,7 +7426,6 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
         swapperc.mint(uniPool, -1000, 1000, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -1000, 1000, 10 ** 18);
 
         // L = 1
         uniPool.liquidity();
@@ -7831,7 +7439,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = i / 2;
 
             {
-                poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                poolId = uint64(uint160(address(uniPool)) >> 112);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -7922,7 +7530,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = i / 2;
 
             {
-                poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                poolId = uint64(uint160(address(uniPool)) >> 112);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -8022,7 +7630,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = (i / 2);
 
             {
-                poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                poolId = uint64(uint160(address(uniPool)) >> 112);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -8125,7 +7733,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = (i / 2);
 
             {
-                poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                poolId = uint64(uint160(address(uniPool)) >> 112);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -8226,7 +7834,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = (i / 2);
 
             {
-                poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                poolId = uint64(uint160(address(uniPool)) >> 112);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -8332,7 +7940,7 @@ contract Misctest is Test, PositionUtils {
                 vm.startPrank(Charlie);
 
                 {
-                    poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                    poolId = uint64(uint160(address(uniPool)) >> 112);
                     poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
                 }
 
@@ -8361,7 +7969,7 @@ contract Misctest is Test, PositionUtils {
                 );
 
                 {
-                    poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                    poolId = uint64(uint160(address(uniPool)) >> 112);
                     poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
                 }
 
@@ -8472,7 +8080,7 @@ contract Misctest is Test, PositionUtils {
                 vm.startPrank(Charlie);
 
                 {
-                    poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                    poolId = uint64(uint160(address(uniPool)) >> 112);
                     poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
                 }
 
@@ -8608,7 +8216,7 @@ contract Misctest is Test, PositionUtils {
                 vm.startPrank(Charlie);
 
                 {
-                    poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+                    poolId = uint64(uint160(address(uniPool)) >> 112);
                     poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
                 }
 

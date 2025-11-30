@@ -43,11 +43,6 @@ contract PanopticMathHarness is Test {
         return (tickLower, tickUpper);
     }
 
-    function getPoolId(address univ3pool, int24 tickSpacing) public pure returns (uint64) {
-        uint64 poolId = PanopticMath.getPoolId(univ3pool, tickSpacing);
-        return poolId;
-    }
-
     function incrementPoolPattern(uint64 poolId) public pure returns (uint64) {
         uint64 _poolId = PanopticMath.incrementPoolPattern(poolId);
         return _poolId;

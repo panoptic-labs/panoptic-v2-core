@@ -259,42 +259,6 @@ contract PanopticMathTest is Test, PositionUtils {
         );
     }
 
-    function test_Success_getPoolId(address univ3pool, uint256 _tickSpacing) public {
-        vm.assume(
-            univ3pool > address(10) &&
-                univ3pool != address(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D) &&
-                univ3pool != address(0x000000000000000000636F6e736F6c652e6c6f67) &&
-                univ3pool != address(harness)
-        );
-        _tickSpacing = bound(_tickSpacing, 0, uint16(type(int16).max));
-
-        UniPoolPriceMock pm = new UniPoolPriceMock();
-        vm.etch(univ3pool, address(pm).code);
-        pm = UniPoolPriceMock(univ3pool);
-
-        pm.construct(
-            UniPoolPriceMock.Slot0({
-                sqrtPriceX96: 0,
-                tick: 0,
-                observationIndex: 0,
-                observationCardinality: 0,
-                observationCardinalityNext: 0,
-                feeProtocol: 0,
-                unlocked: false
-            }),
-            address(0),
-            address(0),
-            0,
-            int24(uint24(_tickSpacing))
-        );
-        uint64 poolPattern = uint64(uint160(univ3pool) >> 112);
-
-        assertEq(
-            (_tickSpacing << 48) + poolPattern,
-            harness.getPoolId(univ3pool, int24(uint24(_tickSpacing)))
-        );
-    }
-
     function test_Success_getTicks_normalTickRange(
         uint256 widthSeed,
         int256 strikeSeed,

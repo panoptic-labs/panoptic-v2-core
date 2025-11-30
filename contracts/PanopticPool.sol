@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
+import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
 // Inherited implementations
 import {Clone} from "clones-with-immutable-args/Clone.sol";
 import {Multicall} from "@base/Multicall.sol";
@@ -143,7 +143,7 @@ contract PanopticPool is Clone, Multicall {
     uint256 internal constant NO_BUFFER = 10_000_000;
 
     /// @notice The "engine" of Panoptic - manages AMM liquidity and executes all mints/burns/exercises.
-    SemiFungiblePositionManager internal immutable SFPM;
+    ISemiFungiblePositionManager internal immutable SFPM;
 
     /*//////////////////////////////////////////////////////////////
                                 STORAGE
@@ -238,8 +238,8 @@ contract PanopticPool is Clone, Multicall {
     // The parameters will be encoded in calldata at `_getImmutableArgsOffset()` as follows:
     // abi.encodePacked(address collateralToken0, address collateralToken1, address oracleContract, uint256 poolId, abi.encode(PoolKey poolKey))
     // bytes: 0                    20                   40                   60                   92
-    //        |<---- 160 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 256 bits ---->|<---- 1280 bits ---->|
-    //           collateralToken0     collateralToken1       riskEngine             poolId               poolKey
+    //        |<---- 160 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 64 bits ---->|<---- 1280 bits ---->|
+    //           collateralToken0     collateralToken1       riskEngine             poolManager          poolId             poolKey
 
     /// @notice Get the collateral token corresponding to token0 of the Uniswap pool.
     /// @return Collateral token corresponding to token0 in Uniswap
@@ -253,16 +253,23 @@ contract PanopticPool is Clone, Multicall {
         return CollateralTracker(_getArgAddress(20));
     }
 
-    /// @notice Get the address of the external oracle contract used by this Panoptic Pool.
-    /// @return The external oracle contract used by this Panoptic Pool
+    /// @notice Get the address of the risk engine contract used by this Panoptic Pool.
+    /// @return The risk engine contract used by this Panoptic Pool
     function riskEngine() public pure returns (RiskEngine) {
         return RiskEngine(_getArgAddress(40));
+    }
+
+    /// @notice Retrieve the PoolManager associated with that CollateralTracker.
+    /// @dev stored as zero if not a Uniswap v4 pool
+    /// @return The PoolManager instance associated with that CollateralTracker's uniswap V4 pool
+    function poolManager() public pure returns (address) {
+        return address(_getArgAddress(60));
     }
 
     /// @notice Get the Uniswap Pool ID for the Uniswap pool used by this Panoptic.
     /// @return The Pool ID for this Panoptic Pool
     function poolId() public pure returns (uint64) {
-        return uint64(_getArgUint256(60));
+        return uint64(_getArgUint64(80));
     }
 
     /// @notice Get the pool key for the Uniswap pool used by this Panoptic Pool.
@@ -272,10 +279,10 @@ contract PanopticPool is Clone, Multicall {
     /// @return key The Pool Key for this Panoptic Pool.
     function poolKey() public pure returns (bytes calldata key) {
         uint256 offset = _getImmutableArgsOffset();
-        uint256 start = offset + 92;
+        uint256 start = offset + 88;
         uint256 len;
         assembly {
-            len := sub(calldatasize(), start)
+            len := sub(sub(calldatasize(), start), 2)
             key.offset := start
             key.length := len
         }
@@ -287,7 +294,7 @@ contract PanopticPool is Clone, Multicall {
 
     /// @notice Store the address of the canonical SemiFungiblePositionManager (SFPM) contract.
     /// @param _sfpm The address of the SFPM
-    constructor(SemiFungiblePositionManager _sfpm) {
+    constructor(ISemiFungiblePositionManager _sfpm) {
         SFPM = _sfpm;
     }
 
@@ -329,7 +336,8 @@ contract PanopticPool is Clone, Multicall {
             collateralToken0(),
             collateralToken1(),
             collateralToken0().token0(),
-            collateralToken0().token1()
+            collateralToken0().token1(),
+            poolManager()
         );
     }
 
@@ -881,7 +889,7 @@ contract PanopticPool is Clone, Multicall {
         TokenId[] calldata positionIdListTo,
         TokenId[] calldata positionIdListToFinal,
         LeftRightUnsigned usePremiaAsCollateral
-    ) external {
+    ) external payable {
         // Assert the account we are liquidating is actually insolvent
         int24 twapTick = getTWAP();
         int24 currentTick = SFPM.getCurrentTick(poolKey());
@@ -1083,7 +1091,12 @@ contract PanopticPool is Clone, Multicall {
         }
 
         // revoke delegated virtual shares and settle any bonus deltas with the liquidator
-        collateralToken0().settleLiquidation(msg.sender, liquidatee, bonusAmounts.rightSlot());
+        // native currency is represented as address(0), so it will always be currency0 alphanumerically
+        collateralToken0().settleLiquidation{value: msg.value}(
+            msg.sender,
+            liquidatee,
+            bonusAmounts.rightSlot()
+        );
         collateralToken1().settleLiquidation(msg.sender, liquidatee, bonusAmounts.leftSlot());
 
         emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
@@ -1488,7 +1501,7 @@ contract PanopticPool is Clone, Multicall {
 
     /// @notice Get the oracle price used to check solvency in liquidations.
     /// @return twapTick The current oracle price used to check solvency in liquidations
-    function getTWAP() internal view returns (int24 twapTick) {
+    function getTWAP() public view returns (int24 twapTick) {
         twapTick = riskEngine().twapEMA(s_oraclePack);
     }
 

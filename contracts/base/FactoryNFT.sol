@@ -5,7 +5,7 @@ pragma solidity ^0.8.24;
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 // Inherited implementations
-import {ERC721} from "solmate/tokens/ERC721.sol";
+import {ERC721} from "solmate/src/tokens/ERC721.sol";
 import {MetadataStore} from "@base/MetadataStore.sol";
 // Custom types
 import {Pointer} from "@types/Pointer.sol";

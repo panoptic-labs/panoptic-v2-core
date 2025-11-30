@@ -5,7 +5,8 @@ pragma solidity ^0.8.24;
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
+import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 // Libraries
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 
@@ -22,19 +23,26 @@ library InteractionHelper {
     /// @param token0 The token0 (in Uniswap) being approved for
     /// @param token1 The token1 (in Uniswap) being approved for
     function doApprovals(
-        SemiFungiblePositionManager sfpm,
+        ISemiFungiblePositionManager sfpm,
         CollateralTracker ct0,
         CollateralTracker ct1,
         address token0,
-        address token1
+        address token1,
+        address poolManager
     ) external {
-        // Approve transfers of Panoptic Pool funds by SFPM
-        IERC20Partial(token0).approve(address(sfpm), type(uint256).max);
-        IERC20Partial(token1).approve(address(sfpm), type(uint256).max);
+        if (poolManager == address(0)) {
+            // Approve transfers of Panoptic Pool funds by SFPM
+            IERC20Partial(token0).approve(address(sfpm), type(uint256).max);
+            IERC20Partial(token1).approve(address(sfpm), type(uint256).max);
 
-        // Approve transfers of Panoptic Pool funds by Collateral token
-        IERC20Partial(token0).approve(address(ct0), type(uint256).max);
-        IERC20Partial(token1).approve(address(ct1), type(uint256).max);
+            // Approve transfers of Panoptic Pool funds by Collateral token
+            IERC20Partial(token0).approve(address(ct0), type(uint256).max);
+            IERC20Partial(token1).approve(address(ct1), type(uint256).max);
+        } else {
+            IPoolManager(poolManager).setOperator(address(sfpm), true);
+            IPoolManager(poolManager).setOperator(address(ct0), true);
+            IPoolManager(poolManager).setOperator(address(ct1), true);
+        }
     }
 
     /// @notice Computes the name of a CollateralTracker based on the token composition and fee of the underlying Uniswap Pool.

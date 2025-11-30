@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 // Interfaces
 import {PanopticPool} from "./PanopticPool.sol";
 import {RiskEngine} from "./RiskEngine.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 // Inherited implementations
 import {Clone} from "clones-with-immutable-args/Clone.sol";
 import {ERC20Minimal} from "@tokens/ERC20Minimal.sol";
@@ -13,6 +14,7 @@ import {InteractionHelper} from "@libraries/InteractionHelper.sol";
 import {Math} from "@libraries/Math.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 // Custom types
+import {Currency} from "v4-core/types/Currency.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
 
@@ -126,9 +128,9 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
     // The parameters will be encoded at `_getImmutableArgsOffset()` in calldata as follows:
     // abi.encodePacked(address panopticPool, bool underlyingIsToken0, address underlyingToken, address token0, address token1, uint24 poolFee)
-    // bytes: 0                    20                 21                   41                   61                   81                   101
-    //        |<---- 160 bits ---->|<---- 8 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 24 bits ---->|
-    //             panopticPool     underlyingIsToken0    underlyingToken          token0               token1             riskEngine            poolFee
+    // bytes: 0                    20                 21                   41                   61                   81                   101                 121
+    //        |<---- 160 bits ---->|<---- 8 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 24 bits ---->|
+    //             panopticPool     underlyingIsToken0    underlyingToken          token0               token1             riskEngine           POOL_MANAGER          poolFee
 
     /// @notice Retrieve the Panoptic Pool that this collateral token belongs to.
     /// @return The Panoptic Pool associated with this collateral token
@@ -165,9 +167,16 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     }
 
     /// @notice Retrieve the RiskEngine associated with that CollateralTracker.
-    /// @return The RiskEngine instance associated with that CollateralTrackerwap V3 pool
+    /// @return The RiskEngine instance associated with that CollateralTracker's uniswap pool
     function riskEngine() public pure returns (RiskEngine) {
         return RiskEngine(_getArgAddress(81));
+    }
+
+    /// @notice Retrieve the PoolManager associated with that CollateralTracker.
+    /// @dev stored as zero if not a Uniswap v4 pool
+    /// @return The PoolManager instance associated with that CollateralTracker's uniswap V4 pool
+    function poolManager() public pure returns (IPoolManager) {
+        return IPoolManager(_getArgAddress(101));
     }
 
     /// @notice Retrieve the fee of the Uniswap V3 pool.
@@ -176,7 +185,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         uint256 offset = _getImmutableArgsOffset();
 
         assembly ("memory-safe") {
-            _poolFee := shr(0xe8, calldataload(add(offset, 101)))
+            _poolFee := shr(0xe8, calldataload(add(offset, 121)))
         }
     }
 
@@ -397,6 +406,60 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     }
 
     /*//////////////////////////////////////////////////////////////
+                        UNISWAP V4 LOCK CALLBACK
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Initiates the unlock callback to wrap/unwrap `delta` amount of the underlying asset and transfer to/from the Panoptic Pool.
+    /// @param account The address of the account to transfer the underlying asset to/from
+    /// @param delta The amount of the underlying asset to wrap/unwrap and transfer
+    function _settleCurrencyDelta(address account, int256 delta) internal {
+        poolManager().unlock(abi.encode(account, delta, msg.value));
+    }
+
+    /// @notice Uniswap V4 unlock callback implementation.
+    /// @dev Parameters are `(address account, int256 delta, uint256 valueOrigin)`.
+    /// @dev Wraps/unwraps `delta` amount of the underlying asset and transfers to/from the Panoptic Pool.
+    /// @param data The encoded data containing the account and delta
+    /// @return This function returns no data
+    function unlockCallback(bytes calldata data) external returns (bytes memory) {
+        if (msg.sender != address(poolManager())) revert Errors.UnauthorizedUniswapCallback();
+
+        (address account, int256 delta, uint256 valueOrigin) = abi.decode(
+            data,
+            (address, int256, uint256)
+        );
+
+        address underlyingAsset = underlyingToken();
+        if (delta > 0) {
+            if (Currency.wrap(underlyingAsset).isAddressZero()) {
+                poolManager().settle{value: uint256(delta)}();
+
+                uint256 surplus = valueOrigin - uint256(delta);
+                if (surplus > 0) SafeTransferLib.safeTransferETH(account, surplus);
+            } else {
+                poolManager().sync(Currency.wrap(underlyingAsset));
+                SafeTransferLib.safeTransferFrom(
+                    underlyingAsset,
+                    account,
+                    address(poolManager()),
+                    uint256(delta)
+                );
+                poolManager().settle();
+            }
+
+            poolManager().mint(address(panopticPool()), uint160(underlyingAsset), uint256(delta));
+        } else if (delta < 0) {
+            unchecked {
+                delta = -delta;
+            }
+            poolManager().burn(address(panopticPool()), uint160(underlyingAsset), uint256(delta));
+            poolManager().take(Currency.wrap(underlyingAsset), account, uint256(delta));
+        }
+
+        return "";
+    }
+
+    /*//////////////////////////////////////////////////////////////
                      STANDARD ERC4626 INTERFACE
     //////////////////////////////////////////////////////////////*/
 
@@ -463,28 +526,36 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param assets Amount of assets deposited
     /// @param receiver User to receive the shares
     /// @return shares The amount of Panoptic pool shares that were minted to the recipient
-    function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
+    function deposit(uint256 assets, address receiver) external payable returns (uint256 shares) {
         _accrueInterest(msg.sender, IS_DEPOSIT);
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
         if (assets == 0) revert Errors.BelowMinimumRedemption();
 
         shares = previewDeposit(assets);
 
-        // transfer assets (underlying token funds) from the user/the LP to the PanopticPool
-        // in return for the shares to be minted
-        SafeTransferLib.safeTransferFrom(
-            underlyingToken(),
-            msg.sender,
-            address(panopticPool()),
-            assets
-        );
+        address _poolManager = address(poolManager());
 
+        if (_poolManager == address(0)) {
+            // transfer assets (underlying token funds) from the user/the LP to the PanopticPool
+            // in return for the shares to be minted
+            SafeTransferLib.safeTransferFrom(
+                underlyingToken(),
+                msg.sender,
+                address(panopticPool()),
+                assets
+            );
+        }
         // mint collateral shares of the Panoptic Pool funds (this ERC20 token)
         _mint(receiver, shares);
 
         // update tracked asset balance
         s_depositedAssets += uint128(assets);
 
+        if (_poolManager != address(0)) {
+            // transfer assets from the user/the LP to the PanopticPool
+            // in return for the shares to be minted
+            _settleCurrencyDelta(msg.sender, int256(assets));
+        }
         emit Deposit(msg.sender, receiver, assets, shares);
     }
 
@@ -509,27 +580,37 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param shares Amount of shares to be minted
     /// @param receiver User to receive the shares
     /// @return assets The amount of assets deposited to mint the desired amount of shares
-    function mint(uint256 shares, address receiver) external returns (uint256 assets) {
+    function mint(uint256 shares, address receiver) external payable returns (uint256 assets) {
         _accrueInterest(msg.sender, IS_DEPOSIT);
         assets = previewMint(shares);
 
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
         if (assets == 0) revert Errors.BelowMinimumRedemption();
 
-        // transfer assets (underlying token funds) from the user/the LP to the PanopticPool
-        // in return for the shares to be minted
-        SafeTransferLib.safeTransferFrom(
-            underlyingToken(),
-            msg.sender,
-            address(panopticPool()),
-            assets
-        );
+        address _poolManager = address(poolManager());
+
+        if (_poolManager == address(0)) {
+            // transfer assets (underlying token funds) from the user/the LP to the PanopticPool
+            // in return for the shares to be minted
+            SafeTransferLib.safeTransferFrom(
+                underlyingToken(),
+                msg.sender,
+                address(panopticPool()),
+                assets
+            );
+        }
 
         // mint collateral shares of the Panoptic Pool funds (this ERC20 token)
         _mint(receiver, shares);
 
         // update tracked asset balance
         s_depositedAssets += uint128(assets);
+
+        if (_poolManager != address(0)) {
+            // transfer assets from the user/the LP to the PanopticPool
+            // in return for the shares to be minted
+            _settleCurrencyDelta(msg.sender, int256(assets));
+        }
 
         emit Deposit(msg.sender, receiver, assets, shares);
     }
@@ -590,13 +671,22 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             s_depositedAssets -= uint128(assets);
         }
 
-        // transfer assets (underlying token funds) from the PanopticPool to the LP
-        SafeTransferLib.safeTransferFrom(
-            underlyingToken(),
-            address(panopticPool()),
-            receiver,
-            assets
-        );
+        address _poolManager = address(poolManager());
+
+        if (_poolManager == address(0)) {
+            // transfer assets (underlying token funds) from the PanopticPool to the LP
+            SafeTransferLib.safeTransferFrom(
+                underlyingToken(),
+                address(panopticPool()),
+                receiver,
+                assets
+            );
+        } else {
+            // transfer assets from the PanopticPool to the LP
+            unchecked {
+                _settleCurrencyDelta(receiver, -int256(assets));
+            }
+        }
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
     }
@@ -624,7 +714,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         // check/update allowance for approved withdraw
         if (msg.sender != owner) {
             uint256 allowed = allowance[owner][msg.sender];
-
             if (allowed != type(uint256).max) allowance[owner][msg.sender] = allowed - shares; // Saves gas for unlimited approvals.
         }
 
@@ -637,14 +726,22 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         // reverts if account is not solvent/eligible to withdraw
         panopticPool().validateCollateralWithdrawable(owner, positionIdList, usePremiaAsCollateral);
 
-        // transfer assets (underlying token funds) from the PanopticPool to the LP
-        SafeTransferLib.safeTransferFrom(
-            underlyingToken(),
-            address(panopticPool()),
-            receiver,
-            assets
-        );
+        address _poolManager = address(poolManager());
 
+        if (_poolManager == address(0)) {
+            // transfer assets (underlying token funds) from the PanopticPool to the LP
+            SafeTransferLib.safeTransferFrom(
+                underlyingToken(),
+                address(panopticPool()),
+                receiver,
+                assets
+            );
+        } else {
+            // transfer assets from the PanopticPool to the LP
+            unchecked {
+                _settleCurrencyDelta(receiver, -int256(assets));
+            }
+        }
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
     }
 
@@ -699,15 +796,22 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         unchecked {
             s_depositedAssets -= uint128(assets);
         }
+        address _poolManager = address(poolManager());
 
-        // transfer assets (underlying token funds) from the PanopticPool to the LP
-        SafeTransferLib.safeTransferFrom(
-            underlyingToken(),
-            address(panopticPool()),
-            receiver,
-            assets
-        );
-
+        if (_poolManager == address(0)) {
+            // transfer assets (underlying token funds) from the PanopticPool to the LP
+            SafeTransferLib.safeTransferFrom(
+                underlyingToken(),
+                address(panopticPool()),
+                receiver,
+                assets
+            );
+        } else {
+            // transfer assets from the PanopticPool to the LP
+            unchecked {
+                _settleCurrencyDelta(receiver, -int256(assets));
+            }
+        }
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
     }
 
@@ -1073,19 +1177,32 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         address liquidator,
         address liquidatee,
         int256 bonus
-    ) external onlyPanopticPool {
+    ) external payable onlyPanopticPool {
         if (bonus < 0) {
             uint256 bonusAbs;
 
             unchecked {
                 bonusAbs = uint256(-bonus);
             }
+            address _poolManager = address(poolManager());
 
-            uint256 underlyingTokenBalance = ERC20Minimal(underlyingToken()).balanceOf(liquidator);
-            if (underlyingTokenBalance < bonusAbs)
-                revert Errors.NotEnoughTokens(underlyingToken(), bonusAbs, underlyingTokenBalance);
-            SafeTransferLib.safeTransferFrom(underlyingToken(), liquidator, msg.sender, bonusAbs);
-
+            if (_poolManager == address(0)) {
+                uint256 underlyingTokenBalance = ERC20Minimal(underlyingToken()).balanceOf(
+                    liquidator
+                );
+                if (underlyingTokenBalance < bonusAbs)
+                    revert Errors.NotEnoughTokens(
+                        underlyingToken(),
+                        bonusAbs,
+                        underlyingTokenBalance
+                    );
+                SafeTransferLib.safeTransferFrom(
+                    underlyingToken(),
+                    liquidator,
+                    msg.sender,
+                    bonusAbs
+                );
+            }
             _mint(liquidatee, convertToShares(bonusAbs));
 
             s_depositedAssets += uint128(bonusAbs);
@@ -1101,6 +1218,9 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                 unchecked {
                     balanceOf[liquidatee] = liquidateeBalance - type(uint248).max;
                 }
+            }
+            if (_poolManager != address(0)) {
+                _settleCurrencyDelta(liquidator, int256(bonusAbs));
             }
         } else {
             uint256 liquidateeBalance = balanceOf[liquidatee];
@@ -1153,6 +1273,9 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             } else {
                 _transferFrom(liquidatee, liquidator, bonusShares);
             }
+
+            // refund liquidator if they attached value expecting to settle a negative bonus in the native currency
+            if (msg.value > 0) SafeTransferLib.safeTransferETH(liquidator, msg.value);
         }
     }
 
