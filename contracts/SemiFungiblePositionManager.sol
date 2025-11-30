@@ -602,106 +602,26 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                      TRANSFER HOOK IMPLEMENTATIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Transfer a single token from one user to another.
-    /// @dev Supports token approvals.
-    /// @param from The user to transfer tokens from
-    /// @param to The user to transfer tokens to
-    /// @param id The ERC1155 token id to transfer
-    /// @param amount The amount of tokens to transfer
-    /// @param data Optional data to include in the receive hook
+    /// @notice All ERC1155 transfers are disabled.
     function safeTransferFrom(
-        address from,
-        address to,
-        uint256 id,
-        uint256 amount,
-        bytes calldata data
-    ) public override nonReentrant {
-        registerTokenTransfer(from, to, TokenId.wrap(id), amount);
-
-        super.safeTransferFrom(from, to, id, amount, data);
+        address,
+        address,
+        uint256,
+        uint256,
+        bytes calldata
+    ) public pure override {
+        revert();
     }
 
-    /// @notice Transfer multiple tokens from one user to another.
-    /// @dev Supports token approvals.
-    /// @dev `ids` and `amounts` must be of equal length.
-    /// @param from The user to transfer tokens from
-    /// @param to The user to transfer tokens to
-    /// @param ids The ERC1155 token ids to transfer
-    /// @param amounts The amounts of tokens to transfer
-    /// @param data Optional data to include in the receive hook
+    /// @notice All ERC1155 transfers are disabled.
     function safeBatchTransferFrom(
-        address from,
-        address to,
-        uint256[] calldata ids,
-        uint256[] calldata amounts,
-        bytes calldata data
-    ) public override nonReentrant {
-        for (uint256 i = 0; i < ids.length; ) {
-            registerTokenTransfer(from, to, TokenId.wrap(ids[i]), amounts[i]);
-            unchecked {
-                ++i;
-            }
-        }
-
-        super.safeBatchTransferFrom(from, to, ids, amounts, data);
-    }
-
-    /// @notice Update user position data following a token transfer.
-    /// @dev All liquidity for `from` in the chunk for each leg of `id` must be transferred.
-    /// @dev `from` must not have long liquidity in any of the chunks being transferred.
-    /// @dev `to` must not have (long or short) liquidity in any of the chunks being transferred.
-    /// @param from The address of the sender
-    /// @param to The address of the recipient
-    /// @param id The tokenId being transferred
-    /// @param amount The amount of the token being transferred
-    function registerTokenTransfer(address from, address to, TokenId id, uint256 amount) internal {
-        IUniswapV3Pool univ3pool = s_poolIdToPoolData[id.poolId()].pool();
-
-        uint256 numLegs = id.countLegs();
-        for (uint256 leg = 0; leg < numLegs; ) {
-            LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
-                id,
-                leg,
-                uint128(amount)
-            );
-
-            bytes32 positionKey_from = EfficientHash.efficientKeccak256(
-                abi.encodePacked(
-                    address(univ3pool),
-                    from,
-                    id.tokenType(leg),
-                    liquidityChunk.tickLower(),
-                    liquidityChunk.tickUpper()
-                )
-            );
-            bytes32 positionKey_to = EfficientHash.efficientKeccak256(
-                abi.encodePacked(
-                    address(univ3pool),
-                    to,
-                    id.tokenType(leg),
-                    liquidityChunk.tickLower(),
-                    liquidityChunk.tickUpper()
-                )
-            );
-
-            // Revert if recipient already has liquidity in `liquidityChunk`
-            // Revert if sender has long liquidity in `liquidityChunk` or they are attempting to transfer less than their `netLiquidity`
-            LeftRightUnsigned fromLiq = s_accountLiquidity[positionKey_from];
-            if (
-                LeftRightUnsigned.unwrap(s_accountLiquidity[positionKey_to]) != 0 ||
-                LeftRightUnsigned.unwrap(fromLiq) != liquidityChunk.liquidity()
-            ) revert Errors.TransferFailed(address(this), from, amount, 0);
-
-            s_accountLiquidity[positionKey_to] = fromLiq;
-            s_accountLiquidity[positionKey_from] = LeftRightUnsigned.wrap(0);
-
-            s_accountFeesBase[positionKey_to] = s_accountFeesBase[positionKey_from];
-            s_accountFeesBase[positionKey_from] = LeftRightSigned.wrap(0);
-
-            unchecked {
-                ++leg;
-            }
-        }
+        address,
+        address,
+        uint256[] calldata,
+        uint256[] calldata,
+        bytes calldata
+    ) public pure override {
+        revert();
     }
 
     /*//////////////////////////////////////////////////////////////

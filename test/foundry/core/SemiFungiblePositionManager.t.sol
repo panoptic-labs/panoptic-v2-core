@@ -3243,7 +3243,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                          TRANSFER HOOK LOGIC: +
     //////////////////////////////////////////////////////////////*/
 
-    function testSuccess_afterTokenTransfer_Single(
+    function _testSuccess_afterTokenTransfer_Single(
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,
@@ -3335,7 +3335,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         assertEq(realLiq, expectedLiq);
     }
 
-    function testSuccess_afterTokenTransfer_Batch(
+    function _testSuccess_afterTokenTransfer_Batch(
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,
@@ -3462,7 +3462,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                          TRANSFER HOOK LOGIC: -
     //////////////////////////////////////////////////////////////*/
 
-    function test_Fail_afterTokenTransfer_NotAllLiquidityTransferred(
+    function _test_Fail_afterTokenTransfer_NotAllLiquidityTransferred(
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,
@@ -3537,7 +3537,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
     // mint a short leg, long some of that leg, then transfer the long leg
     // should fail as you shouldnt be able to transfer removedliquidity
-    function test_Fail_afterTokenTransfer_LongChunkTransferredSolo(
+    function _test_Fail_afterTokenTransfer_LongChunkTransferredSolo(
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,
@@ -3605,7 +3605,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         sfpm.safeTransferFrom(Alice, Bob, TokenId.unwrap(tokenId2), positionSize, "");
     }
 
-    function test_Fail_afterTokenTransfer_RecipientAlreadyOwns(
+    function _test_Fail_afterTokenTransfer_RecipientAlreadyOwns(
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,
@@ -4523,7 +4523,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     }
 
     // make sure single transfers check reentrancy lock state
-    function test_Fail_TransferSingle_ReentrancyLock(
+    function _test_Fail_TransferSingle_ReentrancyLock(
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,
@@ -4584,7 +4584,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     }
 
     // make sure batch transfers check reentrancy lock state
-    function test_Fail_TransferBatch_ReentrancyLock(
+    function _test_Fail_TransferBatch_ReentrancyLock(
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,
