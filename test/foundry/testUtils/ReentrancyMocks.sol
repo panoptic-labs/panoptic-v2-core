@@ -3,8 +3,8 @@ pragma solidity ^0.8.24;
 
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {TokenId} from "@types/TokenId.sol";
-import {SemiFungiblePositionManagerHarness as SFPMHarnessV4} from "../coreV4/SemiFungiblePositionManager.t.sol";
-import {SemiFungiblePositionManagerHarness} from "../core/SemiFungiblePositionManager.t.sol";
+import {SemiFungiblePositionManagerHarness as SFPMHarnessV4} from "../core/SemiFungiblePositionManager.t.sol";
+import {SemiFungiblePositionManagerHarness} from "../coreV3/SemiFungiblePositionManager.t.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 
 contract ReenterBurn {
