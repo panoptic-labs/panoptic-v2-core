@@ -8,7 +8,7 @@ using PoolDataLibrary for PoolData global;
 /// @author Axicon Labs Limited
 //
 //
-// PACKING RULES FOR A POSITIONBALANCE:
+// PACKING RULES FOR A POOLDATA:
 // =================================================================================================
 //  From the LSB to the MSB:
 // (1) maxLiquidityPerTick  128bits : The max liquidity per tick

@@ -15,8 +15,9 @@ import {Math} from "@libraries/Math.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 // Custom types
 import {Currency} from "v4-core/types/Currency.sol";
-import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
+import {LeftRightSigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
+import {RiskParameters} from "@types/RiskParameters.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
 /// @author Axicon Labs Limited
@@ -59,6 +60,13 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         address indexed owner,
         uint256 assets,
         uint256 shares
+    );
+
+    event CommissionPaid(
+        address indexed owner,
+        address indexed builder,
+        uint128 commissionPaidProtocol,
+        uint128 commissionPaidBuilder
     );
 
     /// @notice Emitted when a user attempts to settle interest but lacks sufficient shares to pay in full.
@@ -1313,62 +1321,69 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param ammDeltaAmount The amount of tokens moved during creation of the option position
     ///
     function _updateBalancesAndSettle(
-        bool isCreation,
         address optionOwner,
+        bool isCreation,
         int128 longAmount,
         int128 shortAmount,
         int128 ammDeltaAmount,
         int128 realizedPremium
-    ) internal returns (uint32, uint128, int128) {
+    ) internal returns (uint32, int128, uint256, uint256) {
         _accrueInterest(optionOwner, IS_NOT_DEPOSIT);
         unchecked {
-            int256 tokenToPay;
-            uint128 commission;
-
             /// Snapshot state variables to compute the price per share
             uint256 _totalAssets = totalAssets();
             uint256 _totalSupply = totalSupply();
 
-            // compute creditDelta with the snapshotted values
-            uint256 creditDelta = isCreation
-                ? Math.mulDivRoundingUp(uint256(uint128(longAmount)), _totalSupply, _totalAssets)
-                : Math.mulDiv(uint256(uint128(longAmount)), _totalSupply, _totalAssets);
-
-            if (!isCreation) {
-                // update s_creditedShares: add long amounts == tokens moved into AMM or received when the position is closed
-                //
-                // An underflow is possible because Uniswap rounds long position DOWN when minting and UP when burning LP positions.
-                // For examples, for a long position, the amount of credited shares at MINT will be lower than the ones repaid back at BURN,
-                // which means the s_creditedShares tracker will become negative (the protocol lost ~1 asset worth of shares).
-                // Consequently, those shares must also be burnt, and we're making those shares come out of the option owner.
-                uint256 _creditedShares = s_creditedShares;
-                if (_creditedShares < creditDelta) {
-                    s_creditedShares = 0;
-                    // re-use the commission variable to handle, this is in reality a rounding haircut paid by the option owner at close
-                    // rounding up again during conversion potentially add another `1` extra share as ceil*ceil is not idempotent
-                    commission += Math
-                        .mulDivRoundingUp(creditDelta - _creditedShares, _totalAssets, _totalSupply)
-                        .toUint128();
-                } else {
-                    s_creditedShares -= creditDelta;
+            int128 netBorrows = isCreation ? shortAmount - longAmount : longAmount - shortAmount;
+            int256 tokenToPay = int256(ammDeltaAmount) - netBorrows - realizedPremium;
+            {
+                // compute creditDelta with the snapshotted values
+                uint256 creditDelta;
+                if (longAmount > 0) {
+                    creditDelta = isCreation
+                        ? Math.mulDivRoundingUp(
+                            uint256(uint128(longAmount)),
+                            _totalSupply,
+                            _totalAssets
+                        )
+                        : Math.mulDiv(uint256(uint128(longAmount)), _totalSupply, _totalAssets);
                 }
-            } else {
-                // update s_creditedShares: Add long amounts == tokens moved out of AMM or paid when creating credits
-                s_creditedShares += creditDelta;
-
-                // pay commission only when opening a new position
-                commission += uint128(
-                    Math.unsafeDivRoundingUp(
-                        uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
-                        DECIMALS
-                    )
-                );
+                if (!isCreation) {
+                    if (creditDelta > 0) {
+                        // update s_creditedShares: add long amounts == tokens moved into AMM or received when the position is closed
+                        //
+                        // An underflow is possible because Uniswap rounds long position DOWN when minting and UP when burning LP positions.
+                        // For examples, for a long position, the amount of credited shares at MINT will be lower than the ones repaid back at BURN,
+                        // which means the s_creditedShares tracker will become negative (the protocol lost ~1 asset worth of shares).
+                        // Consequently, those shares must also be burnt, and we're making those shares come out of the option owner.
+                        uint256 _creditedShares = s_creditedShares;
+                        if (_creditedShares < creditDelta) {
+                            s_creditedShares = 0;
+                            // re-use the commission variable to handle, this is in reality a rounding haircut paid by the option owner at close
+                            // rounding up again during conversion potentially add another `1` extra share as ceil*ceil is not idempotent
+                            tokenToPay += int128(
+                                Math
+                                    .mulDivRoundingUp(
+                                        creditDelta - _creditedShares,
+                                        _totalAssets,
+                                        _totalSupply
+                                    )
+                                    .toUint128()
+                            );
+                        } else {
+                            s_creditedShares -= creditDelta;
+                        }
+                    }
+                } else {
+                    if (creditDelta > 0) {
+                        // update s_creditedShares: Add long amounts == tokens moved out of AMM or paid when creating credits
+                        s_creditedShares += creditDelta;
+                    }
+                    // pay commission only when opening a new position, return notional value
+                }
             }
 
-            int128 netBorrows = isCreation ? shortAmount - longAmount : longAmount - shortAmount;
-
-            tokenToPay = int256(ammDeltaAmount) - netBorrows - realizedPremium + int128(commission);
-
+            address _optionOwner = optionOwner;
             // Mint/Burn Shares
             if (tokenToPay > 0) {
                 uint256 sharesToBurn = Math.mulDivRoundingUp(
@@ -1376,7 +1391,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                     _totalSupply,
                     _totalAssets
                 );
-                address _optionOwner = optionOwner;
+
                 if (balanceOf[_optionOwner] < sharesToBurn)
                     revert Errors.NotEnoughTokens(
                         address(this),
@@ -1391,7 +1406,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                     _totalSupply,
                     _totalAssets
                 );
-                address _optionOwner = optionOwner;
                 _mint(_optionOwner, sharesToMint);
             }
 
@@ -1412,7 +1426,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             }
 
             {
-                address _optionOwner = optionOwner;
                 // add new netBorrows to the left slot
                 s_interestState[_optionOwner] = s_interestState[_optionOwner].addToLeftSlot(
                     netBorrows
@@ -1422,7 +1435,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             // get the utilization, store the current one in transient storage
             uint32 utilization = uint32(_poolUtilization());
 
-            return (utilization, commission, int128(tokenToPay));
+            return (utilization, int128(tokenToPay), _totalAssets, _totalSupply);
         }
     }
 
@@ -1431,25 +1444,52 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param longAmount The amount of longs
     /// @param shortAmount The amount of shorts
     /// @param ammDeltaAmount The amount of tokens moved during creation of the option position
+    /// @param riskParameters The RiskEngine's core parameters
     /// @return The final utilization of the collateral vault (rightSlot) and the total amount of commission (base rate + ITM spread) paid (leftSlot)
     function settleMint(
         address optionOwner,
         int128 longAmount,
         int128 shortAmount,
-        int128 ammDeltaAmount
-    ) external onlyPanopticPool returns (LeftRightUnsigned, int128) {
-        (uint32 utilization, uint128 commission, int128 tokenPaid) = _updateBalancesAndSettle(
-            true, // isCreation = true
-            optionOwner,
-            longAmount,
-            shortAmount,
-            ammDeltaAmount,
-            0 // realizedPremium not used
-        );
-        return (
-            LeftRightUnsigned.wrap(0).addToRightSlot(utilization).addToLeftSlot(commission),
-            tokenPaid
-        );
+        int128 ammDeltaAmount,
+        RiskParameters riskParameters
+    ) external onlyPanopticPool returns (uint32, int128) {
+        (
+            uint32 utilization,
+            int128 tokenPaid,
+            uint256 _totalAssets,
+            uint256 _totalSupply
+        ) = _updateBalancesAndSettle(
+                optionOwner,
+                true, // isCreation = true
+                longAmount,
+                shortAmount,
+                ammDeltaAmount,
+                0 // realizedPremium not used
+            );
+
+        unchecked {
+            uint128 commission = uint256(int256(shortAmount) + int256(longAmount)).toUint128();
+
+            uint128 commissionFee = uint128(
+                Math.mulDivRoundingUp(commission, riskParameters.notionalFee(), DECIMALS)
+            );
+            uint256 sharesToBurn = Math.mulDivRoundingUp(commissionFee, _totalSupply, _totalAssets);
+
+            if (riskParameters.feeRecipient() == 0) {
+                _transferFrom(optionOwner, address(riskEngine()), sharesToBurn);
+                emit CommissionPaid(optionOwner, address(0), commissionFee, 0);
+            } else {
+                _transferFrom(optionOwner, address(riskEngine()), sharesToBurn / 2);
+                _transferFrom(
+                    optionOwner,
+                    address(uint160(riskParameters.feeRecipient())),
+                    sharesToBurn / 4
+                );
+                emit CommissionPaid(optionOwner, address(0), commissionFee / 2, commissionFee / 4);
+            }
+        }
+
+        return (utilization, tokenPaid);
     }
 
     /// @notice Exercise an option and pay to the seller what is owed from the buyer.
@@ -1465,16 +1505,52 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         int128 longAmount,
         int128 shortAmount,
         int128 ammDeltaAmount,
-        int128 realizedPremium
+        int128 realizedPremium,
+        RiskParameters riskParameters
     ) external onlyPanopticPool returns (int128) {
-        (, , int128 tokenPaid) = _updateBalancesAndSettle(
-            false, // isCreation = false
+        (, int128 tokenPaid, uint256 _totalAssets, uint256 _totalSupply) = _updateBalancesAndSettle(
             optionOwner,
+            false, // isCreation = false
             longAmount,
             shortAmount,
             ammDeltaAmount,
             realizedPremium
         );
+
+        if (realizedPremium != 0) {
+            unchecked {
+                uint128 commission = realizedPremium > 0
+                    ? uint128(realizedPremium)
+                    : uint128(-realizedPremium);
+                uint128 commissionFee = uint128(
+                    Math.mulDivRoundingUp(commission, riskParameters.premiumFee(), DECIMALS)
+                );
+                uint256 sharesToBurn = Math.mulDivRoundingUp(
+                    commissionFee,
+                    _totalSupply,
+                    _totalAssets
+                );
+
+                if (riskParameters.feeRecipient() == 0) {
+                    _transferFrom(optionOwner, address(riskEngine()), sharesToBurn);
+                    emit CommissionPaid(optionOwner, address(0), commissionFee, 0);
+                } else {
+                    _transferFrom(optionOwner, address(riskEngine()), sharesToBurn / 2);
+                    _transferFrom(
+                        optionOwner,
+                        address(uint160(riskParameters.feeRecipient())),
+                        sharesToBurn / 4
+                    );
+                    emit CommissionPaid(
+                        optionOwner,
+                        address(0),
+                        commissionFee / 2,
+                        commissionFee / 4
+                    );
+                }
+            }
+        }
+
         return tokenPaid;
     }
 }

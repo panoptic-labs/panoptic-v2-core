@@ -11,6 +11,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
+import {RiskParameters, RiskParametersLibrary} from "@types/RiskParameters.sol";
 import {TokenId} from "@types/TokenId.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
@@ -69,9 +70,16 @@ contract RiskEngine {
     /// @dev the time elapsed will be capped at IRM_MAX_ELAPSED_TIME
     int256 public constant IRM_MAX_ELAPSED_TIME = 4096;
 
+    bytes32 internal constant BUILDER_SALT = keccak256("panoptic.builder");
+
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS
     //////////////////////////////////////////////////////////////*/
+    /// @notice The notional fee, in thousandth of a basis points, collected from PLPs at option mint.
+    uint24 immutable NOTIONAL_FEE;
+
+    /// @notice The premium fee, in thousandth of a basis points, collected from the premium paid/received.
+    uint24 immutable PREMIUM_FEE;
 
     /// @notice Required collateral ratios for selling options, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 20% -> 0.2 * 10_000_000 = 2_000_000.
@@ -145,6 +153,8 @@ contract RiskEngine {
         uint256 _crossBuffer0,
         uint256 _crossBuffer1
     ) {
+        NOTIONAL_FEE = 1;
+        PREMIUM_FEE = 150;
         SELLER_COLLATERAL_RATIO = _sellerCollateralRatio;
         BUYER_COLLATERAL_RATIO = _buyerCollateralRatio;
         FORCE_EXERCISE_COST = _forceExerciseCost;
@@ -539,35 +549,63 @@ contract RiskEngine {
                      HEALTH AND COLLATERAL TRACKING
     //////////////////////////////////////////////////////////////*/
 
+    function getRiskParameters(
+        int24 currentTick,
+        uint256 oraclePack,
+        uint256 builderCode
+    ) external view returns (RiskParameters) {
+        uint8 safeMode = isSafeMode(currentTick, oraclePack);
+
+        uint128 feeRecipient = getFeeRecipient(builderCode);
+        return
+            RiskParametersLibrary.storeRiskParameters(
+                safeMode,
+                NOTIONAL_FEE,
+                PREMIUM_FEE,
+                feeRecipient
+            );
+    }
+
+    function getFeeRecipient(uint256 builderCode) public view returns (uint128 feeRecipient) {
+        if (builderCode != 0) {
+            feeRecipient = uint128(uint256(keccak256(abi.encode(builderCode, BUILDER_SALT))));
+        }
+    }
+
     /// @notice Checks for significant oracle deviation to determine if Safe Mode should be active.
     /// @dev Safe Mode is triggered if EITHER of two conditions are met:
     ///      1. "External Shock": The live spot price deviates too far from the responsive spot EMA .
     ///      2. "Internal Disagreement": The fast EMA deviates too far from the more stable slow EMA, indicating high volatility.
-    /// @return Whether the protocol should be in Safe Mode.
-    function isSafeMode(int24 currentTick, uint256 oraclePack) public pure returns (uint8) {
+    /// @return safeMode A number representing whether the protocol is in Safe Mode.
+    function isSafeMode(
+        int24 currentTick,
+        uint256 oraclePack
+    ) internal view returns (uint8 safeMode) {
         // Extract the relevant EMAs from oraclePack
         (, int24 slowEMA, int24 fastEMA, int24 spotEMA, int24 medianTick) = PanopticMath.getEMAs(
             oraclePack
         );
 
-        // Condition 1: Check for a sudden deviation of the spot price from the spot EMA.
-        // This is your primary defense against a flash crash or single-block manipulation.
-        bool externalShock = Math.abs(currentTick - spotEMA) > MAX_TICKS_DELTA;
+        unchecked {
+            // Condition 1: Check for a sudden deviation of the spot price from the spot EMA.
+            // This is your primary defense against a flash crash or single-block manipulation.
+            bool externalShock = Math.abs(currentTick - spotEMA) > MAX_TICKS_DELTA;
 
-        // Condition 2: Check for high internal volatility by comparing the spot and fast EMAs.
-        // If the spot EMA is moving much faster than the fast EMA, it signals an unstable market.
-        // We use a smaller threshold here (e.g., half of the main delta) to be more sensitive to internal stress.
-        bool internalDisagreement = Math.abs(spotEMA - fastEMA) > (MAX_TICKS_DELTA / 2);
+            // Condition 2: Check for high internal volatility by comparing the spot and fast EMAs.
+            // If the spot EMA is moving much faster than the fast EMA, it signals an unstable market.
+            // We use a smaller threshold here (e.g., half of the main delta) to be more sensitive to internal stress.
+            bool internalDisagreement = Math.abs(spotEMA - fastEMA) > (MAX_TICKS_DELTA / 2);
 
-        // Condition 3: Check for high internal divergence due to staleness by comparing the median and slow EMAs.
-        // If the median tick is deviating too much from the slow EMA, it signals an unstable market.
-        // We use a larger threshold here (e.g., twice of the main delta) to be less sensitive to lag.
-        bool highDivergence = Math.abs(medianTick - slowEMA) > (MAX_TICKS_DELTA * 2);
+            // Condition 3: Check for high internal divergence due to staleness by comparing the median and slow EMAs.
+            // If the median tick is deviating too much from the slow EMA, it signals an unstable market.
+            // We use a larger threshold here (e.g., twice of the main delta) to be less sensitive to lag.
+            bool highDivergence = Math.abs(medianTick - slowEMA) > (MAX_TICKS_DELTA * 2);
 
-        return
-            uint8(externalShock ? 1 : 0) +
-            uint8(internalDisagreement ? 1 : 0) +
-            uint8(highDivergence ? 1 : 0);
+            safeMode =
+                uint8(externalShock ? 1 : 0) +
+                uint8(internalDisagreement ? 1 : 0) +
+                uint8(highDivergence ? 1 : 0);
+        }
     }
 
     function getSolvencyTicks(
