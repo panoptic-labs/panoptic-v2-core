@@ -19,6 +19,7 @@ import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
 import {TokenId} from "@types/TokenId.sol";
+import {OraclePack, OraclePackLibrary} from "@types/OraclePack.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on a CLAMM.
 /// @author Axicon Labs Limited
@@ -191,7 +192,7 @@ contract PanopticPool is Clone, Multicall {
     //
     // [0 = CURRENT TICK] [3]
     // (000000000000) // dynamic
-    uint256 internal s_oraclePack;
+    OraclePack internal s_oraclePack;
 
     // ERC4626 vaults that users collateralize their positions with
     // Each token has its own vault, listed in the same order as the tokens in the pool
@@ -289,6 +290,30 @@ contract PanopticPool is Clone, Multicall {
     }
 
     /*//////////////////////////////////////////////////////////////
+                            ACCESS CONTROL
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Reverts if the associated Risk Engine is not the caller.
+    modifier onlyRiskEngine() {
+        _onlyRiskEngine();
+        _;
+    }
+
+    function _onlyRiskEngine() internal view {
+        if (msg.sender != address(riskEngine())) revert Errors.NotGuardian();
+    }
+
+    /// @notice Force safe mode lock: effective safe mode must be treated as level 3.
+    function lockSafeMode() external onlyRiskEngine {
+        s_oraclePack = s_oraclePack.lock();
+    }
+
+    /// @notice Remove forced safe mode lock.
+    function unlockSafeMode() external onlyRiskEngine {
+        s_oraclePack = s_oraclePack.unlock();
+    }
+
+    /*//////////////////////////////////////////////////////////////
                              INITIALIZATION
     //////////////////////////////////////////////////////////////*/
 
@@ -302,13 +327,28 @@ contract PanopticPool is Clone, Multicall {
     /// @dev Must be called first (by the factory contract) before any transaction can occur.
     function initialize() external {
         // reverts if this contract has already been initialized (assuming block.timestamp > 0)
-        if (s_oraclePack != 0) revert Errors.PoolAlreadyInitialized();
+        if (OraclePack.unwrap(s_oraclePack) != 0) revert Errors.PoolAlreadyInitialized();
 
         int24 currentTick = SFPM.getCurrentTick(poolKey());
 
         // Store the median data
         unchecked {
-            s_oraclePack =
+            uint96 EMAs = OraclePackLibrary.packEMAs(
+                currentTick,
+                currentTick,
+                currentTick,
+                currentTick
+            );
+            s_oraclePack = OraclePackLibrary.storeOraclePack(
+                block.timestamp >> 6,
+                0xf590a6, // orderMap
+                EMAs,
+                currentTick,
+                0xe00200e00200e00200e00000, // current residuals
+                0,
+                0
+            );
+            /*
                 (uint256((block.timestamp >> 6) % 2 ** 24) << 232) +
                 // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
                 // see comment on s_oraclePack initialization for format of this magic number
@@ -323,6 +363,7 @@ contract PanopticPool is Clone, Multicall {
                 (uint256(uint24(currentTick) & 0x3FFFFF) << 120) +
                 // store currentTick as the reference tick at bits 119-96
                 (uint256(uint24(currentTick)) << 96);
+               */
         }
 
         // consolidate all 4 approval calls to one library delegatecall in order to reduce bytecode size
@@ -330,7 +371,6 @@ contract PanopticPool is Clone, Multicall {
         // SFPM: token0, token1
         // CollateralTracker0 - token0
         // CollateralTracker1 - token1
-        // TODO: Add Pool manager logic to handle v4
         InteractionHelper.doApprovals(
             SFPM,
             collateralToken0(),
@@ -526,9 +566,9 @@ contract PanopticPool is Clone, Multicall {
     function pokeOracle() external {
         int24 currentTick = SFPM.getCurrentTick(poolKey());
 
-        (, uint256 oraclePack) = riskEngine().computeInternalMedian(s_oraclePack, currentTick);
+        (, OraclePack oraclePack) = riskEngine().computeInternalMedian(s_oraclePack, currentTick);
 
-        if (oraclePack != 0) s_oraclePack = oraclePack;
+        if (OraclePack.unwrap(oraclePack) != 0) s_oraclePack = oraclePack;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -602,7 +642,7 @@ contract PanopticPool is Clone, Multicall {
 
         // Perform solvency check on user's account to ensure they had enough buying power to mint the option
         // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
-        uint256 oraclePack = _validateSolvency(
+        OraclePack oraclePack = _validateSolvency(
             msg.sender,
             finalPositionIdList,
             BP_DECREASE_BUFFER,
@@ -611,7 +651,7 @@ contract PanopticPool is Clone, Multicall {
         );
 
         // Update `s_oraclePack` with a new observation if the last observation is old enough (returned oraclePack is nonzero)
-        if (oraclePack != 0) s_oraclePack = oraclePack;
+        if (OraclePack.unwrap(oraclePack) != 0) s_oraclePack = oraclePack;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -835,13 +875,13 @@ contract PanopticPool is Clone, Multicall {
         uint256 buffer,
         bool usePremiaAsCollateral,
         uint8 safeMode
-    ) internal view returns (uint256) {
+    ) internal view returns (OraclePack) {
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(user, positionIdList);
 
         int24 currentTick = SFPM.getCurrentTick(poolKey());
 
-        uint256 oraclePack;
+        OraclePack oraclePack;
         int24[] memory atTicks;
 
         (atTicks, oraclePack) = riskEngine().getSolvencyTicks(currentTick, s_oraclePack);
@@ -1464,7 +1504,7 @@ contract PanopticPool is Clone, Multicall {
             int24 spotTick,
             int24 medianTick,
             int24 latestTick,
-            uint256 oraclePack
+            OraclePack oraclePack
         )
     {
         currentTick = SFPM.getCurrentTick(poolKey());

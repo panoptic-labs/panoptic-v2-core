@@ -71,6 +71,9 @@ library Errors {
     /// @notice CollateralTracker: The user does not own enough assets to open/close a position
     error NotEnoughTokens(address tokenAddress, uint256 assetsRequested, uint256 assetBalance);
 
+    /// @notice RiskEngine: can only be called by the guardian
+    error NotGuardian();
+
     /// @notice PanopticPool: Position is still solvent and cannot be liquidated
     error NotMarginCalled();
 
