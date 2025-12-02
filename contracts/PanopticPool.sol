@@ -614,7 +614,7 @@ contract PanopticPool is Clone, Multicall {
             if (PositionBalance.unwrap(positionBalanceData) == 0) {
                 // revert if more than 2 conditions are triggered to prevent the minting of any positions
                 if (safeMode > 2) revert Errors.StaleOracle();
-                _mintOptions(
+                (, int24 finalTick) = _mintOptions(
                     tokenId,
                     positionSizes[i],
                     effectiveLiquidityLimitsX32[i],
@@ -626,7 +626,7 @@ contract PanopticPool is Clone, Multicall {
                 uint128 positionSize = positionBalanceData.positionSize();
                 if (positionSize == 0) revert Errors.PositionNotOwned();
 
-                _burnOptions(
+                (, , int24 finalTick) = _burnOptions(
                     tokenId,
                     positionSize,
                     tickLimitLow,
@@ -673,10 +673,17 @@ contract PanopticPool is Clone, Multicall {
         address owner,
         int24 tickLimitLow,
         int24 tickLimitHigh
-    ) internal returns (LeftRightSigned paidAmounts) {
+    ) internal returns (LeftRightSigned paidAmounts, int24 finalTick) {
         // Mint in the SFPM and update state of collateral
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned netAmmDelta) = SFPM
-            .mintTokenizedPosition(poolKey(), tokenId, positionSize, tickLimitLow, tickLimitHigh);
+        LeftRightUnsigned[4] memory collectedByLeg;
+        LeftRightSigned netAmmDelta;
+        (collectedByLeg, netAmmDelta, finalTick) = SFPM.mintTokenizedPosition(
+            poolKey(),
+            tokenId,
+            positionSize,
+            tickLimitLow,
+            tickLimitHigh
+        );
 
         _updateSettlementPostMint(
             tokenId,
@@ -789,7 +796,7 @@ contract PanopticPool is Clone, Multicall {
             if (positionSize == 0) revert Errors.PositionNotOwned();
 
             LeftRightSigned paidAmounts;
-            (paidAmounts, premiasByLeg[i]) = _burnOptions(
+            (paidAmounts, premiasByLeg[i], ) = _burnOptions(
                 positionIdList[i],
                 positionSize,
                 tickLimitLow,
@@ -820,9 +827,23 @@ contract PanopticPool is Clone, Multicall {
         int24 tickLimitHigh,
         address owner,
         bool commitLongSettled
-    ) internal returns (LeftRightSigned paidAmounts, LeftRightSigned[4] memory premiaByLeg) {
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned netAmmDelta) = SFPM
-            .burnTokenizedPosition(poolKey(), tokenId, positionSize, tickLimitLow, tickLimitHigh);
+    )
+        internal
+        returns (
+            LeftRightSigned paidAmounts,
+            LeftRightSigned[4] memory premiaByLeg,
+            int24 finalTick
+        )
+    {
+        LeftRightUnsigned[4] memory collectedByLeg;
+        LeftRightSigned netAmmDelta;
+        (collectedByLeg, netAmmDelta, finalTick) = SFPM.burnTokenizedPosition(
+            poolKey(),
+            tokenId,
+            positionSize,
+            tickLimitLow,
+            tickLimitHigh
+        );
 
         LeftRightSigned realizedPremia;
         (realizedPremia, premiaByLeg) = _updateSettlementPostBurn(
