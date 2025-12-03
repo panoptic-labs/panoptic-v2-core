@@ -75,11 +75,17 @@ contract RiskEngine {
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS
     //////////////////////////////////////////////////////////////*/
-    /// @notice The notional fee, in thousandth of a basis points, collected from PLPs at option mint.
-    uint24 immutable NOTIONAL_FEE;
+    /// @notice The notional fee, in basis points, collected from PLPs at option mint.
+    uint16 immutable NOTIONAL_FEE;
 
-    /// @notice The premium fee, in thousandth of a basis points, collected from the premium paid/received.
-    uint24 immutable PREMIUM_FEE;
+    /// @notice The premium fee, in basis points, collected from the premium paid/received.
+    uint16 immutable PREMIUM_FEE;
+
+    /// @notice The protocol split, in basis points, when a builder code is present.
+    uint16 immutable PROTOCOL_SPLIT;
+
+    /// @notice The builder split, in basis points, when a builder code is present
+    uint16 immutable BUILDER_SPLIT;
 
     /// @notice Required collateral ratios for selling options, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 20% -> 0.2 * 10_000_000 = 2_000_000.
@@ -562,6 +568,8 @@ contract RiskEngine {
                 safeMode,
                 NOTIONAL_FEE,
                 PREMIUM_FEE,
+                PROTOCOL_SPLIT,
+                BUILDER_SPLIT,
                 feeRecipient
             );
     }

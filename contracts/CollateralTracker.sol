@@ -1479,13 +1479,22 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                 _transferFrom(optionOwner, address(riskEngine()), sharesToBurn);
                 emit CommissionPaid(optionOwner, address(0), commissionFee, 0);
             } else {
-                _transferFrom(optionOwner, address(riskEngine()), sharesToBurn / 2);
+                _transferFrom(
+                    optionOwner,
+                    address(riskEngine()),
+                    (sharesToBurn * riskParameters.protocolSplit()) / DECIMALS
+                );
                 _transferFrom(
                     optionOwner,
                     address(uint160(riskParameters.feeRecipient())),
-                    sharesToBurn / 4
+                    (sharesToBurn * riskParameters.builderSplit()) / DECIMALS
                 );
-                emit CommissionPaid(optionOwner, address(0), commissionFee / 2, commissionFee / 4);
+                emit CommissionPaid(
+                    optionOwner,
+                    address(uint160(riskParameters.feeRecipient())),
+                    uint128((commissionFee * riskParameters.protocolSplit()) / DECIMALS),
+                    uint128((commissionFee * riskParameters.builderSplit()) / DECIMALS)
+                );
             }
         }
 
@@ -1535,17 +1544,21 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                     _transferFrom(optionOwner, address(riskEngine()), sharesToBurn);
                     emit CommissionPaid(optionOwner, address(0), commissionFee, 0);
                 } else {
-                    _transferFrom(optionOwner, address(riskEngine()), sharesToBurn / 2);
+                    _transferFrom(
+                        optionOwner,
+                        address(riskEngine()),
+                        (sharesToBurn * riskParameters.protocolSplit()) / DECIMALS
+                    );
                     _transferFrom(
                         optionOwner,
                         address(uint160(riskParameters.feeRecipient())),
-                        sharesToBurn / 4
+                        (sharesToBurn * riskParameters.builderSplit()) / DECIMALS
                     );
                     emit CommissionPaid(
                         optionOwner,
-                        address(0),
-                        commissionFee / 2,
-                        commissionFee / 4
+                        address(uint160(riskParameters.feeRecipient())),
+                        uint128((commissionFee * riskParameters.protocolSplit()) / DECIMALS),
+                        uint128((commissionFee * riskParameters.builderSplit()) / DECIMALS)
                     );
                 }
             }

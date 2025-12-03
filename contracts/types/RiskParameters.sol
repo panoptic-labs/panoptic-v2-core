@@ -22,8 +22,8 @@ using RiskParametersLibrary for RiskParameters global;
 // The bit pattern is therefore:
 //
 //           (6)                (5)                (4)                   (3)             (2)                    (0)
-//    <---- 128 bits ----><---- 24 bits ----><---- 24 bits ----><---- 24 bits ----> <---- 24 bits ----> <---- 24 bits ----> <---- 8 bits ---->
-//          feeRecipient                                                             premiumFee          notionalFee         safeMode
+//    <---- 128 bits ----><---- 24 bits ----><---- 16 bits ----><---- 16 bits ----> <---- 16 bits ----> <---- 16 bits ----> <---- 8 bits ---->
+//          feeRecipient                         builderSplit         protocolSplit     premiumFee          notionalFee         safeMode
 //
 //    <--- most significant bit                                                                  least significant bit --->
 //
@@ -36,12 +36,16 @@ library RiskParametersLibrary {
     /// @param _safeMode The safe mode state
     /// @param _notionalFee The commission fee
     /// @param _premiumFee The commission fee
+    /// @param _protocolSplit The part of the fee that goes to the protocol w/ buildercodes
+    /// @param _builderSplit The part of the fee that goes to the builder w/ buildercodes
     /// @param _feeRecipient The recipient of the commission fee split
     /// @return The new RiskParameters object
     function storeRiskParameters(
         uint8 _safeMode,
-        uint24 _notionalFee,
-        uint24 _premiumFee,
+        uint16 _notionalFee,
+        uint16 _premiumFee,
+        uint16 _protocolSplit,
+        uint16 _builderSplit,
         uint128 _feeRecipient
     ) internal pure returns (RiskParameters) {
         unchecked {
@@ -49,7 +53,9 @@ library RiskParametersLibrary {
                 RiskParameters.wrap(
                     _safeMode +
                         (uint256(_notionalFee) << 8) +
-                        (uint256(_premiumFee) << 32) +
+                        (uint256(_premiumFee) << 24) +
+                        (uint256(_protocolSplit) << 40) +
+                        (uint256(_builderSplit) << 56) +
                         (uint256(_feeRecipient) << 128)
                 );
         }
@@ -71,18 +77,36 @@ library RiskParametersLibrary {
     /// @notice Get the notionalFee of `self`.
     /// @param self The RiskParameters to retrieve the commissionFee from
     /// @return The notionalFee of `self`
-    function notionalFee(RiskParameters self) internal pure returns (uint24) {
+    function notionalFee(RiskParameters self) internal pure returns (uint16) {
         unchecked {
-            return uint24(RiskParameters.unwrap(self) >> 8);
+            return uint16(RiskParameters.unwrap(self) >> 8);
         }
     }
 
     /// @notice Get the premiumFee of `self`.
-    /// @param self The RiskParameters to retrieve the commissionFee from
+    /// @param self The RiskParameters to retrieve the premiumFee from
     /// @return The premiumFee of `self`
-    function premiumFee(RiskParameters self) internal pure returns (uint24) {
+    function premiumFee(RiskParameters self) internal pure returns (uint16) {
         unchecked {
-            return uint24(RiskParameters.unwrap(self) >> 32);
+            return uint16(RiskParameters.unwrap(self) >> 24);
+        }
+    }
+
+    /// @notice Get the protocolSplit of `self`.
+    /// @param self The RiskParameters to retrieve the protocolSplit from
+    /// @return The protocolSplit of `self`
+    function protocolSplit(RiskParameters self) internal pure returns (uint16) {
+        unchecked {
+            return uint16(RiskParameters.unwrap(self) >> 40);
+        }
+    }
+
+    /// @notice Get the builderSplit of `self`.
+    /// @param self The RiskParameters to retrieve the builderSplit from
+    /// @return The builderSplit of `self`
+    function builderSplit(RiskParameters self) internal pure returns (uint16) {
+        unchecked {
+            return uint16(RiskParameters.unwrap(self) >> 56);
         }
     }
 
