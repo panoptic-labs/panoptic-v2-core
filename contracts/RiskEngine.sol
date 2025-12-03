@@ -175,11 +175,9 @@ contract RiskEngine {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         unchecked {
             // if the refunder lacks sufficient currency0 to pay back the virtual shares, have the caller cover the difference in exchange for currency1 (and vice versa)
-
             int256 balanceShortage = int256(uint256(type(uint248).max)) -
                 int256(ct0.balanceOf(payor)) -
                 int256(ct0.convertToShares(uint128(-fees.rightSlot())));
-
             if (balanceShortage > 0) {
                 return
                     LeftRightSigned
@@ -246,22 +244,20 @@ contract RiskEngine {
     }
 
     /// @notice Get the cost of exercising an option. Used during a forced exercise.
-    /// @notice This one computes the cost of calling the forceExercise function on a position:
-    /// - The forceExercisor will have to *pay* the exercisee because their position will be closed "against their will"
-    /// - The cost must be larger when the position is close to being in-range, and should be minimal when it is far from being in range. eg. Exercising a (1000, 1050)
-    ///   position will cost more if the price is 999 than if it is 100
-    /// - The cost is an exponentially decaying function of the distance between the position's strike and the current price
-    /// - The cost decreases by a factor of 2 for every "position's width"
-    /// - Note that the cost is the largest among all active legs, not the sum
-    /// @notice Example exercise cost progression:
-    /// - 10% if the position is liquidated when the price is between 950 and 1000, or if it is between 1050 and 1100
-    /// - 5% if the price is between 900 and 950 or (1100, 1150)
-    /// - 2.5% if between (850, 900) or (1150, 1200)
-    /// @param currentTick The current price tick
-    /// @param oracleTick The price oracle tick
-    /// @param tokenId The position to be exercised
-    /// @param positionBalance The position data of the position to be exercised
-    /// @return exerciseFees The fees for exercising the option position
+    /// @dev Calculates the fees represented as a negative value (cost to exerciser).
+    /// The total cost consists of two components:
+    /// 1. A "Delta Adjustment": Reverses any token deltas between the `currentTick` and `oracleTick`.
+    ///    This ensures the exercisee is not exploited by spot price manipulation (slippage protection).
+    /// 2. A "Force Exercise Fee": A percentage fee charged on the exercised long amounts.
+    ///    - If ANY long leg is in-range (current price is between the leg's upper and lower ticks):
+    ///      The fee is `FORCE_EXERCISE_COST`.
+    ///    - If NO long legs are in-range:
+    ///      The fee is minimal (1 basis point).
+    /// @param currentTick The current price tick of the Uniswap pool.
+    /// @param oracleTick The geometric mean TWAP tick (price oracle).
+    /// @param tokenId The ID of the position to be exercised.
+    /// @param positionBalance The balance data (position size) of the position to be exercised.
+    /// @return exerciseFees The total fees to be paid by the force exerciser (as negative amounts), encoded as a LeftRightSigned integer (right=token0, left=token1).
     function exerciseCost(
         int24 currentTick,
         int24 oracleTick,
@@ -318,7 +314,6 @@ contract RiskEngine {
                         liquidityChunk
                     );
                 }
-
                 // reverse any token deltas between the current and oracle prices for the chunk the exercisee had to mint in Uniswap
                 // the outcome of current price crossing a long chunk will always be less favorable than the status quo, i.e.,
                 // if the current price is moved downward such that some part of the chunk is between the current and market prices,
