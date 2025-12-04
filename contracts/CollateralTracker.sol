@@ -1474,7 +1474,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             );
             uint256 sharesToBurn = Math.mulDivRoundingUp(commissionFee, _totalSupply, _totalAssets);
             if (riskParameters.feeRecipient() == 0) {
-                _transferFrom(optionOwner, address(riskEngine()), sharesToBurn);
+                _burn(optionOwner, sharesToBurn);
                 emit CommissionPaid(optionOwner, address(0), commissionFee, 0);
             } else {
                 _transferFrom(
@@ -1539,7 +1539,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                 );
 
                 if (riskParameters.feeRecipient() == 0) {
-                    _transferFrom(optionOwner, address(riskEngine()), sharesToBurn);
+                    _burn(optionOwner, sharesToBurn);
                     emit CommissionPaid(optionOwner, address(0), commissionFee, 0);
                 } else {
                     _transferFrom(

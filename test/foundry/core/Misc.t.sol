@@ -3787,7 +3787,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             int256(settlerBalanceBefore0) - int256(ct0.convertToAssets(ct0.balanceOf(Alice))),
-            premium0,
+            premium0 + 1,
             "premium0"
         );
         assertEq(
@@ -6151,10 +6151,10 @@ contract Misctest is Test, PositionUtils {
         // make sure Alice earns no fees on token 0 (her delta is slightly negative due to commission fees/precision etc)
         // the accumulator overflowed, so the accumulation was frozen. If she had poked before the accumulator overflowed,
         // she could have still earned some fees, but now the accumulation is frozen forever.
-        // old with itmSpreadFee = -1264426
+        // old with itmSpreadFee = -931093
         assertEq(
             int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0),
-            -1264426
+            -931093
         );
 
         // but she earns all of fees on token 1 since the premium accumulator did not overflow (!)

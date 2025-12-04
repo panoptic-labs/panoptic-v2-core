@@ -5252,7 +5252,7 @@ contract Misctest is Test, PositionUtils {
             mintList[0] = $tokenIdShort;
             tickAndSpreadLimits[0][0] = int24(-887272);
             tickAndSpreadLimits[0][1] = int24(887272);
-            tickAndSpreadLimits[0][1] = int24(uint24(type(uint24).max));
+            tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
 
             // Try to mint and check if it reverts
             try pp.dispatch(mintList, mintList, sizeList, tickAndSpreadLimits, true, 0) {
