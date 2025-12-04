@@ -823,7 +823,7 @@ contract PanopticPool is Clone, Multicall {
     function _validateSolvency(
         address user,
         TokenId[] calldata positionIdList,
-        uint24 buffer,
+        uint32 buffer,
         bool usePremiaAsCollateral,
         uint8 safeMode
     ) internal view returns (uint256) {
@@ -1378,10 +1378,16 @@ contract PanopticPool is Clone, Multicall {
 
     /// @notice Get risk parameters from the risk engine.
     /// @dev Also checks whether the current tick has deviated too much from the previouslyt stored ticks. Computed in the RiskEngine
-    /// @return Whether the current tick has deviated too much to warrant putting the protocol in safe mode
     function getRiskParameters(uint256 builderCode) public view returns (RiskParameters) {
         int24 currentTick = SFPM.getCurrentTick(poolKey());
         return riskEngine().getRiskParameters(currentTick, s_oraclePack, builderCode);
+    }
+
+    /// @notice Checks whether the current tick has deviated too much from the previouslyt stored ticks. Computed in the RiskEngine
+    /// @return Whether the current tick has deviated too much to warrant putting the protocol in safe mode
+    function isSafeMode() external view returns (uint8) {
+        int24 currentTick = SFPM.getCurrentTick(poolKey());
+        return riskEngine().getRiskParameters(currentTick, s_oraclePack, 0).safeMode();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1841,7 +1847,7 @@ contract PanopticPool is Clone, Multicall {
         TokenId tokenId,
         LeftRightUnsigned[4] memory collectedByLeg,
         uint128 positionSize,
-        uint16 maxSpread,
+        uint24 maxSpread,
         bool commitLongSettled
     ) internal returns (LeftRightSigned realizedPremia, LeftRightSigned[4] memory premiaByLeg) {
         uint256[2][4] memory premiumAccumulatorsByLeg;

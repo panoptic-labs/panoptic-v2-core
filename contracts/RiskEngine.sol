@@ -594,7 +594,7 @@ contract RiskEngine {
             );
     }
 
-    function getFeeRecipient(uint256 builderCode) public view returns (uint128 feeRecipient) {
+    function getFeeRecipient(uint256 builderCode) public pure returns (uint128 feeRecipient) {
         if (builderCode != 0) {
             feeRecipient = uint128(uint256(keccak256(abi.encode(builderCode, BUILDER_SALT))));
         }
@@ -608,7 +608,7 @@ contract RiskEngine {
     function isSafeMode(
         int24 currentTick,
         uint256 oraclePack
-    ) internal view returns (uint8 safeMode) {
+    ) public pure returns (uint8 safeMode) {
         // Extract the relevant EMAs from oraclePack
         (, int24 slowEMA, int24 fastEMA, int24 spotEMA, int24 medianTick) = PanopticMath.getEMAs(
             oraclePack
