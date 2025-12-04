@@ -328,32 +328,23 @@ contract PanopticPoolTest is PositionUtils {
         PanopticPool pp,
         TokenId[] memory positionIdList,
         uint128 positionSize,
-        uint16 effectiveLiquidityLimitX32,
+        uint24 effectiveLiquidityLimitX32,
         int24 tickLimitLow,
         int24 tickLimitHigh,
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint16[] memory spreadList = new uint16[](1);
         TokenId[] memory mintList = new TokenId[](1);
-        int24[2][] memory tickLimits = new int24[2][](1);
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
 
         TokenId tokenId = positionIdList[positionIdList.length - 1];
         sizeList[0] = positionSize;
-        spreadList[0] = effectiveLiquidityLimitX32;
         mintList[0] = tokenId;
-        tickLimits[0][0] = tickLimitLow;
-        tickLimits[0][1] = tickLimitHigh;
+        tickAndSpreadLimits[0][0] = tickLimitLow;
+        tickAndSpreadLimits[0][1] = tickLimitHigh;
+        tickAndSpreadLimits[0][2] = int24(uint24(effectiveLiquidityLimitX32));
 
-        pp.dispatch(
-            mintList,
-            positionIdList,
-            sizeList,
-            spreadList,
-            tickLimits,
-            premiaAsCollateral,
-            0
-        );
+        pp.dispatch(mintList, positionIdList, sizeList, tickAndSpreadLimits, premiaAsCollateral, 0);
     }
 
     function burnOptions(
@@ -365,24 +356,15 @@ contract PanopticPoolTest is PositionUtils {
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint16[] memory spreadList = new uint16[](1);
         TokenId[] memory burnList = new TokenId[](1);
-        int24[2][] memory tickLimits = new int24[2][](1);
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
 
         sizeList[0] = 0;
-        spreadList[0] = type(uint16).max;
         burnList[0] = tokenId;
-        tickLimits[0][0] = tickLimitLow;
-        tickLimits[0][1] = tickLimitHigh;
-        pp.dispatch(
-            burnList,
-            positionIdList,
-            sizeList,
-            spreadList,
-            tickLimits,
-            premiaAsCollateral,
-            0
-        );
+        tickAndSpreadLimits[0][0] = tickLimitLow;
+        tickAndSpreadLimits[0][1] = tickLimitHigh;
+        tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
+        pp.dispatch(burnList, positionIdList, sizeList, tickAndSpreadLimits, premiaAsCollateral, 0);
     }
 
     function burnOptions(
@@ -394,23 +376,15 @@ contract PanopticPoolTest is PositionUtils {
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](tokenIds.length);
-        uint16[] memory spreadList = new uint16[](tokenIds.length);
-        int24[2][] memory tickLimits = new int24[2][](tokenIds.length);
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](tokenIds.length);
 
         for (uint256 i; i < tokenIds.length; ++i) {
-            tickLimits[i][0] = tickLimitLow;
-            tickLimits[i][1] = tickLimitHigh;
+            tickAndSpreadLimits[i][0] = tickLimitLow;
+            tickAndSpreadLimits[i][1] = tickLimitHigh;
+            tickAndSpreadLimits[i][2] = int24(uint24(type(uint24).max));
         }
 
-        pp.dispatch(
-            tokenIds,
-            positionIdList,
-            sizeList,
-            spreadList,
-            tickLimits,
-            premiaAsCollateral,
-            0
-        );
+        pp.dispatch(tokenIds, positionIdList, sizeList, tickAndSpreadLimits, premiaAsCollateral, 0);
     }
 
     function liquidate(
@@ -420,7 +394,6 @@ contract PanopticPoolTest is PositionUtils {
         TokenId[] memory positionIdList
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint16[] memory spreadList = new uint16[](1);
 
         pp.dispatchFrom(
             liquidatorList,
@@ -440,7 +413,6 @@ contract PanopticPoolTest is PositionUtils {
         LeftRightUnsigned premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint16[] memory spreadList = new uint16[](1);
 
         TokenId[] memory exerciseeListInitial = new TokenId[](exerciseeListFinal.length + 1);
         for (uint256 i = 0; i < exerciseeListFinal.length; ++i) {
@@ -466,7 +438,6 @@ contract PanopticPoolTest is PositionUtils {
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint16[] memory spreadList = new uint16[](1);
 
         pp.dispatchFrom(
             settlerList,
@@ -2117,12 +2088,12 @@ contract PanopticPoolTest is PositionUtils {
                 )
             );
         }
-        // type(uint16).max = no limit, ensure the operation works given the changed liquidity limit
+        // type(uint24).max = no limit, ensure the operation works given the changed liquidity limit
         mintOptions(
             pp,
             posIdList,
             positionSize,
-            type(uint16).max,
+            type(uint24).max,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK,
             true
@@ -2270,7 +2241,7 @@ contract PanopticPoolTest is PositionUtils {
                     int256(ct1.totalAssets());
             }
         }
-        // type(uint16).max = no limit, ensure the operation works given the changed liquidity limit
+        // type(uint24).max = no limit, ensure the operation works given the changed liquidity limit
 
         {
             (uint256 poolAssets, uint256 inAMM, , ) = ct0.getPoolData();
@@ -2283,7 +2254,7 @@ contract PanopticPoolTest is PositionUtils {
             pp,
             posIdList,
             positionSize,
-            type(uint16).max,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -2457,7 +2428,7 @@ contract PanopticPoolTest is PositionUtils {
             console2.log("newShares0", newSharesFromLoan0);
             console2.log("newShares1", newSharesFromLoan1);
         }
-        // type(uint16).max = no limit, ensure the operation works given the changed liquidity limit
+        // type(uint24).max = no limit, ensure the operation works given the changed liquidity limit
 
         {
             (uint256 poolAssets, uint256 inAMM, , ) = ct0.getPoolData();
@@ -2470,7 +2441,7 @@ contract PanopticPoolTest is PositionUtils {
             pp,
             posIdList,
             positionSize,
-            type(uint16).max,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -2572,7 +2543,7 @@ contract PanopticPoolTest is PositionUtils {
             pp,
             posIdListA,
             positionSize * 10,
-            type(uint16).max,
+            type(uint24).max,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK,
             true
@@ -2640,12 +2611,12 @@ contract PanopticPoolTest is PositionUtils {
         }
         console2.log("");
         console2.log("Mint second");
-        // type(uint16).max = no limit, ensure the operation works given the changed liquidity limit
+        // type(uint24).max = no limit, ensure the operation works given the changed liquidity limit
         mintOptions(
             pp,
             posIdList,
             positionSize,
-            type(uint16).max,
+            type(uint24).max,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK,
             true
@@ -2750,7 +2721,7 @@ contract PanopticPoolTest is PositionUtils {
             pp,
             posIdListA,
             positionSize * 10,
-            type(uint16).max,
+            type(uint24).max,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK,
             true
@@ -2844,13 +2815,13 @@ contract PanopticPoolTest is PositionUtils {
                     int256(ct1.totalAssets());
             }
         }
-        // type(uint16).max = no limit, ensure the operation works given the changed liquidity limit
+        // type(uint24).max = no limit, ensure the operation works given the changed liquidity limit
         vm.startPrank(Bob);
         mintOptions(
             pp,
             posIdList,
             positionSize,
-            type(uint16).max,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -2996,12 +2967,12 @@ contract PanopticPoolTest is PositionUtils {
 
         uint256 _tA = ct0.totalAssets();
         uint256 _tS = ct0.totalSupply();
-        // type(uint16).max = no limit, ensure the operation works given the changed liquidity limit
+        // type(uint24).max = no limit, ensure the operation works given the changed liquidity limit
         mintOptions(
             pp,
             posIdList,
             positionSize,
-            type(uint16).max,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -3125,12 +3096,12 @@ contract PanopticPoolTest is PositionUtils {
 
         uint256 _tA = ct0.totalAssets();
         uint256 _tS = ct0.totalSupply();
-        // type(uint16).max = no limit, ensure the operation works given the changed liquidity limit
+        // type(uint24).max = no limit, ensure the operation works given the changed liquidity limit
         mintOptions(
             pp,
             posIdList,
             positionSize,
-            type(uint16).max - 1,
+            type(uint24).max - 1,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -4110,13 +4081,11 @@ contract PanopticPoolTest is PositionUtils {
                     "b0"
                 );
 
+                int256 val1 = expectedSwap1 - (shortAmounts.leftSlot() * 9990) / 10000;
+
                 assertApproxEqAbs(
                     ct1.balanceOf(Alice),
-                    uint256(
-                        int256(uint256(type(uint104).max)) +
-                            (shortAmounts.leftSlot() * 9990) /
-                            10_000
-                    ),
+                    uint256(int256(uint256(type(uint104).max)) - val1),
                     uint256(int256(shortAmounts.leftSlot()) / 1_000_000 + 10),
                     "b1"
                 );
@@ -4383,10 +4352,10 @@ contract PanopticPoolTest is PositionUtils {
             (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
                 .computeExercisedAmounts(tokenId, positionSizes[1], true);
 
-            uint256 sharesToBurn;
             int256[2] memory notionalVals;
-            int256[2] memory ITMSpreads;
             {
+                uint256 sharesToBurn;
+                int256[2] memory ITMSpreads;
                 notionalVals = [
                     amount0s +
                         $amount0Moveds[1] +
@@ -4422,10 +4391,10 @@ contract PanopticPoolTest is PositionUtils {
                     ct0.totalAssets()
                 );
             }
+            int256 expectedSwap1;
 
             {
                 int256 expectedSwap0;
-                int256 expectedSwap1;
                 {
                     uint256 snapshot = vm.snapshot();
 
@@ -4461,7 +4430,7 @@ contract PanopticPoolTest is PositionUtils {
                     pp,
                     posIdList,
                     positionSizes[1],
-                    type(uint16).max,
+                    type(uint24).max,
                     Constants.MAX_POOL_TICK,
                     Constants.MIN_POOL_TICK,
                     true
@@ -4544,13 +4513,10 @@ contract PanopticPoolTest is PositionUtils {
             }
 
             {
+                int256 val1 = expectedSwap1 - (shortAmounts.leftSlot() * 9990) / 10000;
                 assertApproxEqAbs(
                     ct1.balanceOf(Alice),
-                    uint256(
-                        int256(uint256(type(uint104).max)) +
-                            (shortAmounts.leftSlot() * 9990) /
-                            10_000
-                    ),
+                    uint256(int256(uint256(type(uint104).max)) - val1),
                     uint256(int256(shortAmounts.leftSlot()) / 1_000_000 + 10),
                     "Alice balance 1"
                 );
@@ -4678,7 +4644,7 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 posIdList,
                 positionSizes[1],
-                type(uint16).max,
+                type(uint24).max,
                 Constants.MIN_POOL_TICK,
                 Constants.MAX_POOL_TICK,
                 true
@@ -4807,14 +4773,13 @@ contract PanopticPoolTest is PositionUtils {
 
         uint128[] memory sizeList = new uint128[](1);
         sizeList[0] = positionSize;
-        uint16[] memory spreadList = new uint16[](1);
-        spreadList[0] = type(uint16).max;
 
-        int24[2][] memory tickLimits = new int24[2][](1);
-        tickLimits[0][0] = Constants.MAX_POOL_TICK;
-        tickLimits[0][1] = Constants.MIN_POOL_TICK;
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
+        tickAndSpreadLimits[0][0] = Constants.MAX_POOL_TICK;
+        tickAndSpreadLimits[0][1] = Constants.MIN_POOL_TICK;
+        tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
 
-        pp.dispatch(posIdList, posIdList, sizeList, spreadList, tickLimits, true, 0);
+        pp.dispatch(posIdList, posIdList, sizeList, tickAndSpreadLimits, true, 0);
 
         assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)), positionSize);
 
@@ -4926,17 +4891,16 @@ contract PanopticPoolTest is PositionUtils {
         uint128[] memory sizeList = new uint128[](2);
         sizeList[0] = uint128(positionSizes[0]);
         sizeList[1] = uint128(positionSizes[1]);
-        uint16[] memory spreadList = new uint16[](2);
-        spreadList[0] = type(uint16).max;
-        spreadList[1] = type(uint16).max;
 
-        int24[2][] memory tickLimits = new int24[2][](2);
-        tickLimits[0][0] = Constants.MIN_POOL_TICK;
-        tickLimits[0][1] = Constants.MAX_POOL_TICK;
-        tickLimits[1][0] = Constants.MIN_POOL_TICK;
-        tickLimits[1][1] = Constants.MAX_POOL_TICK;
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](2);
+        tickAndSpreadLimits[0][0] = Constants.MIN_POOL_TICK;
+        tickAndSpreadLimits[0][1] = Constants.MAX_POOL_TICK;
+        tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
+        tickAndSpreadLimits[1][0] = Constants.MIN_POOL_TICK;
+        tickAndSpreadLimits[1][1] = Constants.MAX_POOL_TICK;
+        tickAndSpreadLimits[1][2] = int24(uint24(type(uint24).max));
 
-        pp.dispatch(posIdList, posIdList, sizeList, spreadList, tickLimits, true, 0);
+        pp.dispatch(posIdList, posIdList, sizeList, tickAndSpreadLimits, true, 0);
 
         assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId0)), positionSizes[0]);
         assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId1)), positionSizes[1]);
@@ -5062,23 +5026,22 @@ contract PanopticPoolTest is PositionUtils {
         uint128[] memory sizeList = new uint128[](2);
         sizeList[0] = uint128(positionSizes[0]);
         sizeList[1] = uint128(positionSizes[1]);
-        uint16[] memory spreadList = new uint16[](2);
-        spreadList[0] = type(uint16).max;
-        spreadList[1] = type(uint16).max;
-        int24[2][] memory tickLimits = new int24[2][](2);
-        tickLimits[0][0] = Constants.MIN_POOL_TICK;
-        tickLimits[0][1] = Constants.MAX_POOL_TICK;
-        tickLimits[1][0] = Constants.MIN_POOL_TICK;
-        tickLimits[1][1] = Constants.MAX_POOL_TICK;
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](2);
+        tickAndSpreadLimits[0][0] = Constants.MIN_POOL_TICK;
+        tickAndSpreadLimits[0][1] = Constants.MAX_POOL_TICK;
+        tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
+        tickAndSpreadLimits[1][0] = Constants.MIN_POOL_TICK;
+        tickAndSpreadLimits[1][1] = Constants.MAX_POOL_TICK;
+        tickAndSpreadLimits[1][2] = int24(uint24(type(uint24).max));
 
         // mint two positions
-        pp.dispatch(posIdList, posIdList, sizeList, spreadList, tickLimits, true, 0);
+        pp.dispatch(posIdList, posIdList, sizeList, tickAndSpreadLimits, true, 0);
 
         assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId0)), positionSizes[0]);
         assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId1)), positionSizes[1]);
 
         // burn two positions
-        pp.dispatch(posIdList, new TokenId[](0), sizeList, spreadList, tickLimits, true, 0);
+        pp.dispatch(posIdList, new TokenId[](0), sizeList, tickAndSpreadLimits, true, 0);
 
         assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId0)), 0);
         assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId1)), 0);
@@ -5143,26 +5106,25 @@ contract PanopticPoolTest is PositionUtils {
         uint128[] memory sizeList = new uint128[](2);
         sizeList[0] = uint128(positionSizes[0]);
         sizeList[1] = uint128(positionSizes[1]);
-        uint16[] memory spreadList = new uint16[](2);
-        spreadList[0] = type(uint16).max;
-        spreadList[1] = type(uint16).max;
-        int24[2][] memory tickLimits = new int24[2][](2);
-        tickLimits[0][0] = Constants.MIN_POOL_TICK;
-        tickLimits[0][1] = Constants.MAX_POOL_TICK;
-        tickLimits[1][0] = Constants.MIN_POOL_TICK;
-        tickLimits[1][1] = Constants.MAX_POOL_TICK;
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](2);
+        tickAndSpreadLimits[0][0] = Constants.MIN_POOL_TICK;
+        tickAndSpreadLimits[0][1] = Constants.MAX_POOL_TICK;
+        tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
+        tickAndSpreadLimits[1][0] = Constants.MIN_POOL_TICK;
+        tickAndSpreadLimits[1][1] = Constants.MAX_POOL_TICK;
+        tickAndSpreadLimits[1][2] = int24(uint24(type(uint24).max));
 
         vm.expectRevert(Errors.DuplicateTokenId.selector);
         // mint two positions
-        pp.dispatch(posIdList, posIdListWrong, sizeList, spreadList, tickLimits, true, 0);
+        pp.dispatch(posIdList, posIdListWrong, sizeList, tickAndSpreadLimits, true, 0);
 
         vm.expectRevert(Errors.InputListFail.selector);
         // mint two positions
-        pp.dispatch(posIdListWrong, posIdList, sizeList, spreadList, tickLimits, true, 0);
+        pp.dispatch(posIdListWrong, posIdList, sizeList, tickAndSpreadLimits, true, 0);
 
         vm.expectRevert(Errors.DuplicateTokenId.selector);
         // mint two positions
-        pp.dispatch(posIdListWrong, posIdListWrong, sizeList, spreadList, tickLimits, true, 0);
+        pp.dispatch(posIdListWrong, posIdListWrong, sizeList, tickAndSpreadLimits, true, 0);
     }
 
     function test_Success_dispatch_insolvent_between_states(
@@ -5221,11 +5183,10 @@ contract PanopticPoolTest is PositionUtils {
 
         uint128[] memory sizeListFail = new uint128[](1);
         sizeListFail[0] = uint128(positionSizes[1]);
-        uint16[] memory spreadList = new uint16[](1);
-        spreadList[0] = type(uint16).max;
-        int24[2][] memory tickLimits = new int24[2][](1);
-        tickLimits[0][0] = Constants.MIN_POOL_TICK;
-        tickLimits[0][1] = Constants.MAX_POOL_TICK;
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
+        tickAndSpreadLimits[0][0] = Constants.MIN_POOL_TICK;
+        tickAndSpreadLimits[0][1] = Constants.MAX_POOL_TICK;
+        tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
 
         console2.log("sis", positionSizes[0], positionSizes[1]);
         (, LeftRightSigned shortAmounts0) = PanopticMath.computeExercisedAmounts(
@@ -5249,7 +5210,7 @@ contract PanopticPoolTest is PositionUtils {
         vm.expectRevert(
             abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
         );
-        pp.dispatch(posIdListFail, posIdListFail, sizeListFail, spreadList, tickLimits, true, 0);
+        pp.dispatch(posIdListFail, posIdListFail, sizeListFail, tickAndSpreadLimits, true, 0);
         {
             TokenId[] memory posIdListPass = new TokenId[](3);
             posIdListPass[0] = tokenId0;
@@ -5264,27 +5225,18 @@ contract PanopticPoolTest is PositionUtils {
             sizeListPass[1] = uint128(positionSizes[1]);
             sizeListPass[2] = uint128(positionSizes[1]);
 
-            uint16[] memory spreadListPass = new uint16[](3);
-            spreadListPass[0] = type(uint16).max;
-            spreadListPass[1] = type(uint16).max;
-            spreadListPass[2] = type(uint16).max;
-            int24[2][] memory tickLimits = new int24[2][](3);
-            tickLimits[0][0] = Constants.MIN_POOL_TICK;
-            tickLimits[0][1] = Constants.MAX_POOL_TICK;
-            tickLimits[1][0] = Constants.MIN_POOL_TICK;
-            tickLimits[1][1] = Constants.MAX_POOL_TICK;
-            tickLimits[2][0] = Constants.MIN_POOL_TICK;
-            tickLimits[2][1] = Constants.MAX_POOL_TICK;
+            int24[3][] memory tickAndSpreadLimits = new int24[3][](3);
+            tickAndSpreadLimits[0][0] = Constants.MIN_POOL_TICK;
+            tickAndSpreadLimits[0][1] = Constants.MAX_POOL_TICK;
+            tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
+            tickAndSpreadLimits[1][0] = Constants.MIN_POOL_TICK;
+            tickAndSpreadLimits[1][1] = Constants.MAX_POOL_TICK;
+            tickAndSpreadLimits[1][2] = int24(uint24(type(uint24).max));
+            tickAndSpreadLimits[2][0] = Constants.MIN_POOL_TICK;
+            tickAndSpreadLimits[2][1] = Constants.MAX_POOL_TICK;
+            tickAndSpreadLimits[2][2] = int24(uint24(type(uint24).max));
 
-            pp.dispatch(
-                posIdListPass,
-                posIdListFinal,
-                sizeListPass,
-                spreadListPass,
-                tickLimits,
-                true,
-                0
-            );
+            pp.dispatch(posIdListPass, posIdListFinal, sizeListPass, tickAndSpreadLimits, true, 0);
         }
 
         assertEq(
@@ -5428,18 +5380,17 @@ contract PanopticPoolTest is PositionUtils {
 
             uint128[] memory sizeList = new uint128[](numberOfPositions);
 
-            uint16[] memory spreadList = new uint16[](numberOfPositions);
-            int24[2][] memory tickLimits = new int24[2][](numberOfPositions);
+            int24[3][] memory tickAndSpreadLimits = new int24[3][](numberOfPositions);
 
             for (uint256 i = 0; i < numberOfPositions; ++i) {
                 posIdList[i] = tokenId1;
                 sizeList[i] = uint128(positionSizes[1]);
-                spreadList[i] = type(uint16).max;
-                tickLimits[i][0] = Constants.MIN_POOL_TICK;
-                tickLimits[i][1] = Constants.MAX_POOL_TICK;
+                tickAndSpreadLimits[i][0] = Constants.MIN_POOL_TICK;
+                tickAndSpreadLimits[i][1] = Constants.MAX_POOL_TICK;
+                tickAndSpreadLimits[i][2] = int24(uint24(type(uint24).max));
             }
 
-            pp.dispatch(posIdList, posIdListFinal, sizeList, spreadList, tickLimits, true, 0);
+            pp.dispatch(posIdList, posIdListFinal, sizeList, tickAndSpreadLimits, true, 0);
         }
 
         assertEq(
@@ -6331,7 +6282,7 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 posIdList,
                 (positionSize * uint128(bound(longPercentageSeed, 1, 899))) / 1000,
-                type(uint16).max,
+                type(uint24).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -6551,7 +6502,7 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 posIdList,
                 (positionSize * uint128(bound(longPercentageSeed, 1, 899))) / 1000,
-                type(uint16).max,
+                type(uint24).max,
                 Constants.MIN_POOL_TICK,
                 Constants.MAX_POOL_TICK,
                 true
@@ -6874,7 +6825,7 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 $posIdLists[1],
                 positionSize,
-                type(uint16).max,
+                type(uint24).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -7408,17 +7359,16 @@ contract PanopticPoolTest is PositionUtils {
 
         {
             uint128[] memory sizeList = new uint128[](1);
-            uint16[] memory spreadList = new uint16[](1);
 
             sizeList[0] = positionSize;
-            spreadList[0] = type(uint16).max;
-            int24[2][] memory tickLimits = new int24[2][](1);
-            tickLimits[0][0] = Constants.MAX_POOL_TICK;
-            tickLimits[0][1] = Constants.MIN_POOL_TICK;
+            int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
+            tickAndSpreadLimits[0][0] = Constants.MAX_POOL_TICK;
+            tickAndSpreadLimits[0][1] = Constants.MIN_POOL_TICK;
+            tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
             console2.log("mint Long option(s)");
-            try
-                pp.dispatch(posIdList, posIdList, sizeList, spreadList, tickLimits, true, 0)
-            {} catch (bytes memory reason) {
+            try pp.dispatch(posIdList, posIdList, sizeList, tickAndSpreadLimits, true, 0) {} catch (
+                bytes memory reason
+            ) {
                 if (bytes4(reason) == Errors.TransferFailed.selector) {
                     vm.assume(false);
                 }
@@ -7843,7 +7793,7 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 $posIdLists[1],
                 positionSize,
-                type(uint16).max,
+                type(uint24).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -8090,7 +8040,7 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 $posIdLists[1],
                 positionSize,
-                type(uint16).max,
+                type(uint24).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -8304,7 +8254,7 @@ contract PanopticPoolTest is PositionUtils {
             pp,
             $posIdLists[1],
             positionSize,
-            type(uint16).max,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -8738,7 +8688,7 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 $posIdLists[1],
                 positionSize,
-                type(uint16).max,
+                type(uint24).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -9385,7 +9335,7 @@ contract PanopticPoolTest is PositionUtils {
             pp,
             $posIdLists[1],
             positionSize,
-            type(uint16).max,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -10237,7 +10187,7 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 $posIdLists[1],
                 positionSize,
-                type(uint16).max,
+                type(uint24).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true

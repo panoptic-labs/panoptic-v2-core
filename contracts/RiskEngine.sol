@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 // Interfaces
 import {CollateralTracker} from "./CollateralTracker.sol";
+import "forge-std/Test.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
@@ -176,8 +177,8 @@ contract RiskEngine {
         uint256 _crossBuffer0,
         uint256 _crossBuffer1
     ) {
-        NOTIONAL_FEE = 1;
-        PREMIUM_FEE = 150;
+        NOTIONAL_FEE = 10;
+        PREMIUM_FEE = 0;
         SELLER_COLLATERAL_RATIO = _sellerCollateralRatio;
         BUYER_COLLATERAL_RATIO = _buyerCollateralRatio;
         FORCE_EXERCISE_COST = _forceExerciseCost;
@@ -551,8 +552,8 @@ contract RiskEngine {
     /// @return The blended time-weighted average price, represented as an int24 tick.
     function twapEMA(uint256 oraclePack) external pure returns (int24) {
         // Extract current EMAs from oraclePack
-        (int24 eonsEMA, int24 slowEMA, int24 fastEMA, , ) = PanopticMath.getEMAs(oraclePack);
-        return (6 * fastEMA + 3 * slowEMA + eonsEMA) / 10;
+        (int256 eonsEMA, int256 slowEMA, int256 fastEMA, , ) = PanopticMath.getEMAs(oraclePack);
+        return int24((6 * fastEMA + 3 * slowEMA + eonsEMA) / 10);
     }
 
     /// @notice Takes a packed structure representing a sorted 8-slot queue of ticks and returns the median of those values and an updated queue if another observation is warranted.

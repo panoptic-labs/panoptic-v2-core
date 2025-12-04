@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 // Interfaces
+import "forge-std/Test.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
@@ -526,16 +527,14 @@ contract PanopticPool is Clone, Multicall {
     /// @param positionIdList The list of tokenIds for the option positions to be minted or burnt
     /// @param finalPositionIdList The final positionIdList after all the tokens have been minted/burnt
     /// @param positionSizes The list of positionSize for the position to be minted (0 for burns)
-    /// @param effectiveLiquidityLimits Maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
+    /// @param tickAndSpreadLimits A Nx3 array containing: the lower [0] and upper [1] bounds of an acceptable open interval for the ending price, and the maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
     /// denominated as X32 = (`ratioLimit * 2^32`)
-    /// @param tickLimits The lower and lower bounds of an acceptable open interval for the ending price
     /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
     function dispatch(
         TokenId[] calldata positionIdList,
         TokenId[] calldata finalPositionIdList,
         uint128[] calldata positionSizes,
-        uint16[] calldata effectiveLiquidityLimits,
-        int24[2][] calldata tickLimits,
+        int24[3][] calldata tickAndSpreadLimits,
         bool usePremiaAsCollateral,
         uint256 builderCode
     ) external {
@@ -551,8 +550,8 @@ contract PanopticPool is Clone, Multicall {
             PositionBalance positionBalanceData = s_positionBalance[msg.sender][tokenId];
 
             int24[2] memory _tickLimits;
-            _tickLimits[0] = tickLimits[i][0];
-            _tickLimits[1] = tickLimits[i][1];
+            _tickLimits[0] = tickAndSpreadLimits[i][0];
+            _tickLimits[1] = tickAndSpreadLimits[i][1];
             // if safe mode is larger than 1, mandate all positions to be minted/burnt as covered
             if (riskParameters.safeMode() > 1) {
                 if (_tickLimits[0] > _tickLimits[1]) {
@@ -563,10 +562,11 @@ contract PanopticPool is Clone, Multicall {
             if (PositionBalance.unwrap(positionBalanceData) == 0) {
                 // revert if more than 2 conditions are triggered to prevent the minting of any positions
                 if (riskParameters.safeMode() > 2) revert Errors.StaleOracle();
+                uint24 effectiveLiquidityLimit = uint24(tickAndSpreadLimits[i][2]);
                 _mintOptions(
                     tokenId,
                     positionSizes[i],
-                    effectiveLiquidityLimits[i],
+                    effectiveLiquidityLimit,
                     msg.sender,
                     _tickLimits,
                     riskParameters
@@ -598,7 +598,6 @@ contract PanopticPool is Clone, Multicall {
             usePremiaAsCollateral,
             riskParameters.safeMode()
         );
-
         // Update `s_oraclePack` with a new observation if the last observation is old enough (returned oraclePack is nonzero)
         if (oraclePack != 0) s_oraclePack = oraclePack;
     }
@@ -618,7 +617,7 @@ contract PanopticPool is Clone, Multicall {
     function _mintOptions(
         TokenId tokenId,
         uint128 positionSize,
-        uint16 effectiveLiquidityLimit,
+        uint24 effectiveLiquidityLimit,
         address owner,
         int24[2] memory tickLimits,
         RiskParameters riskParameters
@@ -1080,7 +1079,8 @@ contract PanopticPool is Clone, Multicall {
                 Math.getSqrtRatioAtTick(_twapTick),
                 s_settledTokens
             );
-
+            console2.log("bonDelta0", bonusDeltas.rightSlot());
+            console2.log("bonDelta1", bonusDeltas.leftSlot());
             bonusAmounts = bonusAmounts.add(bonusDeltas);
         }
 
@@ -1642,7 +1642,7 @@ contract PanopticPool is Clone, Multicall {
         TokenId tokenId,
         LeftRightUnsigned[4] memory collectedByLeg,
         uint128 positionSize,
-        uint16 effectiveLiquidityLimit,
+        uint24 effectiveLiquidityLimit,
         address owner
     ) internal {
         // ADD the current tokenId to the position list hash (hash = XOR of all keccak256(tokenId))

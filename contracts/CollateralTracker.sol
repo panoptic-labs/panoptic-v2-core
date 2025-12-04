@@ -1469,12 +1469,10 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
         unchecked {
             uint128 commission = uint256(int256(shortAmount) + int256(longAmount)).toUint128();
-
             uint128 commissionFee = uint128(
                 Math.mulDivRoundingUp(commission, riskParameters.notionalFee(), DECIMALS)
             );
             uint256 sharesToBurn = Math.mulDivRoundingUp(commissionFee, _totalSupply, _totalAssets);
-
             if (riskParameters.feeRecipient() == 0) {
                 _transferFrom(optionOwner, address(riskEngine()), sharesToBurn);
                 emit CommissionPaid(optionOwner, address(0), commissionFee, 0);
