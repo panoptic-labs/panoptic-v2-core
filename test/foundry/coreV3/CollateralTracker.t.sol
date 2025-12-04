@@ -19,6 +19,8 @@ import {TokenId} from "@types/TokenId.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
 import {Constants} from "@libraries/Constants.sol";
+import {RiskParameters} from "@types/RiskParameters.sol";
+
 // Panoptic Interfaces
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol"; //
@@ -365,7 +367,7 @@ contract Attacker {
         tickLimits[0][0] = Constants.MAX_POOL_TICK;
         tickLimits[0][1] = Constants.MIN_POOL_TICK;
 
-        panopticPool.dispatch(posIdList, posIdList, sizeList, new uint64[](1), tickLimits, true);
+        panopticPool.dispatch(posIdList, posIdList, sizeList, new uint16[](1), tickLimits, true, 0);
 
         (, , , , int256 u0, int256 u1, uint128 positionSize) = panopticPool.positionData(
             address(this),
@@ -470,7 +472,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     uint128 positionSize0;
     uint128 positionSize1;
     uint128[] sizeList;
-    uint64[] spreadList;
+    uint16[] spreadList;
     TokenId[] mintList;
     TokenId[] positionIdList1;
     TokenId[] positionIdList;
@@ -533,13 +535,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
         PanopticPool pp,
         TokenId[] memory positionIdList,
         uint128 positionSize,
-        uint64 effectiveLiquidityLimitX32,
+        uint16 effectiveLiquidityLimitX32,
         int24 tickLimitLow,
         int24 tickLimitHigh,
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
+        uint16[] memory spreadList = new uint16[](1);
         TokenId[] memory mintList = new TokenId[](1);
         int24[2][] memory tickLimits = new int24[2][](1);
 
@@ -550,7 +552,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
         tickLimits[0][0] = tickLimitLow;
         tickLimits[0][1] = tickLimitHigh;
 
-        pp.dispatch(mintList, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
+        pp.dispatch(
+            mintList,
+            positionIdList,
+            sizeList,
+            spreadList,
+            tickLimits,
+            premiaAsCollateral,
+            0
+        );
         collateralToken0.wipeUtilizationSlot();
         collateralToken1.wipeUtilizationSlot();
     }
@@ -564,16 +574,24 @@ contract CollateralTrackerTest is Test, PositionUtils {
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
+        uint16[] memory spreadList = new uint16[](1);
         TokenId[] memory burnList = new TokenId[](1);
         int24[2][] memory tickLimits = new int24[2][](1);
 
         sizeList[0] = 0;
-        spreadList[0] = type(uint64).max;
+        spreadList[0] = type(uint16).max;
         burnList[0] = tokenId;
         tickLimits[0][0] = tickLimitLow;
         tickLimits[0][1] = tickLimitHigh;
-        pp.dispatch(burnList, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
+        pp.dispatch(
+            burnList,
+            positionIdList,
+            sizeList,
+            spreadList,
+            tickLimits,
+            premiaAsCollateral,
+            0
+        );
         collateralToken0.wipeUtilizationSlot();
         collateralToken1.wipeUtilizationSlot();
     }
@@ -587,7 +605,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](tokenIds.length);
-        uint64[] memory spreadList = new uint64[](tokenIds.length);
+        uint16[] memory spreadList = new uint16[](tokenIds.length);
         int24[2][] memory tickLimits = new int24[2][](tokenIds.length);
 
         for (uint256 i; i < tokenIds.length; ++i) {
@@ -595,7 +613,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
             tickLimits[i][1] = tickLimitHigh;
         }
 
-        pp.dispatch(tokenIds, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
+        pp.dispatch(
+            tokenIds,
+            positionIdList,
+            sizeList,
+            spreadList,
+            tickLimits,
+            premiaAsCollateral,
+            0
+        );
         collateralToken0.wipeUtilizationSlot();
         collateralToken1.wipeUtilizationSlot();
     }
@@ -607,7 +633,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         TokenId[] memory positionIdList
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
+        uint16[] memory spreadList = new uint16[](1);
         collateralToken0.wipeUtilizationSlot();
         collateralToken1.wipeUtilizationSlot();
 
@@ -631,7 +657,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         LeftRightUnsigned premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
+        uint16[] memory spreadList = new uint16[](1);
 
         TokenId[] memory targetList = new TokenId[](1);
         collateralToken0.wipeUtilizationSlot();
@@ -657,7 +683,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
+        uint16[] memory spreadList = new uint16[](1);
 
         TokenId[] memory targetList = new TokenId[](1);
 
@@ -1612,7 +1638,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList1,
             assets / 2,
-            2 ** 64 - 1,
+            type(uint16).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -1785,7 +1811,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList,
             assets / 4,
-            2 ** 64 - 1,
+            type(uint16).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -4399,7 +4425,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList,
             500,
-            type(uint64).max,
+            type(uint16).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -4956,7 +4982,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList,
             uint128(1e16),
-            type(uint64).max,
+            type(uint16).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -5031,7 +5057,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList,
             uint128(1e16),
-            type(uint64).max,
+            type(uint16).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -5046,7 +5072,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList,
             uint128(1e16),
-            type(uint64).max,
+            type(uint16).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -5102,7 +5128,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList,
             uint128(1e16),
-            type(uint64).max,
+            type(uint16).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -6148,7 +6174,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             address(0),
             0,
             Constants.MAX_POOL_TICK,
-            Constants.MIN_POOL_TICK
+            Constants.MIN_POOL_TICK,
+            RiskParameters.wrap(0)
         );
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
@@ -6157,7 +6184,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             0,
             0,
             Constants.MAX_POOL_TICK,
-            Constants.MIN_POOL_TICK
+            Constants.MIN_POOL_TICK,
+            RiskParameters.wrap(0)
         );
     }
 
@@ -6227,7 +6255,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6259,7 +6287,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6278,7 +6306,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6419,7 +6447,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6464,7 +6492,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6482,7 +6510,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6622,7 +6650,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6667,7 +6695,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6737,7 +6765,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6782,7 +6810,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6852,7 +6880,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6896,7 +6924,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6914,7 +6942,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7056,7 +7084,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7087,7 +7115,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7254,7 +7282,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7285,7 +7313,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 4,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7454,7 +7482,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7485,7 +7513,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7651,7 +7679,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7786,7 +7814,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7827,7 +7855,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8028,7 +8056,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8069,7 +8097,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8248,7 +8276,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8280,7 +8308,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8299,7 +8327,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8480,7 +8508,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8512,7 +8540,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8531,7 +8559,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8696,7 +8724,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8728,7 +8756,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8747,7 +8775,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8921,7 +8949,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8944,7 +8972,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9097,7 +9125,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9119,7 +9147,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9296,7 +9324,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9313,7 +9341,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9484,7 +9512,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9501,7 +9529,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9670,7 +9698,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9687,7 +9715,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9842,7 +9870,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9859,7 +9887,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -10023,7 +10051,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -10190,7 +10218,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -10358,7 +10386,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0 * 10,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -10417,7 +10445,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -10614,7 +10642,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0 * 10,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -10663,7 +10691,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 (9 * positionSize0) / 10,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -10957,7 +10985,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -10987,7 +11015,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 4,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -11092,7 +11120,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -11131,7 +11159,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 4,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -11231,7 +11259,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -11270,7 +11298,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 4,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -11371,7 +11399,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -11410,7 +11438,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 4,
-                type(uint64).max,
+                type(uint16).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true

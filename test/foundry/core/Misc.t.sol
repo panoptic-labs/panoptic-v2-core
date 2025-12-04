@@ -418,13 +418,13 @@ contract Misctest is Test, PositionUtils {
         PanopticPool pp,
         TokenId[] memory positionIdList,
         uint128 positionSize,
-        uint64 effectiveLiquidityLimitX32,
+        uint16 effectiveLiquidityLimitX32,
         int24 tickLimitLow,
         int24 tickLimitHigh,
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
+        uint16[] memory spreadList = new uint16[](1);
         TokenId[] memory mintList = new TokenId[](1);
         int24[2][] memory tickLimits = new int24[2][](1);
 
@@ -435,7 +435,15 @@ contract Misctest is Test, PositionUtils {
         tickLimits[0][0] = tickLimitLow;
         tickLimits[0][1] = tickLimitHigh;
 
-        pp.dispatch(mintList, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
+        pp.dispatch(
+            mintList,
+            positionIdList,
+            sizeList,
+            spreadList,
+            tickLimits,
+            premiaAsCollateral,
+            0
+        );
     }
 
     function burnOptions(
@@ -447,16 +455,24 @@ contract Misctest is Test, PositionUtils {
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
+        uint16[] memory spreadList = new uint16[](1);
         TokenId[] memory burnList = new TokenId[](1);
         int24[2][] memory tickLimits = new int24[2][](1);
 
         sizeList[0] = 0;
-        spreadList[0] = type(uint64).max;
+        spreadList[0] = type(uint16).max;
         burnList[0] = tokenId;
         tickLimits[0][0] = tickLimitLow;
         tickLimits[0][1] = tickLimitHigh;
-        pp.dispatch(burnList, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
+        pp.dispatch(
+            burnList,
+            positionIdList,
+            sizeList,
+            spreadList,
+            tickLimits,
+            premiaAsCollateral,
+            0
+        );
     }
 
     function burnOptions(
@@ -468,7 +484,7 @@ contract Misctest is Test, PositionUtils {
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](tokenIds.length);
-        uint64[] memory spreadList = new uint64[](tokenIds.length);
+        uint16[] memory spreadList = new uint16[](tokenIds.length);
         int24[2][] memory tickLimits = new int24[2][](tokenIds.length);
 
         for (uint256 i; i < tokenIds.length; ++i) {
@@ -476,7 +492,15 @@ contract Misctest is Test, PositionUtils {
             tickLimits[i][1] = tickLimitHigh;
         }
 
-        pp.dispatch(tokenIds, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
+        pp.dispatch(
+            tokenIds,
+            positionIdList,
+            sizeList,
+            spreadList,
+            tickLimits,
+            premiaAsCollateral,
+            0
+        );
     }
 
     function liquidate(
@@ -486,7 +510,7 @@ contract Misctest is Test, PositionUtils {
         TokenId[] memory positionIdList
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
+        uint16[] memory spreadList = new uint16[](1);
 
         pp.dispatchFrom(
             liquidatorList,
@@ -506,7 +530,7 @@ contract Misctest is Test, PositionUtils {
         LeftRightUnsigned premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
+        uint16[] memory spreadList = new uint16[](1);
 
         TokenId[] memory exerciseeListInitial = new TokenId[](exerciseeListFinal.length + 1);
         for (uint256 i = 0; i < exerciseeListFinal.length; ++i) {
@@ -532,7 +556,7 @@ contract Misctest is Test, PositionUtils {
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
+        uint16[] memory spreadList = new uint16[](1);
 
         TokenId[] memory targetList = new TokenId[](1);
 
@@ -666,7 +690,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList,
                 1_000_000,
-                type(uint64).max,
+                type(uint16).max,
                 Constants.MIN_POOL_TICK,
                 Constants.MAX_POOL_TICK,
                 true
@@ -752,7 +776,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList,
                 1_000_000,
-                type(uint64).max,
+                type(uint16).max,
                 Constants.MIN_POOL_TICK,
                 Constants.MAX_POOL_TICK,
                 true
@@ -945,7 +969,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList,
                 1_000_000,
-                type(uint64).max,
+                type(uint16).max,
                 Constants.MIN_POOL_TICK,
                 Constants.MAX_POOL_TICK,
                 true
@@ -1047,7 +1071,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList,
                 1_000_000,
-                type(uint64).max,
+                type(uint16).max,
                 Constants.MIN_POOL_TICK,
                 Constants.MAX_POOL_TICK,
                 true
@@ -1909,7 +1933,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             1_000_000,
-            type(uint64).max,
+            type(uint16).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -1970,7 +1994,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             1_000_000,
-            type(uint64).max,
+            type(uint16).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -2021,7 +2045,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             1_000_000,
-            type(uint64).max,
+            type(uint16).max,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK,
             true
@@ -2156,7 +2180,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             2_000_000,
-            type(uint64).max,
+            type(uint16).max,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK,
             true
@@ -2438,7 +2462,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             1_000_000,
-            type(uint64).max,
+            type(uint16).max,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK,
             true
@@ -2675,7 +2699,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $tempIdList,
             900_000_000,
-            type(uint64).max,
+            type(uint16).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -2702,7 +2726,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList,
                 250_000_000,
-                type(uint64).max,
+                type(uint16).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -2799,7 +2823,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $tempIdList,
                 250_000,
-                type(uint64).max,
+                type(uint16).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -2810,7 +2834,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList,
                 250_000,
-                type(uint64).max,
+                type(uint16).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -2908,7 +2932,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList,
                 499_999,
-                type(uint64).max,
+                type(uint16).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -3039,7 +3063,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdLists[2],
                 9_884_444,
-                type(uint64).max,
+                type(uint16).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -3071,7 +3095,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdLists[2],
                 9_884_444,
-                type(uint64).max,
+                type(uint16).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -3103,7 +3127,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdLists[2],
                 9_884_444,
-                type(uint64).max,
+                type(uint16).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -3124,7 +3148,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdLists[2],
                 19_768_888,
-                type(uint64).max,
+                type(uint16).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -3699,7 +3723,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdLists[1],
                 1_000_000,
-                type(uint64).max,
+                type(uint16).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -3880,7 +3904,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             44_468,
-            type(uint64).max,
+            type(uint16).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -3893,7 +3917,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             44_468,
-            type(uint64).max,
+            type(uint16).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -5536,7 +5560,7 @@ contract Misctest is Test, PositionUtils {
                 x % 8 == 0 ? int24(0) : int24(2)
             );
             uint128[] memory sizeList = new uint128[](1);
-            uint64[] memory spreadList = new uint64[](1);
+            uint16[] memory spreadList = new uint16[](1);
             TokenId[] memory mintList = new TokenId[](1);
             int24[2][] memory tickLimits = new int24[2][](1);
 
@@ -5547,7 +5571,7 @@ contract Misctest is Test, PositionUtils {
             tickLimits[0][1] = int24(887272);
 
             // Try to mint and check if it reverts
-            try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+            try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true, 0) {
                 // SUCCESS CASE - mintOptions didn't revert
                 console2.log("Found non-reverting strike:", strike);
 
@@ -5673,18 +5697,18 @@ contract Misctest is Test, PositionUtils {
                 $width
             );
             uint128[] memory sizeList = new uint128[](1);
-            uint64[] memory spreadList = new uint64[](1);
+            uint16[] memory spreadList = new uint16[](1);
             TokenId[] memory mintList = new TokenId[](1);
             int24[2][] memory tickLimits = new int24[2][](1);
 
             sizeList[0] = positionSize;
-            spreadList[0] = type(uint64).max;
+            spreadList[0] = type(uint16).max;
             mintList[0] = $tokenIdShort;
             tickLimits[0][0] = int24(-887272);
             tickLimits[0][1] = int24(887272);
 
             // Try to mint and check if it reverts
-            try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+            try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true, 0) {
                 // SUCCESS CASE - mintOptions didn't revert
 
                 // Alice Buys
@@ -5706,7 +5730,7 @@ contract Misctest is Test, PositionUtils {
                     );
                 }
                 mintList[0] = $tokenIdLong;
-                try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+                try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true, 0) {
                     console2.log("Found non-reverting strike:", strike);
                     (, , PositionBalance[] memory positionBalanceArray) = pp
                         .getAccumulatedFeesAndPositionsData(Alice, false, mintList);
@@ -5866,18 +5890,18 @@ contract Misctest is Test, PositionUtils {
                 2
             );
             uint128[] memory sizeList = new uint128[](1);
-            uint64[] memory spreadList = new uint64[](1);
+            uint16[] memory spreadList = new uint16[](1);
             TokenId[] memory mintList = new TokenId[](1);
             int24[2][] memory tickLimits = new int24[2][](1);
 
             sizeList[0] = positionSize;
-            spreadList[0] = type(uint64).max;
+            spreadList[0] = type(uint16).max;
             mintList[0] = $tokenIdShort;
             tickLimits[0][0] = int24(-887272);
             tickLimits[0][1] = int24(887272);
 
             // Try to mint and check if it reverts
-            try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+            try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true, 0) {
                 // SUCCESS CASE - mintOptions didn't revert
                 // Alice Buys
                 vm.startPrank(Alice);
@@ -5901,7 +5925,7 @@ contract Misctest is Test, PositionUtils {
                         );
                 }
                 mintList[0] = $tokenIdLong;
-                try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+                try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true, 0) {
                     console2.log("Found non-reverting strike:", $strike);
                     (, , PositionBalance[] memory positionBalanceArray) = pp
                         .getAccumulatedFeesAndPositionsData(Alice, false, mintList);
@@ -6242,7 +6266,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             1_000_000,
-            type(uint64).max,
+            type(uint16).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -6364,7 +6388,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             1_000_000,
-            type(uint64).max,
+            type(uint16).max,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK,
             true
@@ -6460,7 +6484,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             1_000_000,
-            type(uint64).max,
+            type(uint16).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -8408,7 +8432,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 posIdList,
                 10_000,
-                2 ** 30,
+                type(uint16).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -8543,7 +8567,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 posIdList,
                 10_000,
-                2 ** 30,
+                type(uint16).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -8679,7 +8703,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 posIdList,
                 10_000,
-                2 ** 30,
+                type(uint16).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
