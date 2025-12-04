@@ -11,19 +11,23 @@ using RiskParametersLibrary for RiskParameters global;
 // PACKING RULES FOR A RISKPARAMETERS:
 // =================================================================================================
 //  From the LSB to the MSB:
-// (1) safeMode             8 bits  : The safeMode state
-// (2) notionalFee          24 bits : The fee to be charged on notional at mint
-// (3) premiumFee           24 bits : The fee to be charged on the premium at burn
-// (4-6) empty              72 bits : empty
-// (7) feeRecipient         128bits : The recipient of the commission fee split
+// (1) safeMode             6 bits  : The safeMode state
+// (2) notionalFee          14 bits : The fee to be charged on notional at mint
+// (3) premiumFee           14 bits : The fee to be charged on the premium at burn
+// (4) protocolSplit        14 bits : The part of the fee that goes to the protocol w/ buildercodes
+// (5) builderSplit         14 bits : The part of the fee that goes to the builder w/ buildercodes
+// (6) tickDeltaLiquidation 16 bits : The MAX_TWAP_DELTA_LIQUIDATION
+// (7) maxSpread            24 bits : The MAX_SPREAD, in bps
+// (8) bpDecreaseBuffer     26 bits : The BP_DECREASE_BUFFER, in millitick
+// (9) feeRecipient         128bits : The recipient of the commission fee split
 // Total                    256bits  : Total bits used by a RiskParameters.
 // ===============================================================================================
 //
 // The bit pattern is therefore:
 //
-//           (6)                (5)                (4)                   (3)             (2)                    (0)
-//    <---- 128 bits ----><---- 24 bits ----><---- 16 bits ----><---- 16 bits ----> <---- 16 bits ----> <---- 16 bits ----> <---- 8 bits ---->
-//          feeRecipient                         builderSplit         protocolSplit     premiumFee          notionalFee         safeMode
+//          (9)              (8)          (7)              (6)             (5)            (4)          (3)             (2)              (1)
+//    <-- 128 bits --><-- 26 bits --><-- 24 bits --><-- 16 bits --><-- 14 bits --><-- 14 bits --> <-- 14 bits --> <-- 14 bits --> <-- 6 bits -->
+//        feeRecipient   bpDecrease      maxSpread      tickDelta    builderSplit   protocolSplit    premiumFee    notionalFee         safeMode
 //
 //    <--- most significant bit                                                                  least significant bit --->
 //
@@ -32,32 +36,39 @@ library RiskParametersLibrary {
                                 ENCODING
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Create a new `RiskParameters` abject .
-    /// @param _safeMode The safe mode state
-    /// @param _notionalFee The commission fee
-    /// @param _premiumFee The commission fee
-    /// @param _protocolSplit The part of the fee that goes to the protocol w/ buildercodes
-    /// @param _builderSplit The part of the fee that goes to the builder w/ buildercodes
-    /// @param _feeRecipient The recipient of the commission fee split
-    /// @return The new RiskParameters object
+    /// @notice Create a new `RiskParameters` object.
+    /// @param _safeMode The safe mode state (uint6)
+    /// @param _notionalFee The commission fee (uint14)
+    /// @param _premiumFee The commission fee (uint14)
+    /// @param _protocolSplit The part of the fee that goes to the protocol w/ buildercodes (uint14)
+    /// @param _builderSplit The part of the fee that goes to the builder w/ buildercodes (uint14)
+    /// @param _tickDeltaLiquidation The MAX_TWAP_DELTA_LIQUIDATION (uint16)
+    /// @param _maxSpread The MAX_SPREAD, in bps (uint24)
+    /// @param _bpDecreaseBuffer The BP_DECREASE_BUFFER, in millitick (uint26)
+    /// @param _feeRecipient The recipient of the commission fee split (uint128)
+    /// @return result The new RiskParameters object
     function storeRiskParameters(
-        uint8 _safeMode,
-        uint16 _notionalFee,
-        uint16 _premiumFee,
-        uint16 _protocolSplit,
-        uint16 _builderSplit,
-        uint128 _feeRecipient
-    ) internal pure returns (RiskParameters) {
-        unchecked {
-            return
-                RiskParameters.wrap(
-                    _safeMode +
-                        (uint256(_notionalFee) << 8) +
-                        (uint256(_premiumFee) << 24) +
-                        (uint256(_protocolSplit) << 40) +
-                        (uint256(_builderSplit) << 56) +
-                        (uint256(_feeRecipient) << 128)
-                );
+        uint256 _safeMode,
+        uint256 _notionalFee,
+        uint256 _premiumFee,
+        uint256 _protocolSplit,
+        uint256 _builderSplit,
+        uint256 _tickDeltaLiquidation,
+        uint256 _maxSpread,
+        uint256 _bpDecreaseBuffer,
+        uint256 _feeRecipient
+    ) internal pure returns (RiskParameters result) {
+        assembly {
+            result := add(
+                add(
+                    add(
+                        add(_safeMode, shl(6, _notionalFee)),
+                        add(shl(20, _premiumFee), shl(34, _protocolSplit))
+                    ),
+                    add(shl(48, _builderSplit), shl(62, _tickDeltaLiquidation))
+                ),
+                add(add(shl(78, _maxSpread), shl(102, _bpDecreaseBuffer)), shl(128, _feeRecipient))
+            )
         }
     }
 
@@ -67,55 +78,82 @@ library RiskParametersLibrary {
 
     /// @notice Get the safeMode state of `self`.
     /// @param self The RiskParameters to retrieve the safeMode state from
-    /// @return The safeMode of `self`
-    function safeMode(RiskParameters self) internal pure returns (uint8) {
-        unchecked {
-            return uint8(RiskParameters.unwrap(self));
+    /// @return result The safeMode of `self`
+    function safeMode(RiskParameters self) internal pure returns (uint8 result) {
+        assembly {
+            result := and(self, 0x3F)
         }
     }
 
     /// @notice Get the notionalFee of `self`.
     /// @param self The RiskParameters to retrieve the commissionFee from
-    /// @return The notionalFee of `self`
-    function notionalFee(RiskParameters self) internal pure returns (uint16) {
-        unchecked {
-            return uint16(RiskParameters.unwrap(self) >> 8);
+    /// @return result The notionalFee of `self`
+    function notionalFee(RiskParameters self) internal pure returns (uint16 result) {
+        assembly {
+            result := and(shr(6, self), 0x3FFF)
         }
     }
 
     /// @notice Get the premiumFee of `self`.
     /// @param self The RiskParameters to retrieve the premiumFee from
-    /// @return The premiumFee of `self`
-    function premiumFee(RiskParameters self) internal pure returns (uint16) {
-        unchecked {
-            return uint16(RiskParameters.unwrap(self) >> 24);
+    /// @return result The premiumFee of `self`
+    function premiumFee(RiskParameters self) internal pure returns (uint16 result) {
+        assembly {
+            result := and(shr(20, self), 0x3FFF)
         }
     }
 
     /// @notice Get the protocolSplit of `self`.
     /// @param self The RiskParameters to retrieve the protocolSplit from
-    /// @return The protocolSplit of `self`
-    function protocolSplit(RiskParameters self) internal pure returns (uint16) {
-        unchecked {
-            return uint16(RiskParameters.unwrap(self) >> 40);
+    /// @return result The protocolSplit of `self`
+    function protocolSplit(RiskParameters self) internal pure returns (uint16 result) {
+        assembly {
+            result := and(shr(34, self), 0x3FFF)
         }
     }
 
     /// @notice Get the builderSplit of `self`.
     /// @param self The RiskParameters to retrieve the builderSplit from
-    /// @return The builderSplit of `self`
-    function builderSplit(RiskParameters self) internal pure returns (uint16) {
-        unchecked {
-            return uint16(RiskParameters.unwrap(self) >> 56);
+    /// @return result The builderSplit of `self`
+    function builderSplit(RiskParameters self) internal pure returns (uint16 result) {
+        assembly {
+            result := and(shr(48, self), 0x3FFF)
+        }
+    }
+
+    /// @notice Get the tickDeltaLiquidation of `self`.
+    /// @param self The RiskParameters to retrieve the tickDeltaLiquidation from
+    /// @return result The tickDeltaLiquidation of `self`
+    function tickDeltaLiquidation(RiskParameters self) internal pure returns (uint16 result) {
+        assembly {
+            result := and(shr(62, self), 0xFFFF)
+        }
+    }
+
+    /// @notice Get the maxSpread of `self`.
+    /// @param self The RiskParameters to retrieve the maxSpread from
+    /// @return result The maxSpread of `self`
+    function maxSpread(RiskParameters self) internal pure returns (uint24 result) {
+        assembly {
+            result := and(shr(78, self), 0xFFFFFF)
+        }
+    }
+
+    /// @notice Get the bpDecreaseBuffer of `self`.
+    /// @param self The RiskParameters to retrieve the bpDecreaseBuffer from
+    /// @return result The bpDecreaseBuffer of `self`
+    function bpDecreaseBuffer(RiskParameters self) internal pure returns (uint32 result) {
+        assembly {
+            result := and(shr(102, self), 0x3FFFFFF)
         }
     }
 
     /// @notice Get the feeRecipient of `self`.
     /// @param self The RiskParameters to retrieve the feeRecipient from
-    /// @return The feeRecipient of `self`
-    function feeRecipient(RiskParameters self) internal pure returns (uint128) {
-        unchecked {
-            return uint128(RiskParameters.unwrap(self) >> 128);
+    /// @return result The feeRecipient of `self`
+    function feeRecipient(RiskParameters self) internal pure returns (uint128 result) {
+        assembly {
+            result := shr(128, self)
         }
     }
 }

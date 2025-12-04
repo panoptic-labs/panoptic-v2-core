@@ -116,30 +116,11 @@ contract PanopticPool is Clone, Multicall {
     /// @notice Flag that signals to add a new position to the user's positions hash (as opposed to removing an existing position).
     bool internal constant ADD = true;
 
-    /// @notice The minimum window (in seconds) used to calculate the TWAP price for solvency checks during liquidations.
-    uint32 internal constant TWAP_WINDOW = 600;
-
-    /// @notice The maximum allowed delta between the currentTick and the Uniswap TWAP tick during a liquidation (~5% down, ~5.26% up).
-    /// @dev Mitigates manipulation of the currentTick that causes positions to be liquidated at a less favorable price.
-    int256 internal constant MAX_TWAP_DELTA_LIQUIDATION = 513;
-
-    /// @notice The maximum allowed delta (~2%) between the latestTick and the medianTick/spotTick during forceExercise/settleLongPremium.
-    /// @dev Ensures token substitution between two accounts is settled safely at a price close to market.
-    int256 internal constant MAX_TICK_DELTA_SUBSTITUTION = 203;
-
-    /// @notice The maximum allowed ratio for a single chunk, defined as `removedLiquidity / netLiquidity`.
-    /// @dev The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
-    /// which can be explored in this calculator: [https://www.desmos.com/calculator/mdeqob2m04](https://www.desmos.com/calculator/mdeqob2m04).
-    uint256 internal constant MAX_SPREAD = 9 * (2 ** 32);
-
     /// @notice The maximum allowed number of legs across all open positions for a user.
     uint64 internal constant MAX_OPEN_LEGS = 25;
 
-    /// @notice Multiplier in basis points for the collateral requirement in the event of a buying power decrease, such as minting or force exercising another user.
-    uint256 internal constant BP_DECREASE_BUFFER = 13_333_333;
-
     /// @notice Multiplier for the collateral requirement in the general case.
-    uint256 internal constant NO_BUFFER = 10_000_000;
+    uint24 internal constant NO_BUFFER = 10_000_000;
 
     /// @notice The "engine" of Panoptic - manages AMM liquidity and executes all mints/burns/exercises.
     ISemiFungiblePositionManager internal immutable SFPM;
@@ -385,7 +366,14 @@ contract PanopticPool is Clone, Multicall {
         TokenId[] calldata positionIdList,
         bool usePremiaAsCollateral
     ) external view {
-        _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER, usePremiaAsCollateral, 0);
+        RiskParameters riskParameters = getRiskParameters(0);
+        _validateSolvency(
+            user,
+            positionIdList,
+            riskParameters.bpDecreaseBuffer(),
+            usePremiaAsCollateral,
+            0
+        );
     }
 
     /// @notice Returns the total amount of premium accumulated for a list of positions and a list containing the corresponding `PositionBalance` information for each position.
@@ -538,7 +526,7 @@ contract PanopticPool is Clone, Multicall {
     /// @param positionIdList The list of tokenIds for the option positions to be minted or burnt
     /// @param finalPositionIdList The final positionIdList after all the tokens have been minted/burnt
     /// @param positionSizes The list of positionSize for the position to be minted (0 for burns)
-    /// @param effectiveLiquidityLimitsX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
+    /// @param effectiveLiquidityLimits Maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
     /// denominated as X32 = (`ratioLimit * 2^32`)
     /// @param tickLimits The lower and lower bounds of an acceptable open interval for the ending price
     /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
@@ -546,7 +534,7 @@ contract PanopticPool is Clone, Multicall {
         TokenId[] calldata positionIdList,
         TokenId[] calldata finalPositionIdList,
         uint128[] calldata positionSizes,
-        uint64[] calldata effectiveLiquidityLimitsX32,
+        uint16[] calldata effectiveLiquidityLimits,
         int24[2][] calldata tickLimits,
         bool usePremiaAsCollateral,
         uint256 builderCode
@@ -578,7 +566,7 @@ contract PanopticPool is Clone, Multicall {
                 _mintOptions(
                     tokenId,
                     positionSizes[i],
-                    effectiveLiquidityLimitsX32[i],
+                    effectiveLiquidityLimits[i],
                     msg.sender,
                     _tickLimits,
                     riskParameters
@@ -606,7 +594,7 @@ contract PanopticPool is Clone, Multicall {
         uint256 oraclePack = _validateSolvency(
             msg.sender,
             finalPositionIdList,
-            BP_DECREASE_BUFFER,
+            riskParameters.bpDecreaseBuffer(),
             usePremiaAsCollateral,
             riskParameters.safeMode()
         );
@@ -622,7 +610,7 @@ contract PanopticPool is Clone, Multicall {
     /// @notice Validates the current options of the user, and mints a new position.
     /// @param tokenId The tokenId of the newly minted position
     /// @param positionSize The size of the position to be minted, expressed in terms of the asset
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
+    /// @param effectiveLiquidityLimit Maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
     /// denominated as X32 = (`ratioLimit * 2^32`)
     /// @param owner The owner of the option position to be minted
     /// @param tickLimits The lower and upper bound of an acceptable open interval for the ending price
@@ -630,7 +618,7 @@ contract PanopticPool is Clone, Multicall {
     function _mintOptions(
         TokenId tokenId,
         uint128 positionSize,
-        uint64 effectiveLiquidityLimitX32,
+        uint16 effectiveLiquidityLimit,
         address owner,
         int24[2] memory tickLimits,
         RiskParameters riskParameters
@@ -640,10 +628,11 @@ contract PanopticPool is Clone, Multicall {
             .mintTokenizedPosition(poolKey(), tokenId, positionSize, tickLimits[0], tickLimits[1]);
 
         _updateSettlementPostMint(
+            riskParameters,
             tokenId,
             collectedByLeg,
             positionSize,
-            effectiveLiquidityLimitX32,
+            effectiveLiquidityLimit,
             owner
         );
 
@@ -789,6 +778,7 @@ contract PanopticPool is Clone, Multicall {
             tokenId,
             collectedByLeg,
             positionSize,
+            riskParameters.maxSpread(),
             commitLongSettled
         );
 
@@ -833,7 +823,7 @@ contract PanopticPool is Clone, Multicall {
     function _validateSolvency(
         address user,
         TokenId[] calldata positionIdList,
-        uint256 buffer,
+        uint24 buffer,
         bool usePremiaAsCollateral,
         uint8 safeMode
     ) internal view returns (uint256) {
@@ -855,7 +845,7 @@ contract PanopticPool is Clone, Multicall {
                 currentTick,
                 atTicks,
                 usePremiaAsCollateral,
-                buffer
+                uint256(buffer)
             );
             uint256 numberOfTicks = atTicks.length;
 
@@ -908,6 +898,9 @@ contract PanopticPool is Clone, Multicall {
             (spotTick, , latestTick, ) = riskEngine().getOracleTicks(currentTick, s_oraclePack);
 
             unchecked {
+                int256 MAX_TWAP_DELTA_LIQUIDATION = int256(
+                    uint256(getRiskParameters(0).tickDeltaLiquidation())
+                );
                 if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
                     revert Errors.StaleOracle();
             }
@@ -1519,13 +1512,13 @@ contract PanopticPool is Clone, Multicall {
     /// @notice Ensure the effective liquidity in a given chunk is above a certain threshold.
     /// @param tokenId An option position
     /// @param leg A leg index of `tokenId` corresponding to a tickLower-tickUpper chunk
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as removedLiquidity/netLiquidity for a new position
-    /// denominated as X32 = (`ratioLimit * 2^32`)
+    /// @param effectiveLiquidityLimit Maximum amount of "spread" defined as removedLiquidity/netLiquidity for a new position
+    /// denominated as X10_000 = (`ratioLimit * 10_000`)
     /// @return totalLiquidity The total liquidity deposited in that chunk: `totalLiquidity = netLiquidity + removedLiquidity`
     function _checkLiquiditySpread(
         TokenId tokenId,
         uint256 leg,
-        uint256 effectiveLiquidityLimitX32
+        uint256 effectiveLiquidityLimit
     ) internal view returns (uint256 totalLiquidity) {
         uint256 netLiquidity;
         uint256 removedLiquidity;
@@ -1536,14 +1529,14 @@ contract PanopticPool is Clone, Multicall {
 
         if (netLiquidity == 0) revert Errors.NetLiquidityZero();
 
-        uint256 effectiveLiquidityFactorX32;
+        uint256 effectiveLiquidityFactor;
         unchecked {
-            effectiveLiquidityFactorX32 = (removedLiquidity * 2 ** 32) / netLiquidity;
+            effectiveLiquidityFactor = (removedLiquidity * 10_000) / netLiquidity;
         }
 
         // put a limit on how much new liquidity in one transaction can be deployed into this leg
         // the effective liquidity measures how many times more the newly added liquidity is compared to the existing/base liquidity
-        if (effectiveLiquidityFactorX32 > effectiveLiquidityLimitX32)
+        if (effectiveLiquidityFactor > effectiveLiquidityLimit)
             revert Errors.EffectiveLiquidityAboveThreshold();
     }
 
@@ -1636,23 +1629,32 @@ contract PanopticPool is Clone, Multicall {
     /// @param tokenId The option position that was minted
     /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position
     /// @param positionSize The size of the position, expressed in terms of the asset
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity`
+    /// @param effectiveLiquidityLimit Maximum amount of "spread" defined as `removedLiquidity/netLiquidity`
     /// @param owner The owner of the option position to be minted
     function _updateSettlementPostMint(
+        RiskParameters riskParameters,
         TokenId tokenId,
         LeftRightUnsigned[4] memory collectedByLeg,
         uint128 positionSize,
-        uint64 effectiveLiquidityLimitX32,
+        uint16 effectiveLiquidityLimit,
         address owner
     ) internal {
         // ADD the current tokenId to the position list hash (hash = XOR of all keccak256(tokenId))
         // and increase the number of positions counter by 1.
         _updatePositionsHash(owner, tokenId, ADD);
 
-        uint256 numLegs = tokenId.countLegs();
-        for (uint256 leg = 0; leg < numLegs; ) {
+        for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
             if (tokenId.width(leg) != 0) {
                 uint256 isLong = tokenId.isLong(leg);
+                // if position is long, ensure that removed liquidity does not deplete strike beyond min(MAX_SPREAD, user-provided effectiveLiquidityLimit)
+                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
+                uint256 totalLiquidity = _checkLiquiditySpread(
+                    tokenId,
+                    leg,
+                    isLong == 0
+                        ? riskParameters.maxSpread()
+                        : Math.min(effectiveLiquidityLimit, riskParameters.maxSpread())
+                );
 
                 bytes32 chunkKey = EfficientHash.efficientKeccak256(
                     abi.encodePacked(
@@ -1690,14 +1692,6 @@ contract PanopticPool is Clone, Multicall {
                         .wrap(uint128(grossCurrent0))
                         .addToLeftSlot(uint128(grossCurrent1));
                 }
-
-                // if position is long, ensure that removed liquidity does not deplete strike beyond min(MAX_SPREAD, user-provided effectiveLiquidityLimit)
-                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
-                uint256 totalLiquidity = _checkLiquiditySpread(
-                    tokenId,
-                    leg,
-                    isLong == 0 ? MAX_SPREAD : Math.min(effectiveLiquidityLimitX32, MAX_SPREAD)
-                );
 
                 // if position is short, adjust `grossPremiumLast` upward to account for the increase in short liquidity
                 if (isLong == 0) {
@@ -1847,9 +1841,9 @@ contract PanopticPool is Clone, Multicall {
         TokenId tokenId,
         LeftRightUnsigned[4] memory collectedByLeg,
         uint128 positionSize,
+        uint16 maxSpread,
         bool commitLongSettled
     ) internal returns (LeftRightSigned realizedPremia, LeftRightSigned[4] memory premiaByLeg) {
-        uint256 numLegs = tokenId.countLegs();
         uint256[2][4] memory premiumAccumulatorsByLeg;
 
         // compute accumulated fees
@@ -1861,7 +1855,7 @@ contract PanopticPool is Clone, Multicall {
             type(int24).max
         );
 
-        for (uint256 leg = 0; leg < numLegs; ) {
+        for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
             if (tokenId.width(leg) != 0) {
                 LeftRightSigned legPremia = premiaByLeg[leg];
 
@@ -1904,7 +1898,7 @@ contract PanopticPool is Clone, Multicall {
 
                         // if position is short, ensure that removed liquidity does not deplete strike beyond MAX_SPREAD when closed
                         // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (T - R)
-                        totalLiquidity = _checkLiquiditySpread(tokenId, leg, MAX_SPREAD);
+                        totalLiquidity = _checkLiquiditySpread(tokenId, leg, maxSpread);
                     }
                     // T (totalLiquidity is (T - R) after burning)
                     uint256 totalLiquidityBefore = totalLiquidity + positionLiquidity;

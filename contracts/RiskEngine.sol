@@ -63,6 +63,19 @@ contract RiskEngine {
     /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
     int256 internal constant MAX_TICKS_DELTA = 953;
 
+    /// @notice The maximum allowed delta between the currentTick and the Uniswap TWAP tick during a liquidation (~5% down, ~5.26% up).
+    /// @dev Mitigates manipulation of the currentTick that causes positions to be liquidated at a less favorable price.
+    uint16 internal constant MAX_TWAP_DELTA_LIQUIDATION = 513;
+
+    /// @notice The maximum allowed ratio for a single chunk, defined as `removedLiquidity / netLiquidity`.
+    /// @dev The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
+    /// which can be explored in this calculator: [https://www.desmos.com/calculator/mdeqob2m04](https://www.desmos.com/calculator/mdeqob2m04).
+    uint24 internal constant MAX_SPREAD = 90_000;
+
+    /// @notice Multiplier in basis points for the collateral requirement in the event of a buying power decrease, such as minting or force exercising another user.
+    /// @dev must fit inside a uint26
+    uint32 internal constant BP_DECREASE_BUFFER = 13_333_333;
+
     /// @notice Decimals for WAD calculations.
     int256 internal constant WAD = 1e18;
 
@@ -76,15 +89,19 @@ contract RiskEngine {
                             RISK PARAMETERS
     //////////////////////////////////////////////////////////////*/
     /// @notice The notional fee, in basis points, collected from PLPs at option mint.
+    /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
     uint16 immutable NOTIONAL_FEE;
 
     /// @notice The premium fee, in basis points, collected from the premium paid/received.
+    /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
     uint16 immutable PREMIUM_FEE;
 
     /// @notice The protocol split, in basis points, when a builder code is present.
+    /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
     uint16 immutable PROTOCOL_SPLIT;
 
     /// @notice The builder split, in basis points, when a builder code is present
+    /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
     uint16 immutable BUILDER_SPLIT;
 
     /// @notice Required collateral ratios for selling options, fraction of 1, scaled by 10_000_000.
@@ -570,6 +587,9 @@ contract RiskEngine {
                 PREMIUM_FEE,
                 PROTOCOL_SPLIT,
                 BUILDER_SPLIT,
+                MAX_TWAP_DELTA_LIQUIDATION,
+                MAX_SPREAD,
+                BP_DECREASE_BUFFER,
                 feeRecipient
             );
     }
