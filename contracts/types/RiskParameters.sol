@@ -86,7 +86,7 @@ library RiskParametersLibrary {
     }
 
     /// @notice Get the notionalFee of `self`.
-    /// @param self The RiskParameters to retrieve the commissionFee from
+    /// @param self The RiskParameters to retrieve the notionalFee from
     /// @return result The notionalFee of `self`
     function notionalFee(RiskParameters self) internal pure returns (uint16 result) {
         assembly {

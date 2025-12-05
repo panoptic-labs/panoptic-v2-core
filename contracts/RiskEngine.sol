@@ -16,6 +16,7 @@ import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.so
 import {RiskParameters, RiskParametersLibrary} from "@types/RiskParameters.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {OraclePack} from "@types/OraclePack.sol";
+import {MarketState} from "@types/MarketState.sol";
 
 /// @title Panoptic Risk Engine: The central risk assessment and solvency calculator for the Panoptic Protocol.
 /// @author Axicon Labs Limited
@@ -1943,7 +1944,7 @@ contract RiskEngine {
 
     function interestRate(
         uint256 utilization,
-        uint256 interestRateAccumulator
+        MarketState interestRateAccumulator
     ) external view returns (uint128) {
         (uint256 avgRate, ) = _borrowRate(utilization, interestRateAccumulator);
         return uint128(avgRate);
@@ -1951,7 +1952,7 @@ contract RiskEngine {
 
     function updateInterestRate(
         uint256 utilization,
-        uint256 interestRateAccumulator
+        MarketState interestRateAccumulator
     ) external view returns (uint128, uint256) {
         (uint256 avgRate, int256 endRateAtTarget) = _borrowRate(
             utilization,
@@ -1964,7 +1965,7 @@ contract RiskEngine {
     /// @dev Assumes that the inputs `marketParams` and `id` match.
     function _borrowRate(
         uint256 utilization,
-        uint256 interestRateAccumulator
+        MarketState interestRateAccumulator
     ) internal view returns (uint256, int256) {
         // Safe "unchecked" cast because the utilization is smaller than 1 (scaled by WAD).
         int256 _utilization = int256(utilization);
@@ -1974,10 +1975,10 @@ contract RiskEngine {
         int256 err = Math.wDivToZero(_utilization - TARGET_UTILIZATION, errNormFactor);
 
         // 38-bit rateAtTarget, 32-bit epoch<<2 in accumulator
-        int256 startRateAtTarget = int256(uint256((interestRateAccumulator >> 112) % 2 ** 38));
+        int256 startRateAtTarget = int256(uint256(interestRateAccumulator.rateAtTarget()));
 
         // convert from epoch to time. Used to avoid Y2K38
-        uint256 previousTime = uint256(uint32(interestRateAccumulator >> 80)) << 2;
+        uint256 previousTime = interestRateAccumulator.marketEpoch();
 
         int256 avgRateAtTarget;
         int256 endRateAtTarget;
