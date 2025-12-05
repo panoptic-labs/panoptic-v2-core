@@ -199,6 +199,7 @@ contract PanopticHelper {
     /// @param univ3pool The Uniswap pool to retrieve observations from
     /// @return The median of the provided 8-slot queue of ticks in `oraclePack`
     /// @return The updated 8-slot queue of ticks with the latest observation inserted if the last entry is at least `period` seconds old (returns 0 otherwise)
+    /*
     function computeInternalMedian(
         uint256 oraclePack,
         IUniswapV3Pool univ3pool
@@ -220,6 +221,7 @@ contract PanopticHelper {
         );
         return (_medianTick, _oraclePack);
     }
+    */
 
     /// @notice Computes the twap of a Uniswap V3 pool using data from its oracle.
     /// @dev Note that our definition of TWAP differs from a typical mean of prices over a time window.

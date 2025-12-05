@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 // Interfaces
 import {CollateralTracker} from "./CollateralTracker.sol";
+import {PanopticPool} from "./PanopticPool.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
@@ -14,6 +15,7 @@ import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
 import {RiskParameters, RiskParametersLibrary} from "@types/RiskParameters.sol";
 import {TokenId} from "@types/TokenId.sol";
+import {OraclePack} from "@types/OraclePack.sol";
 
 /// @title Panoptic Risk Engine: The central risk assessment and solvency calculator for the Panoptic Protocol.
 /// @author Axicon Labs Limited
@@ -179,7 +181,8 @@ contract RiskEngine {
         uint256 _targetPoolUtilization,
         uint256 _saturatedPoolUtilization,
         uint256 _crossBuffer0,
-        uint256 _crossBuffer1
+        uint256 _crossBuffer1,
+        address _guardian
     ) {
         NOTIONAL_FEE = 10;
         PREMIUM_FEE = 0;
@@ -190,6 +193,47 @@ contract RiskEngine {
         SATURATED_POOL_UTIL = _saturatedPoolUtilization;
         CROSS_BUFFER_0 = _crossBuffer0;
         CROSS_BUFFER_1 = _crossBuffer1;
+        GUARDIAN = _guardian;
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                                GUARDIAN
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Address allowed to override the automatically computed safe mode.
+    /// @dev Guardian can only increase the effective safe mode, never relax it.
+    address public immutable GUARDIAN;
+
+    /// @notice Emitted when the guardian updates the enforced safe mode.
+    /// @param lockMode True when safe mode is forcibly locked, false when the lock is lifted.
+    event GuardianSafeModeUpdated(bool lockMode);
+
+    /// @notice Restricts a function to be callable only by the guardian address.
+    modifier onlyGuardian() {
+        _onlyGuardian();
+        _;
+    }
+
+    /// @dev Reverts unless the caller is the guardian.
+    function _onlyGuardian() internal view {
+        if (msg.sender != address(GUARDIAN)) revert Errors.NotGuardian();
+    }
+
+    /// @notice Forces a PanopticPool into locked safe mode.
+    /// @dev Sets the pool’s internal oracle pack into permanent safe-mode override
+    ///      until explicitly unlocked by the guardian.
+    /// @param pool The PanopticPool to lock.
+    function lockPool(PanopticPool pool) external onlyGuardian {
+        emit GuardianSafeModeUpdated(true);
+        pool.lockSafeMode();
+    }
+
+    /// @notice Removes the forced safe-mode lock on a PanopticPool.
+    /// @dev Restores the pool to using only the automatically computed safe-mode level.
+    /// @param pool The PanopticPool to unlock.
+    function unlockPool(PanopticPool pool) external onlyGuardian {
+        emit GuardianSafeModeUpdated(true);
+        pool.unlockSafeMode();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -560,15 +604,14 @@ contract RiskEngine {
     /// @return oraclePack The current value of the 8-slot internal observation queue (`s_oraclePack`)
     function getOracleTicks(
         int24 currentTick,
-        uint256 _oraclePack
+        OraclePack _oraclePack
     )
         external
         view
-        returns (int24 spotTick, int24 medianTick, int24 latestTick, uint256 oraclePack)
+        returns (int24 spotTick, int24 medianTick, int24 latestTick, OraclePack oraclePack)
     {
-        (spotTick, medianTick, latestTick, oraclePack) = PanopticMath.getOracleTicks(
+        (spotTick, medianTick, latestTick, oraclePack) = _oraclePack.getOracleTicks(
             currentTick,
-            _oraclePack,
             EMA_PERIODS
         );
     }
@@ -581,9 +624,9 @@ contract RiskEngine {
     /// @param oraclePack The packed `s_oraclePack` storage slot containing the oracle's state,
     /// including the on-chain EMAs.
     /// @return The blended time-weighted average price, represented as an int24 tick.
-    function twapEMA(uint256 oraclePack) external pure returns (int24) {
+    function twapEMA(OraclePack oraclePack) external pure returns (int24) {
         // Extract current EMAs from oraclePack
-        (int256 eonsEMA, int256 slowEMA, int256 fastEMA, , ) = PanopticMath.getEMAs(oraclePack);
+        (int256 eonsEMA, int256 slowEMA, int256 fastEMA, , ) = oraclePack.getEMAs();
         return int24((6 * fastEMA + 3 * slowEMA + eonsEMA) / 10);
     }
 
@@ -594,10 +637,10 @@ contract RiskEngine {
     /// @return medianTick The median of the provided 8-slot queue of ticks in `oraclePack`
     /// @return updatedOraclePack The updated 8-slot queue of ticks with the latest observation inserted if the last entry is at least `period` seconds old (returns 0 otherwise)
     function computeInternalMedian(
-        uint256 oraclePack,
+        OraclePack oraclePack,
         int24 currentTick
-    ) external view returns (int24 medianTick, uint256 updatedOraclePack) {
-        return PanopticMath.computeInternalMedian(oraclePack, currentTick, EMA_PERIODS);
+    ) external view returns (int24 medianTick, OraclePack updatedOraclePack) {
+        return oraclePack.computeInternalMedian(currentTick, EMA_PERIODS);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -606,7 +649,7 @@ contract RiskEngine {
 
     function getRiskParameters(
         int24 currentTick,
-        uint256 oraclePack,
+        OraclePack oraclePack,
         uint256 builderCode
     ) external view returns (RiskParameters) {
         uint8 safeMode = isSafeMode(currentTick, oraclePack);
@@ -639,12 +682,10 @@ contract RiskEngine {
     /// @return safeMode A number representing whether the protocol is in Safe Mode.
     function isSafeMode(
         int24 currentTick,
-        uint256 oraclePack
+        OraclePack oraclePack
     ) public pure returns (uint8 safeMode) {
         // Extract the relevant EMAs from oraclePack
-        (, int24 slowEMA, int24 fastEMA, int24 spotEMA, int24 medianTick) = PanopticMath.getEMAs(
-            oraclePack
-        );
+        (int24 spotEMA, int24 fastEMA, int24 slowEMA, , int24 medianTick) = oraclePack.getEMAs();
 
         unchecked {
             // Condition 1: Check for a sudden deviation of the spot price from the spot EMA.
@@ -661,19 +702,23 @@ contract RiskEngine {
             // We use a larger threshold here (e.g., twice of the main delta) to be less sensitive to lag.
             bool highDivergence = Math.abs(medianTick - slowEMA) > (MAX_TICKS_DELTA * 2);
 
+            // check lock mode, add value = 3 to returned safeMode.
+            uint8 lockMode = oraclePack.lockMode();
+
             safeMode =
                 uint8(externalShock ? 1 : 0) +
                 uint8(internalDisagreement ? 1 : 0) +
-                uint8(highDivergence ? 1 : 0);
+                uint8(highDivergence ? 1 : 0) +
+                lockMode;
         }
     }
 
     function getSolvencyTicks(
         int24 currentTick,
-        uint256 _oraclePack
-    ) external view returns (int24[] memory, uint256) {
-        (int24 spotTick, int24 medianTick, int24 latestTick, uint256 oraclePack) = PanopticMath
-            .getOracleTicks(currentTick, _oraclePack, EMA_PERIODS);
+        OraclePack _oraclePack
+    ) external view returns (int24[] memory, OraclePack) {
+        (int24 spotTick, int24 medianTick, int24 latestTick, OraclePack oraclePack) = _oraclePack
+            .getOracleTicks(currentTick, EMA_PERIODS);
 
         int24[] memory atTicks;
 
