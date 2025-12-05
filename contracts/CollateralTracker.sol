@@ -1524,12 +1524,27 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
         if (realizedPremium != 0) {
             unchecked {
-                uint128 commission = realizedPremium > 0
-                    ? uint128(realizedPremium)
-                    : uint128(-realizedPremium);
-                uint128 commissionFee = uint128(
-                    Math.mulDivRoundingUp(commission, riskParameters.premiumFee(), DECIMALS)
-                );
+                uint128 commissionFee;
+                // compute the minimum of the notionalFee and the premiumFee
+                {
+                    uint128 commissionP = realizedPremium > 0
+                        ? uint128(realizedPremium)
+                        : uint128(-realizedPremium);
+                    uint128 commissionFeeP = uint128(
+                        Math.mulDivRoundingUp(commissionP, riskParameters.premiumFee(), DECIMALS)
+                    );
+                    uint128 commissionN = uint256(int256(shortAmount) + int256(longAmount))
+                        .toUint128();
+                    uint128 commissionFeeN = uint128(
+                        Math.mulDivRoundingUp(
+                            commissionN,
+                            10 * riskParameters.notionalFee(),
+                            DECIMALS
+                        )
+                    );
+                    commissionFee = Math.min(commissionFeeP, commissionFeeN).toUint128();
+                }
+
                 uint256 sharesToBurn = Math.mulDivRoundingUp(
                     commissionFee,
                     _totalSupply,
