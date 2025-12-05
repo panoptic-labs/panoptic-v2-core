@@ -6,6 +6,7 @@ import {RiskEngineHarness} from "./RiskEngineHarness.sol";
 import {MockCollateralTracker} from "./mocks/MockCollateralTracker.sol";
 import {LeftRightUnsigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
+import {OraclePack} from "@types/OraclePack.sol";
 import {PositionBalance} from "@types/PositionBalance.sol";
 import {PositionFactory} from "./helpers/PositionFactory.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
@@ -43,7 +44,7 @@ contract RiskEngineInvariants is Test {
         int24 fast,
         int24 spot,
         int24 median
-    ) internal pure returns (uint256) {
+    ) internal pure returns (OraclePack) {
         // PanopticMath.getEMAs(oraclePack) returns (, slow, fast, spot, median)
         // Use PanopticMath helpers if exposed; otherwise mirror your packing here.
         // For now assume PanopticMath has a pack helper in your codebase; if not, stub as needed.
@@ -52,7 +53,7 @@ contract RiskEngineInvariants is Test {
             ((uint256(uint24(slow)) & BITMASK_UINT22) << 44);
 
         // store median as referenceTick
-        return (updatedEMAs << 120) + (uint256(uint24(median)) << 96);
+        return OraclePack.wrap((updatedEMAs << 120) + (uint256(uint24(median)) << 96));
     }
 
     function testFuzz_Invariant_scale_and_util_sign(

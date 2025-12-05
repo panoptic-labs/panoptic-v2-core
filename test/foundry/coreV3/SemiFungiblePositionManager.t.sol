@@ -1043,7 +1043,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             width
         );
 
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped, ) = sfpm
             .mintTokenizedPosition(
                 abi.encode(pool),
                 tokenId,
@@ -1112,7 +1112,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             width
         );
 
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped, ) = sfpm
             .mintTokenizedPosition(
                 abi.encode(pool),
                 tokenId,
@@ -1242,7 +1242,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 int128(expectedLiq)
             );
 
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped, ) = sfpm
             .mintTokenizedPosition(
                 abi.encode(pool),
                 tokenId,
@@ -1251,7 +1251,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 TickMath.MAX_TICK
             );
 
-        (LeftRightUnsigned[4] memory collectedByLegLong, LeftRightSigned totalSwappedLong) = sfpm
+        (LeftRightUnsigned[4] memory collectedByLegLong, LeftRightSigned totalSwappedLong, ) = sfpm
             .mintTokenizedPosition(
                 abi.encode(pool),
                 longTokenId,
@@ -1371,7 +1371,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             width
         );
 
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped, ) = sfpm
             .mintTokenizedPosition(
                 abi.encode(pool),
                 tokenId,
@@ -1469,7 +1469,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // The max/min tick cannot be set as slippage limits, so we subtract/add 1
         // We also invert the order; this is how we tell SFPM to trigger a swap
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped, ) = sfpm
             .mintTokenizedPosition(
                 abi.encode(pool),
                 tokenId,
@@ -1573,7 +1573,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // The max/min tick cannot be set as slippage limits, so we subtract/add 1
         // We also invert the order; this is how we tell SFPM to trigger a swap
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped, ) = sfpm
             .mintTokenizedPosition(
                 abi.encode(pool),
                 tokenId,
@@ -1685,7 +1685,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             console2.log("currentSqrtPriceX96", currentSqrtPriceX96);
             uint256 snapshot = vm.snapshot();
 
-            (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
+            (, LeftRightSigned totalMoved, ) = sfpm.mintTokenizedPosition(
                 abi.encode(pool),
                 tokenId,
                 positionSize,
@@ -1700,7 +1700,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // The max/min tick cannot be set as slippage limits, so we subtract/add 1
         // We also invert the order; this is how we tell SFPM to trigger a swap
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped, ) = sfpm
             .mintTokenizedPosition(
                 abi.encode(pool),
                 tokenId,
@@ -1844,7 +1844,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             console2.log("currentSqrtPriceX96", currentSqrtPriceX96);
             uint256 snapshot = vm.snapshot();
 
-            (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
+            (, LeftRightSigned totalMoved, ) = sfpm.mintTokenizedPosition(
                 abi.encode(pool),
                 tokenId,
                 positionSizes[1],
@@ -1859,7 +1859,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // The max/min tick cannot be set as slippage limits, so we subtract/add 1
         // We also invert the order; this is how we tell SFPM to trigger a swap
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped, ) = sfpm
             .mintTokenizedPosition(
                 abi.encode(pool),
                 tokenId,
@@ -2116,7 +2116,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         // amount moved = token 0
         TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, 0);
 
-        (, totalMoved) = sfpm.mintTokenizedPosition(
+        (, totalMoved, ) = sfpm.mintTokenizedPosition(
             abi.encode(pool),
             tokenId,
             positionSize,
@@ -2127,7 +2127,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         console2.log("tM1", totalMoved.leftSlot());
         assertEq(0, totalMoved.rightSlot(), "FAIL: wrong moved amount token0 - A");
 
-        (, totalMoved) = sfpm.burnTokenizedPosition(
+        (, totalMoved, ) = sfpm.burnTokenizedPosition(
             abi.encode(pool),
             tokenId,
             positionSize,
@@ -2138,7 +2138,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // amount moved = token1
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, 0);
-        (, totalMoved) = sfpm.mintTokenizedPosition(
+        (, totalMoved, ) = sfpm.mintTokenizedPosition(
             abi.encode(pool),
             tokenId,
             positionSize,
@@ -2147,7 +2147,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
         assertEq(0, (totalMoved.leftSlot()), "FAIL: wrong moved amount token1 - A");
 
-        (, totalMoved) = sfpm.burnTokenizedPosition(
+        (, totalMoved, ) = sfpm.burnTokenizedPosition(
             abi.encode(pool),
             tokenId,
             positionSize,
@@ -2158,7 +2158,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // amount moved = token 0, asset = 1
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, 0);
-        (, totalMoved) = sfpm.mintTokenizedPosition(
+        (, totalMoved, ) = sfpm.mintTokenizedPosition(
             abi.encode(pool),
             tokenId,
             positionSize,
@@ -2172,7 +2172,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             "FAIL: wrong moved amount token0, asset = 1"
         );
 
-        (, totalMoved) = sfpm.burnTokenizedPosition(
+        (, totalMoved, ) = sfpm.burnTokenizedPosition(
             abi.encode(pool),
             tokenId,
             positionSize,
@@ -2188,7 +2188,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // amount moved = token 1, asset = 0
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 1, 0, strike, 0);
-        (, totalMoved) = sfpm.mintTokenizedPosition(
+        (, totalMoved, ) = sfpm.mintTokenizedPosition(
             abi.encode(pool),
             tokenId,
             positionSize,
@@ -2202,7 +2202,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             "FAIL: wrong moved amount token1, asset = 0"
         );
 
-        (, totalMoved) = sfpm.burnTokenizedPosition(
+        (, totalMoved, ) = sfpm.burnTokenizedPosition(
             abi.encode(pool),
             tokenId,
             positionSize,
@@ -2242,7 +2242,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         console2.log("");
         // amount moved = token 0
         TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, 0);
-        (, totalMoved) = sfpm.mintTokenizedPosition(
+        (, totalMoved, ) = sfpm.mintTokenizedPosition(
             abi.encode(pool),
             tokenId,
             positionSize,
@@ -2260,7 +2260,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // amount moved = token1
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, 0);
-        (, totalMoved) = sfpm.mintTokenizedPosition(
+        (, totalMoved, ) = sfpm.mintTokenizedPosition(
             abi.encode(pool),
             tokenId,
             positionSize,
@@ -2278,7 +2278,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         console2.log("");
         // amount moved = token 0, asset = 1
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, 0);
-        (, totalMoved) = sfpm.mintTokenizedPosition(
+        (, totalMoved, ) = sfpm.mintTokenizedPosition(
             abi.encode(pool),
             tokenId,
             positionSize,
@@ -2297,7 +2297,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // amount moved = token 1, asset = 0
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 1, 0, strike, 0);
-        (, totalMoved) = sfpm.mintTokenizedPosition(
+        (, totalMoved, ) = sfpm.mintTokenizedPosition(
             abi.encode(pool),
             tokenId,
             positionSize,
@@ -2626,7 +2626,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         // price changes afters swap at mint so we need to update the price
         (currentSqrtPriceX96, , , , , , ) = pool.slot0();
 
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped, ) = sfpm
             .burnTokenizedPosition(
                 abi.encode(pool),
                 tokenId,
@@ -2763,7 +2763,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 int128(expectedLiqBurn)
             ) - 1;
 
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped, ) = sfpm
             .burnTokenizedPosition(
                 abi.encode(pool),
                 tokenId,
@@ -3014,7 +3014,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             )
         ];
 
-        (LeftRightUnsigned[4] memory collectedByLegLong, LeftRightSigned totalSwappedLong) = sfpm
+        (LeftRightUnsigned[4] memory collectedByLegLong, LeftRightSigned totalSwappedLong, ) = sfpm
             .burnTokenizedPosition(
                 abi.encode(pool),
                 tokenIdLong,
@@ -3023,7 +3023,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 TickMath.MAX_TICK
             );
 
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped, ) = sfpm
             .burnTokenizedPosition(
                 abi.encode(pool),
                 tokenId,
@@ -3193,7 +3193,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         uint256 aliceBefore0 = IERC20Partial(token0).balanceOf(Alice);
         uint256 aliceBefore1 = IERC20Partial(token1).balanceOf(Alice);
 
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped, ) = sfpm
             .mintTokenizedPosition(
                 abi.encode(pool),
                 tokenId,
@@ -3253,7 +3253,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         assertEq(realLiq, expectedLiq);
 
-        (collectedByLeg, totalSwapped) = sfpm.burnTokenizedPosition(
+        (collectedByLeg, totalSwapped, ) = sfpm.burnTokenizedPosition(
             abi.encode(pool),
             tokenId,
             uint128(positionSize),

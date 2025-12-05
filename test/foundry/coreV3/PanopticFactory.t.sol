@@ -187,7 +187,8 @@ contract PanopticFactoryTest is Test {
             5_000_000,
             9_000_000,
             10_000_000,
-            10_000_000
+            10_000_000,
+            address(0)
         );
 
         for (uint256 i = 0; i < bytecodes.length; i++) {
@@ -411,7 +412,8 @@ contract PanopticFactoryTest is Test {
             5_000_000,
             9_000_000,
             10_000_000,
-            10_000_000
+            10_000_000,
+            address(0)
         );
 
         uint96 salt = 12345;

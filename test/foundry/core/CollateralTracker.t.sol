@@ -16,6 +16,7 @@ import {Math} from "@libraries/PanopticMath.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
+import {OraclePack} from "@types/OraclePack.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {RiskParameters} from "@types/RiskParameters.sol";
 import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
@@ -189,7 +190,7 @@ contract PanopticPoolHarness is PanopticPool {
         return fingerprintIncomingList;
     }
 
-    function oraclePack() external returns (uint256) {
+    function oraclePack() external returns (OraclePack) {
         return s_oraclePack;
     }
 }
@@ -222,7 +223,8 @@ contract RiskEngineHarness is RiskEngine {
             5_000_000,
             9_000_000,
             crossBuffer0,
-            crossBuffer1
+            crossBuffer1,
+            address(0)
         )
     {}
 
@@ -3369,7 +3371,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         vm.roll(block.number + 10);
         vm.warp(block.timestamp + 120 seconds);
 
-        console2.log("orclePl", panopticPool.oraclePack());
+        //console2.log("orclePl", panopticPool.oraclePack());
         // Bob borrows a significant amount
         mintOptions(
             panopticPool,
@@ -3380,7 +3382,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             Constants.MIN_POOL_TICK,
             true
         );
-        console2.log("orclePl", panopticPool.oraclePack());
+        //console2.log("orclePl", panopticPool.oraclePack());
         vm.roll(block.number + 10);
         vm.warp(block.timestamp + 120 seconds);
 

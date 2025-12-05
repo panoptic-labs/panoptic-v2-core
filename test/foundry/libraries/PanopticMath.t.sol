@@ -10,6 +10,7 @@ import {Errors} from "@libraries/Errors.sol";
 import {PanopticMathHarness} from "./harnesses/PanopticMathHarness.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import {OraclePack, OraclePackLibrary} from "@types/OraclePack.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {Math} from "@libraries/Math.sol";
@@ -59,7 +60,7 @@ contract PanopticMathTest is Test, PositionUtils {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Encodes a set of offsets into the packed oraclePack format for testing.
-    function _encodeOraclePack(int16[] memory offsets) internal pure returns (uint256) {
+    function _encodeOraclePack(int16[] memory offsets) internal pure returns (OraclePack) {
         // Assume the input offsets are sorted and create a simple orderMap (0->0, 1->1, etc.)
         uint256 data;
         data |= INITIAL_EPOCH << 232;
@@ -69,18 +70,19 @@ contract PanopticMathTest is Test, PositionUtils {
             // Mask with 0xFFF to pack as a 12-bit value
             data |= (uint256(uint16(offsets[i])) & 0x0FFF) << (i * 12);
         }
-        return data;
+        return OraclePack.wrap(data);
     }
 
     /// @notice Decodes the packed data and returns the full tick values IN SORTED ORDER.
     /// This is the key to verifying the orderMap logic is correct.
-    function _decodeSortedTicks(uint256 data) internal pure returns (int24[] memory) {
+    function _decodeSortedTicks(OraclePack dataPack) internal view returns (int24[] memory) {
+        uint256 data = OraclePack.unwrap(dataPack);
         int24[] memory sortedTicks = new int24[](8);
         int24 refTick = int24(uint24(data >> 96));
         for (uint8 i = 0; i < 8; i++) {
             // i = sorted rank
             uint256 offsetData = (data >> (i * 12)) % 2 ** 12;
-            sortedTicks[i] = refTick + PanopticMath.int12toInt24(offsetData);
+            sortedTicks[i] = refTick + harness.int12toInt24(offsetData);
         }
         return sortedTicks;
     }
@@ -1732,12 +1734,12 @@ contract PanopticMathTest is Test, PositionUtils {
         }
     }
 
-    function test_success_toInt24() public pure {
-        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 12 - 1));
-        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 13 - 1));
-        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 14 - 1));
-        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 15 - 1));
-        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 16 - 1));
+    function test_success_toInt24() public view {
+        assertEq(int24(-1), harness.int12toInt24(2 ** 12 - 1));
+        assertEq(int24(-1), harness.int12toInt24(2 ** 13 - 1));
+        assertEq(int24(-1), harness.int12toInt24(2 ** 14 - 1));
+        assertEq(int24(-1), harness.int12toInt24(2 ** 15 - 1));
+        assertEq(int24(-1), harness.int12toInt24(2 ** 16 - 1));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1750,26 +1752,30 @@ contract PanopticMathTest is Test, PositionUtils {
 
         int24 deltaTick = int24(bound(x, -149, 149));
 
-        uint256 initialData = _encodeOraclePack(_generateSortedOffsets(x));
+        OraclePack initialData = _encodeOraclePack(_generateSortedOffsets(x));
 
         // Set up the mock pool to return a new tick with an offset of -100, smaller than any existing value.
         int56 tickCumulative = int56(
-            REFERENCE_TICK + PanopticMath.int12toInt24(initialData % 2 ** 12) + deltaTick
+            REFERENCE_TICK +
+                harness.int12toInt24(OraclePack.unwrap(initialData) % 2 ** 12) +
+                deltaTick
         ) * 64;
 
-        int24 deltaOffset = PanopticMath.int12toInt24(initialData % 2 ** 12);
-        int24 oldReferenceTick = int24(uint24(initialData >> 96));
+        int24 deltaOffset = harness.int12toInt24(OraclePack.unwrap(initialData) % 2 ** 12);
+        int24 oldReferenceTick = int24(uint24(OraclePack.unwrap(initialData) >> 96));
         // ACT
         vm.warp(10 * 64);
-        (, uint256 updatedData) = harness.computeInternalMedian(
+        (, OraclePack updatedData) = harness.computeInternalMedian(
             initialData,
-            REFERENCE_TICK + PanopticMath.int12toInt24(initialData % 2 ** 12) + deltaTick
+            REFERENCE_TICK +
+                harness.int12toInt24(OraclePack.unwrap(initialData) % 2 ** 12) +
+                deltaTick
         );
 
         // ASSERT
         int24[] memory finalTicks = _decodeSortedTicks(updatedData);
 
-        int24 newReferenceTick = int24(uint24(updatedData >> 96));
+        int24 newReferenceTick = int24(uint24(OraclePack.unwrap(updatedData) >> 96));
         int24 deltaReference = newReferenceTick - oldReferenceTick;
 
         // The oldest value (40) is dropped, and the new value (-100) is inserted.
@@ -1802,18 +1808,22 @@ contract PanopticMathTest is Test, PositionUtils {
 
         deltaTick = x % 2 == 0 ? -deltaTick : deltaTick;
 
-        uint256 initialData = _encodeOraclePack(_generateSortedOffsets(x));
+        OraclePack initialData = _encodeOraclePack(_generateSortedOffsets(x));
 
         // Set up the mock pool to return a new tick with an offset of -100, smaller than any existing value.
         int56 tickCumulative = int56(
-            REFERENCE_TICK + PanopticMath.int12toInt24(initialData % 2 ** 12) + deltaTick
+            REFERENCE_TICK +
+                harness.int12toInt24(OraclePack.unwrap(initialData) % 2 ** 12) +
+                deltaTick
         ) * 64;
 
         // ACT
         vm.warp(10 * 64);
-        (, uint256 updatedData) = harness.computeInternalMedian(
+        (, OraclePack updatedData) = harness.computeInternalMedian(
             initialData,
-            REFERENCE_TICK + PanopticMath.int12toInt24(initialData % 2 ** 12) + deltaTick
+            REFERENCE_TICK +
+                harness.int12toInt24(OraclePack.unwrap(initialData) % 2 ** 12) +
+                deltaTick
         );
 
         // ASSERT
@@ -1843,26 +1853,30 @@ contract PanopticMathTest is Test, PositionUtils {
 
         uint256 n = uint24((Constants.MAX_RESIDUAL_THRESHOLD / Constants.MAX_MEDIAN_DELTA)) + 1;
 
-        uint256 updatedData = _encodeOraclePack(_generateSortedOffsets(0));
+        OraclePack updatedData = _encodeOraclePack(_generateSortedOffsets(0));
 
-        int24 referenceTick = int24(uint24(updatedData >> 96));
+        int24 referenceTick = int24(uint24(OraclePack.unwrap(updatedData) >> 96));
         for (uint256 i; i < n; ++i) {
             // Set up the mock pool to return a new tick with an offset of -100, smaller than any existing value.
             int56 tickCumulative = int56(
-                REFERENCE_TICK + PanopticMath.int12toInt24(updatedData % 2 ** 12) + deltaTick
+                REFERENCE_TICK +
+                    harness.int12toInt24(OraclePack.unwrap(updatedData) % 2 ** 12) +
+                    deltaTick
             ) * 64;
 
             // ACT
             vm.warp(block.timestamp + 128);
             vm.roll(block.number + 1);
-            (, uint256 _updatedData) = harness.computeInternalMedian(
+            (, OraclePack _updatedData) = harness.computeInternalMedian(
                 updatedData,
-                REFERENCE_TICK + PanopticMath.int12toInt24(updatedData % 2 ** 12) + deltaTick
+                REFERENCE_TICK +
+                    harness.int12toInt24(OraclePack.unwrap(updatedData) % 2 ** 12) +
+                    deltaTick
             );
             updatedData = _updatedData;
         }
 
-        int24 newReferenceTick = int24(uint24(updatedData >> 96));
+        int24 newReferenceTick = int24(uint24(OraclePack.unwrap(updatedData) >> 96));
 
         assertTrue(referenceTick != newReferenceTick, "FAIL: reference tick not updated");
     }
@@ -1870,13 +1884,13 @@ contract PanopticMathTest is Test, PositionUtils {
     /// @notice This test ensures no update occurs if the block timestamp is in the same epoch.
     function test_NoUpdateInSameEpoch() public {
         // ARRANGE
-        uint256 initialData = _encodeOraclePack(_generateSortedOffsets(0));
+        OraclePack initialData = _encodeOraclePack(_generateSortedOffsets(0));
 
         // ACT: Set timestamp to be in the same epoch as the initial data.
         vm.warp(INITIAL_EPOCH * 64 + 1); // e.g., timestamp >> 6 will still be 5
-        (, uint256 updatedData) = harness.computeInternalMedian(initialData, REFERENCE_TICK);
+        (, OraclePack updatedData) = harness.computeInternalMedian(initialData, REFERENCE_TICK);
 
         // ASSERT: The function should return 0 for updatedOraclePack.
-        assertEq(updatedData, 0, "Update should not happen in the same epoch");
+        assertEq(OraclePack.unwrap(updatedData), 0, "Update should not happen in the same epoch");
     }
 }

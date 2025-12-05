@@ -8,6 +8,7 @@ import {PositionBalance} from "@types/PositionBalance.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
+import {OraclePack} from "@types/OraclePack.sol";
 
 /// @notice Exposes internal functions of RiskEngine strictly for testing properties.
 /// DO NOT DEPLOY IN PROD.
@@ -28,7 +29,8 @@ contract RiskEngineHarness is RiskEngine {
             _targetPoolUtilization,
             _saturatedPoolUtilization,
             _crossBuffer0,
-            _crossBuffer1
+            _crossBuffer1,
+            address(0)
         )
     {}
 

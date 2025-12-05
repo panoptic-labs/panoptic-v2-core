@@ -9,6 +9,7 @@ import {FeesCalc} from "@libraries/FeesCalc.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk, LiquidityChunkLibrary} from "@types/LiquidityChunk.sol";
+import {OraclePack} from "@types/OraclePack.sol";
 import {PositionBalance} from "@types/PositionBalance.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
@@ -43,7 +44,7 @@ contract PanopticPoolHarness is PanopticPool {
         _positionsHash = uint248(s_positionsHash[user]);
     }
 
-    function oraclePack() external view returns (uint256) {
+    function oraclePack() external view returns (OraclePack) {
         return s_oraclePack;
     }
 
@@ -529,7 +530,8 @@ contract PanopticPoolTest is PositionUtils {
             5_000_000,
             9_000_000,
             10_000_000,
-            10_000_000
+            10_000_000,
+            address(0)
         );
 
         deal(token0, Deployer, type(uint104).max);
@@ -2216,7 +2218,7 @@ contract PanopticPoolTest is PositionUtils {
                 uint256 snapshot = vm.snapshot();
 
                 vm.startPrank(address(pp));
-                (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
+                (, LeftRightSigned totalMoved, ) = sfpm.mintTokenizedPosition(
                     abi.encode(pool),
                     tokenId,
                     positionSize,
@@ -2395,7 +2397,7 @@ contract PanopticPoolTest is PositionUtils {
                 uint256 snapshot = vm.snapshot();
 
                 vm.startPrank(address(pp));
-                (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
+                (, LeftRightSigned totalMoved, ) = sfpm.mintTokenizedPosition(
                     abi.encode(pool),
                     tokenId,
                     positionSize,
@@ -2791,7 +2793,7 @@ contract PanopticPoolTest is PositionUtils {
 
                 TokenId _tokenId = tokenId;
                 vm.startPrank(address(pp));
-                (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
+                (, LeftRightSigned totalMoved, ) = sfpm.mintTokenizedPosition(
                     abi.encode(pool),
                     _tokenId,
                     positionSize,
@@ -3966,7 +3968,7 @@ contract PanopticPoolTest is PositionUtils {
                 uint256 snapshot = vm.snapshot();
 
                 vm.startPrank(address(pp));
-                (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
+                (, LeftRightSigned totalMoved, ) = sfpm.mintTokenizedPosition(
                     abi.encode(pool),
                     tokenId,
                     positionSize,
@@ -4400,7 +4402,7 @@ contract PanopticPoolTest is PositionUtils {
 
                     TokenId _tokenId = tokenId;
                     vm.startPrank(address(pp));
-                    (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
+                    (, LeftRightSigned totalMoved, ) = sfpm.mintTokenizedPosition(
                         abi.encode(pool),
                         _tokenId,
                         positionSizes[1],
