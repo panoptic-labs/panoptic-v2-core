@@ -377,12 +377,14 @@ library OraclePackLibrary {
     ///                   - 8 tick observations stored as 12-bit signed residuals relative to reference tick
     /// @return medianTick The median tick value, representing the middle value of the sorted observations
     function getMedianTick(OraclePack oraclePack) internal pure returns (int24) {
-        int24 rank3 = oraclePack.residualTickOrdered(3);
-        int24 rank4 = oraclePack.residualTickOrdered(4);
+        unchecked {
+            int24 rank3 = oraclePack.residualTickOrdered(3);
+            int24 rank4 = oraclePack.residualTickOrdered(4);
 
-        int24 _referenceTick = oraclePack.referenceTick();
+            int24 _referenceTick = oraclePack.referenceTick();
 
-        return _referenceTick + ((rank3) + (rank4)) / 2;
+            return _referenceTick + ((rank3) + (rank4)) / 2;
+        }
     }
 
     /// @notice Inserts a new tick observation into the median data structure and updates EMAs
@@ -547,8 +549,10 @@ library OraclePackLibrary {
         // Extract the spote EMA from the lowest 22 bits of the packed EMAs value and assign it as the fast oracle price.
         spotEMATick = self.spotEMA();
 
-        // Reconstruct the absolute tick of the last observation by adding the reference tick (bits 96-119) to the latest residual (bits 0-11).
-        latestTick = self.referenceTick() + self.residualTick(0);
+        unchecked {
+            // Reconstruct the absolute tick of the last observation by adding the reference tick (bits 96-119) to the latest residual (bits 0-11).
+            latestTick = self.referenceTick() + self.residualTick(0);
+        }
         // finally, get the median tick
         (medianTick, oraclePack) = computeInternalMedian(self, _currentTick, _EMAperiods);
     }
@@ -566,22 +570,24 @@ library OraclePackLibrary {
     function rebaseOraclePack(
         OraclePack oraclePack
     ) internal pure returns (int24 _newReferenceTick, OraclePack rebasedOraclePack) {
-        int24 _referenceTick = oraclePack.referenceTick();
+        unchecked {
+            int24 _referenceTick = oraclePack.referenceTick();
 
-        _newReferenceTick = getMedianTick(oraclePack);
-        int24 deltaOffset = _newReferenceTick - _referenceTick;
+            _newReferenceTick = getMedianTick(oraclePack);
+            int24 deltaOffset = _newReferenceTick - _referenceTick;
 
-        uint256 _newResiduals;
-        for (uint8 i; i < 8; ++i) {
-            int24 _residual = oraclePack.residualTick(i);
-            int24 newEntry = _residual - deltaOffset;
-            _newResiduals += (uint256(uint16(uint24(newEntry) & 0x0FFF)) & 0x0FFF) << (i * 12);
+            uint256 _newResiduals;
+            for (uint8 i; i < 8; ++i) {
+                int24 _residual = oraclePack.residualTick(i);
+                int24 newEntry = _residual - deltaOffset;
+                _newResiduals += (uint256(uint16(uint24(newEntry) & 0x0FFF)) & 0x0FFF) << (i * 12);
+            }
+
+            rebasedOraclePack = OraclePack.wrap(
+                (OraclePack.unwrap(oraclePack) & UPPER_118BITS_MASK) +
+                    (uint256(uint24(_newReferenceTick) & BITMASK_UINT22) << 96) +
+                    uint96(_newResiduals)
+            );
         }
-
-        rebasedOraclePack = OraclePack.wrap(
-            (OraclePack.unwrap(oraclePack) & UPPER_118BITS_MASK) +
-                (uint256(uint24(_newReferenceTick) & BITMASK_UINT22) << 96) +
-                uint96(_newResiduals)
-        );
     }
 }

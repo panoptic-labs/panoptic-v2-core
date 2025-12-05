@@ -181,7 +181,7 @@ library PanopticMath {
                     );
         }
         */
-        {
+        unchecked {
             // LtHash, k=2
             uint256 itemHash = uint256(EfficientHash.efficientKeccak256(abi.encode(item)));
 

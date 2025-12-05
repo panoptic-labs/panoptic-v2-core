@@ -123,6 +123,10 @@ contract PanopticPool is Clone, Multicall {
     /// @notice Multiplier for the collateral requirement in the general case.
     uint24 internal constant NO_BUFFER = 10_000_000;
 
+    /// @notice Decimals for computation (1 bps (1 basis point) precision: 0.01%).
+    /// @dev uint type for composability with unsigned integer based mathematical operations.
+    uint256 internal constant DECIMALS = 10_000;
+
     /// @notice The "engine" of Panoptic - manages AMM liquidity and executes all mints/burns/exercises.
     ISemiFungiblePositionManager internal immutable SFPM;
 
@@ -406,7 +410,7 @@ contract PanopticPool is Clone, Multicall {
         TokenId[] calldata positionIdList,
         bool usePremiaAsCollateral
     ) external view {
-        RiskParameters riskParameters = getRiskParameters(0);
+        (RiskParameters riskParameters, ) = getRiskParameters(0);
         _validateSolvency(
             user,
             positionIdList,
@@ -567,7 +571,7 @@ contract PanopticPool is Clone, Multicall {
     /// @param finalPositionIdList The final positionIdList after all the tokens have been minted/burnt
     /// @param positionSizes The list of positionSize for the position to be minted (0 for burns)
     /// @param tickAndSpreadLimits A Nx3 array containing: the lower [0] and upper [1] bounds of an acceptable open interval for the ending price, and the maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
-    /// denominated as X32 = (`ratioLimit * 2^32`)
+    /// denominated as X10_000 = (`ratioLimit * 10_000`)
     /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
     function dispatch(
         TokenId[] calldata positionIdList,
@@ -578,8 +582,13 @@ contract PanopticPool is Clone, Multicall {
         uint256 builderCode
     ) external {
         // if safeMode, enforce covered at mint and exercise at burn
-        RiskParameters riskParameters = getRiskParameters(builderCode);
-
+        RiskParameters riskParameters;
+        LeftRightSigned cumulativeTickDeltas;
+        {
+            int24 startTick;
+            (riskParameters, startTick) = getRiskParameters(builderCode);
+            cumulativeTickDeltas = cumulativeTickDeltas.addToLeftSlot(startTick);
+        }
         for (uint256 i = 0; i < positionIdList.length; ) {
             TokenId tokenId = positionIdList[i];
 
@@ -597,12 +606,12 @@ contract PanopticPool is Clone, Multicall {
                     (_tickLimits[0], _tickLimits[1]) = (_tickLimits[1], _tickLimits[0]);
                 }
             }
-
+            int24 finalTick;
             if (PositionBalance.unwrap(positionBalanceData) == 0) {
                 // revert if more than 2 conditions are triggered to prevent the minting of any positions
                 if (riskParameters.safeMode() > 2) revert Errors.StaleOracle();
                 uint24 effectiveLiquidityLimit = uint24(tickAndSpreadLimits[i][2]);
-                (, int24 finalTick) = _mintOptions(
+                (, finalTick) = _mintOptions(
                     tokenId,
                     positionSizes[i],
                     effectiveLiquidityLimit,
@@ -614,7 +623,7 @@ contract PanopticPool is Clone, Multicall {
                 uint128 positionSize = positionBalanceData.positionSize();
                 if (positionSize == 0) revert Errors.PositionNotOwned();
 
-                (, , int24 finalTick) = _burnOptions(
+                (, , finalTick) = _burnOptions(
                     tokenId,
                     positionSize,
                     _tickLimits,
@@ -624,9 +633,16 @@ contract PanopticPool is Clone, Multicall {
                 );
             }
             unchecked {
+                cumulativeTickDeltas = cumulativeTickDeltas.addToRightSlot(
+                    int128(Math.abs(cumulativeTickDeltas.leftSlot() - finalTick))
+                );
                 ++i;
             }
         }
+        if (
+            cumulativeTickDeltas.leftSlot() >
+            int256(uint256(2 * riskParameters.tickDeltaLiquidation()))
+        ) revert Errors.StaleOracle();
 
         // Perform solvency check on user's account to ensure they had enough buying power to mint the option
         // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
@@ -748,7 +764,7 @@ contract PanopticPool is Clone, Multicall {
             paidAmounts = paidAmounts.addToLeftSlot(paid1);
         }
 
-        // return pool utilizations as two uint16 (pool Utilization is always <= 10000)
+        // return pool utilizations as two uint16 (pool Utilization is always <= 10_000)
         unchecked {
             return (utilizations, paidAmounts);
         }
@@ -958,8 +974,9 @@ contract PanopticPool is Clone, Multicall {
             (spotTick, , latestTick, ) = riskEngine().getOracleTicks(currentTick, s_oraclePack);
 
             unchecked {
+                (RiskParameters riskParameters, ) = getRiskParameters(0);
                 int256 MAX_TWAP_DELTA_LIQUIDATION = int256(
-                    uint256(getRiskParameters(0).tickDeltaLiquidation())
+                    uint256(riskParameters.tickDeltaLiquidation())
                 );
                 if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
                     revert Errors.StaleOracle();
@@ -983,7 +1000,6 @@ contract PanopticPool is Clone, Multicall {
             );
             numberOfTicks = atTicks.length;
         }
-        LeftRightSigned exchangedAmounts;
         {
             uint256 toLength = positionIdListTo.length;
             uint256 finalLength = positionIdListToFinal.length;
@@ -1034,7 +1050,7 @@ contract PanopticPool is Clone, Multicall {
 
                 if (positionIdListToFinal.length != 0) revert Errors.InputListFail();
                 // if the final position list has a non-zero length, this can't be a complete liquidation, revert
-                exchangedAmounts = _liquidate(account, positionIdListTo, twapTick, currentTick);
+                _liquidate(account, positionIdListTo, twapTick, currentTick);
             } else {
                 // otherwise, revert because the account is not fully margin called
                 revert Errors.NotMarginCalled();
@@ -1060,7 +1076,7 @@ contract PanopticPool is Clone, Multicall {
         TokenId[] calldata positionIdList,
         int24 twapTick,
         int24 currentTick
-    ) internal returns (LeftRightSigned bonusAmounts) {
+    ) internal {
         LeftRightUnsigned tokenData0;
         LeftRightUnsigned tokenData1;
         LeftRightUnsigned shortPremium;
@@ -1092,6 +1108,8 @@ contract PanopticPool is Clone, Multicall {
         collateralToken0().delegate(liquidatee);
         collateralToken1().delegate(liquidatee);
 
+        LeftRightSigned bonusAmounts;
+
         {
             LeftRightSigned netPaid;
             LeftRightSigned[4][] memory premiasByLeg;
@@ -1109,6 +1127,7 @@ contract PanopticPool is Clone, Multicall {
             );
 
             LeftRightSigned collateralRemaining;
+
             // compute bonus amounts using latest tick data
             (bonusAmounts, collateralRemaining) = riskEngine().getLiquidationBonus(
                 tokenData0,
@@ -1300,7 +1319,7 @@ contract PanopticPool is Clone, Multicall {
                         );
                 }
                 {
-                    RiskParameters riskParameters = getRiskParameters(0);
+                    (RiskParameters riskParameters, ) = getRiskParameters(0);
                     // deduct the paid premium tokens from the owner's balance and add them to the cumulative settled token delta
                     ct0.settleBurn(owner, 0, 0, 0, -realizedPremia.rightSlot(), riskParameters);
                     ct1.settleBurn(owner, 0, 0, 0, -realizedPremia.leftSlot(), riskParameters);
@@ -1373,17 +1392,15 @@ contract PanopticPool is Clone, Multicall {
 
         // if safeMode is ON, make the collateral requirements for 100% utilizations: no cross-margining, fully covered positions
         if (safeMode > 0) {
-            uint32 maxUtilizations = uint32(10_000 + (10_000 << 16));
+            uint32 maxUtilizations = uint32(DECIMALS + (DECIMALS << 16));
             positionBalanceArray[0] = PositionBalanceLibrary.storeBalanceData(
                 positionBalanceArray[0].positionSize(),
                 maxUtilizations,
                 0
             );
         }
-        uint256 numberOfTicks = atTicks.length;
-
         uint256 solvent;
-        for (uint256 i; i < numberOfTicks; ) {
+        for (uint256 i; i < atTicks.length; ) {
             unchecked {
                 if (
                     _isAccountSolvent(
@@ -1437,16 +1454,18 @@ contract PanopticPool is Clone, Multicall {
 
     /// @notice Get risk parameters from the risk engine.
     /// @dev Also checks whether the current tick has deviated too much from the previouslyt stored ticks. Computed in the RiskEngine
-    function getRiskParameters(uint256 builderCode) public view returns (RiskParameters) {
-        int24 currentTick = SFPM.getCurrentTick(poolKey());
-        return riskEngine().getRiskParameters(currentTick, s_oraclePack, builderCode);
+    function getRiskParameters(
+        uint256 builderCode
+    ) public view returns (RiskParameters riskParameters, int24 currentTick) {
+        currentTick = SFPM.getCurrentTick(poolKey());
+        riskParameters = riskEngine().getRiskParameters(currentTick, s_oraclePack, builderCode);
     }
 
     /// @notice Checks whether the current tick has deviated too much from the previouslyt stored ticks. Computed in the RiskEngine
     /// @return Whether the current tick has deviated too much to warrant putting the protocol in safe mode
     function isSafeMode() external view returns (uint8) {
-        int24 currentTick = SFPM.getCurrentTick(poolKey());
-        return riskEngine().getRiskParameters(currentTick, s_oraclePack, 0).safeMode();
+        (RiskParameters riskParameters, ) = getRiskParameters(0);
+        return riskParameters.safeMode();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1596,7 +1615,7 @@ contract PanopticPool is Clone, Multicall {
 
         uint256 effectiveLiquidityFactor;
         unchecked {
-            effectiveLiquidityFactor = (removedLiquidity * 10_000) / netLiquidity;
+            effectiveLiquidityFactor = (removedLiquidity * DECIMALS) / netLiquidity;
         }
 
         // put a limit on how much new liquidity in one transaction can be deployed into this leg
