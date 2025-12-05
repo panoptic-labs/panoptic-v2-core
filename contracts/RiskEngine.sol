@@ -244,8 +244,7 @@ contract RiskEngine {
     /// @param token The address of the ERC20 token to collect
     /// @param recipient The address to send the tokens to
     /// @param amount The amount of tokens to collect
-    /// @dev UNSAFE! ADD ACCESS CONTROL
-    function collect(address token, address recipient, uint256 amount) public {
+    function collect(address token, address recipient, uint256 amount) public onlyGuardian {
         if (amount == 0) revert Errors.BelowMinimumRedemption();
 
         SafeTransferLib.safeTransfer(token, recipient, amount);
@@ -256,8 +255,7 @@ contract RiskEngine {
     /// @notice Collects all available tokens of a specific type from this contract
     /// @param token The address of the ERC20 token to collect
     /// @param recipient The address to send the tokens to
-    /// @dev UNSAFE! ADD ACCESS CONTROL
-    function collect(address token, address recipient) external {
+    function collect(address token, address recipient) external onlyGuardian {
         // Get the full balance
         uint256 balance = SafeTransferLib.balanceOfOrZero(token, address(this));
         collect(token, recipient, balance);
