@@ -62,7 +62,7 @@ library SafeTransferLib {
         }
 
         if (!success) {
-            uint256 balance = _balanceOfOrZero(token, from);
+            uint256 balance = balanceOfOrZero(token, from);
             revert Errors.TransferFailed(token, from, amount, balance);
         }
     }
@@ -95,12 +95,12 @@ library SafeTransferLib {
         }
 
         if (!success) {
-            uint256 balance = _balanceOfOrZero(token, address(this));
+            uint256 balance = balanceOfOrZero(token, address(this));
             revert Errors.TransferFailed(token, address(this), amount, balance);
         }
     }
 
-    function _balanceOfOrZero(address token, address who) private view returns (uint256 bal) {
+    function balanceOfOrZero(address token, address who) internal view returns (uint256 bal) {
         assembly ("memory-safe") {
             let p := mload(0x40)
             mstore(p, 0x70a0823100000000000000000000000000000000000000000000000000000000) // balanceOf(address)

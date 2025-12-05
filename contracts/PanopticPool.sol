@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 // Interfaces
-import "forge-std/Test.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
@@ -1079,8 +1078,6 @@ contract PanopticPool is Clone, Multicall {
                 Math.getSqrtRatioAtTick(_twapTick),
                 s_settledTokens
             );
-            console2.log("bonDelta0", bonusDeltas.rightSlot());
-            console2.log("bonDelta1", bonusDeltas.leftSlot());
             bonusAmounts = bonusAmounts.add(bonusDeltas);
         }
 
