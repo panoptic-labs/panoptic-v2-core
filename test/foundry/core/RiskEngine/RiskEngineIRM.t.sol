@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {RiskEngineHarness} from "./RiskEngineHarness.sol";
+import {MarketState} from "@types/MarketState.sol";
 
 /// @title RiskEngine IRM Tests
 /// @notice This contract specifically tests the Adaptive Interest Rate Model (IRM)
@@ -39,9 +40,15 @@ contract RiskEngineIRMTest is Test {
     /// @dev Based on unpacking logic in RiskEngine._borrowRate:
     /// rate -> (interestRateAccumulator >> 112) % 2 ** 38
     /// time -> uint32(interestRateAccumulator >> 80)
-    function _packAccumulator(int256 rateAtTarget, uint32 time) internal pure returns (uint256) {
+    function _packAccumulator(
+        int256 rateAtTarget,
+        uint32 time
+    ) internal pure returns (MarketState) {
         // Pack rate at bits 112-149 and time at bits 80-111
-        return (uint256((uint256(rateAtTarget)) % 2 ** 38) << 112) | (uint256(time / 4) << 80);
+        return
+            MarketState.wrap(0).updateRateAtTarget(uint40(uint256(rateAtTarget))).updateMarketEpoch(
+                time / 4
+            );
     }
 
     /// @notice Packs all fields into the accumulator format.
@@ -55,12 +62,14 @@ contract RiskEngineIRMTest is Test {
         int256 rateAtTarget,
         uint32 time,
         uint80 borrowIndex
-    ) internal pure returns (uint256) {
-        uint256 p_interest = (uint256(unrealizedInterest) % 2 ** 106) << 150;
-        uint256 p_rate = (uint256(uint256(rateAtTarget) % 2 ** 38)) << 112;
-        uint256 p_time = (uint256(time) % 2 ** 32) << 80;
-        uint256 p_index = (uint256(borrowIndex) % 2 ** 80);
-        return p_interest | p_rate | p_time | p_index;
+    ) internal pure returns (MarketState) {
+        return
+            MarketState
+                .wrap(0)
+                .updateUnrealizedInterest(unrealizedInterest)
+                .updateRateAtTarget(uint40(uint256(rateAtTarget)))
+                .updateMarketEpoch(time / 4)
+                .updateBorrowIndex(borrowIndex);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -70,7 +79,7 @@ contract RiskEngineIRMTest is Test {
     /// @notice Tests the first call to updateInterestRate when the accumulator is 0.
     /// @dev This covers the `if (startRateAtTarget == 0)` block.
     function test_IRM_firstInteraction() public {
-        uint256 accum = 0;
+        MarketState accum = MarketState.wrap(0);
         uint256 util = uint256(TARGET_UTILIZATION);
 
         // Act
@@ -95,8 +104,8 @@ contract RiskEngineIRMTest is Test {
         uint32 time1 = 1000;
         vm.warp(time1);
         uint256 util1 = uint256(TARGET_UTILIZATION);
-        (, uint256 rate1) = E.updateInterestRate(util1, 0);
-        uint256 accum1 = _packAccumulator(int256(rate1), time1);
+        (, uint256 rate1) = E.updateInterestRate(util1, MarketState.wrap(0));
+        MarketState accum1 = _packAccumulator(int256(rate1), time1);
 
         // --- Test: Second interaction ---
         uint32 time2 = time1 + 3600; // 1 hour later
@@ -124,8 +133,8 @@ contract RiskEngineIRMTest is Test {
         uint32 time1 = 1000;
         vm.warp(time1);
         uint256 util1 = uint256(TARGET_UTILIZATION);
-        (, uint256 rate1) = E.updateInterestRate(util1, 0);
-        uint256 accum1 = _packAccumulator(int256(rate1), time1);
+        (, uint256 rate1) = E.updateInterestRate(util1, MarketState.wrap(0));
+        MarketState accum1 = _packAccumulator(int256(rate1), time1);
 
         // --- Test: Second interaction ---
         uint32 time2 = time1 + 3600; // 1 hour later
@@ -150,14 +159,17 @@ contract RiskEngineIRMTest is Test {
         uint32 time1 = 1000;
         vm.warp(time1);
         uint256 util1 = uint256(TARGET_UTILIZATION);
-        (, uint256 rate1) = E.updateInterestRate(util1, 0);
-        uint256 accum1 = _packAccumulator(int256(rate1), time1);
+        console2.log("first");
+        (, uint256 rate1) = E.updateInterestRate(util1, MarketState.wrap(0));
+        MarketState accum1 = _packAccumulator(int256(rate1), time1);
 
+        console2.log("time1");
         // --- Test: Second interaction (no time warp) ---
         // `elapsed` will be 0, so `linearAdaptation` will be 0.
         uint256 util2 = uint256(TARGET_UTILIZATION + 0.1 ether); // Change util
 
         // Act
+        console2.log("second");
         (uint128 avgRate2, uint256 endRate2) = E.updateInterestRate(util2, accum1);
 
         // Assert
@@ -176,8 +188,8 @@ contract RiskEngineIRMTest is Test {
         uint32 time1 = 1000;
         vm.warp(time1);
         uint256 util1 = uint256(TARGET_UTILIZATION);
-        (, uint256 rate1) = E.updateInterestRate(util1, 0);
-        uint256 accum1 = _packAccumulator(int256(rate1), time1);
+        (, uint256 rate1) = E.updateInterestRate(util1, MarketState.wrap(0));
+        MarketState accum1 = _packAccumulator(int256(rate1), time1);
 
         // --- Test: Second interaction ---
         uint32 time2 = time1 + 3600; // 1 hour later
@@ -210,9 +222,9 @@ contract RiskEngineIRMTest is Test {
         int256 rate = INITIAL_RATE_AT_TARGET;
 
         // Pack with borrow index = 0
-        uint256 accum_zero_index = _packAccumulatorFull(0, rate, time, 0);
+        MarketState accum_zero_index = _packAccumulatorFull(0, rate, time, 0);
         // Pack with borrow index = max
-        uint256 accum_max_index = _packAccumulatorFull(0, rate, time, type(uint80).max);
+        MarketState accum_max_index = _packAccumulatorFull(0, rate, time, type(uint80).max);
 
         // Act
         (uint128 avgRate0, uint256 endRate0) = E.updateInterestRate(util, accum_zero_index);
@@ -235,7 +247,7 @@ contract RiskEngineIRMTest is Test {
         uint32 time1 = type(uint32).max - 3600; // 1 hour before wrap
         vm.warp(time1);
         int256 rate1 = INITIAL_RATE_AT_TARGET;
-        uint256 accum1 = _packAccumulator(rate1, time1);
+        MarketState accum1 = _packAccumulator(rate1, time1);
 
         // --- Test ---
         // Set the current time to be *after* the wrap (e.g., back to 1970)
@@ -270,11 +282,13 @@ contract RiskEngineIRMTest is Test {
         int256 rate = INITIAL_RATE_AT_TARGET;
 
         // Pack with unrealized interest = 0
-        uint256 accum_normal = _packAccumulator(rate, time);
+        MarketState accum_normal = _packAccumulator(rate, time);
 
         // Pack with unrealized interest bits set (bit 150).
         // This simulates a value > 2**38 *if* the field was read incorrectly.
-        uint256 accum_overflow = accum_normal | (uint256(1) << 150);
+        MarketState accum_overflow = MarketState.wrap(
+            MarketState.unwrap(accum_normal) | (uint256(1) << 150)
+        );
 
         // Act
         (uint128 avgRate_normal, uint256 endRate_normal) = E.updateInterestRate(util, accum_normal);
@@ -311,7 +325,7 @@ contract RiskEngineIRMTest is Test {
         vm.warp(time1);
 
         // Setup
-        uint256 accum = _packAccumulator(startRate, time1);
+        MarketState accum = _packAccumulator(startRate, time1);
         uint256 util = uint256(TARGET_UTILIZATION + utilOffset);
 
         // Act

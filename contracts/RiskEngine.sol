@@ -1978,7 +1978,7 @@ contract RiskEngine {
         int256 startRateAtTarget = int256(uint256(interestRateAccumulator.rateAtTarget()));
 
         // convert from epoch to time. Used to avoid Y2K38
-        uint256 previousTime = interestRateAccumulator.marketEpoch();
+        uint256 previousTime = interestRateAccumulator.marketEpoch() << 2;
 
         int256 avgRateAtTarget;
         int256 endRateAtTarget;

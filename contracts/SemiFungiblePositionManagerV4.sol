@@ -535,7 +535,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             TokenId tokenId,
             bool isBurn
         ) = abi.decode(data, (address, PoolKey, int24, int24, uint128, TokenId, bool));
-        bool invertedLimits;
+        bool invertedLimits = tickLimitLow > tickLimitHigh;
         (
             LeftRightUnsigned[4] memory collectedByLeg,
             LeftRightSigned totalMoved

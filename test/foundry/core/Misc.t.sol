@@ -1730,6 +1730,7 @@ contract Misctest is Test, PositionUtils {
         token1.mint(Swapper, type(uint128).max);
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
+        routerV4.modifyLiquidity(address(0), poolKey, -10000, 10000, 10 ** 24);
 
         {
             poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
@@ -4811,7 +4812,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -100000, 100000, 10 ** 24);
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
@@ -4868,7 +4869,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -100000, 100000, 10 ** 24);
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
@@ -4985,7 +4986,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -100000, 100000, 10 ** 24);
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
@@ -5086,7 +5087,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -100000, 100000, 10 ** 24);
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
@@ -6090,7 +6091,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -100000, 100000, 10 ** 18);
 
         // L = 1
         uniPool.liquidity();
@@ -6111,7 +6112,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, -10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -100000, 100000, -10 ** 18);
 
         // L = 2
         uniPool.liquidity();
@@ -6121,7 +6122,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -100000, 100000, 10 ** 18);
 
         vm.startPrank(Bob);
         // works fine
@@ -6152,7 +6153,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, -10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -100000, 100000, -10 ** 18);
 
         // overflow back to ~1_000_000_000_000 (fees per liq)
         accruePoolFeesInRange(manager, poolKey, 412639631, 1_000_000_000_000, 1_000_000_000_000);
@@ -6172,7 +6173,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -100000, 100000, 10 ** 18);
         vm.startPrank(Alice);
 
         // tough luck... PLPs just stole ~2**64 tokens per liquidity Alice had because of an overflow
@@ -6214,7 +6215,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -100000, 100000, 10 ** 24);
 
         vm.startPrank(Seller);
 
@@ -6336,7 +6337,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -100000, 100000, 10 ** 24);
 
         vm.startPrank(Seller);
 
@@ -6450,7 +6451,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -100000, 100000, 10 ** 24);
 
         vm.startPrank(Seller);
 

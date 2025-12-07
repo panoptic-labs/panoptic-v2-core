@@ -2236,7 +2236,7 @@ contract PanopticPoolTest is PositionUtils {
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
-        positionSize = uint128(bound(positionSizeSeed, 10 ** 10, 5 * 10 ** 15));
+        positionSize = uint128(bound(positionSizeSeed, 10 ** 10, 5 * 10 ** 14));
 
         uint256 bobBefore0 = (ct0.balanceOf(Bob));
         uint256 bobBefore1 = (ct1.balanceOf(Bob));
@@ -2424,7 +2424,7 @@ contract PanopticPoolTest is PositionUtils {
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
-        positionSize = uint128(bound(positionSizeSeed, 10 ** 10, 5 * 10 ** 15));
+        positionSize = uint128(bound(positionSizeSeed, 10 ** 10, 5 * 10 ** 12));
 
         int256 bobBefore0 = int256(ct0.balanceOf(Bob));
         int256 bobBefore1 = int256(ct1.balanceOf(Bob));

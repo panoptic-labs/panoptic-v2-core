@@ -98,6 +98,9 @@ library Errors {
     /// @notice The current tick in the pool (post-ITM-swap) has fallen outside a user-defined open interval slippage range
     error PriceBoundFail(int24 currentTick);
 
+    /// @notice The Price impact of that trade is too large
+    error PriceImpactTooLarge();
+
     /// @notice An oracle price is too far away from another oracle price or the current tick
     /// @dev This is a safeguard against price manipulation during option mints, burns, liquidations, force exercises, and premium settlements
     error StaleOracle();

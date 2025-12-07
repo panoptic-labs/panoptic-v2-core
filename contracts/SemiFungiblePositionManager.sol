@@ -601,7 +601,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         if ((currentTick >= tickLimitHigh) || (currentTick <= tickLimitLow))
             revert Errors.PriceBoundFail(currentTick);
 
-        return (collected, totalMoved, int24(0));
+        return (collected, totalMoved, currentTick);
     }
 
     /// @notice Create a new position `tokenId` containing up to 4 legs.

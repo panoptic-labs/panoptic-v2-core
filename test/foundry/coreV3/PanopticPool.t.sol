@@ -555,6 +555,28 @@ contract PanopticPoolTest is PositionUtils {
 
         deal(token0, Swapper, type(uint104).max);
         deal(token1, Swapper, type(uint104).max);
+        IERC20Partial(token0).approve(address(sfpm), type(uint256).max);
+        IERC20Partial(token1).approve(address(sfpm), type(uint256).max);
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            isWETH,
+            0,
+            (currentTick / tickSpacing) * tickSpacing,
+            100
+        );
+        console2.log("b0", IERC20Partial(token0).balanceOf(Swapper));
+        console2.log("b1", IERC20Partial(token1).balanceOf(Swapper));
+        sfpm.mintTokenizedPosition(
+            abi.encode(pool),
+            tokenId,
+            10 ** 30,
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
 
         vm.startPrank(Charlie);
 
@@ -2185,7 +2207,7 @@ contract PanopticPoolTest is PositionUtils {
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
-        positionSize = uint128(bound(positionSizeSeed, 10 ** 10, 5 * 10 ** 15));
+        positionSize = uint128(bound(positionSizeSeed, 10 ** 10, 5 * 10 ** 12));
 
         uint256 bobBefore0 = (ct0.balanceOf(Bob));
         uint256 bobBefore1 = (ct1.balanceOf(Bob));
@@ -2197,6 +2219,8 @@ contract PanopticPoolTest is PositionUtils {
             true
         );
 
+        console2.log("a.r", amountsMoved.rightSlot());
+        console2.log("a.l", amountsMoved.leftSlot());
         int256 newSharesFromLoan0;
         int256 newSharesFromLoan1;
         {
@@ -2361,7 +2385,7 @@ contract PanopticPoolTest is PositionUtils {
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
-        positionSize = uint128(bound(positionSizeSeed, 10 ** 10, 5 * 10 ** 15));
+        positionSize = uint128(bound(positionSizeSeed, 10 ** 10, 5 * 10 ** 12));
 
         int256 bobBefore0 = int256(ct0.balanceOf(Bob));
         int256 bobBefore1 = int256(ct1.balanceOf(Bob));

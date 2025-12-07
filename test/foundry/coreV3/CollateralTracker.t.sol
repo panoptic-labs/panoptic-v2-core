@@ -16,6 +16,7 @@ import {Math} from "@libraries/PanopticMath.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
+import {MarketState} from "@types/MarketState.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
 import {Constants} from "@libraries/Constants.sol";
@@ -63,8 +64,8 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
         return s_depositedAssets;
     }
 
-    function _interestRateAccumulator() external view returns (uint256) {
-        return s_interestRateAccumulator;
+    function _marketState() external view returns (uint256) {
+        return MarketState.unwrap(s_marketState);
     }
 
     function _totalAssets() external view returns (uint256 totalManagedAssets) {
@@ -99,8 +100,8 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
         s_creditedShares = uint256(amount);
     }
 
-    function setInterestRateAccumulator(uint256 amount) external {
-        s_interestRateAccumulator = amount;
+    function setMarketState(uint256 amount) external {
+        s_marketState = MarketState.wrap(amount);
     }
 
     function setBalance(address owner, uint256 amount) external {
@@ -1030,7 +1031,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             expectedNewIndex;
 
         // Get the actual new accumulator value from the contract
-        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 actualAccumulator = collateralToken0._marketState();
 
         // Assert they are equal
         assertEq(
@@ -1069,7 +1070,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             expectedNewIndex;
 
         // Get the actual new accumulator value from the contract
-        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 actualAccumulator = collateralToken0._marketState();
 
         // Assert they are equal
         assertEq(
@@ -1096,7 +1097,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         uint128 perSecondInterestRate = collateralToken0.interestRate();
         collateralToken0.accrueInterest();
-        console2.log("acc2", collateralToken0._interestRateAccumulator());
+        console2.log("acc2", collateralToken0._marketState());
         // Calculate the expected new borrow index
         uint256 interestForPeriod = Math.wTaylorCompounded(uint256(perSecondInterestRate), 20);
         uint256 expectedNewIndex = Math.mulDivWadRoundingUp(
@@ -1113,7 +1114,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint128((uint256(uint32(startingTime + 20) >> 2) << 80) + expectedNewIndex);
 
         // Get the actual new accumulator value from the contract
-        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 actualAccumulator = collateralToken0._marketState();
 
         console2.log("collateralToken0.rateAtTarget()", collateralToken0.rateAtTarget());
         // Assert they are equal
@@ -1163,7 +1164,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             expectedNewIndex;
 
         // Get the actual new accumulator value from the contract.
-        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 actualAccumulator = collateralToken0._marketState();
 
         //  Assert they are equal.
         assertEq(
@@ -1178,8 +1179,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint104 assets = 1000 ether; // Use a fixed deposit amount
 
         // Get the initial borrow index right after initialization
-        uint256 initialAccumulator = collateralToken0._interestRateAccumulator() % 2 ** 80;
-        uint80 initialBorrowIndex = uint80(collateralToken0._interestRateAccumulator());
+        uint256 initialAccumulator = collateralToken0._marketState() % 2 ** 80;
+        uint80 initialBorrowIndex = uint80(collateralToken0._marketState());
 
         // --- Alice deposits ---
         vm.startPrank(Alice);
@@ -1199,7 +1200,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 currentRate = collateralToken0.interestRate();
 
         // Get the final borrow index.
-        uint128 finalAccumulator = uint128(collateralToken0._interestRateAccumulator()) % 2 ** 80;
+        uint128 finalAccumulator = uint128(collateralToken0._marketState()) % 2 ** 80;
 
         // 4. Assert that the index has not changed from its initial value.
         assertEq(
@@ -1254,7 +1255,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (collateralToken0.rateAtTarget() << 112) +
             (((timestampAfterBorrow + blocksToSkip * 12) >> 2) << 80) +
             expectedNewIndex;
-        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 actualAccumulator = collateralToken0._marketState();
 
         // 4. Assert the final state is correct.
         assertEq(
@@ -1377,7 +1378,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             //collateralToken0.redeem(shares, Alice, Alice);
         }
 
-        uint256 expectedAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 expectedAccumulator = collateralToken0._marketState();
 
         vm.stopPrank();
         vm.revertTo(snapshot);
@@ -1404,7 +1405,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // The transient storage should have protected the state.
         // The final accumulator should match the one we calculated
         // using the *high* utilization rate.
-        uint256 attackAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 attackAccumulator = collateralToken0._marketState();
 
         assertTrue(
             attackAccumulator != expectedAccumulator,
@@ -1417,7 +1418,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint104 assets = 1000 ether; // Use a fixed deposit amount
 
         // Get the initial borrow index right after initialization
-        uint128 initialBorrowIndex = uint80(collateralToken0._interestRateAccumulator());
+        uint128 initialBorrowIndex = uint80(collateralToken0._marketState());
 
         // --- Alice deposits ---
         vm.startPrank(Alice);
@@ -1488,7 +1489,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (collateralToken0.rateAtTarget() << 112) +
             (((timestampAfterBorrow + blocksToSkip * 12) >> 2) << 80) +
             expectedNewIndex;
-        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 actualAccumulator = collateralToken0._marketState();
 
         // 4. Assert the final state is correct.
         assertEq(
@@ -1521,7 +1522,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             Constants.MIN_POOL_TICK,
             true
         );
-        actualAccumulator = collateralToken0._interestRateAccumulator();
+        actualAccumulator = collateralToken0._marketState();
 
         uint256 unrealizedGlobalInterestAfter = actualAccumulator >> 150;
 
@@ -1547,7 +1548,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             true
         );
         console2.log("DONE", Bob);
-        actualAccumulator = collateralToken0._interestRateAccumulator();
+        actualAccumulator = collateralToken0._marketState();
         unrealizedGlobalInterestAfter = actualAccumulator >> 150;
         assertEq(unrealizedGlobalInterestAfter, 0, "FAIL: unrealized interest is not zero");
 
@@ -1564,7 +1565,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint104 assets = 1000 ether; // Use a fixed deposit amount
 
         // Get the initial borrow index right after initialization
-        uint128 initialBorrowIndex = uint80(collateralToken0._interestRateAccumulator());
+        uint128 initialBorrowIndex = uint80(collateralToken0._marketState());
 
         // --- Alice deposits ---
         vm.startPrank(Alice);
@@ -1624,11 +1625,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint32 blocksToSkip = 7200 * 365;
         vm.roll(blockAfterBorrow + blocksToSkip);
         vm.warp(timestampAfterBorrow + blocksToSkip * 12);
-        console2.log("before accru", uint128(collateralToken0._interestRateAccumulator()));
+        console2.log("before accru", uint128(collateralToken0._marketState()));
         uint128 perSecondInterestRate = collateralToken0.interestRate();
         assertGt(perSecondInterestRate, 0, "FAIL: Rate should be positive after borrow");
         collateralToken0.accrueInterest();
-        console2.log("after accru", uint128(collateralToken0._interestRateAccumulator()));
+        console2.log("after accru", uint128(collateralToken0._marketState()));
 
         {
             (, , , uint256 utilization) = collateralToken0.getPoolData();
@@ -1655,7 +1656,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (collateralToken0.rateAtTarget() << 112) +
             (((timestampAfterBorrow + blocksToSkip * 12) >> 2) << 80) +
             expectedNewIndex;
-        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 actualAccumulator = collateralToken0._marketState();
 
         // 4. Assert the final state is correct.
         assertEq(
@@ -1711,7 +1712,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint104 assets = 1000 ether; // Use a fixed deposit amount
 
         // Get the initial borrow index right after initialization
-        uint128 initialBorrowIndex = uint128(uint80(collateralToken0._interestRateAccumulator()));
+        uint128 initialBorrowIndex = uint128(uint80(collateralToken0._marketState()));
 
         // --- Alice deposits ---
         vm.startPrank(Alice);
@@ -1797,12 +1798,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint32 blocksToSkip = 7200 * 365;
         vm.roll(blockAfterBorrow + blocksToSkip);
         vm.warp(timestampAfterBorrow + blocksToSkip * 12);
-        console2.log("before accru", uint128(collateralToken0._interestRateAccumulator()));
+        console2.log("before accru", uint128(collateralToken0._marketState()));
         uint128 perSecondInterestRate = collateralToken0.interestRate();
         assertGt(perSecondInterestRate, 0, "FAIL: Rate should be positive after borrow");
 
         collateralToken0.accrueInterest();
-        console2.log("after accru", uint128(collateralToken0._interestRateAccumulator()));
+        console2.log("after accru", uint128(collateralToken0._marketState()));
 
         {
             (, , , uint256 utilization) = collateralToken0.getPoolData();
@@ -1828,7 +1829,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (uint256(collateralToken0.rateAtTarget()) << 112) +
             (((timestampAfterBorrow + blocksToSkip * 12) >> 2) << 80) +
             expectedNewIndex;
-        uint256 actualAccumulator = (collateralToken0._interestRateAccumulator());
+        uint256 actualAccumulator = (collateralToken0._marketState());
 
         // 4. Assert the final state is correct.
         assertEq(
@@ -1890,7 +1891,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint104 assets = 1000 ether; // Use a fixed deposit amount
 
         // Get the initial borrow index right after initialization
-        uint128 initialBorrowIndex = uint80(collateralToken0._interestRateAccumulator());
+        uint128 initialBorrowIndex = uint80(collateralToken0._marketState());
 
         // --- Alice deposits ---
         vm.startPrank(Alice);
@@ -1965,7 +1966,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (collateralToken0.rateAtTarget() << 112) +
             (((timestampAfterBorrow + blocksToSkip * blockTime) >> 2) << 80) +
             expectedNewIndex;
-        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 actualAccumulator = collateralToken0._marketState();
 
         // 4. Assert the final state is correct.
         assertEq(
@@ -1994,7 +1995,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         assertTrue(baseIndexAfter > baseIndexBefore, "FAIL: Bob's base index did not increased");
 
-        actualAccumulator = collateralToken0._interestRateAccumulator();
+        actualAccumulator = collateralToken0._marketState();
 
         assertEq(actualAccumulator >> 150, 0, "FAIL: still outstanding interest");
         assertEq(actualAccumulator % 2 ** 80, expectedNewIndex, "Fail: wrong index");
@@ -2458,7 +2459,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint104 assets = 1000 ether; // Use a fixed deposit amount
 
         // Get the initial borrow index right after initialization
-        uint128 initialBorrowIndex = uint80(collateralToken0._interestRateAccumulator());
+        uint128 initialBorrowIndex = uint80(collateralToken0._marketState());
 
         // --- Alice deposits ---
         vm.startPrank(Alice);
@@ -2596,7 +2597,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (((timestampAfterBorrow + blocksToSkip * 12) >> 2) << 80) +
             expectedNewIndex;
 
-        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 actualAccumulator = collateralToken0._marketState();
 
         // 4. Assert the final state is correct.
         assertEq(
@@ -2732,7 +2733,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         vm.stopPrank();
 
         // Record initial state
-        uint256 initialAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 initialAccumulator = collateralToken0._marketState();
         uint128 initialOwedInterest = collateralToken0.owedInterest(Bob);
 
         // Should be 0 initially since no time has passed
@@ -2746,7 +2747,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 previewedInterest = collateralToken0.previewOwedInterest(Bob);
 
         // Verify state hasn't changed
-        uint256 accumulatorAfterPreview = collateralToken0._interestRateAccumulator();
+        uint256 accumulatorAfterPreview = collateralToken0._marketState();
         assertEq(
             accumulatorAfterPreview,
             initialAccumulator,
@@ -3663,7 +3664,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 previewedInterest = collateralToken0.previewOwedInterest(Bob);
 
         // Store state before accrual to verify preview didn't change it
-        uint256 accumulatorBefore = collateralToken0._interestRateAccumulator();
+        uint256 accumulatorBefore = collateralToken0._marketState();
         (int128 baseIndexBefore, int128 netBorrowsBefore) = collateralToken0.interestState(Bob);
 
         // Actually accrue interest
@@ -3948,7 +3949,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         Math.wTaylorCompounded(2 ** 93, type(uint32).max);
 
         // Record initial state
-        uint256 initialAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 initialAccumulator = collateralToken0._marketState();
         uint256 bobInitialBalance = collateralToken0.balanceOf(Bob);
         (int128 initialBaseIndex, int128 initialNetBorrows) = collateralToken0.interestState(Bob);
 
@@ -3961,7 +3962,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.accrueInterest();
 
         // Verify state updated correctly
-        uint256 newAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 newAccumulator = collateralToken0._marketState();
         assertGt(newAccumulator, initialAccumulator, "Accumulator should have increased");
 
         // Verify Bob paid interest (or was wiped out if insolvent)
@@ -5541,8 +5542,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             positionSize0,
             0,
-            Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 

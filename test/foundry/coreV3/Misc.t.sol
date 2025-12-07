@@ -1542,6 +1542,7 @@ contract Misctest is Test, PositionUtils {
         token1.mint(Swapper, type(uint128).max);
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
 
         {
             poolId = uint64(uint160(address(uniPool)) >> 112);
@@ -1856,8 +1857,8 @@ contract Misctest is Test, PositionUtils {
         vm.warp(block.timestamp + 600);
         vm.roll(block.number + 1);
 
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
+        swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
 
         (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
             .getOracleTicks();
@@ -2268,8 +2269,8 @@ contract Misctest is Test, PositionUtils {
         vm.warp(block.timestamp + 600);
         vm.roll(block.number + 1);
 
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
+        swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
 
         (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
             .getOracleTicks();
@@ -3486,7 +3487,7 @@ contract Misctest is Test, PositionUtils {
         int256 premium0 = 10388;
         int256 premium1 = 10388989;
 
-        uint160 lastObservedPrice = Math.getSqrtRatioAtTick(44);
+        uint160 lastObservedPrice = Math.getSqrtRatioAtTick(49);
 
         vm.startPrank(Alice);
 
@@ -3942,11 +3943,11 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
 
@@ -4012,11 +4013,11 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
 
@@ -4081,11 +4082,11 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
 
@@ -4259,11 +4260,11 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
 
@@ -4535,13 +4536,13 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
@@ -4588,13 +4589,13 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
@@ -4702,13 +4703,13 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
@@ -4801,13 +4802,13 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
@@ -4903,11 +4904,11 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
         swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
         vm.warp((block.timestamp >> 6) * 64 + 128);
@@ -5144,11 +5145,11 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
         swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
         vm.warp(2 ** 30 - 1);
@@ -5220,11 +5221,11 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
 
         (currentTick, , , , oraclePack) = pp.getOracleTicks();
@@ -5763,7 +5764,7 @@ contract Misctest is Test, PositionUtils {
     function test_success_PremiumRollover() public {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
 
         // L = 1
         uniPool.liquidity();
@@ -5783,7 +5784,7 @@ contract Misctest is Test, PositionUtils {
         mintOptions(pp, posIdList, 3, 0, Constants.MAX_POOL_TICK, Constants.MIN_POOL_TICK, true);
 
         vm.startPrank(Swapper);
-        swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
 
         // L = 2
         uniPool.liquidity();
@@ -5792,7 +5793,7 @@ contract Misctest is Test, PositionUtils {
         accruePoolFeesInRange(address(uniPool), 1, 2 ** 64 - 1, 0);
 
         vm.startPrank(Swapper);
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
 
         vm.startPrank(Bob);
         // works fine
@@ -5822,7 +5823,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.startPrank(Swapper);
-        swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
 
         // overflow back to ~1_000_000_000_000 (fees per liq)
         accruePoolFeesInRange(address(uniPool), 412639631, 1_000_000_000_000, 1_000_000_000_000);
@@ -5841,7 +5842,7 @@ contract Misctest is Test, PositionUtils {
         assertEq(premium1, 44704247211996718928643);
 
         vm.startPrank(Swapper);
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
         vm.startPrank(Alice);
 
         // tough luck... PLPs just stole ~2**64 tokens per liquidity Alice had because of an overflow
@@ -5882,7 +5883,7 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 10000, 10 ** 24);
 
         vm.startPrank(Seller);
 
@@ -5996,13 +5997,13 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
 
         vm.startPrank(Seller);
 
@@ -6114,7 +6115,7 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
 
         vm.startPrank(Seller);
 

@@ -639,10 +639,12 @@ contract PanopticPool is Clone, Multicall {
                 ++i;
             }
         }
+
+        /// @dev revert if the total deviation is more than twice the ickDeltaLiquidation (ie. roundtrips more than the allowed tick liquidation delta)
         if (
-            cumulativeTickDeltas.leftSlot() >
+            cumulativeTickDeltas.rightSlot() >
             int256(uint256(2 * riskParameters.tickDeltaLiquidation()))
-        ) revert Errors.StaleOracle();
+        ) revert Errors.PriceImpactTooLarge();
 
         // Perform solvency check on user's account to ensure they had enough buying power to mint the option
         // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
@@ -1323,7 +1325,6 @@ contract PanopticPool is Clone, Multicall {
                     // deduct the paid premium tokens from the owner's balance and add them to the cumulative settled token delta
                     ct0.settleBurn(owner, 0, 0, 0, -realizedPremia.rightSlot(), riskParameters);
                     ct1.settleBurn(owner, 0, 0, 0, -realizedPremia.leftSlot(), riskParameters);
-
                     bytes32 chunkKey;
                     {
                         TokenId _tokenId = tokenId;
