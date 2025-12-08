@@ -1737,7 +1737,6 @@ contract PositionUtils is Test {
 
     // "virtual" deposit or withdrawal from an account without changing the share price
     function editCollateral(CollateralTracker ct, address owner, uint256 newShares) internal {
-        console2.log("foo");
         int256 shareDelta = int256(newShares) - int256(ct.balanceOf(owner));
         int256 assetDelta = convertToAssets(ct, shareDelta);
         uint256 _internalSupply = uint256(vm.load(address(ct), bytes32(uint256(0))));

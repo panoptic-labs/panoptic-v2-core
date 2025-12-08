@@ -431,6 +431,17 @@ library PanopticMath {
         );
     }
 
+    /// @notice Computes the chunk key for a given leg of a position.
+    /// @dev The chunk key uniquely identifies a liquidity chunk by its strike, width, and token type.
+    /// @param tokenId The option position
+    /// @param leg The leg index within the position
+    /// @return chunkKey The keccak256 hash identifying this chunk
+    function getChunkKey(TokenId tokenId, uint256 leg) internal pure returns (bytes32 chunkKey) {
+        chunkKey = EfficientHash.efficientKeccak256(
+            abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
+        );
+    }
+
     /*//////////////////////////////////////////////////////////////
                          TOKEN CONVERSION LOGIC
     //////////////////////////////////////////////////////////////*/
