@@ -6,6 +6,7 @@ import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManage
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
 import {PanopticFactory} from "@contracts/PanopticFactoryV4.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
@@ -159,7 +160,7 @@ contract Misctest is Test, PositionUtils {
     CollateralTracker ct0;
     CollateralTracker ct1;
     PanopticHelper ph;
-    RiskEngine re;
+    IRiskEngine re;
 
     IPoolManager manager;
 
@@ -239,15 +240,19 @@ contract Misctest is Test, PositionUtils {
         token1 = new ERC20S("token1", "T1", 18);
         uniPool = IUniswapV3Pool(V3FACTORY.createPool(address(token0), address(token1), 500));
 
-        re = new RiskEngine(
-            2_000_000,
-            1_000_000,
-            1_024_000,
-            5_000_000,
-            9_000_000,
-            10_000_000,
-            10_000_000,
-            address(0)
+        re = IRiskEngine(
+            address(
+                new RiskEngine(
+                    2_000_000,
+                    1_000_000,
+                    1_024_000,
+                    5_000_000,
+                    9_000_000,
+                    10_000_000,
+                    10_000_000,
+                    address(0)
+                )
+            )
         );
 
         poolKey = PoolKey(

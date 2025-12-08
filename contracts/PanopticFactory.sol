@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
-import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
@@ -38,7 +38,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         IUniswapV3Pool indexed uniswapPool,
         CollateralTracker collateralTracker0,
         CollateralTracker collateralTracker1,
-        RiskEngine riskEngine
+        IRiskEngine riskEngine
     );
 
     /*//////////////////////////////////////////////////////////////
@@ -68,7 +68,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Mapping from address(UniswapV3Pool) to address(PanopticPool) that stores the address of all deployed Panoptic Pools.
-    mapping(IUniswapV3Pool univ3pool => mapping(RiskEngine riskEngine => PanopticPool panopticPool))
+    mapping(IUniswapV3Pool univ3pool => mapping(IRiskEngine riskEngine => PanopticPool panopticPool))
         internal s_getPanopticPool;
 
     /*//////////////////////////////////////////////////////////////
@@ -116,7 +116,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         address token0,
         address token1,
         uint24 fee,
-        RiskEngine riskEngine,
+        IRiskEngine riskEngine,
         uint96 salt
     ) external returns (PanopticPool newPoolContract) {
         // sort the tokens, if necessary:
@@ -286,7 +286,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @return Address of the Panoptic Pool associated with `univ3pool`
     function getPanopticPool(
         IUniswapV3Pool univ3pool,
-        RiskEngine riskEngine
+        IRiskEngine riskEngine
     ) external view returns (PanopticPool) {
         return s_getPanopticPool[univ3pool][riskEngine];
     }

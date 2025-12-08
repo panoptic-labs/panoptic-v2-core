@@ -2,8 +2,8 @@
 pragma solidity ^0.8.24;
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
-import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
+import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
 // Inherited implementations
 import {Clone} from "clones-with-immutable-args/Clone.sol";
 import {Multicall} from "@base/Multicall.sol";
@@ -240,8 +240,8 @@ contract PanopticPool is Clone, Multicall {
 
     /// @notice Get the address of the risk engine contract used by this Panoptic Pool.
     /// @return The risk engine contract used by this Panoptic Pool
-    function riskEngine() public pure returns (RiskEngine) {
-        return RiskEngine(_getArgAddress(40));
+    function riskEngine() public pure returns (IRiskEngine) {
+        return IRiskEngine(_getArgAddress(40));
     }
 
     /// @notice Retrieve the PoolManager associated with that CollateralTracker.

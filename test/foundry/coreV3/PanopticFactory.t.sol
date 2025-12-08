@@ -8,6 +8,7 @@ import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 // Panoptic Libraries
 import {CallbackLib} from "@libraries/CallbackLib.sol";
@@ -125,7 +126,7 @@ contract PanopticFactoryTest is Test {
     address token1;
     uint24 fee;
     int24 tickSpacing;
-    RiskEngine riskEngine;
+    IRiskEngine riskEngine;
 
     // the amount that's deployed when initializing the SFPM against a new AMM pool.
     uint128 constant FULL_RANGE_LIQUIDITY_AMOUNT_WETH = 0.1 ether;
@@ -180,15 +181,19 @@ contract PanopticFactoryTest is Test {
         bytes[] memory bytecodes = vm.parseJsonBytesArray(metadata, ".bytecodes");
         address[] memory pointerAddresses = new address[](bytecodes.length);
 
-        riskEngine = new RiskEngine(
-            2_000_000,
-            1_000_000,
-            1_024_000,
-            5_000_000,
-            9_000_000,
-            10_000_000,
-            10_000_000,
-            address(0)
+        riskEngine = IRiskEngine(
+            address(
+                new RiskEngine(
+                    2_000_000,
+                    1_000_000,
+                    1_024_000,
+                    5_000_000,
+                    9_000_000,
+                    10_000_000,
+                    10_000_000,
+                    address(0)
+                )
+            )
         );
 
         for (uint256 i = 0; i < bytecodes.length; i++) {
@@ -393,7 +398,7 @@ contract PanopticFactoryTest is Test {
             token0,
             token1,
             fee,
-            RiskEngine(address(0)), // Pass address(0) casted to the type
+            IRiskEngine(address(0)), // Pass address(0) casted to the type
             salt
         );
     }
@@ -405,15 +410,19 @@ contract PanopticFactoryTest is Test {
         _initalizeWorldState(pools[0]); // Use a fixed pool, no fuzzing needed
 
         // Create a second risk engine with slightly different parameters
-        RiskEngine riskEngineB = new RiskEngine(
-            2_500_000, // Different SCR
-            1_500_000, // Different BCR
-            1_024_000,
-            5_000_000,
-            9_000_000,
-            10_000_000,
-            10_000_000,
-            address(0)
+        IRiskEngine riskEngineB = IRiskEngine(
+            address(
+                new RiskEngine(
+                    2_500_000, // Different SCR
+                    1_500_000, // Different BCR
+                    1_024_000,
+                    5_000_000,
+                    9_000_000,
+                    10_000_000,
+                    10_000_000,
+                    address(0)
+                )
+            )
         );
 
         uint96 salt = 12345;

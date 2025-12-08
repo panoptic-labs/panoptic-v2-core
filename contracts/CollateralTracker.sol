@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 // Interfaces
 import {PanopticPool} from "./PanopticPool.sol";
-import {RiskEngine} from "./RiskEngine.sol";
+import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 // Inherited implementations
 import {Clone} from "clones-with-immutable-args/Clone.sol";
@@ -177,8 +177,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
     /// @notice Retrieve the RiskEngine associated with that CollateralTracker.
     /// @return The RiskEngine instance associated with that CollateralTracker's uniswap pool
-    function riskEngine() public pure returns (RiskEngine) {
-        return RiskEngine(_getArgAddress(81));
+    function riskEngine() public pure returns (IRiskEngine) {
+        return IRiskEngine(_getArgAddress(81));
     }
 
     /// @notice Retrieve the PoolManager associated with that CollateralTracker.

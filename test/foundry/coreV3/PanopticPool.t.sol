@@ -25,6 +25,7 @@ import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManage
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
@@ -180,7 +181,7 @@ contract PanopticPoolTest is PositionUtils {
     PanopticPoolHarness pp;
     CollateralTracker ct0;
     CollateralTracker ct1;
-    RiskEngine re;
+    IRiskEngine re;
 
     PanopticHelper ph;
 
@@ -523,15 +524,19 @@ contract PanopticPoolTest is PositionUtils {
             new Pointer[][](0)
         );
 
-        re = new RiskEngine(
-            2_000_000,
-            1_000_000,
-            1_024_000,
-            5_000_000,
-            9_000_000,
-            10_000_000,
-            10_000_000,
-            address(0)
+        re = IRiskEngine(
+            address(
+                new RiskEngine(
+                    2_000_000,
+                    1_000_000,
+                    1_024_000,
+                    5_000_000,
+                    9_000_000,
+                    10_000_000,
+                    10_000_000,
+                    address(0)
+                )
+            )
         );
 
         deal(token0, Deployer, type(uint104).max);
@@ -1628,7 +1633,7 @@ contract PanopticPoolTest is PositionUtils {
 
         // Act: No action is needed, the action was the initialization itself.
         // We just need to read the state.
-        RiskEngine configuredEngine = pp.riskEngine();
+        IRiskEngine configuredEngine = pp.riskEngine();
 
         // Assert: The risk engine address stored in the PanopticPool
         // must match the risk engine address used during setup.
