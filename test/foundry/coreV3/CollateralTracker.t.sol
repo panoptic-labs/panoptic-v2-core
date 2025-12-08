@@ -16,6 +16,7 @@ import {Math} from "@libraries/PanopticMath.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
+import {OraclePack} from "@types/OraclePack.sol";
 import {MarketState} from "@types/MarketState.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
@@ -198,7 +199,8 @@ contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
 contract RiskEngineHarness is RiskEngine {
     constructor(
         uint256 crossBuffer0,
-        uint256 crossBuffer1
+        uint256 crossBuffer1,
+        address guardian
     )
         RiskEngine(
             2_000_000,
@@ -208,7 +210,7 @@ contract RiskEngineHarness is RiskEngine {
             9_000_000,
             crossBuffer0,
             crossBuffer1,
-            address(0)
+            guardian
         )
     {}
 
@@ -558,6 +560,39 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken1.wipeUtilizationSlot();
     }
 
+    function mintOptions(
+        PanopticPool pp,
+        TokenId[] memory positionIdList,
+        uint128 positionSize,
+        uint24 effectiveLiquidityLimitX32,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
+        bool premiaAsCollateral,
+        uint256 builderCode
+    ) internal {
+        uint128[] memory sizeList = new uint128[](1);
+        TokenId[] memory mintList = new TokenId[](1);
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
+
+        TokenId tokenId = positionIdList[positionIdList.length - 1];
+        sizeList[0] = positionSize;
+        mintList[0] = tokenId;
+        tickAndSpreadLimits[0][0] = tickLimitLow;
+        tickAndSpreadLimits[0][1] = tickLimitHigh;
+        tickAndSpreadLimits[0][2] = int24(uint24(effectiveLiquidityLimitX32));
+
+        pp.dispatch(
+            mintList,
+            positionIdList,
+            sizeList,
+            tickAndSpreadLimits,
+            premiaAsCollateral,
+            builderCode
+        );
+        collateralToken0.wipeUtilizationSlot();
+        collateralToken1.wipeUtilizationSlot();
+    }
+
     function burnOptions(
         PanopticPool pp,
         TokenId tokenId,
@@ -582,6 +617,36 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function burnOptions(
         PanopticPool pp,
+        TokenId tokenId,
+        TokenId[] memory positionIdList,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
+        bool premiaAsCollateral,
+        uint256 builderCode
+    ) internal {
+        uint128[] memory sizeList = new uint128[](1);
+        TokenId[] memory burnList = new TokenId[](1);
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
+
+        sizeList[0] = 0;
+        burnList[0] = tokenId;
+        tickAndSpreadLimits[0][0] = tickLimitLow;
+        tickAndSpreadLimits[0][1] = tickLimitHigh;
+        tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
+        pp.dispatch(
+            burnList,
+            positionIdList,
+            sizeList,
+            tickAndSpreadLimits,
+            premiaAsCollateral,
+            builderCode
+        );
+        collateralToken0.wipeUtilizationSlot();
+        collateralToken1.wipeUtilizationSlot();
+    }
+
+    function burnOptions(
+        PanopticPool pp,
         TokenId[] memory tokenIds,
         TokenId[] memory positionIdList,
         int24 tickLimitLow,
@@ -598,6 +663,36 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         pp.dispatch(tokenIds, positionIdList, sizeList, tickAndSpreadLimits, premiaAsCollateral, 0);
+        collateralToken0.wipeUtilizationSlot();
+        collateralToken1.wipeUtilizationSlot();
+    }
+
+    function burnOptions(
+        PanopticPool pp,
+        TokenId[] memory tokenIds,
+        TokenId[] memory positionIdList,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
+        bool premiaAsCollateral,
+        uint256 builderCode
+    ) internal {
+        uint128[] memory sizeList = new uint128[](tokenIds.length);
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](tokenIds.length);
+
+        for (uint256 i; i < tokenIds.length; ++i) {
+            tickAndSpreadLimits[i][0] = tickLimitLow;
+            tickAndSpreadLimits[i][1] = tickLimitHigh;
+            tickAndSpreadLimits[i][2] = int24(uint24(type(uint24).max));
+        }
+
+        pp.dispatch(
+            tokenIds,
+            positionIdList,
+            sizeList,
+            tickAndSpreadLimits,
+            premiaAsCollateral,
+            builderCode
+        );
         collateralToken0.wipeUtilizationSlot();
         collateralToken1.wipeUtilizationSlot();
     }
@@ -706,7 +801,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         poolId = sfpm.initializeAMMPool(t0, t1, fee);
 
         // 2) Risk engine
-        riskEngine = new RiskEngineHarness(10_000_000, 10_000_000);
+        riskEngine = new RiskEngineHarness(10_000_000, 10_000_000, address(0));
 
         // 3) Implementations (POOL_REFERENCE and COLLATERAL_REFERENCE stand-ins)
         // If you already have shared references in your test suite, reuse them instead of deploying new ones.
@@ -801,7 +896,101 @@ contract CollateralTrackerTest is Test, PositionUtils {
         poolId = sfpm.initializeAMMPool(t0, t1, fee);
 
         // 2) Risk engine
-        riskEngine = new RiskEngineHarness(crossBuffer0, crossBuffer1);
+        riskEngine = new RiskEngineHarness(crossBuffer0, crossBuffer1, address(0));
+
+        // 3) Implementations (POOL_REFERENCE and COLLATERAL_REFERENCE stand-ins)
+        // If you already have shared references in your test suite, reuse them instead of deploying new ones.
+        CollateralTrackerHarness collateralImpl = new CollateralTrackerHarness();
+        panopticPool = new PanopticPoolHarness(sfpm); // acts as POOL_REFERENCE
+
+        // 4) Deterministic salt like the factory (deployer + pool + risk + user salt=0)
+        bytes32 salt = bytes32(
+            abi.encodePacked(
+                uint80(uint160(address(this)) >> 80),
+                uint80(uint160(address(uniswapPool)) >> 40),
+                uint80(uint160(address(riskEngine)) >> 40),
+                uint96(0)
+            )
+        );
+
+        // 5) Predict pool proxy address for embedding into collateral immutables
+        PanopticPoolHarness predictedPool = PanopticPoolHarness(
+            ClonesWithImmutableArgs.addressOfClone3(salt)
+        );
+
+        // 6) Clone collateral trackers with immutables
+        collateralToken0 = CollateralTrackerHarness(
+            ClonesWithImmutableArgs.clone2(
+                address(collateralImpl),
+                abi.encodePacked(
+                    predictedPool, // panopticPool
+                    true, // is0
+                    t0, // token0
+                    t0, // ct.token0()
+                    t1, // ct.token1()
+                    riskEngine, // risk engine
+                    address(0), // no pool manager
+                    fee // pool fee
+                )
+            )
+        );
+
+        collateralToken1 = CollateralTrackerHarness(
+            ClonesWithImmutableArgs.clone2(
+                address(collateralImpl),
+                abi.encodePacked(
+                    predictedPool, // panopticPool
+                    false, // is0
+                    t1, // token1
+                    t0, // ct.token0()
+                    t1, // ct.token1()
+                    riskEngine, // risk engine
+                    address(0), // no pool manager
+                    fee // pool fee
+                )
+            )
+        );
+
+        // 7) Clone the PanopticPool proxy with immutables
+        panopticPool = PanopticPoolHarness(
+            ClonesWithImmutableArgs.clone3(
+                address(panopticPool), // implementation = POOL_REFERENCE
+                abi.encodePacked(
+                    collateralToken0,
+                    collateralToken1,
+                    riskEngine,
+                    address(0), // no pool manager
+                    poolId,
+                    abi.encode(uniswapPool) // v3 pool reference payload
+                ),
+                salt
+            )
+        );
+
+        // 8) Initialize pool and trackers, exactly like the factory path
+        panopticPool.initialize();
+        collateralToken0.initialize();
+        collateralToken1.initialize();
+
+        // 9) Helpers wiring for tests
+        panopticHelper = new PanopticHelper(ISemiFungiblePositionManager(address(sfpm)));
+        panopticPoolAddress = address(panopticPool);
+    }
+
+    function _deployCustomPanopticPool(
+        address _token0,
+        address _token1,
+        IUniswapV3Pool uniswapPool, // must already exist and be initialized
+        address guardian
+    ) internal {
+        // 1) SFPM and AMM pool init
+        sfpm = new SemiFungiblePositionManagerHarness(V3FACTORY);
+        // enforce token sort like the factory does
+        (address t0, address t1) = _token0 < _token1 ? (_token0, _token1) : (_token1, _token0);
+        poolId = sfpm.initializeAMMPool(t0, t1, fee);
+
+        // 2) Risk engine
+        riskEngine = new RiskEngineHarness(10_000_000, 10_000_000, guardian);
 
         // 3) Implementations (POOL_REFERENCE and COLLATERAL_REFERENCE stand-ins)
         // If you already have shared references in your test suite, reuse them instead of deploying new ones.
@@ -6160,6 +6349,316 @@ contract CollateralTrackerTest is Test, PositionUtils {
             Constants.MIN_POOL_TICK,
             RiskParameters.wrap(0)
         );
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            GUARDIANSHIP
+    //////////////////////////////////////////////////////////////*/
+
+    function test_Fail_OnlyGuardian_lockPool(uint256 x, address caller) public {
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool, caller);
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.startPrank(Bob);
+
+            vm.expectRevert(Errors.NotGuardian.selector);
+            riskEngine.lockPool(panopticPool);
+        }
+    }
+
+    function test_Fail_OnlyGuardian_unlockPool(uint256 x, address caller) public {
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool, caller);
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.startPrank(caller);
+            console2.log("guardian, caller", riskEngine.guardian(), caller);
+            riskEngine.lockPool(panopticPool);
+
+            vm.startPrank(Bob);
+            vm.expectRevert(Errors.NotGuardian.selector);
+            riskEngine.unlockPool(panopticPool);
+        }
+    }
+
+    function test_Fail_OnlyGuardian_collect(uint256 x, address caller) public {
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool, caller);
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.expectRevert(Errors.NotGuardian.selector);
+            riskEngine.collect(token0, Bob);
+
+            vm.expectRevert(Errors.NotGuardian.selector);
+            riskEngine.collect(token1, Bob);
+
+            vm.expectRevert(Errors.NotGuardian.selector);
+            riskEngine.collect(token0, Bob, 0);
+
+            vm.expectRevert(Errors.NotGuardian.selector);
+            riskEngine.collect(token1, Bob, 0);
+        }
+    }
+
+    function test_success_OnlyGuardian_lockPool_oraclePackState(uint256 x, address caller) public {
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool, caller);
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.startPrank(caller);
+            riskEngine.lockPool(panopticPool);
+
+            (, , , , OraclePack oraclePack) = panopticPool.getOracleTicks();
+            assertEq(oraclePack.lockMode(), 3, "lock mode");
+        }
+    }
+
+    function test_success_OnlyGuardian_unlockPool_oraclePackState(
+        uint256 x,
+        address caller
+    ) public {
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool, caller);
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.startPrank(caller);
+            riskEngine.lockPool(panopticPool);
+
+            (, , , , OraclePack oraclePack) = panopticPool.getOracleTicks();
+            assertEq(oraclePack.lockMode(), 3, "lock mode");
+
+            riskEngine.unlockPool(panopticPool);
+
+            (, , , , oraclePack) = panopticPool.getOracleTicks();
+            assertEq(oraclePack.lockMode(), 0, "unlock mode");
+        }
+    }
+
+    function test_success_OnlyGuardian_lockPool_noMint_burnOnly(uint256 x, address caller) public {
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool, caller);
+
+            vm.startPrank(Alice);
+
+            _grantTokens(Alice);
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+            // award corresponding shares
+            _mockMaxDeposit(Alice);
+
+            strike = (currentTick / tickSpacing) * tickSpacing;
+            width = 2;
+
+            positionSize0 = 10 ** 9;
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+            positionIdList.push(tokenId);
+
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                positionSize0,
+                type(uint24).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.startPrank(caller);
+            riskEngine.lockPool(panopticPool);
+
+            vm.startPrank(Bob);
+            _grantTokens(Bob);
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+            // award corresponding shares
+            _mockMaxDeposit(Bob);
+            // Bob cannot mint
+            vm.expectRevert(Errors.StaleOracle.selector);
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                positionSize0,
+                type(uint24).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+
+            vm.startPrank(Alice);
+
+            // Alice can still close
+            burnOptions(
+                panopticPool,
+                positionIdList,
+                new TokenId[](0),
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+
+            vm.startPrank(caller);
+            riskEngine.unlockPool(panopticPool);
+
+            vm.startPrank(Bob);
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                positionSize0,
+                type(uint24).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+        }
+    }
+
+    function test_success_builderCode_payouts(
+        uint256 x,
+        address caller,
+        uint256 builderCode
+    ) public {
+        vm.assume(builderCode != 0);
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool, caller);
+
+            vm.startPrank(Alice);
+
+            _grantTokens(Alice);
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+            // award corresponding shares
+            _mockMaxDeposit(Alice);
+
+            strike = (currentTick / tickSpacing) * tickSpacing;
+            width = 2;
+
+            positionSize0 = 10 ** 9;
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+            positionIdList.push(tokenId);
+
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                positionSize0,
+                type(uint24).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true,
+                builderCode
+            );
+
+            // mimic pool activity
+            twoWaySwap(10 ** 18);
+
+            vm.startPrank(Alice);
+
+            console2.log("burnHere");
+            // close
+            burnOptions(
+                panopticPool,
+                positionIdList,
+                new TokenId[](0),
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+        }
+    }
+
+    function test_success_builderCode_collects(
+        uint256 x,
+        address caller,
+        uint256 builderCode
+    ) public {
+        vm.assume(builderCode != 0);
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool, caller);
+
+            vm.startPrank(Alice);
+
+            _grantTokens(Alice);
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+            // award corresponding shares
+            _mockMaxDeposit(Alice);
+
+            strike = (currentTick / tickSpacing) * tickSpacing;
+            width = 2;
+
+            positionSize0 = 10 ** 9;
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+            positionIdList.push(tokenId);
+
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                positionSize0,
+                type(uint24).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true,
+                builderCode
+            );
+
+            // mimic pool activity
+            twoWaySwap(10 ** 18);
+            twoWaySwap(10 ** 18);
+            twoWaySwap(10 ** 18);
+            twoWaySwap(10 ** 18);
+            twoWaySwap(10 ** 18);
+            twoWaySwap(10 ** 18);
+            twoWaySwap(10 ** 18);
+            twoWaySwap(10 ** 18);
+
+            vm.startPrank(Alice);
+
+            console2.log("burnHere");
+            // close
+            burnOptions(
+                panopticPool,
+                positionIdList,
+                new TokenId[](0),
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true,
+                builderCode
+            );
+        }
+        vm.startPrank(caller);
+
+        riskEngine.collect(address(collateralToken0), caller, 1);
+
+        riskEngine.collect(address(collateralToken0), caller);
     }
 
     /*//////////////////////////////////////////////////////////////

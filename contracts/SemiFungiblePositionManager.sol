@@ -942,7 +942,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             uint128 startingLiquidity = currentLiquidity.rightSlot();
             uint128 removedLiquidity = currentLiquidity.leftSlot();
             uint128 chunkLiquidity = liquidityChunk.liquidity();
-
             // 0-liquidity interactions are asymmetrical in Uniswap (burning 0 liquidity is permitted and functions as a poke, but minting is prohibited)
             // thus, we prohibit all 0-liquidity chunks to prevent users from creating positions that cannot be closed
             if (chunkLiquidity == 0) revert Errors.ChunkHasZeroLiquidity();

@@ -106,11 +106,11 @@ contract RiskEngine {
 
     /// @notice The protocol split, in basis points, when a builder code is present.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 immutable PROTOCOL_SPLIT;
+    uint16 constant PROTOCOL_SPLIT = 6_500;
 
     /// @notice The builder split, in basis points, when a builder code is present
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 immutable BUILDER_SPLIT;
+    uint16 constant BUILDER_SPLIT = 2_500;
 
     /// @notice Required collateral ratios for selling options, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 20% -> 0.2 * 10_000_000 = 2_000_000.
@@ -186,7 +186,7 @@ contract RiskEngine {
         address _guardian
     ) {
         NOTIONAL_FEE = 10;
-        PREMIUM_FEE = 0;
+        PREMIUM_FEE = 100;
         SELLER_COLLATERAL_RATIO = _sellerCollateralRatio;
         BUYER_COLLATERAL_RATIO = _buyerCollateralRatio;
         FORCE_EXERCISE_COST = _forceExerciseCost;
@@ -235,6 +235,10 @@ contract RiskEngine {
     function unlockPool(PanopticPool pool) external onlyGuardian {
         emit GuardianSafeModeUpdated(true);
         pool.unlockSafeMode();
+    }
+
+    function guardian() external returns (address) {
+        return GUARDIAN;
     }
 
     /*//////////////////////////////////////////////////////////////
