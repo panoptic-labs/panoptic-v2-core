@@ -210,7 +210,8 @@ contract RiskEngineHarness is RiskEngine {
             9_000_000,
             crossBuffer0,
             crossBuffer1,
-            guardian
+            guardian,
+            address(0)
         )
     {}
 

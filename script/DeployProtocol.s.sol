@@ -89,7 +89,8 @@ contract DeployProtocol is Script {
             9_000_000,
             10_000_000,
             10_000_000,
-            address(0)
+            address(0), // add guardian
+            address(0) // add builderFactory
         );
         /*
         // risk engine LOW

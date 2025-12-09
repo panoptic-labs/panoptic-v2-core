@@ -29,6 +29,7 @@ contract RiskEngineHarness is RiskEngine {
             _saturatedPoolUtilization,
             _crossBuffer0,
             _crossBuffer1,
+            address(0),
             address(0)
         )
     {}

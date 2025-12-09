@@ -586,6 +586,7 @@ contract PanopticPoolTest is PositionUtils {
                     9_000_000,
                     10_000_000,
                     10_000_000,
+                    address(0),
                     address(0)
                 )
             )

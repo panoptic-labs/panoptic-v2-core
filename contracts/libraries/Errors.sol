@@ -46,6 +46,9 @@ library Errors {
     /// @notice CollateralTracker: There is not enough available liquidity to fulfill a credit in the PanopticPool
     error InsufficientCreditLiquidity();
 
+    /// @notice RiskEngine: invalid builder code
+    error InvalidBuilderCode();
+
     /// @notice The TokenId provided by the user is malformed or invalid
     /// @param parameterType poolId=0, ratio=1, tokenType=2, risk_partner=3, strike=4, width=5, two identical strike/width/tokenType chunks=6
     error InvalidTokenIdParameter(uint256 parameterType);
@@ -64,6 +67,9 @@ library Errors {
 
     /// @notice PanopticPool: The leg is not long, so premium cannot be settled through `settleLongPremium`
     error NotALongLeg();
+
+    /// @notice builderWallet: can only be called by the Builder
+    error NotBuilder();
 
     /// @notice PanopticPool: There is not enough available liquidity in the chunk for one of the long legs to be created (or for one of the short legs to be closed)
     error NotEnoughLiquidityToBuy();
