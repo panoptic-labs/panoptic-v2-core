@@ -192,7 +192,7 @@ contract RiskEngine {
         address _builderFactory
     ) {
         NOTIONAL_FEE = 10;
-        PREMIUM_FEE = 100;
+        PREMIUM_FEE = 0;
         SELLER_COLLATERAL_RATIO = _sellerCollateralRatio;
         BUYER_COLLATERAL_RATIO = _buyerCollateralRatio;
         FORCE_EXERCISE_COST = _forceExerciseCost;

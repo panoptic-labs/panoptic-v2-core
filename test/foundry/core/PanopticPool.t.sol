@@ -5393,6 +5393,161 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
+    function test_Fail_dispatch_price_impact() public {
+        _initPool(0);
+
+        // remove liquidity
+        vm.startPrank(Swapper);
+        routerV4.modifyLiquidity(
+            address(0),
+            poolKey,
+            (TickMath.MIN_TICK / tickSpacing) * tickSpacing,
+            (TickMath.MAX_TICK / tickSpacing) * tickSpacing,
+            -1_000_000 ether
+        );
+
+        routerV4.modifyLiquidity(
+            address(0),
+            poolKey,
+            (TickMath.MIN_TICK / tickSpacing) * tickSpacing,
+            (TickMath.MAX_TICK / tickSpacing) * tickSpacing,
+            100
+        );
+
+        vm.startPrank(Alice);
+
+        TokenId tokenId0 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            (currentTick / tickSpacing) * tickSpacing,
+            100
+        );
+
+        TokenId tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            10,
+            isWETH,
+            0,
+            0,
+            0,
+            (currentTick / tickSpacing) * tickSpacing - 100 * tickSpacing,
+            100
+        );
+
+        {
+            TokenId[] memory posIdListPass = new TokenId[](3);
+            posIdListPass[0] = tokenId0;
+            posIdListPass[1] = tokenId1;
+            posIdListPass[2] = tokenId1;
+
+            TokenId[] memory posIdListFinal = new TokenId[](1);
+            posIdListFinal[0] = tokenId0;
+
+            uint128[] memory sizeListPass = new uint128[](3);
+            sizeListPass[0] = uint128(10 ** 18);
+            sizeListPass[1] = uint128(10 ** 18);
+            sizeListPass[2] = uint128(0);
+
+            int24[3][] memory tickAndSpreadLimits = new int24[3][](3);
+            tickAndSpreadLimits[0][0] = Constants.MIN_POOL_TICK;
+            tickAndSpreadLimits[0][1] = Constants.MAX_POOL_TICK;
+            tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
+
+            // tokens 1 and 2 with swapAtMint flags
+            tickAndSpreadLimits[1][0] = Constants.MAX_POOL_TICK;
+            tickAndSpreadLimits[1][1] = Constants.MIN_POOL_TICK;
+            tickAndSpreadLimits[1][2] = int24(uint24(type(uint24).max));
+            tickAndSpreadLimits[2][0] = Constants.MAX_POOL_TICK;
+            tickAndSpreadLimits[2][1] = Constants.MIN_POOL_TICK;
+            tickAndSpreadLimits[2][2] = int24(uint24(type(uint24).max));
+
+            vm.expectRevert(Errors.PriceImpactTooLarge.selector);
+            pp.dispatch(posIdListPass, posIdListFinal, sizeListPass, tickAndSpreadLimits, true, 0);
+
+            // remove swapAtMint flags
+            tickAndSpreadLimits[1][0] = Constants.MIN_POOL_TICK;
+            tickAndSpreadLimits[1][1] = Constants.MAX_POOL_TICK;
+            tickAndSpreadLimits[1][2] = int24(uint24(type(uint24).max));
+            tickAndSpreadLimits[2][0] = Constants.MIN_POOL_TICK;
+            tickAndSpreadLimits[2][1] = Constants.MAX_POOL_TICK;
+            tickAndSpreadLimits[2][2] = int24(uint24(type(uint24).max));
+
+            pp.dispatch(posIdListPass, posIdListFinal, sizeListPass, tickAndSpreadLimits, true, 0);
+        }
+    }
+
+    function test_Fail_dispatch_priceBound() public {
+        _initPool(0);
+
+        // remove liquidity
+        vm.startPrank(Swapper);
+        routerV4.modifyLiquidity(
+            address(0),
+            poolKey,
+            (TickMath.MIN_TICK / tickSpacing) * tickSpacing,
+            (TickMath.MAX_TICK / tickSpacing) * tickSpacing,
+            -1_000_000 ether
+        );
+
+        routerV4.modifyLiquidity(
+            address(0),
+            poolKey,
+            (TickMath.MIN_TICK / tickSpacing) * tickSpacing,
+            (TickMath.MAX_TICK / tickSpacing) * tickSpacing,
+            100
+        );
+
+        TokenId tokenId0 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            (currentTick / tickSpacing) * tickSpacing - 100 * tickSpacing,
+            100
+        );
+
+        {
+            TokenId[] memory posIdListPass = new TokenId[](1);
+            posIdListPass[0] = tokenId0;
+
+            TokenId[] memory posIdListFinal = new TokenId[](1);
+            posIdListFinal[0] = tokenId0;
+
+            uint128[] memory sizeListPass = new uint128[](1);
+            sizeListPass[0] = uint128(10 ** 18);
+
+            int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
+            tickAndSpreadLimits[0][0] = currentTick + 1;
+            tickAndSpreadLimits[0][1] = currentTick - 1;
+            tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
+
+            uint256 snapshot = vm.snapshot();
+            vm.startPrank(address(pp));
+            sfpm.mintTokenizedPosition(
+                abi.encode(poolKey),
+                posIdListPass[0],
+                sizeListPass[0],
+                TickMath.MAX_TICK,
+                TickMath.MIN_TICK
+            );
+
+            int24 finalTick = sfpm.getCurrentTick(abi.encode(poolKey));
+            vm.stopPrank();
+            vm.revertTo(snapshot);
+
+            vm.startPrank(Alice);
+
+            vm.expectRevert(abi.encodeWithSelector(Errors.PriceBoundFail.selector, finalTick));
+            pp.dispatch(posIdListPass, posIdListFinal, sizeListPass, tickAndSpreadLimits, true, 0);
+        }
+    }
+
     /// @notice Replicates a failing fuzz case for test_Success_dispatch_repeated_states
     function test_ReplicateFailure_dispatch_repeated_states() public {
         // Inputs taken directly from the Foundry fuzz counterexample trace.

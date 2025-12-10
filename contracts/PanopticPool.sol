@@ -601,7 +601,6 @@ contract PanopticPool is Clone, Multicall {
                     (_tickLimits[0], _tickLimits[1]) = (_tickLimits[1], _tickLimits[0]);
                 }
             }
-
             int24 finalTick;
             if (PositionBalance.unwrap(positionBalanceData) == 0) {
                 // revert if more than 2 conditions are triggered to prevent the minting of any positions
@@ -622,8 +621,8 @@ contract PanopticPool is Clone, Multicall {
 
                 // if input positionSize matches the size stored, this is a settlePremium. Otherwise, this is a burn.
                 if (positionSize == positionSizes[i]) {
-                    int24 currentTick = SFPM.getCurrentTick(poolKey());
-                    _settleOptions(msg.sender, tokenId, positionSize, riskParameters, currentTick);
+                    finalTick = SFPM.getCurrentTick(poolKey());
+                    _settleOptions(msg.sender, tokenId, positionSize, riskParameters, finalTick);
                 } else {
                     (, , finalTick) = _burnOptions(
                         tokenId,
@@ -1250,6 +1249,7 @@ contract PanopticPool is Clone, Multicall {
                 }
                 // update settled tokens in storage with all local deltas
                 s_settledTokens[chunkKey] = settledTokens;
+
                 if (commitLongSettledAndKeepOpen.leftSlot() == 0) {
                     // erase the s_options entry for that leg
                     s_options[owner][tokenId][leg] = LeftRightUnsigned.wrap(0);
@@ -1260,6 +1260,7 @@ contract PanopticPool is Clone, Multicall {
                             .wrap(0)
                             .addToRightSlot(uint128(premiumAccumulatorsByLeg[leg][0]))
                             .addToLeftSlot(uint128(premiumAccumulatorsByLeg[leg][1]));
+
                         emit PremiumSettled(owner, tokenId, leg, premiaByLeg[leg]);
                     }
                 }

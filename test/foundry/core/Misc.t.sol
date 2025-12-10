@@ -3270,13 +3270,15 @@ contract Misctest is Test, PositionUtils {
         // 8.896% * 1.022x vegoid = +~10% of the fee amount accumulated will be owed by sellers
         vm.startPrank(Alice);
 
+        console2.log("");
+        console2.log("Alice MINT");
         mintOptions(
             pp,
             $posIdLists[0],
             2_000_000_000,
             0,
-            Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
@@ -3284,40 +3286,32 @@ contract Misctest is Test, PositionUtils {
         $posIdLists[2].push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 15, 1));
 
         vm.startPrank(Bob);
+        console2.log("");
+        console2.log("Bob MINT");
 
         mintOptions(
             pp,
             $posIdLists[2],
             250_000_000,
             type(uint24).max,
-            Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
         vm.startPrank(Charlie);
 
+        console2.log("");
+        console2.log("Charlie MINT");
         mintOptions(
             pp,
             $posIdLists[2],
             250_000_000,
             type(uint24).max,
-            Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
-        {
-            (int24 lowerTick, int24 upperTick) = $posIdLists[0][0].asTicks(0);
-            LeftRightUnsigned accountLiquidityPrimary = sfpm.getAccountLiquidity(
-                abi.encode(poolKey),
-                address(pp),
-                0,
-                lowerTick,
-                upperTick
-            );
-            console2.log("accountLiquidityPrimary.r", accountLiquidityPrimary.rightSlot());
-            console2.log("accountLiquidityPrimary.l", accountLiquidityPrimary.leftSlot());
-        }
         vm.startPrank(Swapper);
 
         routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(100) + 1);
@@ -3345,333 +3339,67 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, 2 ** 96);
         routerV4.swapTo(address(0), poolKey, 2 ** 96);
 
-        vm.startPrank(Alice);
-        {
-            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
-                Alice,
-                false,
-                $posIdLists[0]
-            );
+        vm.startPrank(Bob);
 
-            assertGe(shortPremium.rightSlot(), 0);
-            assertGe(shortPremium.leftSlot(), 0);
-
-            (uint256 aliceBalanceBefore0, uint256 aliceBalanceBefore1) = (
-                ct0.balanceOf(Alice),
-                ct1.balanceOf(Alice)
-            );
-
-            // Alice settles her own position, received nothing because the chunks haven't been poked.
-            settlePremiumSelf(pp, $posIdLists[0], 2_000_000_000, true);
-            (uint256 aliceBalanceAfter0, uint256 aliceBalanceAfter1) = (
-                ct0.balanceOf(Alice),
-                ct1.balanceOf(Alice)
-            );
-
-            (shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(Alice, true, $posIdLists[0]);
-
-            // has 0 owed premium because it was settled at 0 in settlePremium
-            assertEq(shortPremium.rightSlot(), 0);
-            assertEq(shortPremium.leftSlot(), 0);
-        }
-
-        uint256 bobDeltaPremia0;
-        uint256 bobDeltaPremia1;
-
-        {
-            vm.startPrank(Bob);
-
-            (, LeftRightUnsigned longPremium, ) = pp.getAccumulatedFeesAndPositionsData(
-                Bob,
-                false,
-                $posIdLists[2]
-            );
-            uint256 owedPremia0 = longPremium.rightSlot();
-            uint256 owedPremia1 = longPremium.leftSlot();
-            console2.log("owedPremia-total0", owedPremia0);
-            console2.log("owedPremia-total1", owedPremia1);
-
-            assertGe(owedPremia0, 0);
-            assertGe(owedPremia1, 0);
-
-            (uint256 bobBalanceBefore0, uint256 bobBalanceBefore1) = (
-                ct0.balanceOf(Bob),
-                ct1.balanceOf(Bob)
-            );
-
-            // Bob settles his own premium, receives only realize premia and misses out on unsettled longs
-            settlePremiumSelf(pp, $posIdLists[2], 250_000_000, true);
-            (uint256 bobBalanceAfter0, uint256 bobBalanceAfter1) = (
-                ct0.balanceOf(Bob),
-                ct1.balanceOf(Bob)
-            );
-
-            assertLt(bobBalanceAfter0, bobBalanceBefore0, "bob paid premia0");
-            assertLt(bobBalanceAfter1, bobBalanceBefore1, "bob paid premia1");
-
-            bobDeltaPremia0 = ct0.convertToAssets(bobBalanceBefore0 - bobBalanceAfter0);
-            bobDeltaPremia1 = ct1.convertToAssets(bobBalanceBefore1 - bobBalanceAfter1);
-
-            console2.log("bobDeltaPremia0", bobDeltaPremia0);
-            console2.log("bobDeltaPremia1", bobDeltaPremia1);
-
-            assertEq(bobDeltaPremia0, owedPremia0, "bob paid exactly what was owed0");
-            assertEq(bobDeltaPremia1, owedPremia1, "bob paid exactly what was owed1");
-
-            //close the position
-            burnOptions(
-                pp,
-                $posIdLists[2],
-                new TokenId[](0),
-                Constants.MIN_POOL_TICK,
-                Constants.MAX_POOL_TICK,
-                true
-            );
-        }
-        {
-            (int24 lowerTick, int24 upperTick) = $posIdLists[0][0].asTicks(0);
-            LeftRightUnsigned accountLiquidityPrimary = sfpm.getAccountLiquidity(
-                abi.encode(poolKey),
-                address(pp),
-                0,
-                lowerTick,
-                upperTick
-            );
-            console2.log("accountLiquidityPrimary.r", accountLiquidityPrimary.rightSlot());
-            console2.log("accountLiquidityPrimary.l", accountLiquidityPrimary.leftSlot());
-        }
-        vm.startPrank(Swapper);
-
-        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(100) + 1);
-
-        // There are some precision issues with this (1B is not exactly 1B) but close enough to see the effects
-        accruePoolFeesInRange(
-            manager,
-            poolKey,
-            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
-            1_000_000,
-            1_000_000_000
-        );
-
-        // accumulate lower order of fees on dummy chunk
-        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(-100));
-
-        accruePoolFeesInRange(
-            manager,
-            poolKey,
-            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
-            10_000,
-            100_000
-        );
-
-        swapperc.swapTo(uniPool, 2 ** 96);
-        routerV4.swapTo(address(0), poolKey, 2 ** 96);
-
-        vm.startPrank(Alice);
-        {
-            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
-                Alice,
-                true, // look at unsettled positions
-                $posIdLists[0]
-            );
-
-            assertGt(shortPremium.rightSlot(), 0);
-            assertGt(shortPremium.leftSlot(), 0);
-
-            (uint256 aliceBalanceBefore0, uint256 aliceBalanceBefore1) = (
-                ct0.balanceOf(Alice),
-                ct1.balanceOf(Alice)
-            );
-
-            // Alice settles her own position, received nothing because the chunks haven't been poked.
-            settlePremiumSelf(pp, $posIdLists[0], 2_000_000_000, true);
-            (uint256 aliceBalanceAfter0, uint256 aliceBalanceAfter1) = (
-                ct0.balanceOf(Alice),
-                ct1.balanceOf(Alice)
-            );
-
-            uint256 aliceDeltaPremia0 = ct0.convertToAssets(
-                aliceBalanceAfter0 - aliceBalanceBefore0
-            );
-            uint256 aliceDeltaPremia1 = ct1.convertToAssets(
-                aliceBalanceAfter1 - aliceBalanceBefore1
-            );
-
-            assertLt(
-                aliceDeltaPremia0,
-                shortPremium.rightSlot(),
-                "Alice got less because of unsettled0"
-            );
-            assertLt(
-                aliceDeltaPremia1,
-                shortPremium.leftSlot(),
-                "Alice got less because of unsettled1"
-            );
-
-            (shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(Alice, true, $posIdLists[0]);
-
-            // has 0 owed premium because it was settled at 0 in settlePremium
-            assertEq(shortPremium.rightSlot(), 0);
-            assertEq(shortPremium.leftSlot(), 0);
-        }
-        {
-            (int24 lowerTick, int24 upperTick) = $posIdLists[0][0].asTicks(0);
-            LeftRightUnsigned accountLiquidityPrimary = sfpm.getAccountLiquidity(
-                abi.encode(poolKey),
-                address(pp),
-                0,
-                lowerTick,
-                upperTick
-            );
-            console2.log("accountLiquidityPrimary.r", accountLiquidityPrimary.rightSlot());
-            console2.log("accountLiquidityPrimary.l", accountLiquidityPrimary.leftSlot());
-        }
-        vm.startPrank(Swapper);
-
-        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(100) + 1);
-
-        // There are some precision issues with this (1B is not exactly 1B) but close enough to see the effects
-        accruePoolFeesInRange(
-            manager,
-            poolKey,
-            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
-            1_000_000,
-            1_000_000_000
-        );
-
-        // accumulate lower order of fees on dummy chunk
-        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(-100));
-
-        accruePoolFeesInRange(
-            manager,
-            poolKey,
-            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
-            10_000,
-            100_000
-        );
-
-        swapperc.swapTo(uniPool, 2 ** 96);
-        routerV4.swapTo(address(0), poolKey, 2 ** 96);
+        console2.log("");
+        console2.log("Bob SETTLE");
+        settlePremiumSelf(pp, $posIdLists[2], 250_000_000, true);
 
         vm.startPrank(Charlie);
+        console2.log("");
+        console2.log("Charlie SETTLE");
+        settlePremiumSelf(pp, $posIdLists[2], 250_000_000, true);
 
-        uint256 charlieDeltaPremia0;
-        uint256 charlieDeltaPremia1;
-
-        {
-            (, LeftRightUnsigned longPremium, ) = pp.getAccumulatedFeesAndPositionsData(
-                Charlie,
-                false,
-                $posIdLists[2]
-            );
-            uint256 owedPremia0 = longPremium.rightSlot();
-            uint256 owedPremia1 = longPremium.leftSlot();
-            console2.log("owedPremia-total0", owedPremia0);
-            console2.log("owedPremia-total1", owedPremia1);
-
-            assertGt(owedPremia0, 0);
-            assertGt(owedPremia1, 0);
-
-            (uint256 charlieBalanceBefore0, uint256 charlieBalanceBefore1) = (
-                ct0.balanceOf(Charlie),
-                ct1.balanceOf(Charlie)
-            );
-
-            // Charlie settles his own premium, receives only realize premia from settled longs
-            settlePremiumSelf(pp, $posIdLists[2], 250_000_000, true);
-
-            (uint256 charlieBalanceAfter0, uint256 charlieBalanceAfter1) = (
-                ct0.balanceOf(Charlie),
-                ct1.balanceOf(Charlie)
-            );
-
-            assertLt(charlieBalanceAfter0, charlieBalanceBefore0, "charlie paid premia0");
-            assertLt(charlieBalanceAfter1, charlieBalanceBefore1, "charlie paid premia1");
-
-            charlieDeltaPremia0 = ct0.convertToAssets(charlieBalanceBefore0 - charlieBalanceAfter0);
-            charlieDeltaPremia1 = ct1.convertToAssets(charlieBalanceBefore1 - charlieBalanceAfter1);
-
-            assertApproxEqAbs(
-                charlieDeltaPremia0,
-                owedPremia0,
-                1,
-                "charlie received exactly what they are owed due to settled token0"
-            );
-            assertApproxEqAbs(
-                charlieDeltaPremia1,
-                owedPremia1,
-                1,
-                "charlie received exactly what they are owed due to settled token0"
-            );
-
-            burnOptions(
-                pp,
-                $posIdLists[2],
-                new TokenId[](0),
-                Constants.MIN_POOL_TICK,
-                Constants.MAX_POOL_TICK,
-                true
-            );
-        }
-        {
-            (int24 lowerTick, int24 upperTick) = $posIdLists[0][0].asTicks(0);
-            LeftRightUnsigned accountLiquidityPrimary = sfpm.getAccountLiquidity(
-                abi.encode(poolKey),
-                address(pp),
-                0,
-                lowerTick,
-                upperTick
-            );
-            console2.log("accountLiquidityPrimary.r", accountLiquidityPrimary.rightSlot());
-            console2.log("accountLiquidityPrimary.l", accountLiquidityPrimary.leftSlot());
-        }
         vm.startPrank(Alice);
-        {
-            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
-                Alice,
-                true,
-                $posIdLists[0]
-            );
 
-            assertGt(shortPremium.rightSlot(), 0);
-            assertGt(shortPremium.leftSlot(), 0);
+        (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+            Alice,
+            true,
+            $posIdLists[0]
+        );
 
-            (uint256 aliceBalanceBefore0, uint256 aliceBalanceBefore1) = (
-                ct0.balanceOf(Alice),
-                ct1.balanceOf(Alice)
-            );
+        console2.log("");
+        console2.log("Alice SETTLE");
+        settlePremiumSelf(pp, $posIdLists[0], 2_000_000_000, true);
 
-            // Alice settles her own position, received nothing because the chunks haven't been poked.
-            settlePremiumSelf(pp, $posIdLists[0], 2_000_000_000, true);
-            (uint256 aliceBalanceAfter0, uint256 aliceBalanceAfter1) = (
-                ct0.balanceOf(Alice),
-                ct1.balanceOf(Alice)
-            );
+        vm.startPrank(Bob);
+        console2.log("");
+        console2.log("Bob BURN");
 
-            uint256 aliceDeltaPremia0 = ct0.convertToAssets(
-                aliceBalanceAfter0 - aliceBalanceBefore0
-            );
-            uint256 aliceDeltaPremia1 = ct1.convertToAssets(
-                aliceBalanceAfter1 - aliceBalanceBefore1
-            );
+        burnOptions(
+            pp,
+            $posIdLists[2],
+            new TokenId[](0),
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+        vm.startPrank(Charlie);
 
-            assertEq(
-                aliceDeltaPremia0,
-                shortPremium.rightSlot(),
-                "Alice got all because of settled0"
-            );
-            assertEq(
-                aliceDeltaPremia1,
-                shortPremium.leftSlot(),
-                "Alice got all because of settled1"
-            );
+        console2.log("");
+        console2.log("Charlie BURN");
+        burnOptions(
+            pp,
+            $posIdLists[2],
+            new TokenId[](0),
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
 
-            (shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(Alice, true, $posIdLists[0]);
+        vm.startPrank(Alice);
 
-            // has 0 owed premium because it was settled at 0 in settlePremium
-            assertEq(shortPremium.rightSlot(), 0);
-            assertEq(shortPremium.leftSlot(), 0);
-        }
+        console2.log("");
+        console2.log("Alice BURN");
+
+        burnOptions(
+            pp,
+            $posIdLists[0],
+            new TokenId[](0),
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
     }
 
     function test_success_settleShortPremium_dispatchFrom() public {
