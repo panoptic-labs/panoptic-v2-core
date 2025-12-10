@@ -121,7 +121,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     ) external returns (PanopticPool newPoolContract) {
         PoolId idV4 = key.toId();
 
-        bytes32 panopticPoolKey = keccak256(abi.encode(key, riskEngine));
+        bytes32 panopticPoolKey = _getPoolKey(key, riskEngine);
 
         if (address(riskEngine) == address(0)) revert Errors.ZeroAddress();
 
@@ -298,7 +298,28 @@ contract PanopticFactory is FactoryNFT, Multicall {
         PoolKey calldata keyV4,
         IRiskEngine riskEngine
     ) external view returns (PanopticPool) {
-        bytes32 panopticPoolKey = keccak256(abi.encode(keyV4, riskEngine));
+        bytes32 panopticPoolKey = _getPoolKey(keyV4, riskEngine);
         return s_getPanopticPool[panopticPoolKey];
+    }
+
+    /// @notice Assembly implementation of keccak256(abi.encode(key, riskEngine))
+    /// @dev Duplicates abi.encode behavior: 6 words (192 bytes)
+    function _getPoolKey(
+        PoolKey calldata keyV4,
+        IRiskEngine riskEngine
+    ) internal pure returns (bytes32 hash) {
+        assembly {
+            let freeMemPtr := mload(0x40)
+
+            // Copy the PoolKey struct (5 words = 160 bytes) directly from calldata to memory
+            // keyV4 in assembly points to the start of the struct in calldata
+            calldatacopy(freeMemPtr, keyV4, 0xa0)
+
+            // Store the riskEngine as the 6th word (offset 160 / 0xa0)
+            mstore(add(freeMemPtr, 0xa0), riskEngine)
+
+            // Hash 192 bytes (0xc0)
+            hash := keccak256(freeMemPtr, 0xc0)
+        }
     }
 }
