@@ -138,6 +138,8 @@ contract RiskEngine {
     address immutable BUILDER_FACTORY;
     bytes32 immutable BUILDER_INIT_CODE_HASH;
 
+    uint256 constant MAX_OPEN_LEGS = 32;
+
     /*//////////////////////////////////////////////////////////////
                             IRM PARAMETERS
     //////////////////////////////////////////////////////////////*/
@@ -678,9 +680,6 @@ contract RiskEngine {
         uint8 safeMode = isSafeMode(currentTick, oraclePack);
 
         uint128 feeRecipient = uint256(uint160(_computeBuilderWallet(builderCode))).toUint128();
-        // unchecked {
-        //    feeRecipient = uint128(uint160(_computeBuilderWallet(builderCode)));
-        //}
 
         return
             RiskParametersLibrary.storeRiskParameters(
@@ -692,6 +691,7 @@ contract RiskEngine {
                 MAX_TWAP_DELTA_LIQUIDATION,
                 MAX_SPREAD,
                 BP_DECREASE_BUFFER,
+                MAX_OPEN_LEGS,
                 feeRecipient
             );
     }

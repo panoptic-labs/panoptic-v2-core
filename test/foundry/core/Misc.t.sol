@@ -569,7 +569,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_short_packed() public {
-        uint256 positionCount = 6;
+        uint256 positionCount = 7;
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
@@ -718,7 +718,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_short_soloLeg() public {
-        uint256 positionCount = 25;
+        uint256 positionCount = 31;
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
@@ -804,7 +804,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_long_packed() public {
-        uint256 positionCount = 6;
+        uint256 positionCount = 7;
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
@@ -997,7 +997,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_long_soloLeg() public {
-        uint256 positionCount = 25;
+        uint256 positionCount = 31;
 
         for (uint256 i = 0; i < positionCount; i++) {
             {

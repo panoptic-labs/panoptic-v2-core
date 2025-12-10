@@ -795,6 +795,8 @@ contract PanopticPool is Clone, Multicall {
         TokenId[] calldata positionIdList
     ) internal returns (LeftRightSigned netPaid, LeftRightSigned[4][] memory premiasByLeg) {
         premiasByLeg = new LeftRightSigned[4][](positionIdList.length);
+        (RiskParameters riskParameters, ) = getRiskParameters(0);
+
         for (uint256 i = 0; i < positionIdList.length; ) {
             uint128 positionSize = s_positionBalance[owner][positionIdList[i]].positionSize();
 
@@ -804,13 +806,14 @@ contract PanopticPool is Clone, Multicall {
             tickLimits[0] = tickLimitLow;
             tickLimits[1] = tickLimitHigh;
             LeftRightSigned paidAmounts;
+            address _owner = owner;
             (paidAmounts, premiasByLeg[i], ) = _burnOptions(
                 positionIdList[i],
                 positionSize,
                 tickLimits,
-                owner,
+                _owner,
                 commitLongSettled,
-                RiskParameters.wrap(0)
+                riskParameters
             );
             netPaid = netPaid.add(paidAmounts);
             unchecked {
@@ -858,7 +861,7 @@ contract PanopticPool is Clone, Multicall {
             tokenId,
             collectedByLeg,
             positionSize,
-            riskParameters.maxSpread(),
+            riskParameters,
             LeftRightSigned.wrap(commitLongSettled ? int128(1) : int128(0))
         );
 
@@ -954,7 +957,7 @@ contract PanopticPool is Clone, Multicall {
             tokenId,
             emptyCollectedByLegs,
             positionSize,
-            riskParameters.maxSpread(),
+            riskParameters,
             LeftRightSigned.wrap(1).addToLeftSlot(1 + (int128(currentTick) << 2))
         );
         // deduct the paid premium tokens from the owner's balance
@@ -979,7 +982,7 @@ contract PanopticPool is Clone, Multicall {
     ) internal {
         // ADD the current tokenId to the position list hash (hash = XOR of all keccak256(tokenId))
         // and increase the number of positions counter by 1.
-        _updatePositionsHash(owner, tokenId, ADD);
+        _updatePositionsHash(owner, tokenId, ADD, riskParameters.maxLegs());
 
         for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
             if (tokenId.width(leg) != 0) {
@@ -1091,7 +1094,7 @@ contract PanopticPool is Clone, Multicall {
         TokenId tokenId,
         LeftRightUnsigned[4] memory collectedByLeg,
         uint128 positionSize,
-        uint24 maxSpread,
+        RiskParameters riskParameters,
         LeftRightSigned commitLongSettledAndKeepOpen
     ) internal returns (LeftRightSigned realizedPremia, LeftRightSigned[4] memory premiaByLeg) {
         uint256[2][4] memory premiumAccumulatorsByLeg;
@@ -1143,7 +1146,11 @@ contract PanopticPool is Clone, Multicall {
 
                             // if position is short, ensure that removed liquidity does not deplete strike beyond MAX_SPREAD when closed
                             // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (T - R)
-                            totalLiquidity = _checkLiquiditySpread(tokenId, leg, maxSpread);
+                            totalLiquidity = _checkLiquiditySpread(
+                                tokenId,
+                                leg,
+                                riskParameters.maxSpread()
+                            );
                         }
                         // T (totalLiquidity is (T - R) after burning)
                         uint256 totalLiquidityBefore = commitLongSettledAndKeepOpen.leftSlot() == 0
@@ -1269,7 +1276,7 @@ contract PanopticPool is Clone, Multicall {
 
             // REMOVE the current tokenId from the position list hash (hash = XOR of all keccak256(tokenId), remove by XOR'ing again)
             // and decrease the number of positions counter by 1.
-            _updatePositionsHash(owner, tokenId, !ADD);
+            _updatePositionsHash(owner, tokenId, !ADD, riskParameters.maxLegs());
         }
     }
 
@@ -1556,6 +1563,7 @@ contract PanopticPool is Clone, Multicall {
             int24[2] memory tickLimits;
             tickLimits[0] = MIN_SWAP_TICK;
             tickLimits[1] = MAX_SWAP_TICK;
+            (RiskParameters riskParameters, ) = getRiskParameters(0);
 
             // Exercise the option
             // Turn off ITM swapping to prevent swap at potentially unfavorable price
@@ -1565,7 +1573,7 @@ contract PanopticPool is Clone, Multicall {
                 tickLimits,
                 account,
                 COMMIT_LONG_SETTLED,
-                RiskParameters.wrap(0)
+                riskParameters
             );
         }
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
@@ -1786,7 +1794,12 @@ contract PanopticPool is Clone, Multicall {
     /// @param account The owner of `tokenId`
     /// @param tokenId The option position
     /// @param addFlag Whether to add `tokenId` to the hash (true) or remove it (false)
-    function _updatePositionsHash(address account, TokenId tokenId, bool addFlag) internal {
+    function _updatePositionsHash(
+        address account,
+        TokenId tokenId,
+        bool addFlag,
+        uint8 maxLegs
+    ) internal {
         // Get the current position hash value (fingerprint of all pre-existing positions created by `_account`)
         // Add the current tokenId to the positionsHash as XOR'd
         // since 0 ^ x = x, no problem on first mint
@@ -1796,7 +1809,7 @@ contract PanopticPool is Clone, Multicall {
             tokenId,
             addFlag
         );
-        if ((newHash >> 248) > MAX_OPEN_LEGS) revert Errors.TooManyLegsOpen();
+        if ((newHash >> 248) > maxLegs) revert Errors.TooManyLegsOpen();
         s_positionsHash[account] = newHash;
     }
 
