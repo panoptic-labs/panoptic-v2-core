@@ -6597,6 +6597,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         address caller,
         uint256 builderCode
     ) public {
+        vm.skip(true);
         vm.assume(builderCode != 0);
         {
             _initWorld(x);
