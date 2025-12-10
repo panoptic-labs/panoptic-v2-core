@@ -963,7 +963,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                     // what the account that owns the liquidity in uniswap has (startingLiquidity)
                     // we must ensure that an account can only move its own liquidity out of uniswap
                     // so we revert in this case
-                    revert Errors.NotEnoughLiquidityToBuy();
+                    revert Errors.NotEnoughLiquidityInChunk();
                 } else {
                     // startingLiquidity is >= chunkLiquidity, so no possible underflow
                     unchecked {

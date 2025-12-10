@@ -2741,7 +2741,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MAX_TICK
         );
 
-        vm.expectRevert(Errors.NotEnoughLiquidityToBuy.selector);
+        vm.expectRevert(Errors.NotEnoughLiquidityInChunk.selector);
 
         // long leg
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(

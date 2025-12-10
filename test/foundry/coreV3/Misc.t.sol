@@ -6014,8 +6014,8 @@ contract Misctest is Test, PositionUtils {
                 } catch (bytes memory reason) {
                     if (reason.length >= 4) {
                         bytes4 receivedSelector = bytes4(reason);
-                        if (receivedSelector == Errors.NotEnoughLiquidityToBuy.selector) {
-                            console2.log("LONG: NotEnoughLiquidityToBuy at strike:", strike);
+                        if (receivedSelector == Errors.NotEnoughLiquidityInChunk.selector) {
+                            console2.log("LONG: NotEnoughLiquidityInChunk at strike:", strike);
                         } else if (
                             receivedSelector == Errors.EffectiveLiquidityAboveThreshold.selector
                         ) {
@@ -6055,8 +6055,8 @@ contract Misctest is Test, PositionUtils {
                         console2.log("Uniswap constraint at strike:", strike);
                     } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
                         console2.log("LiquidityTooHigh at strike:", strike);
-                    } else if (receivedSelector == Errors.NotEnoughLiquidityToBuy.selector) {
-                        console2.log("NotEnoughLiquidityToBuy at strike:", strike);
+                    } else if (receivedSelector == Errors.NotEnoughLiquidityInChunk.selector) {
+                        console2.log("NotEnoughLiquidityInChunk at strike:", strike);
                     } else if (
                         receivedSelector ==
                         bytes4(
@@ -6222,8 +6222,8 @@ contract Misctest is Test, PositionUtils {
                 } catch (bytes memory reason) {
                     if (reason.length >= 4) {
                         bytes4 receivedSelector = bytes4(reason);
-                        if (receivedSelector == Errors.NotEnoughLiquidityToBuy.selector) {
-                            console2.log("LONG: NotEnoughLiquidityToBuy at strike:", $strike);
+                        if (receivedSelector == Errors.NotEnoughLiquidityInChunk.selector) {
+                            console2.log("LONG: NotEnoughLiquidityInChunk at strike:", $strike);
                         } else if (
                             receivedSelector == Errors.EffectiveLiquidityAboveThreshold.selector
                         ) {
@@ -6276,8 +6276,8 @@ contract Misctest is Test, PositionUtils {
                         console2.log("Uniswap constraint at strike:", $strike);
                     } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
                         console2.log("LiquidityTooHigh at strike:", $strike);
-                    } else if (receivedSelector == Errors.NotEnoughLiquidityToBuy.selector) {
-                        console2.log("NotEnoughLiquidityToBuy at strike:", $strike);
+                    } else if (receivedSelector == Errors.NotEnoughLiquidityInChunk.selector) {
+                        console2.log("NotEnoughLiquidityInChunk at strike:", $strike);
                     } else if (
                         receivedSelector ==
                         bytes4(

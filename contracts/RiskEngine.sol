@@ -2169,10 +2169,6 @@ contract BuilderFactory {
             abi.encode(address(this))
         );
 
-        bytes32 initCodeHash = keccak256(
-            abi.encodePacked(type(BuilderWallet).creationCode, abi.encode(address(this)))
-        );
-
         wallet = Create2Lib.deploy(0, salt, initCode);
         // now set the admin in storage (not part of init code)
         BuilderWallet(wallet).init(builderAdmin);

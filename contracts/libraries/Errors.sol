@@ -72,7 +72,7 @@ library Errors {
     error NotBuilder();
 
     /// @notice PanopticPool: There is not enough available liquidity in the chunk for one of the long legs to be created (or for one of the short legs to be closed)
-    error NotEnoughLiquidityToBuy();
+    error NotEnoughLiquidityInChunk();
 
     /// @notice CollateralTracker: The user does not own enough assets to open/close a position
     error NotEnoughTokens(address tokenAddress, uint256 assetsRequested, uint256 assetBalance);
