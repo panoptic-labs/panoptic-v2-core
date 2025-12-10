@@ -451,7 +451,7 @@ contract PanopticPoolTest is PositionUtils {
         );
     }
 
-    function settleLongPremium(
+    function settlePremium(
         PanopticPool pp,
         TokenId[] memory settlerList,
         TokenId[] memory settleeList,

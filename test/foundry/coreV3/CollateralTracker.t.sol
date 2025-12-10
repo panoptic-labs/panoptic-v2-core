@@ -744,7 +744,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken1.wipeUtilizationSlot();
     }
 
-    function settleLongPremium(
+    function settlePremium(
         PanopticPool pp,
         TokenId[] memory settlerList,
         TokenId[] memory settleeList,

@@ -527,7 +527,7 @@ contract Misctest is Test, PositionUtils {
         );
     }
 
-    function settleLongPremium(
+    function settlePremium(
         PanopticPool pp,
         TokenId[] memory settlerList,
         TokenId[] memory settleeList,
@@ -548,6 +548,24 @@ contract Misctest is Test, PositionUtils {
                 premiaAsCollateral ? 1 : 0
             )
         );
+    }
+
+    function settlePremiumSelf(
+        PanopticPool pp,
+        TokenId[] memory mintList,
+        uint128 positionSize,
+        bool premiaAsCollateral
+    ) internal {
+        uint128[] memory sizeList = new uint128[](1);
+        sizeList[0] = positionSize;
+
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
+
+        tickAndSpreadLimits[0][0] = -887272;
+        tickAndSpreadLimits[0][1] = 887272;
+        tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
+
+        pp.dispatch(mintList, mintList, sizeList, tickAndSpreadLimits, premiaAsCollateral, 0);
     }
 
     function test_gas_MaxPositions_short_packed() public {
@@ -2174,10 +2192,10 @@ contract Misctest is Test, PositionUtils {
                 uint256(1) // numberOfTicks
             )
         );
-        settleLongPremium(pp, $posIdLists[0], $posIdList, Bob, 0, false);
+        settlePremium(pp, $posIdLists[0], $posIdList, Bob, 0, false);
 
         uint256 snap = vm.snapshotState();
-        settleLongPremium(pp, $posIdLists[0], $posIdList, Bob, 0, true);
+        settlePremium(pp, $posIdLists[0], $posIdList, Bob, 0, true);
 
         vm.revertToState(snap);
         console2.log("here?");
@@ -2954,6 +2972,552 @@ contract Misctest is Test, PositionUtils {
         );
     }
 
+    function test_success_settleShortPremium_self() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        {
+            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        // sell primary chunk
+        $posIdLists[0].push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
+
+        routerV4.modifyLiquidity(address(0), poolKey, -10000, 10000, 10 ** 18);
+
+        // mint some amount of liquidity with Alice owning 1/2 and Bob and Charlie owning 1/4 respectively
+        // then, remove 9.737% of that liquidity at the same ratio
+        // Once this state is in place, accumulate some amount of fees on the existing liquidity in the pool
+        // The fees should be immediately available for withdrawal because they have been paid to liquidity already in the pool
+        // 8.896% * 1.022x vegoid = +~10% of the fee amount accumulated will be owed by sellers
+        vm.startPrank(Alice);
+
+        mintOptions(
+            pp,
+            $posIdLists[0],
+            1_000,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Bob);
+
+        mintOptions(
+            pp,
+            $posIdLists[0],
+            499_999_500,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Charlie);
+
+        mintOptions(
+            pp,
+            $posIdLists[0],
+            499_999_500,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        {
+            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        // position type A: 1-leg long primary
+        $posIdLists[2].push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 15, 1));
+
+        // Buyer 1 buys the chunk
+        vm.startPrank(Buyers[0]);
+        mintOptions(
+            pp,
+            $posIdLists[2],
+            9_884_444,
+            type(uint24).max,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Swapper);
+
+        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(100) + 1);
+
+        // There are some precision issues with this (1B is not exactly 1B) but close enough to see the effects
+        accruePoolFeesInRange(
+            manager,
+            poolKey,
+            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
+            1_000_000,
+            1_000_000_000
+        );
+
+        // accumulate lower order of fees on dummy chunk
+        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(-100));
+
+        accruePoolFeesInRange(
+            manager,
+            poolKey,
+            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
+            10_000,
+            100_000
+        );
+
+        swapperc.swapTo(uniPool, 2 ** 96);
+        routerV4.swapTo(address(0), poolKey, 2 ** 96);
+
+        vm.startPrank(Alice);
+        {
+            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+                Alice,
+                true,
+                $posIdLists[0]
+            );
+
+            assertGe(shortPremium.rightSlot(), 0);
+            assertGe(shortPremium.leftSlot(), 0);
+
+            (uint256 aliceBalanceBefore0, uint256 aliceBalanceBefore1) = (
+                ct0.balanceOf(Alice),
+                ct1.balanceOf(Alice)
+            );
+
+            // Alice settles her own position, received nothing because the chunks haven't been poked.
+            settlePremiumSelf(pp, $posIdLists[0], 1_000, true);
+            (uint256 aliceBalanceAfter0, uint256 aliceBalanceAfter1) = (
+                ct0.balanceOf(Alice),
+                ct1.balanceOf(Alice)
+            );
+
+            (shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(Alice, true, $posIdLists[0]);
+
+            // has 0 owed premium because it was settled at 0 in settlePremium
+            assertEq(shortPremium.rightSlot(), 0);
+            assertEq(shortPremium.leftSlot(), 0);
+
+            // burn options and forfeit her premium, which was settled as 0 in settlePremium
+            burnOptions(
+                pp,
+                $posIdLists[0],
+                new TokenId[](0),
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                false
+            );
+
+            (uint256 aliceBalancePost0, uint256 aliceBalancePost1) = (
+                ct0.balanceOf(Alice),
+                ct1.balanceOf(Alice)
+            );
+
+            // Alice re-mints an option, pokes the chunk and make the protocol collect some premium
+            mintOptions(
+                pp,
+                $posIdLists[0],
+                1,
+                0,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
+            );
+        }
+
+        uint256 bobDeltaPremia0;
+        uint256 bobDeltaPremia1;
+
+        uint256 snap = vm.snapshotState();
+
+        {
+            vm.startPrank(Bob);
+
+            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+                Bob,
+                true,
+                $posIdLists[0]
+            );
+            uint256 owedPremia0 = shortPremium.rightSlot();
+            uint256 owedPremia1 = shortPremium.leftSlot();
+            console2.log("owedPremia-total0", owedPremia0);
+            console2.log("owedPremia-total1", owedPremia1);
+
+            assertGe(owedPremia0, 0);
+            assertGe(owedPremia1, 0);
+
+            (uint256 bobBalanceBefore0, uint256 bobBalanceBefore1) = (
+                ct0.balanceOf(Bob),
+                ct1.balanceOf(Bob)
+            );
+
+            // Bob settles his own premium, receives only realize premia and misses out on unsettled longs
+            settlePremiumSelf(pp, $posIdLists[0], 499_999_500, true);
+            (uint256 bobBalanceAfter0, uint256 bobBalanceAfter1) = (
+                ct0.balanceOf(Bob),
+                ct1.balanceOf(Bob)
+            );
+
+            assertGe(bobBalanceAfter0, bobBalanceBefore0, "bob received premia0");
+            assertGe(bobBalanceAfter1, bobBalanceBefore1, "bob received premia1");
+
+            bobDeltaPremia0 = ct0.convertToAssets(bobBalanceAfter0 - bobBalanceBefore0);
+            bobDeltaPremia1 = ct1.convertToAssets(bobBalanceAfter1 - bobBalanceBefore1);
+
+            console2.log("bobDeltaPremia0", bobDeltaPremia0);
+            console2.log("bobDeltaPremia1", bobDeltaPremia1);
+            assertLt(
+                bobDeltaPremia0,
+                owedPremia0,
+                "bob received less than owed due to unsettled token0"
+            );
+            assertLt(
+                bobDeltaPremia1,
+                owedPremia1,
+                "bob received less than owed due to unsettled token0"
+            );
+        }
+
+        vm.revertToState(snap);
+
+        vm.startPrank(Charlie);
+
+        uint256 charlieDeltaPremia0;
+        uint256 charlieDeltaPremia1;
+
+        {
+            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+                Charlie,
+                true,
+                $posIdLists[0]
+            );
+            uint256 owedPremia0 = shortPremium.rightSlot();
+            uint256 owedPremia1 = shortPremium.leftSlot();
+            console2.log("owedPremia-total0", owedPremia0);
+            console2.log("owedPremia-total1", owedPremia1);
+
+            assertGe(owedPremia0, 0);
+            assertGe(owedPremia1, 0);
+
+            (uint256 charlieBalanceBefore0, uint256 charlieBalanceBefore1) = (
+                ct0.balanceOf(Charlie),
+                ct1.balanceOf(Charlie)
+            );
+
+            // Charlie settles Buyers[0] premium first
+            settlePremium(pp, $posIdLists[0], $posIdLists[2], Buyers[0], 0, true);
+
+            // Charlie settles his own premium, receives only realize premia from settled longs
+            settlePremiumSelf(pp, $posIdLists[0], 499_999_500, true);
+
+            (uint256 charlieBalanceAfter0, uint256 charlieBalanceAfter1) = (
+                ct0.balanceOf(Charlie),
+                ct1.balanceOf(Charlie)
+            );
+
+            assertGt(charlieBalanceAfter0, charlieBalanceBefore0, "charlie received premia0");
+            assertGt(charlieBalanceAfter1, charlieBalanceBefore1, "charlie received premia1");
+
+            charlieDeltaPremia0 = ct0.convertToAssets(charlieBalanceAfter0 - charlieBalanceBefore0);
+            charlieDeltaPremia1 = ct1.convertToAssets(charlieBalanceAfter1 - charlieBalanceBefore1);
+
+            assertApproxEqAbs(
+                charlieDeltaPremia0,
+                owedPremia0,
+                1,
+                "charlie received exactly what they are owed due to settled token0"
+            );
+            assertApproxEqAbs(
+                charlieDeltaPremia1,
+                owedPremia1,
+                1,
+                "charlie received exactly what they are owed due to settled token0"
+            );
+        }
+    }
+
+    function test_success_settleShortPremium_dispatchFrom() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        {
+            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        // sell primary chunk
+        $posIdLists[0].push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
+
+        routerV4.modifyLiquidity(address(0), poolKey, -10000, 10000, 10 ** 18);
+
+        // mint some amount of liquidity with Alice owning 1/2 and Bob and Charlie owning 1/4 respectively
+        // then, remove 9.737% of that liquidity at the same ratio
+        // Once this state is in place, accumulate some amount of fees on the existing liquidity in the pool
+        // The fees should be immediately available for withdrawal because they have been paid to liquidity already in the pool
+        // 8.896% * 1.022x vegoid = +~10% of the fee amount accumulated will be owed by sellers
+        vm.startPrank(Alice);
+
+        mintOptions(
+            pp,
+            $posIdLists[0],
+            1_000,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Bob);
+
+        mintOptions(
+            pp,
+            $posIdLists[0],
+            499_999_500,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Charlie);
+
+        mintOptions(
+            pp,
+            $posIdLists[0],
+            499_999_500,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        {
+            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        // position type A: 1-leg long primary
+        $posIdLists[2].push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 15, 1));
+
+        // Buyer 1 buys the chunk
+        vm.startPrank(Buyers[0]);
+        mintOptions(
+            pp,
+            $posIdLists[2],
+            9_884_444,
+            type(uint24).max,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Swapper);
+
+        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(100) + 1);
+
+        // There are some precision issues with this (1B is not exactly 1B) but close enough to see the effects
+        accruePoolFeesInRange(
+            manager,
+            poolKey,
+            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
+            1_000_000,
+            1_000_000_000
+        );
+
+        // accumulate lower order of fees on dummy chunk
+        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(-100));
+
+        accruePoolFeesInRange(
+            manager,
+            poolKey,
+            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
+            10_000,
+            100_000
+        );
+
+        swapperc.swapTo(uniPool, 2 ** 96);
+        routerV4.swapTo(address(0), poolKey, 2 ** 96);
+
+        vm.startPrank(Alice);
+        {
+            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+                Alice,
+                true,
+                $posIdLists[0]
+            );
+
+            assertGe(shortPremium.rightSlot(), 0);
+            assertGe(shortPremium.leftSlot(), 0);
+
+            (uint256 aliceBalanceBefore0, uint256 aliceBalanceBefore1) = (
+                ct0.balanceOf(Alice),
+                ct1.balanceOf(Alice)
+            );
+
+            // Alice settles her own position, received nothing because the chunks haven't been poked.
+            settlePremium(pp, $posIdLists[0], $posIdLists[0], Alice, 0, true);
+            (uint256 aliceBalanceAfter0, uint256 aliceBalanceAfter1) = (
+                ct0.balanceOf(Alice),
+                ct1.balanceOf(Alice)
+            );
+
+            (shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(Alice, true, $posIdLists[0]);
+
+            // has 0 owed premium because it was settled at 0 in settlePremium
+            assertEq(shortPremium.rightSlot(), 0);
+            assertEq(shortPremium.leftSlot(), 0);
+
+            // burn options and forfeit her premium, which was settled as 0 in settlePremium
+            burnOptions(
+                pp,
+                $posIdLists[0],
+                new TokenId[](0),
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                false
+            );
+
+            (uint256 aliceBalancePost0, uint256 aliceBalancePost1) = (
+                ct0.balanceOf(Alice),
+                ct1.balanceOf(Alice)
+            );
+
+            // Alice re-mints an option, pokes the chunk and make the protocol collect some premium
+            mintOptions(
+                pp,
+                $posIdLists[0],
+                1,
+                0,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
+            );
+        }
+
+        uint256 bobDeltaPremia0;
+        uint256 bobDeltaPremia1;
+
+        uint256 snap = vm.snapshotState();
+
+        {
+            vm.startPrank(Bob);
+
+            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+                Bob,
+                true,
+                $posIdLists[0]
+            );
+            uint256 owedPremia0 = shortPremium.rightSlot();
+            uint256 owedPremia1 = shortPremium.leftSlot();
+            console2.log("owedPremia-total0", owedPremia0);
+            console2.log("owedPremia-total1", owedPremia1);
+
+            assertGe(owedPremia0, 0);
+            assertGe(owedPremia1, 0);
+
+            (uint256 bobBalanceBefore0, uint256 bobBalanceBefore1) = (
+                ct0.balanceOf(Bob),
+                ct1.balanceOf(Bob)
+            );
+
+            // Bob settles his own premium, receives only realize premia and misses out on unsettled longs
+            settlePremium(pp, $posIdLists[0], $posIdLists[0], Bob, 0, true);
+            (uint256 bobBalanceAfter0, uint256 bobBalanceAfter1) = (
+                ct0.balanceOf(Bob),
+                ct1.balanceOf(Bob)
+            );
+
+            assertGe(bobBalanceAfter0, bobBalanceBefore0, "bob received premia0");
+            assertGe(bobBalanceAfter1, bobBalanceBefore1, "bob received premia1");
+
+            bobDeltaPremia0 = ct0.convertToAssets(bobBalanceAfter0 - bobBalanceBefore0);
+            bobDeltaPremia1 = ct1.convertToAssets(bobBalanceAfter1 - bobBalanceBefore1);
+
+            console2.log("bobDeltaPremia0", bobDeltaPremia0);
+            console2.log("bobDeltaPremia1", bobDeltaPremia1);
+            assertLt(
+                bobDeltaPremia0,
+                owedPremia0,
+                "bob received less than owed due to unsettled token0"
+            );
+            assertLt(
+                bobDeltaPremia1,
+                owedPremia1,
+                "bob received less than owed due to unsettled token0"
+            );
+        }
+
+        vm.revertToState(snap);
+
+        vm.startPrank(Charlie);
+
+        uint256 charlieDeltaPremia0;
+        uint256 charlieDeltaPremia1;
+
+        {
+            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+                Charlie,
+                true,
+                $posIdLists[0]
+            );
+            uint256 owedPremia0 = shortPremium.rightSlot();
+            uint256 owedPremia1 = shortPremium.leftSlot();
+            console2.log("owedPremia-total0", owedPremia0);
+            console2.log("owedPremia-total1", owedPremia1);
+
+            assertGe(owedPremia0, 0);
+            assertGe(owedPremia1, 0);
+
+            (uint256 charlieBalanceBefore0, uint256 charlieBalanceBefore1) = (
+                ct0.balanceOf(Charlie),
+                ct1.balanceOf(Charlie)
+            );
+
+            // Charlie settles Buyers[0] premium first
+            settlePremium(pp, $posIdLists[0], $posIdLists[2], Buyers[0], 0, true);
+
+            // Charlie settles his own premium, receives only realize premia from settled longs
+            settlePremium(pp, $posIdLists[0], $posIdLists[0], Charlie, 0, true);
+
+            (uint256 charlieBalanceAfter0, uint256 charlieBalanceAfter1) = (
+                ct0.balanceOf(Charlie),
+                ct1.balanceOf(Charlie)
+            );
+
+            assertGt(charlieBalanceAfter0, charlieBalanceBefore0, "charlie received premia0");
+            assertGt(charlieBalanceAfter1, charlieBalanceBefore1, "charlie received premia1");
+
+            charlieDeltaPremia0 = ct0.convertToAssets(charlieBalanceAfter0 - charlieBalanceBefore0);
+            charlieDeltaPremia1 = ct1.convertToAssets(charlieBalanceAfter1 - charlieBalanceBefore1);
+
+            assertApproxEqAbs(
+                charlieDeltaPremia0,
+                owedPremia0,
+                1,
+                "charlie received exactly what they are owed due to settled token0"
+            );
+            assertApproxEqAbs(
+                charlieDeltaPremia1,
+                owedPremia1,
+                1,
+                "charlie received exactly what they are owed due to settled token0"
+            );
+        }
+    }
+
     function test_success_settleLongPremium() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
@@ -3317,7 +3881,7 @@ contract Misctest is Test, PositionUtils {
         // collect buyer 1's four (not three) relevant chunks because i=1 has two legs
         // amount collected: 11114 + (11114 + 111) + 11114 =
         for (uint256 i = 0; i < 3; ++i) {
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[i], Buyers[0], 0, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[i], Buyers[0], 0, true);
         }
 
         assertEq(
@@ -3393,9 +3957,9 @@ contract Misctest is Test, PositionUtils {
         // now, settle the dummy chunks for all the buyers/positions and see that the settled ratio for primary doesn't change
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
-            settleLongPremium(pp, $posIdLists[1], collateralIdLists[1], Buyers[i], 1, true);
+            settlePremium(pp, $posIdLists[1], collateralIdLists[1], Buyers[i], 1, true);
 
-            settleLongPremium(pp, $posIdLists[1], collateralIdLists[3], Buyers[i], 0, true);
+            settlePremium(pp, $posIdLists[1], collateralIdLists[3], Buyers[i], 0, true);
         }
 
         assertEq(
@@ -3469,9 +4033,9 @@ contract Misctest is Test, PositionUtils {
         assetsBefore1Arr[2] = ct1.convertToAssets(ct1.balanceOf(Buyers[2]));
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[1], Buyers[i], 1, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[1], Buyers[i], 1, true);
 
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[3], Buyers[i], 0, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[3], Buyers[i], 0, true);
         }
 
         assertEq(
@@ -3519,11 +4083,11 @@ contract Misctest is Test, PositionUtils {
         assetsBefore1Arr[2] = ct1.convertToAssets(ct1.balanceOf(Buyers[2]));
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[i], 0, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[i], 0, true);
 
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[1], Buyers[i], 0, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[1], Buyers[i], 0, true);
 
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[2], Buyers[i], 0, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[2], Buyers[i], 0, true);
         }
 
         assertEq(
@@ -3591,7 +4155,7 @@ contract Misctest is Test, PositionUtils {
         // test long leg validation
         //console2.log('a');
         //vm.expectRevert(Errors.NotALongLeg.selector);
-        //settleLongPremium(pp, new TokenId[](0), collateralIdLists[2], Buyers[0], 1, true);
+        //settlePremium(pp, new TokenId[](0), collateralIdLists[2], Buyers[0], 1, true);
 
         // test positionIdList validation
         // snapshot so we don't have to reset changes to collateralIdLists array
@@ -3599,7 +4163,7 @@ contract Misctest is Test, PositionUtils {
 
         collateralIdLists[0].pop();
         vm.expectRevert(Errors.InputListFail.selector);
-        settleLongPremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[0], 0, true);
+        settlePremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[0], 0, true);
         vm.revertTo(snap);
 
         // test collateral checking (basic)
@@ -3612,7 +4176,7 @@ contract Misctest is Test, PositionUtils {
             vm.expectRevert(
                 abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
             );
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[i], 0, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[i], 0, true);
             vm.revertTo(snap);
         }
 
@@ -3742,7 +4306,7 @@ contract Misctest is Test, PositionUtils {
         uint256 settleeBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[0]));
         uint256 settleeBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[0]));
 
-        settleLongPremium(pp, $posIdLists[0], $posIdLists[1], Buyers[0], 0, true);
+        settlePremium(pp, $posIdLists[0], $posIdLists[1], Buyers[0], 0, true);
 
         int256 balanceDelta0 = int256(ct0.convertToAssets(ct0.balanceOf(Buyers[0]))) -
             int256(settleeBalanceBefore0);
@@ -3777,7 +4341,7 @@ contract Misctest is Test, PositionUtils {
         settleeBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[1]));
         settleeBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[1]));
 
-        settleLongPremium(pp, $posIdLists[0], $posIdLists[1], Buyers[1], 0, true);
+        settlePremium(pp, $posIdLists[0], $posIdLists[1], Buyers[1], 0, true);
 
         balanceDelta0 =
             int256(ct0.convertToAssets(ct0.balanceOf(Buyers[1]))) -
@@ -3812,7 +4376,7 @@ contract Misctest is Test, PositionUtils {
         vm.expectRevert(
             abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
         );
-        settleLongPremium(pp, $posIdLists[0], $posIdLists[1], Buyers[2], 0, true);
+        settlePremium(pp, $posIdLists[0], $posIdLists[1], Buyers[2], 0, true);
     }
 
     function test_success_settledPremiumDistribution() public {

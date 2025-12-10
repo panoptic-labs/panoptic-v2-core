@@ -53,7 +53,7 @@ contract PanopticPool is Clone, Multicall {
         LeftRightSigned exerciseFee
     );
 
-    /// @notice Emitted when premium is settled independent of a mint/burn (e.g. during `settleLongPremium`).
+    /// @notice Emitted when premium is settled independent of a mint/burn (e.g. during `settlePremium`).
     /// @param user Address of the owner of the settled position
     /// @param tokenId TokenId of the settled position
     /// @param legIndex The leg index of `tokenId` that the premium was settled for
@@ -594,12 +594,14 @@ contract PanopticPool is Clone, Multicall {
             int24[2] memory _tickLimits;
             _tickLimits[0] = tickAndSpreadLimits[i][0];
             _tickLimits[1] = tickAndSpreadLimits[i][1];
+
             // if safe mode is larger than 1, mandate all positions to be minted/burnt as covered
             if (riskParameters.safeMode() > 1) {
                 if (_tickLimits[0] > _tickLimits[1]) {
                     (_tickLimits[0], _tickLimits[1]) = (_tickLimits[1], _tickLimits[0]);
                 }
             }
+
             int24 finalTick;
             if (PositionBalance.unwrap(positionBalanceData) == 0) {
                 // revert if more than 2 conditions are triggered to prevent the minting of any positions
@@ -615,16 +617,23 @@ contract PanopticPool is Clone, Multicall {
                 );
             } else {
                 uint128 positionSize = positionBalanceData.positionSize();
+
                 if (positionSize == 0) revert Errors.PositionNotOwned();
 
-                (, , finalTick) = _burnOptions(
-                    tokenId,
-                    positionSize,
-                    _tickLimits,
-                    msg.sender,
-                    COMMIT_LONG_SETTLED,
-                    riskParameters
-                );
+                // if input positionSize matches the size stored, this is a settlePremium. Otherwise, this is a burn.
+                if (positionSize == positionSizes[i]) {
+                    int24 currentTick = SFPM.getCurrentTick(poolKey());
+                    _settleOptions(msg.sender, tokenId, positionSize, riskParameters, currentTick);
+                } else {
+                    (, , finalTick) = _burnOptions(
+                        tokenId,
+                        positionSize,
+                        _tickLimits,
+                        msg.sender,
+                        COMMIT_LONG_SETTLED,
+                        riskParameters
+                    );
+                }
             }
             unchecked {
                 cumulativeTickDeltas = cumulativeTickDeltas.addToRightSlot(
@@ -634,7 +643,7 @@ contract PanopticPool is Clone, Multicall {
             }
         }
 
-        /// @dev revert if the total deviation is more than twice the ickDeltaLiquidation (ie. roundtrips more than the allowed tick liquidation delta)
+        /// @dev revert if the total deviation is more than twice the ickDeltaLiquidation (ie. roundtrips more than the allowed tick liquidation delta per trip)
         if (
             cumulativeTickDeltas.rightSlot() >
             int256(uint256(2 * riskParameters.tickDeltaLiquidation()))
@@ -927,6 +936,344 @@ contract PanopticPool is Clone, Multicall {
     }
 
     /*//////////////////////////////////////////////////////////////
+                          SETTLEMENTS
+    //////////////////////////////////////////////////////////////*/
+
+    function _settleOptions(
+        address owner,
+        TokenId tokenId,
+        uint128 positionSize,
+        RiskParameters riskParameters,
+        int24 currentTick
+    ) internal {
+        // call _updateSettlementPostBurn to settle the long premia or the short premia (only for self calling)
+        LeftRightUnsigned[4] memory emptyCollectedByLegs;
+        LeftRightSigned realizedPremia;
+        (realizedPremia, ) = _updateSettlementPostBurn(
+            owner,
+            tokenId,
+            emptyCollectedByLegs,
+            positionSize,
+            riskParameters.maxSpread(),
+            LeftRightSigned.wrap(1).addToLeftSlot(1 + (int128(currentTick) << 2))
+        );
+        // deduct the paid premium tokens from the owner's balance
+        collateralToken0().settleBurn(owner, 0, 0, 0, realizedPremia.rightSlot(), riskParameters);
+        collateralToken1().settleBurn(owner, 0, 0, 0, realizedPremia.leftSlot(), riskParameters);
+    }
+
+    /// @notice Adds collected tokens to `s_settledTokens` and adjusts `s_grossPremiumLast` for any liquidity added.
+    /// @dev Always called after `mintTokenizedPosition`.
+    /// @param tokenId The option position that was minted
+    /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position
+    /// @param positionSize The size of the position, expressed in terms of the asset
+    /// @param effectiveLiquidityLimit Maximum amount of "spread" defined as `removedLiquidity/netLiquidity`
+    /// @param owner The owner of the option position to be minted
+    function _updateSettlementPostMint(
+        RiskParameters riskParameters,
+        TokenId tokenId,
+        LeftRightUnsigned[4] memory collectedByLeg,
+        uint128 positionSize,
+        uint24 effectiveLiquidityLimit,
+        address owner
+    ) internal {
+        // ADD the current tokenId to the position list hash (hash = XOR of all keccak256(tokenId))
+        // and increase the number of positions counter by 1.
+        _updatePositionsHash(owner, tokenId, ADD);
+
+        for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
+            if (tokenId.width(leg) != 0) {
+                uint256 isLong = tokenId.isLong(leg);
+                // if position is long, ensure that removed liquidity does not deplete strike beyond min(MAX_SPREAD, user-provided effectiveLiquidityLimit)
+                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
+                uint256 totalLiquidity = _checkLiquiditySpread(
+                    tokenId,
+                    leg,
+                    isLong == 0
+                        ? riskParameters.maxSpread()
+                        : Math.min(effectiveLiquidityLimit, riskParameters.maxSpread())
+                );
+
+                bytes32 chunkKey = PanopticMath.getChunkKey(tokenId, leg);
+
+                // add any tokens collected from Uniswap in a given chunk to the settled tokens available for withdrawal by sellers
+                s_settledTokens[chunkKey] = s_settledTokens[chunkKey].add(collectedByLeg[leg]);
+
+                LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
+                    tokenId,
+                    leg,
+                    positionSize
+                );
+
+                uint256 grossCurrent0;
+                uint256 grossCurrent1;
+                {
+                    uint256 tokenType = tokenId.tokenType(leg);
+                    // can use (type(int24).max flag because premia accumulators were updated during the mintTokenizedPosition step.
+                    (grossCurrent0, grossCurrent1) = SFPM.getAccountPremium(
+                        poolKey(),
+                        address(this),
+                        tokenType,
+                        liquidityChunk.tickLower(),
+                        liquidityChunk.tickUpper(),
+                        type(int24).max,
+                        isLong
+                    );
+
+                    s_options[owner][tokenId][leg] = LeftRightUnsigned
+                        .wrap(uint128(grossCurrent0))
+                        .addToLeftSlot(uint128(grossCurrent1));
+                }
+
+                // if position is short, adjust `grossPremiumLast` upward to account for the increase in short liquidity
+                if (isLong == 0) {
+                    unchecked {
+                        // L
+                        LeftRightUnsigned grossPremiumLast = s_grossPremiumLast[chunkKey];
+                        // R
+                        uint256 positionLiquidity = liquidityChunk.liquidity();
+                        // T (totalLiquidity is (T + R) after minting)
+                        uint256 totalLiquidityBefore = totalLiquidity - positionLiquidity;
+
+                        // We need to adjust the grossPremiumLast value such that the result of
+                        // (grossPremium - adjustedGrossPremiumLast) * updatedTotalLiquidityPostMint / 2**64 is equal to (grossPremium - grossPremiumLast) * totalLiquidityBeforeMint / 2**64
+                        // G: total gross premium
+                        // T: totalLiquidityBeforeMint
+                        // R: positionLiquidity
+                        // C: current grossPremium value
+                        // L: current grossPremiumLast value
+                        // Ln: updated grossPremiumLast value
+                        // T * (C - L) = G
+                        // (T + R) * (C - Ln) = G
+                        //
+                        // T * (C - L) = (T + R) * (C - Ln)
+                        // (TC - TL) / (T + R) = C - Ln
+                        // Ln = C - (TC - TL)/(T + R)
+                        // Ln = (CT + CR - TC + TL)/(T+R)
+                        // Ln = (CR + TL)/(T+R)
+
+                        s_grossPremiumLast[chunkKey] = LeftRightUnsigned
+                            .wrap(
+                                uint128(
+                                    (grossCurrent0 *
+                                        positionLiquidity +
+                                        grossPremiumLast.rightSlot() *
+                                        totalLiquidityBefore) / totalLiquidity
+                                )
+                            )
+                            .addToLeftSlot(
+                                uint128(
+                                    (grossCurrent1 *
+                                        positionLiquidity +
+                                        grossPremiumLast.leftSlot() *
+                                        totalLiquidityBefore) / totalLiquidity
+                                )
+                            );
+                    }
+                }
+            }
+            unchecked {
+                ++leg;
+            }
+        }
+    }
+
+    /// @notice Updates settled tokens and grossPremiumLast for a chunk after a burn and returns premium info.
+    /// @param owner The owner of the option position that was burnt
+    /// @param tokenId The option position that was burnt
+    /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position
+    /// @param positionSize The size of the position, expressed in terms of the asset
+    /// @param commitLongSettledAndKeepOpen Whether to commit the long premium that will be settled to storage (rightSlot != 0) and keep the position open (rightSlot != 0)
+    /// @return realizedPremia The amount of premia settled by the user
+    /// @return premiaByLeg The amount of premia settled by the user for each leg of the position
+    function _updateSettlementPostBurn(
+        address owner,
+        TokenId tokenId,
+        LeftRightUnsigned[4] memory collectedByLeg,
+        uint128 positionSize,
+        uint24 maxSpread,
+        LeftRightSigned commitLongSettledAndKeepOpen
+    ) internal returns (LeftRightSigned realizedPremia, LeftRightSigned[4] memory premiaByLeg) {
+        uint256[2][4] memory premiumAccumulatorsByLeg;
+
+        // compute accumulated fees
+        (premiaByLeg, premiumAccumulatorsByLeg) = _getPremia(
+            tokenId,
+            positionSize,
+            owner,
+            COMPUTE_PREMIA_AS_COLLATERAL,
+            commitLongSettledAndKeepOpen.leftSlot() == 0
+                ? type(int24).max
+                : int24(commitLongSettledAndKeepOpen.leftSlot() >> 2)
+        );
+        for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
+            if (tokenId.width(leg) != 0) {
+                LeftRightSigned legPremia = premiaByLeg[leg];
+                bytes32 chunkKey = PanopticMath.getChunkKey(tokenId, leg);
+
+                // collected from Uniswap
+                LeftRightUnsigned settledTokens = s_settledTokens[chunkKey].add(
+                    collectedByLeg[leg]
+                );
+
+                // (will be) paid by long legs
+                if (tokenId.isLong(leg) == 1) {
+                    if (commitLongSettledAndKeepOpen.rightSlot() != 0)
+                        settledTokens = LeftRightUnsigned.wrap(
+                            uint256(
+                                LeftRightSigned.unwrap(
+                                    LeftRightSigned
+                                        .wrap(int256(LeftRightUnsigned.unwrap(settledTokens)))
+                                        .sub(legPremia)
+                                )
+                            )
+                        );
+                    realizedPremia = realizedPremia.add(legPremia);
+                } else {
+                    if (commitLongSettledAndKeepOpen.leftSlot() == 0 || msg.sender == owner) {
+                        uint256 positionLiquidity;
+                        uint256 totalLiquidity;
+                        {
+                            LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
+                                tokenId,
+                                leg,
+                                positionSize
+                            );
+                            positionLiquidity = liquidityChunk.liquidity();
+
+                            // if position is short, ensure that removed liquidity does not deplete strike beyond MAX_SPREAD when closed
+                            // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (T - R)
+                            totalLiquidity = _checkLiquiditySpread(tokenId, leg, maxSpread);
+                        }
+                        // T (totalLiquidity is (T - R) after burning)
+                        uint256 totalLiquidityBefore = commitLongSettledAndKeepOpen.leftSlot() == 0
+                            ? totalLiquidity + positionLiquidity
+                            : totalLiquidity;
+
+                        LeftRightUnsigned grossPremiumLast = s_grossPremiumLast[chunkKey];
+
+                        LeftRightUnsigned availablePremium = _getAvailablePremium(
+                            totalLiquidityBefore,
+                            settledTokens,
+                            grossPremiumLast,
+                            LeftRightUnsigned.wrap(uint256(LeftRightSigned.unwrap(legPremia))),
+                            premiumAccumulatorsByLeg[leg]
+                        );
+
+                        // subtract settled tokens sent to seller
+                        settledTokens = settledTokens.sub(availablePremium);
+
+                        // add available premium to amount that should be settled
+                        realizedPremia = realizedPremia.add(
+                            LeftRightSigned.wrap(int256(LeftRightUnsigned.unwrap(availablePremium)))
+                        );
+
+                        // update the base `premiaByLeg` value to reflect the amount of premium that will actually be settled
+                        premiaByLeg[leg] = LeftRightSigned.wrap(
+                            int256(LeftRightUnsigned.unwrap(availablePremium))
+                        );
+
+                        // We need to adjust the grossPremiumLast value such that the result of
+                        // (grossPremium - adjustedGrossPremiumLast) * updatedTotalLiquidityPostBurn / 2**64 is equal to
+                        // (grossPremium - grossPremiumLast) * totalLiquidityBeforeBurn / 2**64 - premiumOwedToPosition
+                        // G: total gross premium (- premiumOwedToPosition)
+                        // T: totalLiquidityBeforeMint
+                        // R: positionLiquidity
+                        // C: current grossPremium value
+                        // L: current grossPremiumLast value
+                        // Ln: updated grossPremiumLast value
+                        // T * (C - L) = G
+                        // (T - R) * (C - Ln) = G - P
+                        //
+                        // T * (C - L) = (T - R) * (C - Ln) + P
+                        // (TC - TL - P) / (T - R) = C - Ln
+                        // Ln = C - (TC - TL - P) / (T - R)
+                        // Ln = (TC - CR - TC + LT + P) / (T-R)
+                        // Ln = (LT - CR + P) / (T-R)
+
+                        unchecked {
+                            uint256[2][4]
+                                memory _premiumAccumulatorsByLeg = premiumAccumulatorsByLeg;
+                            uint256 _leg = leg;
+
+                            // if there's still liquidity, compute the new grossPremiumLast
+                            // otherwise, we just reset grossPremiumLast to the current grossPremium
+                            s_grossPremiumLast[chunkKey] = totalLiquidity != 0
+                                ? LeftRightUnsigned
+                                    .wrap(
+                                        uint128(
+                                            uint256(
+                                                Math.max(
+                                                    (int256(
+                                                        grossPremiumLast.rightSlot() *
+                                                            totalLiquidityBefore
+                                                    ) -
+                                                        int256(
+                                                            _premiumAccumulatorsByLeg[_leg][0] *
+                                                                positionLiquidity
+                                                        )) +
+                                                        int256(legPremia.rightSlot() * 2 ** 64),
+                                                    0
+                                                )
+                                            ) / totalLiquidity
+                                        )
+                                    )
+                                    .addToLeftSlot(
+                                        uint128(
+                                            uint256(
+                                                Math.max(
+                                                    (int256(
+                                                        grossPremiumLast.leftSlot() *
+                                                            totalLiquidityBefore
+                                                    ) -
+                                                        int256(
+                                                            _premiumAccumulatorsByLeg[_leg][1] *
+                                                                positionLiquidity
+                                                        )) + int256(legPremia.leftSlot()) * 2 ** 64,
+                                                    0
+                                                )
+                                            ) / totalLiquidity
+                                        )
+                                    )
+                                : LeftRightUnsigned
+                                    .wrap(uint128(premiumAccumulatorsByLeg[_leg][0]))
+                                    .addToLeftSlot(uint128(premiumAccumulatorsByLeg[_leg][1]));
+                        }
+                    }
+                }
+                // update settled tokens in storage with all local deltas
+                s_settledTokens[chunkKey] = settledTokens;
+                if (commitLongSettledAndKeepOpen.leftSlot() == 0) {
+                    // erase the s_options entry for that leg
+                    s_options[owner][tokenId][leg] = LeftRightUnsigned.wrap(0);
+                } else {
+                    // update the premium accumulator to the latest value: only if it is a long leg (settleLongPremium) OR if owner == msg.sender (autocollect)
+                    if (tokenId.isLong(leg) != 0 || msg.sender == owner) {
+                        s_options[owner][tokenId][leg] = LeftRightUnsigned
+                            .wrap(0)
+                            .addToRightSlot(uint128(premiumAccumulatorsByLeg[leg][0]))
+                            .addToLeftSlot(uint128(premiumAccumulatorsByLeg[leg][1]));
+                        emit PremiumSettled(owner, tokenId, leg, premiaByLeg[leg]);
+                    }
+                }
+            }
+
+            unchecked {
+                ++leg;
+            }
+        }
+
+        if (commitLongSettledAndKeepOpen.leftSlot() == 0) {
+            // reset balances and delete stored option data
+            s_positionBalance[owner][tokenId] = PositionBalance.wrap(0);
+
+            // REMOVE the current tokenId from the position list hash (hash = XOR of all keccak256(tokenId), remove by XOR'ing again)
+            // and decrease the number of positions counter by 1.
+            _updatePositionsHash(owner, tokenId, !ADD);
+        }
+    }
+
+    /*//////////////////////////////////////////////////////////////
                     LIQUIDATIONS & FORCED EXERCISES
     //////////////////////////////////////////////////////////////*/
 
@@ -999,7 +1346,7 @@ contract PanopticPool is Clone, Multicall {
         {
             uint256 toLength = positionIdListTo.length;
             uint256 finalLength = positionIdListToFinal.length;
-            // if account is solvent at all ticks, this is a force exercise or a settleLongPremium.
+            // if account is solvent at all ticks, this is a force exercise or a settlePremium.
             if (solvent == numberOfTicks) {
                 unchecked {
                     tokenId = positionIdListTo[toLength - 1];
@@ -1016,7 +1363,7 @@ contract PanopticPool is Clone, Multicall {
                                 revert Errors.InputListFail();
                             }
                         }
-                        _settleLongPremium(account, tokenId, twapTick, currentTick);
+                        _settlePremium(account, tokenId, twapTick, currentTick);
                     } else if (toLength == (finalLength + 1)) {
                         // final is one element shorter, that's a force exercise
                         if (tokenId.countLongs() == 0) revert Errors.NoLegsExercisable();
@@ -1041,7 +1388,7 @@ contract PanopticPool is Clone, Multicall {
             } else if (solvent == 0) {
                 // if account is insolvent at all ticks, this is a liquidation
 
-                // if the positions lengths are the same, this was intended as a settleLongPremia, but revert because account is insolvent
+                // if the positions lengths are the same, this was intended as a settlePremia, but revert because account is insolvent
                 if (toLength == finalLength) revert Errors.AccountInsolvent(solvent, 4);
 
                 if (positionIdListToFinal.length != 0) revert Errors.InputListFail();
@@ -1245,7 +1592,7 @@ contract PanopticPool is Clone, Multicall {
     /// @dev This feature is only available when `owner` is solvent and has the requisite tokens to settle the premium.
     /// @param owner The owner of the option position to make premium payments on
     /// @param tokenId The position to be force exercised; this position must contain at least one out-of-range long leg
-    function _settleLongPremium(
+    function _settlePremium(
         address owner,
         TokenId tokenId,
         int24 twapTick,
@@ -1258,26 +1605,11 @@ contract PanopticPool is Clone, Multicall {
         ct0.delegate(owner);
         ct1.delegate(owner);
 
+        (RiskParameters riskParameters, ) = getRiskParameters(0);
         uint128 positionSize = s_positionBalance[owner][tokenId].positionSize();
-
         if (positionSize == 0) revert Errors.PositionNotOwned();
 
-        (RiskParameters riskParameters, ) = getRiskParameters(0);
-
-        LeftRightUnsigned[4] memory emptyCollectedByLegs;
-        LeftRightSigned realizedPremia;
-        (realizedPremia, ) = _updateSettlementPostBurn(
-            owner,
-            tokenId,
-            emptyCollectedByLegs,
-            positionSize,
-            riskParameters.maxSpread(),
-            LeftRightSigned.wrap(1).addToLeftSlot(1 + (int128(currentTick) << 2))
-        );
-
-        // deduct the paid premium tokens from the owner's balance
-        ct0.settleBurn(owner, 0, 0, 0, realizedPremia.rightSlot(), riskParameters);
-        ct1.settleBurn(owner, 0, 0, 0, realizedPremia.leftSlot(), riskParameters);
+        _settleOptions(owner, tokenId, positionSize, riskParameters, currentTick);
 
         LeftRightSigned refundAmounts = riskEngine().getRefundAmounts(
             owner,
@@ -1286,7 +1618,6 @@ contract PanopticPool is Clone, Multicall {
             ct0,
             ct1
         );
-
         // allow the caller to settle tokens owed to the protocol by the settlee in exchange for the surplus token
         ct0.refund(owner, msg.sender, refundAmounts.rightSlot());
         ct1.refund(owner, msg.sender, refundAmounts.leftSlot());
@@ -1645,122 +1976,6 @@ contract PanopticPool is Clone, Multicall {
                         AVAILABLE PREMIUM LOGIC
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Adds collected tokens to `s_settledTokens` and adjusts `s_grossPremiumLast` for any liquidity added.
-    /// @dev Always called after `mintTokenizedPosition`.
-    /// @param tokenId The option position that was minted
-    /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position
-    /// @param positionSize The size of the position, expressed in terms of the asset
-    /// @param effectiveLiquidityLimit Maximum amount of "spread" defined as `removedLiquidity/netLiquidity`
-    /// @param owner The owner of the option position to be minted
-    function _updateSettlementPostMint(
-        RiskParameters riskParameters,
-        TokenId tokenId,
-        LeftRightUnsigned[4] memory collectedByLeg,
-        uint128 positionSize,
-        uint24 effectiveLiquidityLimit,
-        address owner
-    ) internal {
-        // ADD the current tokenId to the position list hash (hash = XOR of all keccak256(tokenId))
-        // and increase the number of positions counter by 1.
-        _updatePositionsHash(owner, tokenId, ADD);
-
-        for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
-            if (tokenId.width(leg) != 0) {
-                uint256 isLong = tokenId.isLong(leg);
-                // if position is long, ensure that removed liquidity does not deplete strike beyond min(MAX_SPREAD, user-provided effectiveLiquidityLimit)
-                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
-                uint256 totalLiquidity = _checkLiquiditySpread(
-                    tokenId,
-                    leg,
-                    isLong == 0
-                        ? riskParameters.maxSpread()
-                        : Math.min(effectiveLiquidityLimit, riskParameters.maxSpread())
-                );
-
-                bytes32 chunkKey = PanopticMath.getChunkKey(tokenId, leg);
-
-                // add any tokens collected from Uniswap in a given chunk to the settled tokens available for withdrawal by sellers
-                s_settledTokens[chunkKey] = s_settledTokens[chunkKey].add(collectedByLeg[leg]);
-
-                LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
-                    tokenId,
-                    leg,
-                    positionSize
-                );
-
-                uint256 grossCurrent0;
-                uint256 grossCurrent1;
-                {
-                    uint256 tokenType = tokenId.tokenType(leg);
-                    // can use (type(int24).max flag because premia accumulators were updated during the mintTokenizedPosition step.
-                    (grossCurrent0, grossCurrent1) = SFPM.getAccountPremium(
-                        poolKey(),
-                        address(this),
-                        tokenType,
-                        liquidityChunk.tickLower(),
-                        liquidityChunk.tickUpper(),
-                        type(int24).max,
-                        isLong
-                    );
-
-                    s_options[owner][tokenId][leg] = LeftRightUnsigned
-                        .wrap(uint128(grossCurrent0))
-                        .addToLeftSlot(uint128(grossCurrent1));
-                }
-
-                // if position is short, adjust `grossPremiumLast` upward to account for the increase in short liquidity
-                if (isLong == 0) {
-                    unchecked {
-                        // L
-                        LeftRightUnsigned grossPremiumLast = s_grossPremiumLast[chunkKey];
-                        // R
-                        uint256 positionLiquidity = liquidityChunk.liquidity();
-                        // T (totalLiquidity is (T + R) after minting)
-                        uint256 totalLiquidityBefore = totalLiquidity - positionLiquidity;
-
-                        // We need to adjust the grossPremiumLast value such that the result of
-                        // (grossPremium - adjustedGrossPremiumLast) * updatedTotalLiquidityPostMint / 2**64 is equal to (grossPremium - grossPremiumLast) * totalLiquidityBeforeMint / 2**64
-                        // G: total gross premium
-                        // T: totalLiquidityBeforeMint
-                        // R: positionLiquidity
-                        // C: current grossPremium value
-                        // L: current grossPremiumLast value
-                        // Ln: updated grossPremiumLast value
-                        // T * (C - L) = G
-                        // (T + R) * (C - Ln) = G
-                        //
-                        // T * (C - L) = (T + R) * (C - Ln)
-                        // (TC - TL) / (T + R) = C - Ln
-                        // Ln = C - (TC - TL)/(T + R)
-                        // Ln = (CT + CR - TC + TL)/(T+R)
-                        // Ln = (CR + TL)/(T+R)
-
-                        s_grossPremiumLast[chunkKey] = LeftRightUnsigned
-                            .wrap(
-                                uint128(
-                                    (grossCurrent0 *
-                                        positionLiquidity +
-                                        grossPremiumLast.rightSlot() *
-                                        totalLiquidityBefore) / totalLiquidity
-                                )
-                            )
-                            .addToLeftSlot(
-                                uint128(
-                                    (grossCurrent1 *
-                                        positionLiquidity +
-                                        grossPremiumLast.leftSlot() *
-                                        totalLiquidityBefore) / totalLiquidity
-                                )
-                            );
-                    }
-                }
-            }
-            unchecked {
-                ++leg;
-            }
-        }
-    }
-
     /// @notice Query the amount of premium available for withdrawal given a certain `premiumOwed` for a chunk.
     /// @dev Based on the ratio between `settledTokens` and the total premium owed to sellers in a chunk.
     /// @dev The ratio is capped at 1 (as the base ratio can be greater than one if some seller forfeits enough premium).
@@ -1840,201 +2055,6 @@ contract PanopticPool is Clone, Multicall {
 
         unchecked {
             totalLiquidity = netLiquidity + removedLiquidity;
-        }
-    }
-
-    /// @notice Updates settled tokens and grossPremiumLast for a chunk after a burn and returns premium info.
-    /// @param owner The owner of the option position that was burnt
-    /// @param tokenId The option position that was burnt
-    /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position
-    /// @param positionSize The size of the position, expressed in terms of the asset
-    /// @param commitLongSettledAndKeepOpen Whether to commit the long premium that will be settled to storage (rightSlot != 0) and keep the position open (rightSlot != 0)
-    /// @return realizedPremia The amount of premia settled by the user
-    /// @return premiaByLeg The amount of premia settled by the user for each leg of the position
-    function _updateSettlementPostBurn(
-        address owner,
-        TokenId tokenId,
-        LeftRightUnsigned[4] memory collectedByLeg,
-        uint128 positionSize,
-        uint24 maxSpread,
-        LeftRightSigned commitLongSettledAndKeepOpen
-    ) internal returns (LeftRightSigned realizedPremia, LeftRightSigned[4] memory premiaByLeg) {
-        uint256[2][4] memory premiumAccumulatorsByLeg;
-
-        // compute accumulated fees
-        (premiaByLeg, premiumAccumulatorsByLeg) = _getPremia(
-            tokenId,
-            positionSize,
-            owner,
-            COMPUTE_PREMIA_AS_COLLATERAL,
-            commitLongSettledAndKeepOpen.leftSlot() == 0
-                ? type(int24).max
-                : int24(commitLongSettledAndKeepOpen.leftSlot() >> 2)
-        );
-        for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
-            if (tokenId.width(leg) != 0) {
-                LeftRightSigned legPremia = premiaByLeg[leg];
-                bytes32 chunkKey = PanopticMath.getChunkKey(tokenId, leg);
-
-                // collected from Uniswap
-                LeftRightUnsigned settledTokens = s_settledTokens[chunkKey].add(
-                    collectedByLeg[leg]
-                );
-
-                // (will be) paid by long legs
-                if (tokenId.isLong(leg) == 1) {
-                    if (commitLongSettledAndKeepOpen.rightSlot() != 0)
-                        settledTokens = LeftRightUnsigned.wrap(
-                            uint256(
-                                LeftRightSigned.unwrap(
-                                    LeftRightSigned
-                                        .wrap(int256(LeftRightUnsigned.unwrap(settledTokens)))
-                                        .sub(legPremia)
-                                )
-                            )
-                        );
-                    realizedPremia = realizedPremia.add(legPremia);
-                } else {
-                    if (commitLongSettledAndKeepOpen.leftSlot() == 0 || msg.sender == owner) {
-                        uint256 positionLiquidity;
-                        uint256 totalLiquidity;
-                        {
-                            LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
-                                tokenId,
-                                leg,
-                                positionSize
-                            );
-                            positionLiquidity = liquidityChunk.liquidity();
-
-                            // if position is short, ensure that removed liquidity does not deplete strike beyond MAX_SPREAD when closed
-                            // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (T - R)
-                            totalLiquidity = _checkLiquiditySpread(tokenId, leg, maxSpread);
-                        }
-                        // T (totalLiquidity is (T - R) after burning)
-                        uint256 totalLiquidityBefore = commitLongSettledAndKeepOpen.leftSlot() == 0
-                            ? totalLiquidity + positionLiquidity
-                            : totalLiquidity;
-
-                        LeftRightUnsigned grossPremiumLast = s_grossPremiumLast[chunkKey];
-
-                        LeftRightUnsigned availablePremium = _getAvailablePremium(
-                            totalLiquidityBefore,
-                            settledTokens,
-                            grossPremiumLast,
-                            LeftRightUnsigned.wrap(uint256(LeftRightSigned.unwrap(legPremia))),
-                            premiumAccumulatorsByLeg[leg]
-                        );
-
-                        // subtract settled tokens sent to seller
-                        settledTokens = settledTokens.sub(availablePremium);
-
-                        // add available premium to amount that should be settled
-                        realizedPremia = realizedPremia.add(
-                            LeftRightSigned.wrap(int256(LeftRightUnsigned.unwrap(availablePremium)))
-                        );
-
-                        // update the base `premiaByLeg` value to reflect the amount of premium that will actually be settled
-                        premiaByLeg[leg] = LeftRightSigned.wrap(
-                            int256(LeftRightUnsigned.unwrap(availablePremium))
-                        );
-
-                        // We need to adjust the grossPremiumLast value such that the result of
-                        // (grossPremium - adjustedGrossPremiumLast) * updatedTotalLiquidityPostBurn / 2**64 is equal to
-                        // (grossPremium - grossPremiumLast) * totalLiquidityBeforeBurn / 2**64 - premiumOwedToPosition
-                        // G: total gross premium (- premiumOwedToPosition)
-                        // T: totalLiquidityBeforeMint
-                        // R: positionLiquidity
-                        // C: current grossPremium value
-                        // L: current grossPremiumLast value
-                        // Ln: updated grossPremiumLast value
-                        // T * (C - L) = G
-                        // (T - R) * (C - Ln) = G - P
-                        //
-                        // T * (C - L) = (T - R) * (C - Ln) + P
-                        // (TC - TL - P) / (T - R) = C - Ln
-                        // Ln = C - (TC - TL - P) / (T - R)
-                        // Ln = (TC - CR - TC + LT + P) / (T-R)
-                        // Ln = (LT - CR + P) / (T-R)
-
-                        unchecked {
-                            uint256[2][4]
-                                memory _premiumAccumulatorsByLeg = premiumAccumulatorsByLeg;
-                            uint256 _leg = leg;
-
-                            // if there's still liquidity, compute the new grossPremiumLast
-                            // otherwise, we just reset grossPremiumLast to the current grossPremium
-                            s_grossPremiumLast[chunkKey] = totalLiquidity != 0
-                                ? LeftRightUnsigned
-                                    .wrap(
-                                        uint128(
-                                            uint256(
-                                                Math.max(
-                                                    (int256(
-                                                        grossPremiumLast.rightSlot() *
-                                                            totalLiquidityBefore
-                                                    ) -
-                                                        int256(
-                                                            _premiumAccumulatorsByLeg[_leg][0] *
-                                                                positionLiquidity
-                                                        )) +
-                                                        int256(legPremia.rightSlot() * 2 ** 64),
-                                                    0
-                                                )
-                                            ) / totalLiquidity
-                                        )
-                                    )
-                                    .addToLeftSlot(
-                                        uint128(
-                                            uint256(
-                                                Math.max(
-                                                    (int256(
-                                                        grossPremiumLast.leftSlot() *
-                                                            totalLiquidityBefore
-                                                    ) -
-                                                        int256(
-                                                            _premiumAccumulatorsByLeg[_leg][1] *
-                                                                positionLiquidity
-                                                        )) + int256(legPremia.leftSlot()) * 2 ** 64,
-                                                    0
-                                                )
-                                            ) / totalLiquidity
-                                        )
-                                    )
-                                : LeftRightUnsigned
-                                    .wrap(uint128(premiumAccumulatorsByLeg[_leg][0]))
-                                    .addToLeftSlot(uint128(premiumAccumulatorsByLeg[_leg][1]));
-                        }
-                    }
-                }
-                // update settled tokens in storage with all local deltas
-                s_settledTokens[chunkKey] = settledTokens;
-                if (commitLongSettledAndKeepOpen.leftSlot() == 0) {
-                    // erase the s_options entry for that leg
-                    s_options[owner][tokenId][leg] = LeftRightUnsigned.wrap(0);
-                } else {
-                    // update the premium accumulator to the latest value: only if it is a long leg (settleLongPremium) OR if owner == msg.sender (autocollect)
-                    if (tokenId.isLong(leg) != 0 || msg.sender == owner) {
-                        s_options[owner][tokenId][leg] = LeftRightUnsigned
-                            .wrap(0)
-                            .addToRightSlot(uint128(premiumAccumulatorsByLeg[leg][0]))
-                            .addToLeftSlot(uint128(premiumAccumulatorsByLeg[leg][1]));
-                        emit PremiumSettled(owner, tokenId, leg, premiaByLeg[leg]);
-                    }
-                }
-            }
-
-            unchecked {
-                ++leg;
-            }
-        }
-
-        if (commitLongSettledAndKeepOpen.leftSlot() == 0) {
-            // reset balances and delete stored option data
-            s_positionBalance[owner][tokenId] = PositionBalance.wrap(0);
-
-            // REMOVE the current tokenId from the position list hash (hash = XOR of all keccak256(tokenId), remove by XOR'ing again)
-            // and decrease the number of positions counter by 1.
-            _updatePositionsHash(owner, tokenId, !ADD);
         }
     }
 }

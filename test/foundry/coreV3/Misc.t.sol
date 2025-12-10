@@ -501,7 +501,7 @@ contract Misctest is Test, PositionUtils {
         );
     }
 
-    function settleLongPremium(
+    function settlePremium(
         PanopticPool pp,
         TokenId[] memory settlerList,
         TokenId[] memory settleeList,
@@ -1980,10 +1980,10 @@ contract Misctest is Test, PositionUtils {
                 uint256(1) // numberOfTicks
             )
         );
-        settleLongPremium(pp, $posIdLists[0], $posIdList, Bob, 0, false);
+        settlePremium(pp, $posIdLists[0], $posIdList, Bob, 0, false);
 
         uint256 snap = vm.snapshotState();
-        settleLongPremium(pp, $posIdLists[0], $posIdList, Bob, 0, true);
+        settlePremium(pp, $posIdLists[0], $posIdList, Bob, 0, true);
 
         vm.revertToState(snap);
 
@@ -2743,7 +2743,7 @@ contract Misctest is Test, PositionUtils {
         );
     }
 
-    function test_success_settleLongPremium() public {
+    function test_success_settlePremium() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
@@ -3090,7 +3090,7 @@ contract Misctest is Test, PositionUtils {
         // collect buyer 1's four (not three) relevant chunks because i=1 has two legs
         // amount collected: 11114 + (11114 + 111) + 11114 =
         for (uint256 i = 0; i < 3; ++i) {
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[i], Buyers[0], 0, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[i], Buyers[0], 0, true);
         }
 
         assertEq(
@@ -3166,9 +3166,9 @@ contract Misctest is Test, PositionUtils {
         // now, settle the dummy chunks for all the buyers/positions and see that the settled ratio for primary doesn't change
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
-            settleLongPremium(pp, $posIdLists[1], collateralIdLists[1], Buyers[i], 1, true);
+            settlePremium(pp, $posIdLists[1], collateralIdLists[1], Buyers[i], 1, true);
 
-            settleLongPremium(pp, $posIdLists[1], collateralIdLists[3], Buyers[i], 0, true);
+            settlePremium(pp, $posIdLists[1], collateralIdLists[3], Buyers[i], 0, true);
         }
 
         assertEq(
@@ -3242,9 +3242,9 @@ contract Misctest is Test, PositionUtils {
         assetsBefore1Arr[2] = ct1.convertToAssets(ct1.balanceOf(Buyers[2]));
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[1], Buyers[i], 1, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[1], Buyers[i], 1, true);
 
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[3], Buyers[i], 0, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[3], Buyers[i], 0, true);
         }
 
         assertEq(
@@ -3292,11 +3292,11 @@ contract Misctest is Test, PositionUtils {
         assetsBefore1Arr[2] = ct1.convertToAssets(ct1.balanceOf(Buyers[2]));
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[i], 0, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[i], 0, true);
 
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[1], Buyers[i], 0, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[1], Buyers[i], 0, true);
 
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[2], Buyers[i], 0, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[2], Buyers[i], 0, true);
         }
 
         assertEq(
@@ -3364,7 +3364,7 @@ contract Misctest is Test, PositionUtils {
         // test long leg validation
         //console2.log('a');
         //vm.expectRevert(Errors.NotALongLeg.selector);
-        //settleLongPremium(pp, new TokenId[](0), collateralIdLists[2], Buyers[0], 1, true);
+        //settlePremium(pp, new TokenId[](0), collateralIdLists[2], Buyers[0], 1, true);
 
         // test positionIdList validation
         // snapshot so we don't have to reset changes to collateralIdLists array
@@ -3372,7 +3372,7 @@ contract Misctest is Test, PositionUtils {
 
         collateralIdLists[0].pop();
         vm.expectRevert(Errors.InputListFail.selector);
-        settleLongPremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[0], 0, true);
+        settlePremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[0], 0, true);
         vm.revertTo(snap);
 
         // test collateral checking (basic)
@@ -3385,7 +3385,7 @@ contract Misctest is Test, PositionUtils {
             vm.expectRevert(
                 abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
             );
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[i], 0, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[i], 0, true);
             vm.revertTo(snap);
         }
 
@@ -3419,7 +3419,7 @@ contract Misctest is Test, PositionUtils {
         }
     }
 
-    function test_success_settleLongPremium_tokenSubstitution() public {
+    function test_success_settlePremium_tokenSubstitution() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
@@ -3506,7 +3506,7 @@ contract Misctest is Test, PositionUtils {
         uint256 settleeBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[0]));
         uint256 settleeBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[0]));
 
-        settleLongPremium(pp, $posIdLists[0], $posIdLists[1], Buyers[0], 0, true);
+        settlePremium(pp, $posIdLists[0], $posIdLists[1], Buyers[0], 0, true);
 
         int256 balanceDelta0 = int256(ct0.convertToAssets(ct0.balanceOf(Buyers[0]))) -
             int256(settleeBalanceBefore0);
@@ -3539,7 +3539,7 @@ contract Misctest is Test, PositionUtils {
         settleeBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[1]));
         settleeBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[1]));
 
-        settleLongPremium(pp, $posIdLists[0], $posIdLists[1], Buyers[1], 0, true);
+        settlePremium(pp, $posIdLists[0], $posIdLists[1], Buyers[1], 0, true);
 
         balanceDelta0 =
             int256(ct0.convertToAssets(ct0.balanceOf(Buyers[1]))) -
@@ -3571,7 +3571,7 @@ contract Misctest is Test, PositionUtils {
         vm.expectRevert(
             abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
         );
-        settleLongPremium(pp, $posIdLists[0], $posIdLists[1], Buyers[2], 0, true);
+        settlePremium(pp, $posIdLists[0], $posIdLists[1], Buyers[2], 0, true);
     }
 
     function test_success_settledPremiumDistribution() public {
