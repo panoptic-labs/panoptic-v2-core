@@ -61,12 +61,12 @@ contract RiskEngine {
     uint256 internal constant ONE_BPS = 1000;
     uint256 internal constant TEN_BPS = 10000;
 
-    //int256 constant EMA_PERIOD_SPOT = 180; // 3 minutes
-    //int256 constant EMA_PERIOD_FAST = 600; // 10 minutes
-    //int256 constant EMA_PERIOD_SLOW = 3600; // 1h minutes
-    //int256 constant EMA_PERIOD_EONS = 21600; // 6h minutes
+    //int256 constant EMA_PERIOD_SPOT = 120; // 2 minutes
+    //int256 constant EMA_PERIOD_FAST = 240; // 4 minutes
+    //int256 constant EMA_PERIOD_SLOW = 600; // 10 minutes
+    //int256 constant EMA_PERIOD_EONS = 1800; // 30 minutes
 
-    uint96 constant EMA_PERIODS = uint96(180 + (600 << 24) + (3600 << 48) + (21600 << 72));
+    uint96 constant EMA_PERIODS = uint96(120 + (240 << 24) + (600 << 48) + (1800 << 72));
     /// @notice The maximum allowed cumulative delta between the fast & slow oracle tick, the current & slow oracle tick, and the last-observed & slow oracle tick.
     /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
     int256 internal constant MAX_TICKS_DELTA = 953;
@@ -92,6 +92,9 @@ contract RiskEngine {
     int256 public constant IRM_MAX_ELAPSED_TIME = 4096;
 
     bytes32 internal constant BUILDER_SALT = keccak256("panoptic.builder");
+
+    /// @notice The maximum amount of change, in ticks, permitted between internal median updates.
+    int24 internal constant MAX_CLAMP_DELTA = 149;
 
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS
@@ -181,11 +184,11 @@ contract RiskEngine {
     /// @param _targetPoolUtilization Target pool utilization below which buying+selling is optimal, fraction of 1, scaled by 10_000_000
     /// @param _saturatedPoolUtilization Pool utilization above which selling is 100% collateral backed, fraction of 1, scaled by 10_000_000
     constructor(
-        uint256 _sellerCollateralRatio,
-        uint256 _buyerCollateralRatio,
-        uint256 _forceExerciseCost,
-        uint256 _targetPoolUtilization,
-        uint256 _saturatedPoolUtilization,
+        uint256 _sellerCollateralRatio, // hardcoded
+        uint256 _buyerCollateralRatio, // hardcoded
+        uint256 _forceExerciseCost, // hardcoded
+        uint256 _targetPoolUtilization, // hardcoded
+        uint256 _saturatedPoolUtilization, //hardcoded
         uint256 _crossBuffer0,
         uint256 _crossBuffer1,
         address _guardian,
@@ -623,8 +626,8 @@ contract RiskEngine {
     /// @notice Computes and returns all oracle ticks.
     /// @param currentTick The current tick in the Uniswap pool
     /// @param _oraclePack The packed `s_oraclePack` storage slot containing the oracle's state,
-    /// @return spotTick The fast oracle tick, sourced from the internal 10-minute EMA.
-    /// @return medianTick The slow oracle tick, calculated as the median of the 8 stored price points in the internal oracle.
+    /// @return spotTick The spot oracle tick, sourced from the shortest EMA.
+    /// @return medianTick The median tick, calculated as the median of the 8 stored price points in the internal oracle.
     /// @return latestTick The reconstructed absolute tick of the latest observation stored in the internal oracle.
     /// @return oraclePack The current value of the 8-slot internal observation queue (`s_oraclePack`)
     function getOracleTicks(
@@ -637,7 +640,8 @@ contract RiskEngine {
     {
         (spotTick, medianTick, latestTick, oraclePack) = _oraclePack.getOracleTicks(
             currentTick,
-            EMA_PERIODS
+            EMA_PERIODS,
+            MAX_CLAMP_DELTA
         );
     }
 
@@ -665,7 +669,7 @@ contract RiskEngine {
         OraclePack oraclePack,
         int24 currentTick
     ) external view returns (int24 medianTick, OraclePack updatedOraclePack) {
-        return oraclePack.computeInternalMedian(currentTick, EMA_PERIODS);
+        return oraclePack.computeInternalMedian(currentTick, EMA_PERIODS, MAX_CLAMP_DELTA);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -748,7 +752,7 @@ contract RiskEngine {
         OraclePack _oraclePack
     ) external view returns (int24[] memory, OraclePack) {
         (int24 spotTick, int24 medianTick, int24 latestTick, OraclePack oraclePack) = _oraclePack
-            .getOracleTicks(currentTick, EMA_PERIODS);
+            .getOracleTicks(currentTick, EMA_PERIODS, MAX_CLAMP_DELTA);
 
         int24[] memory atTicks;
 

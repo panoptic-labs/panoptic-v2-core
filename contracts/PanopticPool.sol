@@ -547,7 +547,7 @@ contract PanopticPool is Clone, Multicall {
                           ONBOARD MEDIAN TWAP
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Updates the internal median with the last Uniswap observation if the `MEDIAN_PERIOD` has elapsed.
+    /// @notice Updates the internal oracle.
     function pokeOracle() external {
         int24 currentTick = SFPM.getCurrentTick(poolKey());
 

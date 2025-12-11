@@ -137,6 +137,15 @@ library OraclePackLibrary {
         }
     }
 
+    /// @notice Get the lastTick of `self`.
+    /// @param self The OraclePack to retrieve the lastTick from
+    /// @return _lastTick The lastTick of `self`
+    function lastTick(OraclePack self) internal pure returns (int24 _lastTick) {
+        unchecked {
+            _lastTick = self.referenceTick() + self.residualTick(0);
+        }
+    }
+
     /// @notice Get the spotEMA of `self`.
     /// @param self The OraclePack to retrieve the spotEMA from
     /// @return _spotEMA The spotEMA of `self`
@@ -324,8 +333,8 @@ library OraclePackLibrary {
     /// @dev Implements a cascading time delta cap to prevent excessive convergence after periods of inactivity
     /// @dev EMAs converge at most 75% toward the new tick value using linear approximation: exp(-x) ≈ 1-x
     /// @dev The function modifies timeDelta in cascade: longer periods cap it first, affecting shorter periods
-    /// @param oraclePack The packed median data containing current EMA values in bits 207-120
-    /// @param timeDelta Time elapsed since last update in seconds (will be modified by cascading caps)
+    /// @param oraclePack The packed median data containing current EMA values
+    /// @param timeDelta Time elapsed since last update in seconds (at least 64s since observations have to be in different epochs)
     /// @param newTick The new tick observation to update EMAs toward
     /// @return updatedEMAs The packed 88-bit value containing all four updated EMAs
     function updateEMAs(
@@ -343,22 +352,22 @@ library OraclePackLibrary {
             // Extract current EMAs from oraclePack (88 bits starting at bit 120)
             uint256 _EMAs = oraclePack.EMAs();
 
-            // Update 1-day EMA (bits 87-66)
+            // Update eons EMA (bits 87-66)
             int24 _eonsEMA = int22toInt24((_EMAs >> 66) & BITMASK_UINT22);
             if (timeDelta > (3 * EMA_PERIOD_EONS) / 4) timeDelta = (3 * EMA_PERIOD_EONS) / 4;
             _eonsEMA = int24(_eonsEMA + (timeDelta * (newTick - _eonsEMA)) / EMA_PERIOD_EONS);
 
-            // Update 8-hour EMA (bits 65-44)
+            // Update slow EMA (bits 65-44)
             int24 _slowEMA = int22toInt24((_EMAs >> 44) & BITMASK_UINT22);
             if (timeDelta > (3 * EMA_PERIOD_SLOW) / 4) timeDelta = (3 * EMA_PERIOD_SLOW) / 4;
             _slowEMA = int24(_slowEMA + (timeDelta * (newTick - _slowEMA)) / EMA_PERIOD_SLOW);
 
-            // Update 1-hour EMA (bits 43-22)
+            // Update fast EMA (bits 43-22)
             int24 _fastEMA = int22toInt24((_EMAs >> 22) & BITMASK_UINT22);
             if (timeDelta > (3 * EMA_PERIOD_FAST) / 4) timeDelta = (3 * EMA_PERIOD_FAST) / 4;
             _fastEMA = int24(_fastEMA + (timeDelta * (newTick - _fastEMA)) / EMA_PERIOD_FAST);
 
-            // Update 10-minute EMA (bits 21-0)
+            // Update spot EMA (bits 21-0)
             int24 _spotEMA = int22toInt24(_EMAs & BITMASK_UINT22);
             if (timeDelta > (3 * EMA_PERIOD_SPOT) / 4) timeDelta = (3 * EMA_PERIOD_SPOT) / 4;
             _spotEMA = int24(_spotEMA + (timeDelta * (newTick - _spotEMA)) / EMA_PERIOD_SPOT);
@@ -452,8 +461,11 @@ library OraclePackLibrary {
 
             {
                 uint256 _EMAs = updateEMAs(oraclePack, timeDelta, newTick, EMAperiods);
+
                 uint8 _lockMode = oraclePack.lockMode();
+
                 uint96 _currentResiduals = oraclePack.currentResiduals();
+
                 newOraclePack = storeOraclePack(
                     currentEpoch,
                     _newOrderMap,
@@ -473,18 +485,19 @@ library OraclePackLibrary {
     /// @param newTick The new tick observation from Uniswap TWAP that needs to be clamped
     /// @param _oraclePack The current OraclePack containing the reference tick and most recent observation
     /// @return clamped The clamped tick value, guaranteed to be within MAX_MEDIAN_DELTA of the last observation
-    function clampTick(int24 newTick, OraclePack _oraclePack) private pure returns (int24 clamped) {
+    function clampTick(
+        int24 newTick,
+        OraclePack _oraclePack,
+        int24 clampDelta
+    ) internal pure returns (int24 clamped) {
         unchecked {
-            int24 refTick = _oraclePack.referenceTick();
+            int24 _lastTick = _oraclePack.lastTick();
 
-            // Clamp lastObservedTick to be within MAX_MEDIAN_DELTA of lastTick
-            int24 lastTick = refTick + _oraclePack.residualTick(0);
-
-            int24 maxDelta = Constants.MAX_MEDIAN_DELTA;
-            if (newTick > lastTick + maxDelta) {
-                clamped = lastTick + maxDelta;
-            } else if (newTick < lastTick - maxDelta) {
-                clamped = lastTick - maxDelta;
+            // Clamp lastObservedTick to be within clampDelta of lastTick
+            if (newTick > _lastTick + clampDelta) {
+                clamped = _lastTick + clampDelta;
+            } else if (newTick < _lastTick - clampDelta) {
+                clamped = _lastTick - clampDelta;
             } else {
                 clamped = newTick;
             }
@@ -500,7 +513,8 @@ library OraclePackLibrary {
     function computeInternalMedian(
         OraclePack oraclePack,
         int24 currentTick,
-        uint96 EMAperiods
+        uint96 EMAperiods,
+        int24 clampDelta
     ) internal view returns (int24 _medianTick, OraclePack _updatedOraclePack) {
         unchecked {
             // return the average of the rank 3 and 4 values
@@ -510,14 +524,14 @@ library OraclePackLibrary {
             bool differentEpoch;
             int256 timeDelta;
             {
-                currentEpoch = (block.timestamp >> 6) & 0xFFFFFF; // mod 2**24
+                currentEpoch = (block.timestamp >> 6) & 0xFFFFFF; // 64-long epoch, taken mod 2**24
                 uint256 recordedEpoch = oraclePack.epoch();
                 differentEpoch = currentEpoch != recordedEpoch;
-                timeDelta = int256(uint256(uint24(currentEpoch - recordedEpoch))) * 64;
+                timeDelta = int256(uint256(uint24(currentEpoch - recordedEpoch))) * 64; // take a rought time delta, based on the epochs
             }
-            // only proceed if last entry is in a different epoch (takes care of looping edge case in a way that ">" doesn't)
+            // only proceed if last entry is in a different epoch
             if (differentEpoch) {
-                int24 clampedTick = clampTick(currentTick, oraclePack);
+                int24 clampedTick = clampTick(currentTick, oraclePack, clampDelta);
                 _updatedOraclePack = insertObservation(
                     oraclePack,
                     clampedTick,
@@ -532,29 +546,35 @@ library OraclePackLibrary {
     /// @notice Computes various oracle prices corresponding to a Uniswap pool.
     /// @param self The packed structure representing the sorted 8-slot queue of internal median observations
     /// @param _currentTick The current tick in the Uniswap pool
-    /// @param _EMAperiods Te
-    /// @return spotEMATick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
-    /// @return medianTick The slow oracle tick computed with the method specified in `SLOW_ORACLE_UNISWAP_MODE`
-    /// @return latestTick The latest observation from the Uniswap pool (price at the end of the last block)
-    /// @return oraclePack The updated value for `s_oraclePack` (0 if not enough time has passed since last observation or if `SLOW_ORACLE_UNISWAP_MODE` is true)
+    /// @param _EMAperiods A packed uint96 containing the EMA period data
+    /// @param clampDelta The max change in tick between updates
+    /// @return spotEMATick The spot tick, computed from the shortest timescale EMA
+    /// @return medianTick The median oracle tick computed from the last 8 observations
+    /// @return latestTick The latest observed tick in Panoptic before the current transaction
+    /// @return oraclePack The updated value for `s_oraclePack` (0 if not enough time has passed since last observation)
     function getOracleTicks(
         OraclePack self,
         int24 _currentTick,
-        uint96 _EMAperiods
+        uint96 _EMAperiods,
+        int24 clampDelta
     )
         internal
         view
         returns (int24 spotEMATick, int24 medianTick, int24 latestTick, OraclePack oraclePack)
     {
-        // Extract the spote EMA from the lowest 22 bits of the packed EMAs value and assign it as the fast oracle price.
+        // Extract the spot EMA from the lowest 22 bits of the packed EMAs value
         spotEMATick = self.spotEMA();
 
-        unchecked {
-            // Reconstruct the absolute tick of the last observation by adding the reference tick (bits 96-119) to the latest residual (bits 0-11).
-            latestTick = self.referenceTick() + self.residualTick(0);
-        }
+        // get the tick at the last protocol interaction
+        latestTick = self.lastTick();
+
         // finally, get the median tick
-        (medianTick, oraclePack) = computeInternalMedian(self, _currentTick, _EMAperiods);
+        (medianTick, oraclePack) = computeInternalMedian(
+            self,
+            _currentTick,
+            _EMAperiods,
+            clampDelta
+        );
     }
 
     /// @notice Rebases the median data structure when tick residuals exceed the 12-bit signed integer range

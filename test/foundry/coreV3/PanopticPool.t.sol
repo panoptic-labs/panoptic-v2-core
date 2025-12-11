@@ -5073,7 +5073,7 @@ contract PanopticPoolTest is PositionUtils {
         assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId1)), positionSizes[1]);
 
         // burn two positions
-        pp.dispatch(posIdList, new TokenId[](0), sizeList, tickAndSpreadLimits, true, 0);
+        pp.dispatch(posIdList, new TokenId[](0), new uint128[](2), tickAndSpreadLimits, true, 0);
 
         assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId0)), 0);
         assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId1)), 0);
@@ -5773,7 +5773,7 @@ contract PanopticPoolTest is PositionUtils {
 
             i += numLegs;
 
-            if (i > 25) vm.expectRevert(Errors.TooManyLegsOpen.selector);
+            if (i > 32) vm.expectRevert(Errors.TooManyLegsOpen.selector);
             mintOptions(
                 pp,
                 tokenIds,
@@ -5784,7 +5784,7 @@ contract PanopticPoolTest is PositionUtils {
                 true
             );
 
-            if (i > 25) break;
+            if (i > 32) break;
 
             positionsHash = uint248(PanopticMath.updatePositionsHash(positionsHash, tokenId, true));
 
