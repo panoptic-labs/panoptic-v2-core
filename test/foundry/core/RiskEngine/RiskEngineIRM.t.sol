@@ -20,15 +20,7 @@ contract RiskEngineIRMTest is Test {
     int256 internal constant TARGET_UTILIZATION = 2 ether / int256(3);
 
     function setUp() public {
-        E = new RiskEngineHarness(
-            2_000_000,
-            1_000_000,
-            1_000,
-            5_000_000,
-            9_000_000,
-            5_000_000,
-            5_000_000
-        );
+        E = new RiskEngineHarness(5_000_000, 5_000_000);
     }
 
     /*//////////////////////////////////////////////////////////////

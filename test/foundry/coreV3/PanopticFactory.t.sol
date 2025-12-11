@@ -182,19 +182,7 @@ contract PanopticFactoryTest is Test {
         address[] memory pointerAddresses = new address[](bytecodes.length);
 
         riskEngine = IRiskEngine(
-            address(
-                new RiskEngine(
-                    2_000_000,
-                    1_000_000,
-                    1_024_000,
-                    5_000_000,
-                    9_000_000,
-                    10_000_000,
-                    10_000_000,
-                    address(0),
-                    address(0)
-                )
-            )
+            address(new RiskEngine(10_000_000, 10_000_000, address(0), address(0)))
         );
 
         for (uint256 i = 0; i < bytecodes.length; i++) {
@@ -412,19 +400,7 @@ contract PanopticFactoryTest is Test {
 
         // Create a second risk engine with slightly different parameters
         IRiskEngine riskEngineB = IRiskEngine(
-            address(
-                new RiskEngine(
-                    2_500_000, // Different SCR
-                    1_500_000, // Different BCR
-                    1_024_000,
-                    5_000_000,
-                    9_000_000,
-                    10_000_000,
-                    10_000_000,
-                    address(0),
-                    address(0)
-                )
-            )
+            address(new RiskEngine(4_000_000, 3_000_000, address(0), address(0)))
         );
 
         uint96 salt = 12345;

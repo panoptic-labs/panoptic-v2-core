@@ -55,6 +55,8 @@ contract PanopticMathTest is Test, PositionUtils {
     int24 internal constant REFERENCE_TICK = 200000;
     uint256 internal constant INITIAL_EPOCH = 5;
 
+    int24 internal constant MAX_CLAMP_DELTA = 149;
+
     /*//////////////////////////////////////////////////////////////
                     COMPUTE INTERNAL MEDIAN HELPERS
     //////////////////////////////////////////////////////////////*/
@@ -1803,7 +1805,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // deltaTick would lead to capping
         int24 deltaTick = int24(
-            bound(x, Constants.MAX_MEDIAN_DELTA + 1, Constants.MAX_RESIDUAL_THRESHOLD - 1)
+            bound(x, MAX_CLAMP_DELTA + 1, Constants.MAX_RESIDUAL_THRESHOLD - 1)
         );
 
         deltaTick = x % 2 == 0 ? -deltaTick : deltaTick;
@@ -1836,10 +1838,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         assertEq(
             finalTicks[0],
-            expectedTicks[0] -
-                deltaTick +
-                (x % 2 == 0 ? int24(-1) : int24(1)) *
-                Constants.MAX_MEDIAN_DELTA,
+            expectedTicks[0] - deltaTick + (x % 2 == 0 ? int24(-1) : int24(1)) * MAX_CLAMP_DELTA,
             "New minimum value not sorted correctly!"
         );
     }
@@ -1849,9 +1848,9 @@ contract PanopticMathTest is Test, PositionUtils {
         // ARRANGE
 
         // deltaTick would lead to capping
-        int24 deltaTick = x % 2 == 0 ? Constants.MAX_MEDIAN_DELTA : -Constants.MAX_MEDIAN_DELTA;
+        int24 deltaTick = x % 2 == 0 ? MAX_CLAMP_DELTA : -MAX_CLAMP_DELTA;
 
-        uint256 n = uint24((Constants.MAX_RESIDUAL_THRESHOLD / Constants.MAX_MEDIAN_DELTA)) + 1;
+        uint256 n = uint24((Constants.MAX_RESIDUAL_THRESHOLD / MAX_CLAMP_DELTA)) + 1;
 
         OraclePack updatedData = _encodeOraclePack(_generateSortedOffsets(0));
 

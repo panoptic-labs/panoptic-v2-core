@@ -179,6 +179,8 @@ contract Misctest is Test, PositionUtils {
     ERC20S token0;
     ERC20S token1;
 
+    int24 MAX_CLAMP_DELTA;
+
     address Deployer = address(0x1234);
     address Alice = address(0x123456);
     address Bob = address(0x12345678);
@@ -218,21 +220,8 @@ contract Misctest is Test, PositionUtils {
         token1 = new ERC20S("token1", "T1", 18);
         uniPool = IUniswapV3Pool(V3FACTORY.createPool(address(token0), address(token1), 500));
 
-        re = IRiskEngine(
-            address(
-                new RiskEngine(
-                    2_000_000,
-                    1_000_000,
-                    1_024_000,
-                    5_000_000,
-                    9_000_000,
-                    10_000_000,
-                    10_000_000,
-                    address(0),
-                    address(0)
-                )
-            )
-        );
+        MAX_CLAMP_DELTA = 149;
+        re = IRiskEngine(address(new RiskEngine(10_000_000, 10_000_000, address(0), address(0))));
 
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
@@ -4029,7 +4018,7 @@ contract Misctest is Test, PositionUtils {
         int256 premium0 = 10388;
         int256 premium1 = 10388989;
 
-        uint160 lastObservedPrice = Math.getSqrtRatioAtTick(49);
+        uint160 lastObservedPrice = Math.getSqrtRatioAtTick(pp.getTWAP());
 
         vm.startPrank(Alice);
 
@@ -5054,14 +5043,15 @@ contract Misctest is Test, PositionUtils {
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(953));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
-
+        console2.log("currentTick", currentTick);
+        console2.log("slowOracleTick", slowOracleTick);
         assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation 0");
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(955));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation1 ");
@@ -5088,7 +5078,7 @@ contract Misctest is Test, PositionUtils {
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-1060));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-1066));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
@@ -5773,7 +5763,7 @@ contract Misctest is Test, PositionUtils {
         (currentTick, , , , oraclePack) = pp.getOracleTicks();
 
         // swap to more than MAX_MEDIAN_DELTA ticks away
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-Constants.MAX_MEDIAN_DELTA - 10));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-MAX_CLAMP_DELTA - 10));
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
         vm.warp(block.timestamp + 120);
         vm.roll(block.number + 1);
@@ -5784,7 +5774,7 @@ contract Misctest is Test, PositionUtils {
             .getOracleTicks();
 
         assertEq(
-            int24(uint24(OraclePack.unwrap(oraclePack))) - Constants.MAX_MEDIAN_DELTA,
+            int24(uint24(OraclePack.unwrap(oraclePack))) - MAX_CLAMP_DELTA,
             int24(uint24(OraclePack.unwrap(oraclePackNew))),
             "uncapped slow oracle update"
         );

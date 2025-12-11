@@ -524,21 +524,7 @@ contract PanopticPoolTest is PositionUtils {
             new Pointer[][](0)
         );
 
-        re = IRiskEngine(
-            address(
-                new RiskEngine(
-                    2_000_000,
-                    1_000_000,
-                    1_024_000,
-                    5_000_000,
-                    9_000_000,
-                    10_000_000,
-                    10_000_000,
-                    address(0),
-                    address(0)
-                )
-            )
-        );
+        re = IRiskEngine(address(new RiskEngine(10_000_000, 10_000_000, address(0), address(0))));
 
         deal(token0, Deployer, type(uint104).max);
         deal(token1, Deployer, type(uint104).max);
@@ -5255,7 +5241,7 @@ contract PanopticPoolTest is PositionUtils {
             uint128[] memory sizeListPass = new uint128[](3);
             sizeListPass[0] = uint128(positionSizes[0]);
             sizeListPass[1] = uint128(positionSizes[1]);
-            sizeListPass[2] = uint128(positionSizes[1]);
+            sizeListPass[2] = uint128(0);
 
             int24[3][] memory tickAndSpreadLimits = new int24[3][](3);
             tickAndSpreadLimits[0][0] = Constants.MIN_POOL_TICK;
@@ -7480,7 +7466,7 @@ contract PanopticPoolTest is PositionUtils {
         // note: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
         // the result is rounded DOWN and NOT toward zero
         // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
-        int256 exerciseFee = hasLegsInRange ? -int256(1024000) : -int256(1000);
+        int256 exerciseFee = hasLegsInRange ? -int256(102400) : -int256(1000);
 
         exerciseFeeAmounts[0] += (longAmountsAlice.rightSlot() * (-exerciseFee)) / 10_000_000;
         exerciseFeeAmounts[1] += (longAmountsAlice.leftSlot() * (-exerciseFee)) / 10_000_000;

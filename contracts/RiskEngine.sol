@@ -101,11 +101,11 @@ contract RiskEngine {
     //////////////////////////////////////////////////////////////*/
     /// @notice The notional fee, in basis points, collected from PLPs at option mint.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 immutable NOTIONAL_FEE;
+    uint16 constant NOTIONAL_FEE = 10;
 
     /// @notice The premium fee, in basis points, collected from the premium paid/received.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 immutable PREMIUM_FEE;
+    uint16 constant PREMIUM_FEE = 0;
 
     /// @notice The protocol split, in basis points, when a builder code is present.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
@@ -117,23 +117,26 @@ contract RiskEngine {
 
     /// @notice Required collateral ratios for selling options, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 20% -> 0.2 * 10_000_000 = 2_000_000.
-    uint256 immutable SELLER_COLLATERAL_RATIO;
+    uint256 constant SELLER_COLLATERAL_RATIO = 2_000_000;
 
     /// @notice Required collateral ratios for buying options, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 10% -> 0.1 * 10_000_000 = 1_000_000.
-    uint256 immutable BUYER_COLLATERAL_RATIO;
+    uint256 constant BUYER_COLLATERAL_RATIO = 1_000_000;
+
+    /// @notice Required collateral margin for loans in excess of notional, fraction of 1, scaled by 10_000_000.
+    uint256 constant MAINT_MARGIN_RATE = 2_000_000;
 
     /// @notice Basal cost (in bps of notional) to force exercise an out-of-range position.
-    uint256 immutable FORCE_EXERCISE_COST;
+    uint256 constant FORCE_EXERCISE_COST = 102_400;
 
     // Targets a pool utilization (balance between buying and selling)
     /// @notice Target pool utilization below which buying+selling is optimal, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 50% -> 0.5 * 10_000_000 = 5_000_000.
-    uint256 immutable TARGET_POOL_UTIL;
+    uint256 constant TARGET_POOL_UTIL = 5_000_000;
 
     /// @notice Pool utilization above which selling is 100% collateral backed, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 90% -> 0.9 * 10_000_000 = 9_000_000.
-    uint256 immutable SATURATED_POOL_UTIL;
+    uint256 constant SATURATED_POOL_UTIL = 9_000_000;
 
     uint256 immutable CROSS_BUFFER_0;
     uint256 immutable CROSS_BUFFER_1;
@@ -178,29 +181,12 @@ contract RiskEngine {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Set immutable parameters for the Collateral Tracker.
-    /// @param _sellerCollateralRatio Required collateral ratio for selling options, fraction of 1, scaled by 10_000_000
-    /// @param _buyerCollateralRatio Required collateral ratio for buying options, fraction of 1, scaled by 10_000_000
-    /// @param _forceExerciseCost Basal cost (in bps of notional) to force exercise an out-of-range position
-    /// @param _targetPoolUtilization Target pool utilization below which buying+selling is optimal, fraction of 1, scaled by 10_000_000
-    /// @param _saturatedPoolUtilization Pool utilization above which selling is 100% collateral backed, fraction of 1, scaled by 10_000_000
     constructor(
-        uint256 _sellerCollateralRatio, // hardcoded
-        uint256 _buyerCollateralRatio, // hardcoded
-        uint256 _forceExerciseCost, // hardcoded
-        uint256 _targetPoolUtilization, // hardcoded
-        uint256 _saturatedPoolUtilization, //hardcoded
         uint256 _crossBuffer0,
         uint256 _crossBuffer1,
         address _guardian,
         address _builderFactory
     ) {
-        NOTIONAL_FEE = 10;
-        PREMIUM_FEE = 0;
-        SELLER_COLLATERAL_RATIO = _sellerCollateralRatio;
-        BUYER_COLLATERAL_RATIO = _buyerCollateralRatio;
-        FORCE_EXERCISE_COST = _forceExerciseCost;
-        TARGET_POOL_UTIL = _targetPoolUtilization;
-        SATURATED_POOL_UTIL = _saturatedPoolUtilization;
         CROSS_BUFFER_0 = _crossBuffer0;
         CROSS_BUFFER_1 = _crossBuffer1;
         GUARDIAN = _guardian;
@@ -1185,10 +1171,10 @@ contract RiskEngine {
             // if the width is 0, then this is a loan/credit
             if (tokenId.width(index) == 0) {
                 if (isLong == 0) {
-                    // buying power requirement for a Loan position is 100% + sellCollateralRatio(utilization = 0)
+                    // buying power requirement for a Loan position is 100% + MAINT_MARGIN_RATE
                     required = Math.mulDivRoundingUp(
                         amountMoved,
-                        SELLER_COLLATERAL_RATIO + DECIMALS,
+                        MAINT_MARGIN_RATE + DECIMALS,
                         DECIMALS
                     );
                 } else {
@@ -1520,7 +1506,7 @@ contract RiskEngine {
         } else if (isLong == 1) {
             // if options is long, use buy collateral ratio
             // compute the buy collateral ratio, which depends on the pool utilization
-            baseCollateralRatio = _buyCollateralRatio(uint16(utilization));
+            baseCollateralRatio = _buyCollateralRatio();
 
             // compute required as amount*collateralRatio
             // can use unsafe because denominator is always nonzero
@@ -1873,54 +1859,9 @@ contract RiskEngine {
 
     /// @notice Get the base collateral requirement for a long leg at a given pool utilization.
     /// @dev This is computed at the time the position is minted.
-    /// @param utilization The pool utilization of this collateral vault at the time the position is minted
     /// @return buyCollateralRatio The buy collateral ratio at `utilization`
-    function _buyCollateralRatio(
-        uint256 utilization
-    ) internal view returns (uint256 buyCollateralRatio) {
-        // linear from BUY to BUY/2 between 50% and 90%
-        // the buy ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
-        //   (x0,y0) = (targetPoolUtilization,buyCollateralRatio) and
-        //   (x1,y1) = (saturatedPoolUtilization,buyCollateralRatio / 2)
-        // note that y1<y0 so the slope is negative:
-        // aka the buy ratio starts high and drops to a lower value with increased utilization; the sell ratio does the opposite (slope is positive)
-        // the line's formula: y = a * (x - x0) + y0, where a = (y1 - y0) / (x1 - x0)
-        // but since a<0, we rewrite as:
-        // y = a' * (x0 - x) + y0, where a' = (y0 - y1) / (x1 - x0)
-
-        /*
-          BUY
-          COLLATERAL
-          RATIO
-                 ^
-                 |   buy_ratio = 10%
-           10% - |----------__       min_ratio = 5%
-           5%  - | . . . . .  ¯¯¯--______
-                 |         .       . .
-                 +---------+-------+-+--->   POOL_
-                          50%    90% 100%      UTILIZATION
-         */
-
-        utilization *= 1_000;
-        // return the basal buy ratio if pool utilization is lower than target
-        if (utilization < TARGET_POOL_UTIL) {
-            return BUYER_COLLATERAL_RATIO;
-        }
-
-        // return the basal ratio divided by 2 if pool utilization is above saturated pool utilization
-        /// this incentivizes option buying, which returns funds to the Panoptic pool
-        if (utilization > SATURATED_POOL_UTIL) {
-            unchecked {
-                return BUYER_COLLATERAL_RATIO / 2;
-            }
-        }
-
-        unchecked {
-            return
-                (BUYER_COLLATERAL_RATIO +
-                    (BUYER_COLLATERAL_RATIO * (SATURATED_POOL_UTIL - utilization)) /
-                    (SATURATED_POOL_UTIL - TARGET_POOL_UTIL)) / 2; // do the division by 2 at the end after all addition and multiplication; b/c y1 = buyCollateralRatio / 2
-        }
+    function _buyCollateralRatio() internal view returns (uint256 buyCollateralRatio) {
+        return BUYER_COLLATERAL_RATIO;
     }
 
     /// @notice Get the cross buffer ration for a given utilization

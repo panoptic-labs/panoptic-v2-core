@@ -12,15 +12,7 @@ contract RiskEngineSafeModeAndOracle is Test {
     uint256 internal constant BITMASK_UINT22 = 0x3FFFFF;
 
     function setUp() public {
-        E = new RiskEngineHarness(
-            2_000_000,
-            1_000_000,
-            1_000,
-            5_000_000,
-            9_000_000,
-            5_000_000,
-            5_000_000
-        );
+        E = new RiskEngineHarness(5_000_000, 5_000_000);
     }
 
     function _packEMAs(

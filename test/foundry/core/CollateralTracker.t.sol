@@ -220,19 +220,7 @@ contract RiskEngineHarness is RiskEngine {
         uint256 crossBuffer1,
         address guardian,
         address builderFactory
-    )
-        RiskEngine(
-            2_000_000,
-            1_000_000,
-            1_024_000,
-            5_000_000,
-            9_000_000,
-            crossBuffer0,
-            crossBuffer1,
-            guardian,
-            builderFactory
-        )
-    {}
+    ) RiskEngine(crossBuffer0, crossBuffer1, guardian, builderFactory) {}
 
     function getRequiredCollateralAtUtilization(
         uint128 amount,
@@ -274,7 +262,7 @@ contract RiskEngineHarness is RiskEngine {
     }
 
     function buyCollateralRatio(int256 utilization) external view returns (uint256) {
-        return _buyCollateralRatio(uint16(uint256(utilization)));
+        return _buyCollateralRatio();
     }
 }
 

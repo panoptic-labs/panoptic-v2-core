@@ -82,11 +82,6 @@ contract DeployProtocol is Script {
 
         // risk engine MED
         new RiskEngine(
-            2_000_000,
-            1_000_000,
-            128,
-            5_000_000,
-            9_000_000,
             10_000_000,
             10_000_000,
             address(0), // add guardian

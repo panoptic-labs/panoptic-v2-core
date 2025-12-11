@@ -215,7 +215,8 @@ contract PanopticMathHarness is Test {
             OraclePackLibrary.computeInternalMedian(
                 oraclePack,
                 currentTick,
-                uint96(180 + (600 << 24) + (3600 << 48) + (21600 << 72))
+                uint96(180 + (600 << 24) + (3600 << 48) + (21600 << 72)),
+                149
             );
     }
 }

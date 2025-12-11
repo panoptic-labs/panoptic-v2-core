@@ -20,19 +20,7 @@ contract RiskEngineHarness is RiskEngine {
         uint256 _saturatedPoolUtilization,
         uint256 _crossBuffer0,
         uint256 _crossBuffer1
-    )
-        RiskEngine(
-            _sellerCollateralRatio,
-            _buyerCollateralRatio,
-            _forceExerciseCost,
-            _targetPoolUtilization,
-            _saturatedPoolUtilization,
-            _crossBuffer0,
-            _crossBuffer1,
-            address(0),
-            address(0)
-        )
-    {}
+    ) RiskEngine(_crossBuffer0, _crossBuffer1, address(0), address(0)) {}
 
     // Internal → public test shims
 
@@ -41,7 +29,7 @@ contract RiskEngineHarness is RiskEngine {
     }
 
     function buyCollateralRatio(uint256 util) external view returns (uint256) {
-        return _buyCollateralRatio(util);
+        return _buyCollateralRatio();
     }
 
     function reqAtUtil(
