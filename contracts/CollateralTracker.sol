@@ -618,8 +618,10 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         bool usePremiaAsCollateral
     ) external returns (uint256 shares) {
         _accrueInterest(owner, IS_NOT_DEPOSIT);
-        shares = previewWithdraw(assets);
+        if (assets > maxWithdraw(owner)) revert Errors.ExceedsMaximumRedemption();
         if (assets == 0) revert Errors.BelowMinimumRedemption();
+
+        shares = previewWithdraw(assets);
 
         // check/update allowance for approved withdraw
         if (msg.sender != owner) {
