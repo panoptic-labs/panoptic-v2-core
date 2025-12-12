@@ -1221,7 +1221,8 @@ contract PanopticPool is Clone, Multicall {
                                                             _premiumAccumulatorsByLeg[_leg][0] *
                                                                 positionLiquidity
                                                         )) +
-                                                        int256(legPremia.rightSlot() * 2 ** 64),
+                                                        int256(legPremia.rightSlot()) *
+                                                        2 ** 64,
                                                     0
                                                 )
                                             ) / totalLiquidity
