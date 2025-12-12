@@ -46,6 +46,9 @@ library Errors {
     /// @notice CollateralTracker: There is not enough available liquidity to fulfill a credit in the PanopticPool
     error InsufficientCreditLiquidity();
 
+    /// @notice RiskEngine: invalid builder code
+    error InvalidBuilderCode();
+
     /// @notice The TokenId provided by the user is malformed or invalid
     /// @param parameterType poolId=0, ratio=1, tokenType=2, risk_partner=3, strike=4, width=5, two identical strike/width/tokenType chunks=6
     error InvalidTokenIdParameter(uint256 parameterType);
@@ -65,11 +68,17 @@ library Errors {
     /// @notice PanopticPool: The leg is not long, so premium cannot be settled through `settleLongPremium`
     error NotALongLeg();
 
+    /// @notice builderWallet: can only be called by the Builder
+    error NotBuilder();
+
     /// @notice PanopticPool: There is not enough available liquidity in the chunk for one of the long legs to be created (or for one of the short legs to be closed)
-    error NotEnoughLiquidityToBuy();
+    error NotEnoughLiquidityInChunk();
 
     /// @notice CollateralTracker: The user does not own enough assets to open/close a position
     error NotEnoughTokens(address tokenAddress, uint256 assetsRequested, uint256 assetBalance);
+
+    /// @notice RiskEngine: can only be called by the guardian
+    error NotGuardian();
 
     /// @notice PanopticPool: Position is still solvent and cannot be liquidated
     error NotMarginCalled();
@@ -94,6 +103,9 @@ library Errors {
 
     /// @notice The current tick in the pool (post-ITM-swap) has fallen outside a user-defined open interval slippage range
     error PriceBoundFail(int24 currentTick);
+
+    /// @notice The Price impact of that trade is too large
+    error PriceImpactTooLarge();
 
     /// @notice An oracle price is too far away from another oracle price or the current tick
     /// @dev This is a safeguard against price manipulation during option mints, burns, liquidations, force exercises, and premium settlements

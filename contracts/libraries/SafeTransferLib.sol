@@ -62,7 +62,7 @@ library SafeTransferLib {
         }
 
         if (!success) {
-            uint256 balance = _balanceOfOrZero(token, from);
+            uint256 balance = balanceOfOrZero(token, from);
             revert Errors.TransferFailed(token, from, amount, balance);
         }
     }
@@ -95,12 +95,16 @@ library SafeTransferLib {
         }
 
         if (!success) {
-            uint256 balance = _balanceOfOrZero(token, address(this));
+            uint256 balance = balanceOfOrZero(token, address(this));
             revert Errors.TransferFailed(token, address(this), amount, balance);
         }
     }
 
-    function _balanceOfOrZero(address token, address who) private view returns (uint256 bal) {
+    /// @notice Safely queries the balance of an ERC20 token, returning zero if the call fails.
+    /// @param token The address of the ERC20 token
+    /// @param who The address to query the balance for
+    /// @return bal The balance of the address, or zero if the call fails or returns invalid data
+    function balanceOfOrZero(address token, address who) internal view returns (uint256 bal) {
         assembly ("memory-safe") {
             let p := mload(0x40)
             mstore(p, 0x70a0823100000000000000000000000000000000000000000000000000000000) // balanceOf(address)

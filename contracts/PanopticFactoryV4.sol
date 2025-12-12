@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
-import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManagerV4.sol";
 // Inherited implementations
@@ -16,7 +16,6 @@ import {ClonesWithImmutableArgs} from "clones-with-immutable-args/ClonesWithImmu
 import {Errors} from "@libraries/Errors.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {V4StateReader} from "@libraries/V4StateReader.sol";
-import {EfficientHash} from "@libraries/EfficientHash.sol";
 // Custom types
 import {Pointer} from "@types/Pointer.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
@@ -41,7 +40,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         PoolId indexed idV4,
         CollateralTracker collateralTracker0,
         CollateralTracker collateralTracker1,
-        RiskEngine riskEngine
+        IRiskEngine riskEngine
     );
 
     /*//////////////////////////////////////////////////////////////
@@ -117,12 +116,12 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @return newPoolContract The address of the newly deployed Panoptic pool
     function deployNewPool(
         PoolKey calldata key,
-        RiskEngine riskEngine,
+        IRiskEngine riskEngine,
         uint96 salt
     ) external returns (PanopticPool newPoolContract) {
         PoolId idV4 = key.toId();
 
-        bytes32 panopticPoolKey = EfficientHash.efficientKeccak256(key, riskEngine);
+        bytes32 panopticPoolKey = _getPoolKey(key, riskEngine);
 
         if (address(riskEngine) == address(0)) revert Errors.ZeroAddress();
 
@@ -297,9 +296,30 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @return Address of the Panoptic Pool associated with `univ3pool`
     function getPanopticPool(
         PoolKey calldata keyV4,
-        RiskEngine riskEngine
+        IRiskEngine riskEngine
     ) external view returns (PanopticPool) {
-        bytes32 panopticPoolKey = EfficientHash.efficientKeccak256(keyV4, riskEngine);
+        bytes32 panopticPoolKey = _getPoolKey(keyV4, riskEngine);
         return s_getPanopticPool[panopticPoolKey];
+    }
+
+    /// @notice Assembly implementation of keccak256(abi.encode(key, riskEngine))
+    /// @dev Duplicates abi.encode behavior: 6 words (192 bytes)
+    function _getPoolKey(
+        PoolKey calldata keyV4,
+        IRiskEngine riskEngine
+    ) internal pure returns (bytes32 hash) {
+        assembly {
+            let freeMemPtr := mload(0x40)
+
+            // Copy the PoolKey struct (5 words = 160 bytes) directly from calldata to memory
+            // keyV4 in assembly points to the start of the struct in calldata
+            calldatacopy(freeMemPtr, keyV4, 0xa0)
+
+            // Store the riskEngine as the 6th word (offset 160 / 0xa0)
+            mstore(add(freeMemPtr, 0xa0), riskEngine)
+
+            // Hash 192 bytes (0xc0)
+            hash := keccak256(freeMemPtr, 0xc0)
+        }
     }
 }

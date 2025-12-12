@@ -500,7 +500,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         uint128 positionSize,
         TokenId tokenId,
         bool isBurn
-    ) internal returns (LeftRightUnsigned[4] memory, LeftRightSigned) {
+    ) internal returns (LeftRightUnsigned[4] memory, LeftRightSigned, int24) {
         return
             abi.decode(
                 POOL_MANAGER_V4.unlock(
@@ -514,7 +514,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                         isBurn
                     )
                 ),
-                (LeftRightUnsigned[4], LeftRightSigned)
+                (LeftRightUnsigned[4], LeftRightSigned, int24)
             );
     }
 
@@ -535,19 +535,19 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             TokenId tokenId,
             bool isBurn
         ) = abi.decode(data, (address, PoolKey, int24, int24, uint128, TokenId, bool));
+        bool invertedLimits = tickLimitLow > tickLimitHigh;
         (
             LeftRightUnsigned[4] memory collectedByLeg,
             LeftRightSigned totalMoved
-        ) = _createPositionInAMM(
-                account,
-                key,
-                tickLimitLow,
-                tickLimitHigh,
-                positionSize,
-                tokenId,
-                isBurn
-            );
-        return abi.encode(collectedByLeg, totalMoved);
+        ) = _createPositionInAMM(account, key, invertedLimits, positionSize, tokenId, isBurn);
+
+        // Get the current tick of the Uniswap pool, check slippage
+        int24 currentTick = getCurrentTick(abi.encode(key));
+        if (invertedLimits) (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+
+        if ((currentTick >= tickLimitHigh) || (currentTick <= tickLimitLow))
+            revert Errors.PriceBoundFail(currentTick);
+        return abi.encode(collectedByLeg, totalMoved, currentTick);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -559,17 +559,17 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param poolKey The Uniswap V4 pool key in which to burn `tokenId`
     /// @param tokenId The tokenId of the minted position, which encodes information about up to 4 legs
     /// @param positionSize The number of contracts minted, expressed in terms of the asset
-    /// @param slippageTickLimitLow The lower bound of an acceptable open interval for the ending price
-    /// @param slippageTickLimitHigh The upper bound of an acceptable open interval for the ending price
+    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
+    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @return An array of LeftRight encoded words containing the amount of currency0 and currency1 collected as fees for each leg
     /// @return The net amount of currency0 and currency1 moved to/from the Uniswap V4 pool
     function burnTokenizedPosition(
         bytes calldata poolKey,
         TokenId tokenId,
         uint128 positionSize,
-        int24 slippageTickLimitLow,
-        int24 slippageTickLimitHigh
-    ) external nonReentrant returns (LeftRightUnsigned[4] memory, LeftRightSigned) {
+        int24 tickLimitLow,
+        int24 tickLimitHigh
+    ) external nonReentrant returns (LeftRightUnsigned[4] memory, LeftRightSigned, int24) {
         _burn(msg.sender, TokenId.unwrap(tokenId), positionSize);
 
         emit TokenizedPositionBurnt(msg.sender, tokenId, positionSize);
@@ -577,8 +577,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         return
             _unlockAndCreatePositionInAMM(
                 _key,
-                slippageTickLimitLow,
-                slippageTickLimitHigh,
+                tickLimitLow,
+                tickLimitHigh,
                 positionSize,
                 tokenId.flipToBurnToken(),
                 BURN
@@ -589,17 +589,17 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param poolKey The Uniswap V4 pool key in which to mint `tokenId`
     /// @param tokenId The tokenId of the minted position, which encodes information for up to 4 legs
     /// @param positionSize The number of contracts minted, expressed in terms of the asset
-    /// @param slippageTickLimitLow The lower bound of an acceptable open interval for the ending price
-    /// @param slippageTickLimitHigh The upper bound of an acceptable open interval for the ending price
+    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
+    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @return An array of LeftRight encoded words containing the amount of currency0 and currency1 collected as fees for each leg
     /// @return The net amount of currency0 and currency1 moved to/from the Uniswap V4 pool
     function mintTokenizedPosition(
         bytes calldata poolKey,
         TokenId tokenId,
         uint128 positionSize,
-        int24 slippageTickLimitLow,
-        int24 slippageTickLimitHigh
-    ) external nonReentrant returns (LeftRightUnsigned[4] memory, LeftRightSigned) {
+        int24 tickLimitLow,
+        int24 tickLimitHigh
+    ) external nonReentrant returns (LeftRightUnsigned[4] memory, LeftRightSigned, int24) {
         _mint(msg.sender, TokenId.unwrap(tokenId), positionSize);
 
         emit TokenizedPositionMinted(msg.sender, tokenId, positionSize);
@@ -611,8 +611,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         return
             _unlockAndCreatePositionInAMM(
                 _key,
-                slippageTickLimitLow,
-                slippageTickLimitHigh,
+                tickLimitLow,
+                tickLimitHigh,
                 positionSize,
                 tokenId,
                 MINT
@@ -736,8 +736,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @dev Loops over each leg in the tokenId and calls _createLegInAMM for each, which does the mint/burn in the AMM.
     /// @param account The address of the user creating the position
     /// @param key The Uniswap V4 pool key in which to create the position
-    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
-    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
+    /// @param invertedLimits Whether the inputted lower limit > upper limit
     /// @param positionSize The size of the option position
     /// @param tokenId The option position
     /// @param isBurn Whether a position is being minted (false) or burned (true)
@@ -746,8 +745,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     function _createPositionInAMM(
         address account,
         PoolKey memory key,
-        int24 tickLimitLow,
-        int24 tickLimitHigh,
+        bool invertedLimits,
         uint128 positionSize,
         TokenId tokenId,
         bool isBurn
@@ -855,50 +853,44 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         if (amount0 > uint128(type(int128).max - 4) || amount1 > uint128(type(int128).max - 4))
             revert Errors.PositionTooLarge();
 
-        if (tickLimitLow > tickLimitHigh) {
+        if (invertedLimits) {
             // if the in-the-money amount is not zero (i.e. positions were minted ITM) and the user did provide tick limits LOW > HIGH, then swap necessary amounts
             if ((LeftRightSigned.unwrap(itmAmounts) != 0)) {
                 totalMoved = swapInAMM(key, itmAmounts, tokenId.asset(0)).add(totalMoved);
             }
-
-            (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
         }
 
-        LeftRightSigned cumulativeDelta = totalMoved.sub(totalCollected);
+        {
+            LeftRightSigned cumulativeDelta = totalMoved.sub(totalCollected);
 
-        if (cumulativeDelta.rightSlot() > 0) {
-            POOL_MANAGER_V4.burn(
-                account,
-                uint160(Currency.unwrap(key.currency0)),
-                uint128(cumulativeDelta.rightSlot())
-            );
-        } else if (cumulativeDelta.rightSlot() < 0) {
-            POOL_MANAGER_V4.mint(
-                account,
-                uint160(Currency.unwrap(key.currency0)),
-                uint128(-cumulativeDelta.rightSlot())
-            );
+            if (cumulativeDelta.rightSlot() > 0) {
+                POOL_MANAGER_V4.burn(
+                    account,
+                    uint160(Currency.unwrap(key.currency0)),
+                    uint128(cumulativeDelta.rightSlot())
+                );
+            } else if (cumulativeDelta.rightSlot() < 0) {
+                POOL_MANAGER_V4.mint(
+                    account,
+                    uint160(Currency.unwrap(key.currency0)),
+                    uint128(-cumulativeDelta.rightSlot())
+                );
+            }
+
+            if (cumulativeDelta.leftSlot() > 0) {
+                POOL_MANAGER_V4.burn(
+                    account,
+                    uint160(Currency.unwrap(key.currency1)),
+                    uint128(cumulativeDelta.leftSlot())
+                );
+            } else if (cumulativeDelta.leftSlot() < 0) {
+                POOL_MANAGER_V4.mint(
+                    account,
+                    uint160(Currency.unwrap(key.currency1)),
+                    uint128(-cumulativeDelta.leftSlot())
+                );
+            }
         }
-
-        if (cumulativeDelta.leftSlot() > 0) {
-            POOL_MANAGER_V4.burn(
-                account,
-                uint160(Currency.unwrap(key.currency1)),
-                uint128(cumulativeDelta.leftSlot())
-            );
-        } else if (cumulativeDelta.leftSlot() < 0) {
-            POOL_MANAGER_V4.mint(
-                account,
-                uint160(Currency.unwrap(key.currency1)),
-                uint128(-cumulativeDelta.leftSlot())
-            );
-        }
-
-        // Get the current tick of the Uniswap pool, check slippage
-        int24 currentTick = getCurrentTick(abi.encode(key));
-
-        if ((currentTick >= tickLimitHigh) || (currentTick <= tickLimitLow))
-            revert Errors.PriceBoundFail(currentTick);
     }
 
     /// @notice Create the position in the AMM for a specific leg in the tokenId.
@@ -913,7 +905,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param tokenId The option position
     /// @param leg The leg index that needs to be modified
     /// @param liquidityChunk The liquidity chunk in Uniswap represented by the leg
-    /// @param isBurn Whether a position is being minted (true) or burned (false)
+    /// @param isBurn Whether a position is being burned (true) or minted (false)
     /// @return moved The net amount of funds moved to/from Uniswap
     /// @return collectedSingleLeg LeftRight encoded words containing the amount of currency0 and currency1 collected as fees
     function _createLegInAMM(
@@ -971,7 +963,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                     // what the account that owns the liquidity in uniswap has (startingLiquidity)
                     // we must ensure that an account can only move its own liquidity out of uniswap
                     // so we revert in this case
-                    revert Errors.NotEnoughLiquidityToBuy();
+                    revert Errors.NotEnoughLiquidityInChunk();
                 } else {
                     // startingLiquidity is >= chunkLiquidity, so no possible underflow
                     unchecked {
@@ -1210,7 +1202,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param atTick The current tick. Set `atTick < (type(int24).max = 8388608)` to get latest premium up to the current block
     /// @param isLong Whether the position is long (=1) or short (=0)
     /// @return The amount of premium (per liquidity X64) for currency0 = `sum(feeGrowthLast0X128)` over every block where the position has been touched
-    /// @return The amount of premium (per liquidity X64) for currency1 = `sum(feeGrowthLast0X128)` over every block where the position has been touche
+    /// @return The amount of premium (per liquidity X64) for currency1 = `sum(feeGrowthLast0X128)` over every block where the position has been touched
     function getAccountPremium(
         bytes calldata poolKey,
         address owner,
@@ -1324,7 +1316,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         return s_V4toSFPMIdData[idV4].poolId();
     }
 
+    /// @notice Returns the current tick of a given Uniswap V4 pool
     /// @param poolKey the poolKey of the UniswapV4 pool
+    /// @return currentTick The current tick of the Uniswap pool
     function getCurrentTick(bytes memory poolKey) public view returns (int24 currentTick) {
         PoolKey memory key = abi.decode(poolKey, (PoolKey));
         currentTick = V4StateReader.getTick(POOL_MANAGER_V4, key.toId());

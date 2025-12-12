@@ -22,15 +22,7 @@ contract RiskEngineCoverageGaps is Test {
     uint256 constant DEC = 10_000_000;
 
     function setUp() public {
-        E = new RiskEngineHarness(
-            /*SELL*/ 2_000_000,
-            /*BUY*/ 1_000_000,
-            /*FE*/ 1_000,
-            /*U_T*/ 5_000_000,
-            /*U_S*/ 9_000_000,
-            /*CB0*/ 5_000_000,
-            /*CB1*/ 5_000_000
-        );
+        E = new RiskEngineHarness(/*CB0*/ 5_000_000, /*CB1*/ 5_000_000);
         ct0 = new MockCollateralTracker();
         ct1 = new MockCollateralTracker();
 

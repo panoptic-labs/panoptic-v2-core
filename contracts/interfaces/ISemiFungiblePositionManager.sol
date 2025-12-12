@@ -38,22 +38,35 @@ interface ISemiFungiblePositionManager {
     /// @param slippageTickLimitHigh Upper price bound
     /// @return collectedByLeg Fees collected per leg
     /// @return totalMoved Net amount moved to/from AMM
+    /// @return finalTick The tick at the end of the mint/burn operation
     function mintTokenizedPosition(
         bytes calldata poolKey,
         TokenId tokenId,
         uint128 positionSize,
         int24 slippageTickLimitLow,
         int24 slippageTickLimitHigh
-    ) external returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalMoved);
+    )
+        external
+        returns (
+            LeftRightUnsigned[4] memory collectedByLeg,
+            LeftRightSigned totalMoved,
+            int24 finalTick
+        );
 
-    /// @notice Burn a new position containing up to 4 legs.
+    /// @notice Burn an existing position containing up to 4 legs.
     function burnTokenizedPosition(
         bytes calldata poolKey,
         TokenId tokenId,
         uint128 positionSize,
         int24 slippageTickLimitLow,
         int24 slippageTickLimitHigh
-    ) external returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalMoved);
+    )
+        external
+        returns (
+            LeftRightUnsigned[4] memory collectedByLeg,
+            LeftRightSigned totalMoved,
+            int24 finalTick
+        );
 
     /*//////////////////////////////////////////////////////////////
                              VIEW FUNCTIONS

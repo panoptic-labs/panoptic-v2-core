@@ -8,6 +8,8 @@ import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManagerV4.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {BuilderWallet} from "@contracts/RiskEngine.sol";
+import {BuilderFactory} from "@contracts/RiskEngine.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 
 // Panoptic Libraries
@@ -16,7 +18,10 @@ import {Math} from "@libraries/PanopticMath.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
+import {MarketState} from "@types/MarketState.sol";
+import {OraclePack} from "@types/OraclePack.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
+import {RiskParameters} from "@types/RiskParameters.sol";
 import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
 import {Constants} from "@libraries/Constants.sol";
 // Panoptic Interfaces
@@ -72,8 +77,8 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
         return s_depositedAssets;
     }
 
-    function _interestRateAccumulator() external view returns (uint256) {
-        return s_interestRateAccumulator;
+    function _marketState() external view returns (uint256) {
+        return MarketState.unwrap(s_marketState);
     }
 
     function _totalAssets() external view returns (uint256 totalManagedAssets) {
@@ -108,8 +113,8 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
         s_creditedShares = uint256(amount);
     }
 
-    function setInterestRateAccumulator(uint256 amount) external {
-        s_interestRateAccumulator = amount;
+    function setMarketState(uint256 amount) external {
+        s_marketState = MarketState.wrap(amount);
     }
 
     function setBalance(address owner, uint256 amount) external {
@@ -187,6 +192,10 @@ contract PanopticPoolHarness is PanopticPool {
         }
         return fingerprintIncomingList;
     }
+
+    function oraclePack() external returns (OraclePack) {
+        return s_oraclePack;
+    }
 }
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
@@ -208,18 +217,10 @@ contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
 contract RiskEngineHarness is RiskEngine {
     constructor(
         uint256 crossBuffer0,
-        uint256 crossBuffer1
-    )
-        RiskEngine(
-            2_000_000,
-            1_000_000,
-            1_024_000,
-            5_000_000,
-            9_000_000,
-            crossBuffer0,
-            crossBuffer1
-        )
-    {}
+        uint256 crossBuffer1,
+        address guardian,
+        address builderFactory
+    ) RiskEngine(crossBuffer0, crossBuffer1, guardian, builderFactory) {}
 
     function getRequiredCollateralAtUtilization(
         uint128 amount,
@@ -261,7 +262,7 @@ contract RiskEngineHarness is RiskEngine {
     }
 
     function buyCollateralRatio(int256 utilization) external view returns (uint256) {
-        return _buyCollateralRatio(uint16(uint256(utilization)));
+        return _buyCollateralRatio();
     }
 }
 
@@ -374,11 +375,12 @@ contract Attacker {
         uint128[] memory sizeList = new uint128[](1);
         sizeList[0] = positionSize;
 
-        int24[2][] memory tickLimits = new int24[2][](1);
-        tickLimits[0][0] = Constants.MAX_POOL_TICK;
-        tickLimits[0][1] = Constants.MIN_POOL_TICK;
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
+        tickAndSpreadLimits[0][0] = Constants.MAX_POOL_TICK;
+        tickAndSpreadLimits[0][1] = Constants.MIN_POOL_TICK;
+        tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
 
-        panopticPool.dispatch(posIdList, posIdList, sizeList, new uint64[](1), tickLimits, true);
+        panopticPool.dispatch(posIdList, posIdList, sizeList, tickAndSpreadLimits, true, 0);
 
         (, , , , int256 u0, int256 u1, uint128 positionSize) = panopticPool.positionData(
             address(this),
@@ -471,6 +473,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     PanopticPoolHarness panopticPool;
     address panopticPoolAddress;
     RiskEngineHarness riskEngine;
+    BuilderFactory builderFactory;
     PanopticHelper panopticHelper;
     SemiFungiblePositionManagerHarness sfpm;
     CollateralTrackerHarness collateralToken0;
@@ -489,7 +492,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
     uint128 positionSize0;
     uint128 positionSize1;
     uint128[] sizeList;
-    uint64[] spreadList;
     TokenId[] mintList;
     TokenId[] positionIdList1;
     TokenId[] positionIdList;
@@ -552,24 +554,56 @@ contract CollateralTrackerTest is Test, PositionUtils {
         PanopticPool pp,
         TokenId[] memory positionIdList,
         uint128 positionSize,
-        uint64 effectiveLiquidityLimitX32,
+        uint24 effectiveLiquidityLimitX32,
         int24 tickLimitLow,
         int24 tickLimitHigh,
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
         TokenId[] memory mintList = new TokenId[](1);
-        int24[2][] memory tickLimits = new int24[2][](1);
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
 
         TokenId tokenId = positionIdList[positionIdList.length - 1];
         sizeList[0] = positionSize;
-        spreadList[0] = effectiveLiquidityLimitX32;
         mintList[0] = tokenId;
-        tickLimits[0][0] = tickLimitLow;
-        tickLimits[0][1] = tickLimitHigh;
+        tickAndSpreadLimits[0][0] = tickLimitLow;
+        tickAndSpreadLimits[0][1] = tickLimitHigh;
+        tickAndSpreadLimits[0][2] = int24(uint24(effectiveLiquidityLimitX32));
 
-        pp.dispatch(mintList, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
+        pp.dispatch(mintList, positionIdList, sizeList, tickAndSpreadLimits, premiaAsCollateral, 0);
+        collateralToken0.wipeUtilizationSlot();
+        collateralToken1.wipeUtilizationSlot();
+    }
+
+    function mintOptions(
+        PanopticPool pp,
+        TokenId[] memory positionIdList,
+        uint128 positionSize,
+        uint24 effectiveLiquidityLimitX32,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
+        bool premiaAsCollateral,
+        uint256 builderCode
+    ) internal {
+        uint128[] memory sizeList = new uint128[](1);
+        TokenId[] memory mintList = new TokenId[](1);
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
+
+        TokenId tokenId = positionIdList[positionIdList.length - 1];
+        sizeList[0] = positionSize;
+        mintList[0] = tokenId;
+        tickAndSpreadLimits[0][0] = tickLimitLow;
+        tickAndSpreadLimits[0][1] = tickLimitHigh;
+        tickAndSpreadLimits[0][2] = int24(uint24(effectiveLiquidityLimitX32));
+
+        pp.dispatch(
+            mintList,
+            positionIdList,
+            sizeList,
+            tickAndSpreadLimits,
+            premiaAsCollateral,
+            builderCode
+        );
         collateralToken0.wipeUtilizationSlot();
         collateralToken1.wipeUtilizationSlot();
     }
@@ -583,16 +617,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
         TokenId[] memory burnList = new TokenId[](1);
-        int24[2][] memory tickLimits = new int24[2][](1);
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
 
         sizeList[0] = 0;
-        spreadList[0] = type(uint64).max;
         burnList[0] = tokenId;
-        tickLimits[0][0] = tickLimitLow;
-        tickLimits[0][1] = tickLimitHigh;
-        pp.dispatch(burnList, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
+        tickAndSpreadLimits[0][0] = tickLimitLow;
+        tickAndSpreadLimits[0][1] = tickLimitHigh;
+        tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
+        pp.dispatch(burnList, positionIdList, sizeList, tickAndSpreadLimits, premiaAsCollateral, 0);
         collateralToken0.wipeUtilizationSlot();
         collateralToken1.wipeUtilizationSlot();
     }
@@ -606,15 +639,45 @@ contract CollateralTrackerTest is Test, PositionUtils {
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](tokenIds.length);
-        uint64[] memory spreadList = new uint64[](tokenIds.length);
-        int24[2][] memory tickLimits = new int24[2][](tokenIds.length);
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](tokenIds.length);
 
         for (uint256 i; i < tokenIds.length; ++i) {
-            tickLimits[i][0] = tickLimitLow;
-            tickLimits[i][1] = tickLimitHigh;
+            tickAndSpreadLimits[i][0] = tickLimitLow;
+            tickAndSpreadLimits[i][1] = tickLimitHigh;
+            tickAndSpreadLimits[i][2] = int24(uint24(type(uint24).max));
         }
 
-        pp.dispatch(tokenIds, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
+        pp.dispatch(tokenIds, positionIdList, sizeList, tickAndSpreadLimits, premiaAsCollateral, 0);
+        collateralToken0.wipeUtilizationSlot();
+        collateralToken1.wipeUtilizationSlot();
+    }
+
+    function burnOptions(
+        PanopticPool pp,
+        TokenId[] memory tokenIds,
+        TokenId[] memory positionIdList,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
+        bool premiaAsCollateral,
+        uint256 builderCode
+    ) internal {
+        uint128[] memory sizeList = new uint128[](tokenIds.length);
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](tokenIds.length);
+
+        for (uint256 i; i < tokenIds.length; ++i) {
+            tickAndSpreadLimits[i][0] = tickLimitLow;
+            tickAndSpreadLimits[i][1] = tickLimitHigh;
+            tickAndSpreadLimits[i][2] = int24(uint24(type(uint24).max));
+        }
+
+        pp.dispatch(
+            tokenIds,
+            positionIdList,
+            sizeList,
+            tickAndSpreadLimits,
+            premiaAsCollateral,
+            builderCode
+        );
         collateralToken0.wipeUtilizationSlot();
         collateralToken1.wipeUtilizationSlot();
     }
@@ -626,7 +689,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         TokenId[] memory positionIdList
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
         collateralToken0.wipeUtilizationSlot();
         collateralToken1.wipeUtilizationSlot();
 
@@ -650,7 +712,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         LeftRightUnsigned premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
 
         TokenId[] memory targetList = new TokenId[](1);
         collateralToken0.wipeUtilizationSlot();
@@ -667,7 +728,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken1.wipeUtilizationSlot();
     }
 
-    function settleLongPremium(
+    function settlePremium(
         PanopticPool pp,
         TokenId[] memory settlerList,
         TokenId[] memory settleeList,
@@ -676,7 +737,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
 
         TokenId[] memory targetList = new TokenId[](1);
 
@@ -759,7 +819,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint64 poolId = sfpm.initializeAMMPool(poolKey);
 
         // 2) Risk engine
-        riskEngine = new RiskEngineHarness(10_000_000, 10_000_000);
+        riskEngine = new RiskEngineHarness(10_000_000, 10_000_000, address(0), address(0));
 
         console2.log("manager address", address(manager));
         console2.log("riskEngineAddress", address(riskEngine));
@@ -889,7 +949,137 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint64 poolId = sfpm.initializeAMMPool(poolKey);
 
         // 2) Risk engine
-        riskEngine = new RiskEngineHarness(crossBuffer0, crossBuffer1);
+        riskEngine = new RiskEngineHarness(crossBuffer0, crossBuffer1, address(0), address(0));
+
+        panopticHelper = new PanopticHelper(ISemiFungiblePositionManager(address(sfpm)));
+
+        vm.startPrank(address(this));
+        // 4) Deterministic salt like the factory (deployer + pool + risk + user salt=0)
+        bytes32 salt = bytes32(
+            abi.encodePacked(
+                uint80(uint160(address(this)) >> 80),
+                uint40(uint256(PoolId.unwrap(poolKey.toId())) >> 120),
+                uint40(uint160(address(riskEngine)) >> 120),
+                uint96(0)
+            )
+        );
+        PanopticPoolHarness predictedPool = PanopticPoolHarness(
+            ClonesWithImmutableArgs.addressOfClone3(salt)
+        );
+
+        CollateralTrackerHarness collateralImpl = new CollateralTrackerHarness();
+
+        collateralToken0 = new CollateralTrackerHarness();
+        collateralToken1 = new CollateralTrackerHarness();
+
+        // 6) Clone collateral trackers with immutables
+        collateralToken0 = CollateralTrackerHarness(
+            ClonesWithImmutableArgs.clone2(
+                address(collateralImpl),
+                abi.encodePacked(
+                    predictedPool, // panopticPool
+                    true, // is0
+                    t0, // token0
+                    t0, // ct.token0()
+                    t1, // ct.token1()
+                    riskEngine, // risk engine
+                    manager, // pool manager
+                    fee // pool fee
+                )
+            )
+        );
+
+        collateralToken1 = CollateralTrackerHarness(
+            ClonesWithImmutableArgs.clone2(
+                address(collateralImpl),
+                abi.encodePacked(
+                    predictedPool, // panopticPool
+                    false, // is0
+                    t1, // token1
+                    t0, // ct.token0()
+                    t1, // ct.token1()
+                    riskEngine, // risk engine
+                    manager, // pool manager
+                    fee // pool fee
+                )
+            )
+        );
+
+        panopticPool = new PanopticPoolHarness(sfpm);
+
+        panopticPool = PanopticPoolHarness(
+            ClonesWithImmutableArgs.clone3(
+                address(panopticPool),
+                abi.encodePacked(
+                    collateralToken0,
+                    collateralToken1,
+                    riskEngine,
+                    manager,
+                    poolId,
+                    abi.encode(poolKey)
+                ),
+                salt
+            )
+        );
+
+        vm.startPrank(Swapper);
+
+        panopticPool.initialize();
+
+        collateralToken0.initialize();
+        collateralToken1.initialize();
+
+        // store panoptic pool address
+        panopticPoolAddress = address(panopticPool);
+
+        // 9) Helpers wiring for tests
+        panopticPoolAddress = address(panopticPool);
+    }
+
+    function _deployCustomPanopticPool(
+        address _token0,
+        address _token1,
+        IUniswapV3Pool uniswapPool, // must already exist and be initialized
+        address guardian
+    ) internal {
+        manager = new PoolManager(address(0));
+        routerV4 = new V4RouterSimple(manager);
+
+        vm.startPrank(Swapper);
+
+        deal(token0, Swapper, type(uint248).max);
+        deal(token1, Swapper, type(uint248).max);
+
+        IERC20Partial(token0).approve(address(router), type(uint256).max);
+        IERC20Partial(token1).approve(address(router), type(uint256).max);
+
+        IERC20Partial(token0).approve(address(routerV4), type(uint256).max);
+        IERC20Partial(token1).approve(address(routerV4), type(uint256).max);
+
+        manager.initialize(poolKey, currentSqrtPriceX96);
+
+        routerV4.modifyLiquidity(
+            address(0),
+            poolKey,
+            (TickMath.MIN_TICK / tickSpacing) * tickSpacing,
+            (TickMath.MAX_TICK / tickSpacing) * tickSpacing,
+            1_000_000 ether
+        );
+
+        // deploy the semiFungiblePositionManager
+        sfpm = new SemiFungiblePositionManagerHarness(manager);
+
+        address t0 = address(uint160(poolKey.currency0.toId()));
+        address t1 = address(uint160(poolKey.currency1.toId()));
+        // Initialize the world pool
+        uint64 poolId = sfpm.initializeAMMPool(poolKey);
+
+        // 2) Risk engine
+        builderFactory = new BuilderFactory(guardian);
+
+        riskEngine = new RiskEngineHarness(10_000, 10_000, guardian, address(builderFactory));
+
+        console2.log("builderFactoryAddr", address(builderFactory));
 
         panopticHelper = new PanopticHelper(ISemiFungiblePositionManager(address(sfpm)));
 
@@ -1127,7 +1317,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             expectedNewIndex;
 
         // Get the actual new accumulator value from the contract
-        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 actualAccumulator = collateralToken0._marketState();
 
         // Assert they are equal
         assertEq(
@@ -1166,7 +1356,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             expectedNewIndex;
 
         // Get the actual new accumulator value from the contract
-        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 actualAccumulator = collateralToken0._marketState();
 
         // Assert they are equal
         assertEq(
@@ -1193,7 +1383,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         uint128 perSecondInterestRate = collateralToken0.interestRate();
         collateralToken0.accrueInterest();
-        console2.log("acc2", collateralToken0._interestRateAccumulator());
         // Calculate the expected new borrow index
         uint256 interestForPeriod = Math.wTaylorCompounded(uint256(perSecondInterestRate), 20);
         uint256 expectedNewIndex = Math.mulDivWadRoundingUp(
@@ -1210,7 +1399,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint128((uint256(uint32(startingTime + 20) >> 2) << 80) + expectedNewIndex);
 
         // Get the actual new accumulator value from the contract
-        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 actualAccumulator = collateralToken0._marketState();
 
         console2.log("collateralToken0.rateAtTarget()", collateralToken0.rateAtTarget());
         // Assert they are equal
@@ -1260,7 +1449,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             expectedNewIndex;
 
         // Get the actual new accumulator value from the contract.
-        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 actualAccumulator = collateralToken0._marketState();
 
         //  Assert they are equal.
         assertEq(
@@ -1275,8 +1464,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint104 assets = 1000 ether; // Use a fixed deposit amount
 
         // Get the initial borrow index right after initialization
-        uint256 initialAccumulator = collateralToken0._interestRateAccumulator() % 2 ** 80;
-        uint80 initialBorrowIndex = uint80(collateralToken0._interestRateAccumulator());
+        uint256 initialAccumulator = collateralToken0._marketState() % 2 ** 80;
+        uint80 initialBorrowIndex = uint80(collateralToken0._marketState());
 
         // --- Alice deposits ---
         vm.startPrank(Alice);
@@ -1296,7 +1485,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 currentRate = collateralToken0.interestRate();
 
         // Get the final borrow index.
-        uint128 finalAccumulator = uint128(collateralToken0._interestRateAccumulator()) % 2 ** 80;
+        uint128 finalAccumulator = uint128(collateralToken0._marketState()) % 2 ** 80;
 
         // 4. Assert that the index has not changed from its initial value.
         assertEq(
@@ -1351,7 +1540,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (collateralToken0.rateAtTarget() << 112) +
             (((timestampAfterBorrow + blocksToSkip * 12) >> 2) << 80) +
             expectedNewIndex;
-        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 actualAccumulator = collateralToken0._marketState();
 
         // 4. Assert the final state is correct.
         assertEq(
@@ -1474,7 +1663,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             //collateralToken0.redeem(shares, Alice, Alice);
         }
 
-        uint256 expectedAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 expectedAccumulator = collateralToken0._marketState();
 
         vm.stopPrank();
         vm.revertTo(snapshot);
@@ -1501,7 +1690,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // The transient storage should have protected the state.
         // The final accumulator should match the one we calculated
         // using the *high* utilization rate.
-        uint256 attackAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 attackAccumulator = collateralToken0._marketState();
 
         assertTrue(
             attackAccumulator != expectedAccumulator,
@@ -1514,7 +1703,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint104 assets = 1000 ether; // Use a fixed deposit amount
 
         // Get the initial borrow index right after initialization
-        uint128 initialBorrowIndex = uint80(collateralToken0._interestRateAccumulator());
+        uint128 initialBorrowIndex = uint80(collateralToken0._marketState());
 
         // --- Alice deposits ---
         vm.startPrank(Alice);
@@ -1585,7 +1774,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (collateralToken0.rateAtTarget() << 112) +
             (((timestampAfterBorrow + blocksToSkip * 12) >> 2) << 80) +
             expectedNewIndex;
-        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 actualAccumulator = collateralToken0._marketState();
 
         // 4. Assert the final state is correct.
         assertEq(
@@ -1618,7 +1807,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             Constants.MIN_POOL_TICK,
             true
         );
-        actualAccumulator = collateralToken0._interestRateAccumulator();
+        actualAccumulator = collateralToken0._marketState();
 
         uint256 unrealizedGlobalInterestAfter = actualAccumulator >> 150;
 
@@ -1644,7 +1833,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             true
         );
         console2.log("DONE", Bob);
-        actualAccumulator = collateralToken0._interestRateAccumulator();
+        actualAccumulator = collateralToken0._marketState();
         unrealizedGlobalInterestAfter = actualAccumulator >> 150;
         assertEq(unrealizedGlobalInterestAfter, 0, "FAIL: unrealized interest is not zero");
 
@@ -1661,7 +1850,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint104 assets = 1000 ether; // Use a fixed deposit amount
 
         // Get the initial borrow index right after initialization
-        uint128 initialBorrowIndex = uint80(collateralToken0._interestRateAccumulator());
+        uint128 initialBorrowIndex = uint80(collateralToken0._marketState());
 
         // --- Alice deposits ---
         vm.startPrank(Alice);
@@ -1707,7 +1896,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList1,
             assets / 2,
-            2 ** 64 - 1,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -1721,11 +1910,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint32 blocksToSkip = 7200 * 365;
         vm.roll(blockAfterBorrow + blocksToSkip);
         vm.warp(timestampAfterBorrow + blocksToSkip * 12);
-        console2.log("before accru", uint128(collateralToken0._interestRateAccumulator()));
+        console2.log("before accru", uint128(collateralToken0._marketState()));
         uint128 perSecondInterestRate = collateralToken0.interestRate();
         assertGt(perSecondInterestRate, 0, "FAIL: Rate should be positive after borrow");
         collateralToken0.accrueInterest();
-        console2.log("after accru", uint128(collateralToken0._interestRateAccumulator()));
+        console2.log("after accru", uint128(collateralToken0._marketState()));
 
         {
             (, , , uint256 utilization) = collateralToken0.getPoolData();
@@ -1752,7 +1941,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (collateralToken0.rateAtTarget() << 112) +
             (((timestampAfterBorrow + blocksToSkip * 12) >> 2) << 80) +
             expectedNewIndex;
-        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 actualAccumulator = collateralToken0._marketState();
 
         // 4. Assert the final state is correct.
         assertEq(
@@ -1808,7 +1997,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint104 assets = 1000 ether; // Use a fixed deposit amount
 
         // Get the initial borrow index right after initialization
-        uint128 initialBorrowIndex = uint128(uint80(collateralToken0._interestRateAccumulator()));
+        uint128 initialBorrowIndex = uint128(uint80(collateralToken0._marketState()));
 
         // --- Alice deposits ---
         vm.startPrank(Alice);
@@ -1880,7 +2069,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList,
             assets / 4,
-            2 ** 64 - 1,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -1894,12 +2083,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint32 blocksToSkip = 7200 * 365;
         vm.roll(blockAfterBorrow + blocksToSkip);
         vm.warp(timestampAfterBorrow + blocksToSkip * 12);
-        console2.log("before accru", uint128(collateralToken0._interestRateAccumulator()));
+        console2.log("before accru", uint128(collateralToken0._marketState()));
         uint128 perSecondInterestRate = collateralToken0.interestRate();
         assertGt(perSecondInterestRate, 0, "FAIL: Rate should be positive after borrow");
 
         collateralToken0.accrueInterest();
-        console2.log("after accru", uint128(collateralToken0._interestRateAccumulator()));
+        console2.log("after accru", uint128(collateralToken0._marketState()));
 
         {
             (, , , uint256 utilization) = collateralToken0.getPoolData();
@@ -1925,7 +2114,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (uint256(collateralToken0.rateAtTarget()) << 112) +
             (((timestampAfterBorrow + blocksToSkip * 12) >> 2) << 80) +
             expectedNewIndex;
-        uint256 actualAccumulator = (collateralToken0._interestRateAccumulator());
+        uint256 actualAccumulator = (collateralToken0._marketState());
 
         // 4. Assert the final state is correct.
         assertEq(
@@ -1987,7 +2176,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint104 assets = 1000 ether; // Use a fixed deposit amount
 
         // Get the initial borrow index right after initialization
-        uint128 initialBorrowIndex = uint80(collateralToken0._interestRateAccumulator());
+        uint128 initialBorrowIndex = uint80(collateralToken0._marketState());
 
         // --- Alice deposits ---
         vm.startPrank(Alice);
@@ -2062,7 +2251,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (collateralToken0.rateAtTarget() << 112) +
             (((timestampAfterBorrow + blocksToSkip * blockTime) >> 2) << 80) +
             expectedNewIndex;
-        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 actualAccumulator = collateralToken0._marketState();
 
         // 4. Assert the final state is correct.
         assertEq(
@@ -2091,7 +2280,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         assertTrue(baseIndexAfter > baseIndexBefore, "FAIL: Bob's base index did not increased");
 
-        actualAccumulator = collateralToken0._interestRateAccumulator();
+        actualAccumulator = collateralToken0._marketState();
 
         assertEq(actualAccumulator >> 150, 0, "FAIL: still outstanding interest");
         assertEq(actualAccumulator % 2 ** 80, expectedNewIndex, "Fail: wrong index");
@@ -2555,7 +2744,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint104 assets = 1000 ether; // Use a fixed deposit amount
 
         // Get the initial borrow index right after initialization
-        uint128 initialBorrowIndex = uint80(collateralToken0._interestRateAccumulator());
+        uint128 initialBorrowIndex = uint80(collateralToken0._marketState());
 
         // --- Alice deposits ---
         vm.startPrank(Alice);
@@ -2693,7 +2882,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (((timestampAfterBorrow + blocksToSkip * 12) >> 2) << 80) +
             expectedNewIndex;
 
-        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 actualAccumulator = collateralToken0._marketState();
 
         // 4. Assert the final state is correct.
         assertEq(
@@ -2829,7 +3018,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         vm.stopPrank();
 
         // Record initial state
-        uint256 initialAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 initialAccumulator = collateralToken0._marketState();
         uint128 initialOwedInterest = collateralToken0.owedInterest(Bob);
 
         // Should be 0 initially since no time has passed
@@ -2843,7 +3032,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 previewedInterest = collateralToken0.previewOwedInterest(Bob);
 
         // Verify state hasn't changed
-        uint256 accumulatorAfterPreview = collateralToken0._interestRateAccumulator();
+        uint256 accumulatorAfterPreview = collateralToken0._marketState();
         assertEq(
             accumulatorAfterPreview,
             initialAccumulator,
@@ -3366,7 +3555,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
         positionIdList.push(tokenId);
 
         uint128 size = 500 ether;
+        vm.roll(block.number + 10);
+        vm.warp(block.timestamp + 120 seconds);
 
+        //console2.log("orclePl", panopticPool.oraclePack());
         // Bob borrows a significant amount
         mintOptions(
             panopticPool,
@@ -3377,6 +3569,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
             Constants.MIN_POOL_TICK,
             true
         );
+        //console2.log("orclePl", panopticPool.oraclePack());
+        vm.roll(block.number + 10);
+        vm.warp(block.timestamp + 120 seconds);
 
         ($shortPremia, $longPremia, posBalanceArray) = panopticPool
             .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
@@ -3437,6 +3632,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             bobAssetsBefore / 2,
             (previewedInterest + tokenData0.leftSlot() - bobAssetsBefore)
         );
+        console2.log("expectedBonus", expectedBonus);
         console2.log("previewBob-before-liq", collateralToken0.previewOwedInterest(Bob));
 
         liquidate(panopticPool, new TokenId[](0), Bob, positionIdList);
@@ -3760,7 +3956,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 previewedInterest = collateralToken0.previewOwedInterest(Bob);
 
         // Store state before accrual to verify preview didn't change it
-        uint256 accumulatorBefore = collateralToken0._interestRateAccumulator();
+        uint256 accumulatorBefore = collateralToken0._marketState();
         (int128 baseIndexBefore, int128 netBorrowsBefore) = collateralToken0.interestState(Bob);
 
         // Actually accrue interest
@@ -4045,7 +4241,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         Math.wTaylorCompounded(2 ** 93, type(uint32).max);
 
         // Record initial state
-        uint256 initialAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 initialAccumulator = collateralToken0._marketState();
         uint256 bobInitialBalance = collateralToken0.balanceOf(Bob);
         (int128 initialBaseIndex, int128 initialNetBorrows) = collateralToken0.interestState(Bob);
 
@@ -4058,7 +4254,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.accrueInterest();
 
         // Verify state updated correctly
-        uint256 newAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 newAccumulator = collateralToken0._marketState();
         assertGt(newAccumulator, initialAccumulator, "Accumulator should have increased");
 
         // Verify Bob paid interest (or was wiped out if insolvent)
@@ -4502,7 +4698,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList,
             500,
-            type(uint64).max,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -5059,7 +5255,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList,
             uint128(1e16),
-            type(uint64).max,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -5134,7 +5330,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList,
             uint128(1e16),
-            type(uint64).max,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -5149,7 +5345,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList,
             uint128(1e16),
-            type(uint64).max,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -5205,7 +5401,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             panopticPool,
             positionIdList,
             uint128(1e16),
-            type(uint64).max,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -5654,8 +5850,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             positionSize0,
             0,
-            Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
@@ -6260,7 +6456,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             address(0),
             0,
             Constants.MAX_POOL_TICK,
-            Constants.MIN_POOL_TICK
+            Constants.MIN_POOL_TICK,
+            RiskParameters.wrap(0)
         );
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
@@ -6269,8 +6466,332 @@ contract CollateralTrackerTest is Test, PositionUtils {
             0,
             0,
             Constants.MAX_POOL_TICK,
-            Constants.MIN_POOL_TICK
+            Constants.MIN_POOL_TICK,
+            RiskParameters.wrap(0)
         );
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            GUARDIANSHIP
+    //////////////////////////////////////////////////////////////*/
+
+    function test_Fail_OnlyGuardian_lockPool(uint256 x, address caller) public {
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool, caller);
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.startPrank(Bob);
+
+            vm.expectRevert(Errors.NotGuardian.selector);
+            riskEngine.lockPool(panopticPool);
+        }
+    }
+
+    function test_Fail_OnlyGuardian_unlockPool(uint256 x, address caller) public {
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool, caller);
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.startPrank(caller);
+            console2.log("guardian, caller", riskEngine.guardian(), caller);
+            riskEngine.lockPool(panopticPool);
+
+            vm.startPrank(Bob);
+            vm.expectRevert(Errors.NotGuardian.selector);
+            riskEngine.unlockPool(panopticPool);
+        }
+    }
+
+    function test_Fail_OnlyGuardian_collect(uint256 x, address caller) public {
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool, caller);
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.expectRevert(Errors.NotGuardian.selector);
+            riskEngine.collect(token0, Bob);
+
+            vm.expectRevert(Errors.NotGuardian.selector);
+            riskEngine.collect(token1, Bob);
+
+            vm.expectRevert(Errors.NotGuardian.selector);
+            riskEngine.collect(token0, Bob, 0);
+
+            vm.expectRevert(Errors.NotGuardian.selector);
+            riskEngine.collect(token1, Bob, 0);
+        }
+    }
+
+    function test_success_OnlyGuardian_lockPool_oraclePackState(uint256 x, address caller) public {
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool, caller);
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.startPrank(caller);
+            riskEngine.lockPool(panopticPool);
+
+            (, , , , OraclePack oraclePack) = panopticPool.getOracleTicks();
+            assertEq(oraclePack.lockMode(), 3, "lock mode");
+        }
+    }
+
+    function test_success_OnlyGuardian_unlockPool_oraclePackState(
+        uint256 x,
+        address caller
+    ) public {
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool, caller);
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.startPrank(caller);
+            riskEngine.lockPool(panopticPool);
+
+            (, , , , OraclePack oraclePack) = panopticPool.getOracleTicks();
+            assertEq(oraclePack.lockMode(), 3, "lock mode");
+
+            riskEngine.unlockPool(panopticPool);
+
+            (, , , , oraclePack) = panopticPool.getOracleTicks();
+            assertEq(oraclePack.lockMode(), 0, "unlock mode");
+        }
+    }
+
+    function test_success_OnlyGuardian_lockPool_noMint_burnOnly(uint256 x, address caller) public {
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool, caller);
+
+            vm.startPrank(Alice);
+
+            _grantTokens(Alice);
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+            // award corresponding shares
+            _mockMaxDeposit(Alice);
+
+            strike = (currentTick / tickSpacing) * tickSpacing;
+            width = 2;
+
+            positionSize0 = 10 ** 9;
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+            positionIdList.push(tokenId);
+
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                positionSize0,
+                type(uint24).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.startPrank(caller);
+            riskEngine.lockPool(panopticPool);
+
+            vm.startPrank(Bob);
+            _grantTokens(Bob);
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+            // award corresponding shares
+            _mockMaxDeposit(Bob);
+            // Bob cannot mint
+            vm.expectRevert(Errors.StaleOracle.selector);
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                positionSize0,
+                type(uint24).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+
+            vm.startPrank(Alice);
+
+            // Alice can still close
+            burnOptions(
+                panopticPool,
+                positionIdList,
+                new TokenId[](0),
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+
+            vm.startPrank(caller);
+            riskEngine.unlockPool(panopticPool);
+
+            vm.startPrank(Bob);
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                positionSize0,
+                type(uint24).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+        }
+    }
+
+    function test_success_builderCode_payouts(
+        uint256 x,
+        address caller,
+        uint256 builderCode
+    ) public {
+        vm.skip(true);
+        vm.assume(builderCode != 0);
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool, caller);
+
+            vm.startPrank(Alice);
+
+            _grantTokens(Alice);
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+            // award corresponding shares
+            _mockMaxDeposit(Alice);
+
+            strike = (currentTick / tickSpacing) * tickSpacing;
+            width = 2;
+
+            positionSize0 = 10 ** 9;
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+            positionIdList.push(tokenId);
+
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                positionSize0,
+                type(uint24).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true,
+                builderCode
+            );
+
+            // mimic pool activity
+            twoWaySwap(10 ** 18);
+
+            vm.startPrank(Alice);
+
+            console2.log("burnHere");
+            // close
+            burnOptions(
+                panopticPool,
+                positionIdList,
+                new TokenId[](0),
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+        }
+    }
+
+    function test_success_builderCode_collects(
+        uint256 x,
+        address caller,
+        uint256 builderCode
+    ) public {
+        vm.skip(true);
+        vm.assume(builderCode != 0);
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool, caller);
+            vm.startPrank(caller);
+
+            uint48 _builderCode = 3555421077;
+            BuilderWallet builderWallet = BuilderWallet(
+                builderFactory.deployBuilder(uint48(_builderCode), Bob)
+            );
+
+            console2.log("builderWallet", address(builderWallet));
+
+            assertTrue(uint160(address(builderWallet)) < type(uint128).max, "fits in a uint128");
+            assertTrue(false);
+
+            vm.startPrank(Alice);
+
+            _grantTokens(Alice);
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+            // award corresponding shares
+            _mockMaxDeposit(Alice);
+
+            strike = (currentTick / tickSpacing) * tickSpacing;
+            width = 2;
+
+            positionSize0 = 10 ** 9;
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+            positionIdList.push(tokenId);
+
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                positionSize0,
+                type(uint24).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true,
+                builderCode
+            );
+
+            // mimic pool activity
+            twoWaySwap(10 ** 18);
+            twoWaySwap(10 ** 18);
+            twoWaySwap(10 ** 18);
+            twoWaySwap(10 ** 18);
+            twoWaySwap(10 ** 18);
+            twoWaySwap(10 ** 18);
+            twoWaySwap(10 ** 18);
+            twoWaySwap(10 ** 18);
+
+            vm.startPrank(Alice);
+
+            console2.log("burnHere");
+            // close
+            burnOptions(
+                panopticPool,
+                positionIdList,
+                new TokenId[](0),
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true,
+                builderCode
+            );
+        }
+        vm.startPrank(caller);
+
+        riskEngine.collect(address(collateralToken0), caller, 1);
+
+        riskEngine.collect(address(collateralToken0), caller);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -6339,7 +6860,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6371,7 +6892,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6390,7 +6911,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6531,7 +7052,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6576,7 +7097,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6594,7 +7115,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6734,7 +7255,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6779,7 +7300,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6849,7 +7370,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6894,7 +7415,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -6964,7 +7485,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7008,7 +7529,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7026,7 +7547,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7168,7 +7689,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7199,7 +7720,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7366,7 +7887,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7397,7 +7918,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 4,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7566,7 +8087,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7597,7 +8118,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7763,7 +8284,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7898,7 +8419,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -7939,7 +8460,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8140,7 +8661,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8181,7 +8702,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8360,7 +8881,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8392,7 +8913,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8411,7 +8932,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8592,7 +9113,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8624,7 +9145,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8643,7 +9164,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8808,7 +9329,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8840,7 +9361,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -8859,7 +9380,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9033,7 +9554,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9056,7 +9577,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9209,7 +9730,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9231,7 +9752,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9408,7 +9929,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9425,7 +9946,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9596,7 +10117,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9613,7 +10134,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9782,7 +10303,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9799,7 +10320,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9954,7 +10475,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -9971,7 +10492,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -10135,7 +10656,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -10302,7 +10823,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -10470,7 +10991,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0 * 10,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -10529,7 +11050,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -10726,7 +11247,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0 * 10,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -10775,7 +11296,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 (9 * positionSize0) / 10,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -11069,7 +11590,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -11099,7 +11620,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 4,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -11204,7 +11725,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -11243,7 +11764,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 4,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -11343,7 +11864,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -11382,7 +11903,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 4,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -11483,7 +12004,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList,
                 positionSize0,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -11522,7 +12043,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 panopticPool,
                 positionIdList1,
                 positionSize0 / 4,
-                type(uint64).max,
+                type(uint24).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true

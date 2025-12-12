@@ -81,7 +81,12 @@ contract DeployProtocol is Script {
         SemiFungiblePositionManager sfpm = new SemiFungiblePositionManager(uniFactory, 10 ** 13, 0);
 
         // risk engine MED
-        new RiskEngine(2_000_000, 1_000_000, 128, 5_000_000, 9_000_000, 10_000_000, 10_000_000);
+        new RiskEngine(
+            10_000_000,
+            10_000_000,
+            address(0), // add guardian
+            address(0) // add builderFactory
+        );
         /*
         // risk engine LOW
         new RiskEngine(500_000, 250_000, 128, 5_000_000, 9_000_000);

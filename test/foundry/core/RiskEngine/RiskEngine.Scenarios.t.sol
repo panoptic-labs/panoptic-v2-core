@@ -20,15 +20,7 @@ contract RiskEngineScenarios is Test {
     uint256 constant DECIMALS = 10_000_000;
 
     function setUp() public {
-        E = new RiskEngineHarness(
-            2_000_000,
-            1_000_000,
-            1_000,
-            5_000_000,
-            9_000_000,
-            5_000_000,
-            5_000_000
-        );
+        E = new RiskEngineHarness(5_000_000, 5_000_000);
         ct0 = new MockCollateralTracker();
         ct1 = new MockCollateralTracker();
         ct0.setGlobal(1_000_000 ether, 1_000_000 ether);

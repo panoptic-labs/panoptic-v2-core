@@ -6,6 +6,7 @@ import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManage
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
@@ -14,6 +15,7 @@ import {IUniswapV3Factory} from "v3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {TokenId} from "@types/TokenId.sol";
+import {OraclePack} from "@types/OraclePack.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
@@ -145,7 +147,7 @@ contract Misctest is Test, PositionUtils {
     CollateralTracker ct0;
     CollateralTracker ct1;
     PanopticHelper ph;
-    RiskEngine re;
+    IRiskEngine re;
 
     int24 currentTick;
     int256 twapTick;
@@ -154,7 +156,7 @@ contract Misctest is Test, PositionUtils {
     int24 lastObservedTick;
     int24 $strike;
 
-    uint256 oraclePack;
+    OraclePack oraclePack;
     uint64 $poolId;
     uint64 poolId;
     uint256 medianData;
@@ -176,6 +178,8 @@ contract Misctest is Test, PositionUtils {
     IUniswapV3Pool uniPool;
     ERC20S token0;
     ERC20S token1;
+
+    int24 MAX_CLAMP_DELTA;
 
     address Deployer = address(0x1234);
     address Alice = address(0x123456);
@@ -216,15 +220,8 @@ contract Misctest is Test, PositionUtils {
         token1 = new ERC20S("token1", "T1", 18);
         uniPool = IUniswapV3Pool(V3FACTORY.createPool(address(token0), address(token1), 500));
 
-        re = new RiskEngine(
-            2_000_000,
-            1_000_000,
-            1_024_000,
-            5_000_000,
-            9_000_000,
-            10_000_000,
-            10_000_000
-        );
+        MAX_CLAMP_DELTA = 149;
+        re = IRiskEngine(address(new RiskEngine(10_000_000, 10_000_000, address(0), address(0))));
 
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
@@ -392,24 +389,23 @@ contract Misctest is Test, PositionUtils {
         PanopticPool pp,
         TokenId[] memory positionIdList,
         uint128 positionSize,
-        uint64 effectiveLiquidityLimitX32,
+        uint24 effectiveLiquidityLimitX32,
         int24 tickLimitLow,
         int24 tickLimitHigh,
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
         TokenId[] memory mintList = new TokenId[](1);
-        int24[2][] memory tickLimits = new int24[2][](1);
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
 
         TokenId tokenId = positionIdList[positionIdList.length - 1];
         sizeList[0] = positionSize;
-        spreadList[0] = effectiveLiquidityLimitX32;
         mintList[0] = tokenId;
-        tickLimits[0][0] = tickLimitLow;
-        tickLimits[0][1] = tickLimitHigh;
+        tickAndSpreadLimits[0][0] = tickLimitLow;
+        tickAndSpreadLimits[0][1] = tickLimitHigh;
+        tickAndSpreadLimits[0][2] = int24(uint24(effectiveLiquidityLimitX32));
 
-        pp.dispatch(mintList, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
+        pp.dispatch(mintList, positionIdList, sizeList, tickAndSpreadLimits, premiaAsCollateral, 0);
     }
 
     function burnOptions(
@@ -421,16 +417,15 @@ contract Misctest is Test, PositionUtils {
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
         TokenId[] memory burnList = new TokenId[](1);
-        int24[2][] memory tickLimits = new int24[2][](1);
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
 
         sizeList[0] = 0;
-        spreadList[0] = type(uint64).max;
         burnList[0] = tokenId;
-        tickLimits[0][0] = tickLimitLow;
-        tickLimits[0][1] = tickLimitHigh;
-        pp.dispatch(burnList, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
+        tickAndSpreadLimits[0][0] = tickLimitLow;
+        tickAndSpreadLimits[0][1] = tickLimitHigh;
+        tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
+        pp.dispatch(burnList, positionIdList, sizeList, tickAndSpreadLimits, premiaAsCollateral, 0);
     }
 
     function burnOptions(
@@ -442,15 +437,15 @@ contract Misctest is Test, PositionUtils {
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](tokenIds.length);
-        uint64[] memory spreadList = new uint64[](tokenIds.length);
-        int24[2][] memory tickLimits = new int24[2][](tokenIds.length);
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](tokenIds.length);
 
         for (uint256 i; i < tokenIds.length; ++i) {
-            tickLimits[i][0] = tickLimitLow;
-            tickLimits[i][1] = tickLimitHigh;
+            tickAndSpreadLimits[i][0] = tickLimitLow;
+            tickAndSpreadLimits[i][1] = tickLimitHigh;
+            tickAndSpreadLimits[i][2] = int24(uint24(type(uint24).max));
         }
 
-        pp.dispatch(tokenIds, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
+        pp.dispatch(tokenIds, positionIdList, sizeList, tickAndSpreadLimits, premiaAsCollateral, 0);
     }
 
     function liquidate(
@@ -460,7 +455,6 @@ contract Misctest is Test, PositionUtils {
         TokenId[] memory positionIdList
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
 
         pp.dispatchFrom(
             liquidatorList,
@@ -480,7 +474,6 @@ contract Misctest is Test, PositionUtils {
         LeftRightUnsigned premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
 
         TokenId[] memory exerciseeListInitial = new TokenId[](exerciseeListFinal.length + 1);
         for (uint256 i = 0; i < exerciseeListFinal.length; ++i) {
@@ -497,7 +490,7 @@ contract Misctest is Test, PositionUtils {
         );
     }
 
-    function settleLongPremium(
+    function settlePremium(
         PanopticPool pp,
         TokenId[] memory settlerList,
         TokenId[] memory settleeList,
@@ -506,7 +499,6 @@ contract Misctest is Test, PositionUtils {
         bool premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
 
         TokenId[] memory targetList = new TokenId[](1);
 
@@ -521,8 +513,26 @@ contract Misctest is Test, PositionUtils {
         );
     }
 
+    function settlePremiumSelf(
+        PanopticPool pp,
+        TokenId[] memory mintList,
+        uint128 positionSize,
+        bool premiaAsCollateral
+    ) internal {
+        uint128[] memory sizeList = new uint128[](1);
+        sizeList[0] = positionSize;
+
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
+
+        tickAndSpreadLimits[0][0] = -887272;
+        tickAndSpreadLimits[0][1] = 887272;
+        tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
+
+        pp.dispatch(mintList, mintList, sizeList, tickAndSpreadLimits, premiaAsCollateral, 0);
+    }
+
     function test_gas_MaxPositions_short_packed() public {
-        uint256 positionCount = 6;
+        uint256 positionCount = 7;
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
@@ -640,7 +650,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList,
                 1_000_000,
-                type(uint64).max,
+                type(uint24).max,
                 Constants.MIN_POOL_TICK,
                 Constants.MAX_POOL_TICK,
                 true
@@ -665,7 +675,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_short_soloLeg() public {
-        uint256 positionCount = 25;
+        uint256 positionCount = 31;
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
@@ -720,7 +730,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList,
                 1_000_000,
-                type(uint64).max,
+                type(uint24).max,
                 Constants.MIN_POOL_TICK,
                 Constants.MAX_POOL_TICK,
                 true
@@ -745,7 +755,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_long_packed() public {
-        uint256 positionCount = 6;
+        uint256 positionCount = 7;
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
@@ -907,7 +917,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList,
                 1_000_000,
-                type(uint64).max,
+                type(uint24).max,
                 Constants.MIN_POOL_TICK,
                 Constants.MAX_POOL_TICK,
                 true
@@ -932,7 +942,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_long_soloLeg() public {
-        uint256 positionCount = 25;
+        uint256 positionCount = 31;
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
@@ -1003,7 +1013,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList,
                 1_000_000,
-                type(uint64).max,
+                type(uint24).max,
                 Constants.MIN_POOL_TICK,
                 Constants.MAX_POOL_TICK,
                 true
@@ -1545,6 +1555,7 @@ contract Misctest is Test, PositionUtils {
         token1.mint(Swapper, type(uint128).max);
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
 
         {
             poolId = uint64(uint160(address(uniPool)) >> 112);
@@ -1721,7 +1732,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             1_000_000,
-            type(uint64).max,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -1782,7 +1793,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             1_000_000,
-            type(uint64).max,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -1838,7 +1849,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             1_000_000,
-            type(uint64).max,
+            type(uint24).max,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK,
             true
@@ -1859,8 +1870,8 @@ contract Misctest is Test, PositionUtils {
         vm.warp(block.timestamp + 600);
         vm.roll(block.number + 1);
 
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
+        swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
 
         (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
             .getOracleTicks();
@@ -1962,7 +1973,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             2_000_000,
-            type(uint64).max,
+            type(uint24).max,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK,
             true
@@ -1976,10 +1987,10 @@ contract Misctest is Test, PositionUtils {
                 uint256(1) // numberOfTicks
             )
         );
-        settleLongPremium(pp, $posIdLists[0], $posIdList, Bob, 0, false);
+        settlePremium(pp, $posIdLists[0], $posIdList, Bob, 0, false);
 
         uint256 snap = vm.snapshotState();
-        settleLongPremium(pp, $posIdLists[0], $posIdList, Bob, 0, true);
+        settlePremium(pp, $posIdLists[0], $posIdList, Bob, 0, true);
 
         vm.revertToState(snap);
 
@@ -2250,7 +2261,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             1_000_000,
-            type(uint64).max,
+            type(uint24).max,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK,
             true
@@ -2271,8 +2282,8 @@ contract Misctest is Test, PositionUtils {
         vm.warp(block.timestamp + 600);
         vm.roll(block.number + 1);
 
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
+        swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
 
         (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
             .getOracleTicks();
@@ -2484,7 +2495,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $tempIdList,
             900_000_000,
-            type(uint64).max,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -2509,7 +2520,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList,
                 250_000_000,
-                type(uint64).max,
+                type(uint24).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -2606,7 +2617,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $tempIdList,
                 250_000,
-                type(uint64).max,
+                type(uint24).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -2617,7 +2628,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList,
                 250_000,
-                type(uint64).max,
+                type(uint24).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -2707,7 +2718,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdList,
                 499_999,
-                type(uint64).max,
+                type(uint24).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -2739,7 +2750,525 @@ contract Misctest is Test, PositionUtils {
         );
     }
 
-    function test_success_settleLongPremium() public {
+    function test_success_settleShortPremium_self() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+        swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+
+        // sell primary chunk
+        $posIdLists[0].push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
+
+        // mint some amount of liquidity with Alice owning 1/2 and Bob and Charlie owning 1/4 respectively
+        // then, remove 9.737% of that liquidity at the same ratio
+        // Once this state is in place, accumulate some amount of fees on the existing liquidity in the pool
+        // The fees should be immediately available for withdrawal because they have been paid to liquidity already in the pool
+        // 8.896% * 1.022x vegoid = +~10% of the fee amount accumulated will be owed by sellers
+        vm.startPrank(Alice);
+
+        mintOptions(
+            pp,
+            $posIdLists[0],
+            1_000,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Bob);
+
+        mintOptions(
+            pp,
+            $posIdLists[0],
+            499_999_500,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Charlie);
+
+        mintOptions(
+            pp,
+            $posIdLists[0],
+            499_999_500,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        // position type A: 1-leg long primary
+        $posIdLists[2].push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 15, 1));
+
+        // Buyer 1 buys the chunk
+        vm.startPrank(Buyers[0]);
+        mintOptions(
+            pp,
+            $posIdLists[2],
+            9_884_444,
+            type(uint24).max,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Swapper);
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(100) + 1);
+
+        // There are some precision issues with this (1B is not exactly 1B) but close enough to see the effects
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1_000_000, 1_000_000_000);
+
+        // accumulate lower order of fees on dummy chunk
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-10));
+
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 10_000, 100_000);
+
+        swapperc.swapTo(uniPool, 2 ** 96);
+
+        vm.startPrank(Alice);
+        {
+            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+                Alice,
+                true,
+                $posIdLists[0]
+            );
+
+            assertGe(shortPremium.rightSlot(), 0);
+            assertGe(shortPremium.leftSlot(), 0);
+
+            (uint256 aliceBalanceBefore0, uint256 aliceBalanceBefore1) = (
+                ct0.balanceOf(Alice),
+                ct1.balanceOf(Alice)
+            );
+
+            // Alice settles her own position, received nothing because the chunks haven't been poked.
+            settlePremiumSelf(pp, $posIdLists[0], 1_000, true);
+            (uint256 aliceBalanceAfter0, uint256 aliceBalanceAfter1) = (
+                ct0.balanceOf(Alice),
+                ct1.balanceOf(Alice)
+            );
+
+            (shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(Alice, true, $posIdLists[0]);
+
+            // has 0 owed premium because it was settled at 0 in settlePremium
+            assertEq(shortPremium.rightSlot(), 0);
+            assertEq(shortPremium.leftSlot(), 0);
+
+            // burn options and forfeit her premium, which was settled as 0 in settlePremium
+            burnOptions(
+                pp,
+                $posIdLists[0],
+                new TokenId[](0),
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                false
+            );
+
+            (uint256 aliceBalancePost0, uint256 aliceBalancePost1) = (
+                ct0.balanceOf(Alice),
+                ct1.balanceOf(Alice)
+            );
+
+            // Alice re-mints an option, pokes the chunk and make the protocol collect some premium
+            mintOptions(
+                pp,
+                $posIdLists[0],
+                1,
+                0,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
+            );
+        }
+
+        uint256 bobDeltaPremia0;
+        uint256 bobDeltaPremia1;
+
+        uint256 snap = vm.snapshotState();
+
+        {
+            vm.startPrank(Bob);
+
+            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+                Bob,
+                true,
+                $posIdLists[0]
+            );
+            uint256 owedPremia0 = shortPremium.rightSlot();
+            uint256 owedPremia1 = shortPremium.leftSlot();
+            console2.log("owedPremia-total0", owedPremia0);
+            console2.log("owedPremia-total1", owedPremia1);
+
+            assertGe(owedPremia0, 0);
+            assertGe(owedPremia1, 0);
+
+            (uint256 bobBalanceBefore0, uint256 bobBalanceBefore1) = (
+                ct0.balanceOf(Bob),
+                ct1.balanceOf(Bob)
+            );
+
+            // Bob settles his own premium, receives only realize premia and misses out on unsettled longs
+            settlePremiumSelf(pp, $posIdLists[0], 499_999_500, true);
+            (uint256 bobBalanceAfter0, uint256 bobBalanceAfter1) = (
+                ct0.balanceOf(Bob),
+                ct1.balanceOf(Bob)
+            );
+
+            assertGe(bobBalanceAfter0, bobBalanceBefore0, "bob received premia0");
+            assertGe(bobBalanceAfter1, bobBalanceBefore1, "bob received premia1");
+
+            bobDeltaPremia0 = ct0.convertToAssets(bobBalanceAfter0 - bobBalanceBefore0);
+            bobDeltaPremia1 = ct1.convertToAssets(bobBalanceAfter1 - bobBalanceBefore1);
+
+            console2.log("bobDeltaPremia0", bobDeltaPremia0);
+            console2.log("bobDeltaPremia1", bobDeltaPremia1);
+            assertLt(
+                bobDeltaPremia0,
+                owedPremia0,
+                "bob received less than owed due to unsettled token0"
+            );
+            assertLt(
+                bobDeltaPremia1,
+                owedPremia1,
+                "bob received less than owed due to unsettled token0"
+            );
+        }
+
+        vm.revertToState(snap);
+
+        vm.startPrank(Charlie);
+
+        uint256 charlieDeltaPremia0;
+        uint256 charlieDeltaPremia1;
+
+        {
+            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+                Charlie,
+                true,
+                $posIdLists[0]
+            );
+            uint256 owedPremia0 = shortPremium.rightSlot();
+            uint256 owedPremia1 = shortPremium.leftSlot();
+            console2.log("owedPremia-total0", owedPremia0);
+            console2.log("owedPremia-total1", owedPremia1);
+
+            assertGe(owedPremia0, 0);
+            assertGe(owedPremia1, 0);
+
+            (uint256 charlieBalanceBefore0, uint256 charlieBalanceBefore1) = (
+                ct0.balanceOf(Charlie),
+                ct1.balanceOf(Charlie)
+            );
+
+            // Charlie settles Buyers[0] premium first
+            settlePremium(pp, $posIdLists[0], $posIdLists[2], Buyers[0], 0, true);
+
+            // Charlie settles his own premium, receives only realize premia from settled longs
+            settlePremiumSelf(pp, $posIdLists[0], 499_999_500, true);
+
+            (uint256 charlieBalanceAfter0, uint256 charlieBalanceAfter1) = (
+                ct0.balanceOf(Charlie),
+                ct1.balanceOf(Charlie)
+            );
+
+            assertGt(charlieBalanceAfter0, charlieBalanceBefore0, "charlie received premia0");
+            assertGt(charlieBalanceAfter1, charlieBalanceBefore1, "charlie received premia1");
+
+            charlieDeltaPremia0 = ct0.convertToAssets(charlieBalanceAfter0 - charlieBalanceBefore0);
+            charlieDeltaPremia1 = ct1.convertToAssets(charlieBalanceAfter1 - charlieBalanceBefore1);
+
+            assertApproxEqAbs(
+                charlieDeltaPremia0,
+                owedPremia0,
+                1,
+                "charlie received exactly what they are owed due to settled token0"
+            );
+            assertApproxEqAbs(
+                charlieDeltaPremia1,
+                owedPremia1,
+                1,
+                "charlie received exactly what they are owed due to settled token0"
+            );
+        }
+    }
+
+    function test_success_settleShortPremium_dispatchFrom() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+        swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+
+        // sell primary chunk
+        $posIdLists[0].push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
+
+        // mint some amount of liquidity with Alice owning 1/2 and Bob and Charlie owning 1/4 respectively
+        // then, remove 9.737% of that liquidity at the same ratio
+        // Once this state is in place, accumulate some amount of fees on the existing liquidity in the pool
+        // The fees should be immediately available for withdrawal because they have been paid to liquidity already in the pool
+        // 8.896% * 1.022x vegoid = +~10% of the fee amount accumulated will be owed by sellers
+        vm.startPrank(Alice);
+
+        mintOptions(
+            pp,
+            $posIdLists[0],
+            1_000,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Bob);
+
+        mintOptions(
+            pp,
+            $posIdLists[0],
+            499_999_500,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Charlie);
+
+        mintOptions(
+            pp,
+            $posIdLists[0],
+            499_999_500,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        {
+            poolId = uint64(uint160(address(uniPool)) >> 112);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        // position type A: 1-leg long primary
+        $posIdLists[2].push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 15, 1));
+
+        // Buyer 1 buys the chunk
+        vm.startPrank(Buyers[0]);
+        mintOptions(
+            pp,
+            $posIdLists[2],
+            9_884_444,
+            type(uint24).max,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Swapper);
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(100) + 1);
+
+        // There are some precision issues with this (1B is not exactly 1B) but close enough to see the effects
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1_000_000, 1_000_000_000);
+
+        // accumulate lower order of fees on dummy chunk
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-100));
+
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 10_000, 100_000);
+
+        swapperc.swapTo(uniPool, 2 ** 96);
+
+        vm.startPrank(Alice);
+        {
+            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+                Alice,
+                true,
+                $posIdLists[0]
+            );
+
+            assertGe(shortPremium.rightSlot(), 0);
+            assertGe(shortPremium.leftSlot(), 0);
+
+            (uint256 aliceBalanceBefore0, uint256 aliceBalanceBefore1) = (
+                ct0.balanceOf(Alice),
+                ct1.balanceOf(Alice)
+            );
+
+            // Alice settles her own position, received nothing because the chunks haven't been poked.
+            settlePremium(pp, $posIdLists[0], $posIdLists[0], Alice, 0, true);
+            (uint256 aliceBalanceAfter0, uint256 aliceBalanceAfter1) = (
+                ct0.balanceOf(Alice),
+                ct1.balanceOf(Alice)
+            );
+
+            (shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(Alice, true, $posIdLists[0]);
+
+            // has 0 owed premium because it was settled at 0 in settlePremium
+            assertEq(shortPremium.rightSlot(), 0);
+            assertEq(shortPremium.leftSlot(), 0);
+
+            // burn options and forfeit her premium, which was settled as 0 in settlePremium
+            burnOptions(
+                pp,
+                $posIdLists[0],
+                new TokenId[](0),
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                false
+            );
+
+            (uint256 aliceBalancePost0, uint256 aliceBalancePost1) = (
+                ct0.balanceOf(Alice),
+                ct1.balanceOf(Alice)
+            );
+
+            // Alice re-mints an option, pokes the chunk and make the protocol collect some premium
+            mintOptions(
+                pp,
+                $posIdLists[0],
+                1,
+                0,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
+            );
+        }
+
+        uint256 bobDeltaPremia0;
+        uint256 bobDeltaPremia1;
+
+        uint256 snap = vm.snapshotState();
+
+        {
+            vm.startPrank(Bob);
+
+            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+                Bob,
+                true,
+                $posIdLists[0]
+            );
+            uint256 owedPremia0 = shortPremium.rightSlot();
+            uint256 owedPremia1 = shortPremium.leftSlot();
+            console2.log("owedPremia-total0", owedPremia0);
+            console2.log("owedPremia-total1", owedPremia1);
+
+            assertGe(owedPremia0, 0);
+            assertGe(owedPremia1, 0);
+
+            (uint256 bobBalanceBefore0, uint256 bobBalanceBefore1) = (
+                ct0.balanceOf(Bob),
+                ct1.balanceOf(Bob)
+            );
+
+            // Bob settles his own premium, receives only realize premia and misses out on unsettled longs
+            settlePremium(pp, $posIdLists[0], $posIdLists[0], Bob, 0, true);
+            (uint256 bobBalanceAfter0, uint256 bobBalanceAfter1) = (
+                ct0.balanceOf(Bob),
+                ct1.balanceOf(Bob)
+            );
+
+            assertGe(bobBalanceAfter0, bobBalanceBefore0, "bob received premia0");
+            assertGe(bobBalanceAfter1, bobBalanceBefore1, "bob received premia1");
+
+            bobDeltaPremia0 = ct0.convertToAssets(bobBalanceAfter0 - bobBalanceBefore0);
+            bobDeltaPremia1 = ct1.convertToAssets(bobBalanceAfter1 - bobBalanceBefore1);
+
+            console2.log("bobDeltaPremia0", bobDeltaPremia0);
+            console2.log("bobDeltaPremia1", bobDeltaPremia1);
+            assertLt(
+                bobDeltaPremia0,
+                owedPremia0,
+                "bob received less than owed due to unsettled token0"
+            );
+            assertLt(
+                bobDeltaPremia1,
+                owedPremia1,
+                "bob received less than owed due to unsettled token0"
+            );
+        }
+
+        vm.revertToState(snap);
+
+        vm.startPrank(Charlie);
+
+        uint256 charlieDeltaPremia0;
+        uint256 charlieDeltaPremia1;
+
+        {
+            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+                Charlie,
+                true,
+                $posIdLists[0]
+            );
+            uint256 owedPremia0 = shortPremium.rightSlot();
+            uint256 owedPremia1 = shortPremium.leftSlot();
+            console2.log("owedPremia-total0", owedPremia0);
+            console2.log("owedPremia-total1", owedPremia1);
+
+            assertGe(owedPremia0, 0);
+            assertGe(owedPremia1, 0);
+
+            (uint256 charlieBalanceBefore0, uint256 charlieBalanceBefore1) = (
+                ct0.balanceOf(Charlie),
+                ct1.balanceOf(Charlie)
+            );
+
+            // Charlie settles Buyers[0] premium first
+            settlePremium(pp, $posIdLists[0], $posIdLists[2], Buyers[0], 0, true);
+
+            // Charlie settles his own premium, receives only realize premia from settled longs
+            settlePremium(pp, $posIdLists[0], $posIdLists[0], Charlie, 0, true);
+
+            (uint256 charlieBalanceAfter0, uint256 charlieBalanceAfter1) = (
+                ct0.balanceOf(Charlie),
+                ct1.balanceOf(Charlie)
+            );
+
+            assertGt(charlieBalanceAfter0, charlieBalanceBefore0, "charlie received premia0");
+            assertGt(charlieBalanceAfter1, charlieBalanceBefore1, "charlie received premia1");
+
+            charlieDeltaPremia0 = ct0.convertToAssets(charlieBalanceAfter0 - charlieBalanceBefore0);
+            charlieDeltaPremia1 = ct1.convertToAssets(charlieBalanceAfter1 - charlieBalanceBefore1);
+
+            assertApproxEqAbs(
+                charlieDeltaPremia0,
+                owedPremia0,
+                1,
+                "charlie received exactly what they are owed due to settled token0"
+            );
+            assertApproxEqAbs(
+                charlieDeltaPremia1,
+                owedPremia1,
+                1,
+                "charlie received exactly what they are owed due to settled token0"
+            );
+        }
+    }
+
+    function test_success_settlePremium() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
@@ -2830,7 +3359,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdLists[2],
                 9_884_444,
-                type(uint64).max,
+                type(uint24).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -2862,7 +3391,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdLists[2],
                 9_884_444,
-                type(uint64).max,
+                type(uint24).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -2894,7 +3423,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdLists[2],
                 9_884_444,
-                type(uint64).max,
+                type(uint24).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -2915,7 +3444,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdLists[2],
                 19_768_888,
-                type(uint64).max,
+                type(uint24).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -3086,7 +3615,7 @@ contract Misctest is Test, PositionUtils {
         // collect buyer 1's four (not three) relevant chunks because i=1 has two legs
         // amount collected: 11114 + (11114 + 111) + 11114 =
         for (uint256 i = 0; i < 3; ++i) {
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[i], Buyers[0], 0, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[i], Buyers[0], 0, true);
         }
 
         assertEq(
@@ -3162,9 +3691,9 @@ contract Misctest is Test, PositionUtils {
         // now, settle the dummy chunks for all the buyers/positions and see that the settled ratio for primary doesn't change
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
-            settleLongPremium(pp, $posIdLists[1], collateralIdLists[1], Buyers[i], 1, true);
+            settlePremium(pp, $posIdLists[1], collateralIdLists[1], Buyers[i], 1, true);
 
-            settleLongPremium(pp, $posIdLists[1], collateralIdLists[3], Buyers[i], 0, true);
+            settlePremium(pp, $posIdLists[1], collateralIdLists[3], Buyers[i], 0, true);
         }
 
         assertEq(
@@ -3238,9 +3767,9 @@ contract Misctest is Test, PositionUtils {
         assetsBefore1Arr[2] = ct1.convertToAssets(ct1.balanceOf(Buyers[2]));
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[1], Buyers[i], 1, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[1], Buyers[i], 1, true);
 
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[3], Buyers[i], 0, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[3], Buyers[i], 0, true);
         }
 
         assertEq(
@@ -3288,11 +3817,11 @@ contract Misctest is Test, PositionUtils {
         assetsBefore1Arr[2] = ct1.convertToAssets(ct1.balanceOf(Buyers[2]));
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[i], 0, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[i], 0, true);
 
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[1], Buyers[i], 0, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[1], Buyers[i], 0, true);
 
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[2], Buyers[i], 0, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[2], Buyers[i], 0, true);
         }
 
         assertEq(
@@ -3360,7 +3889,7 @@ contract Misctest is Test, PositionUtils {
         // test long leg validation
         //console2.log('a');
         //vm.expectRevert(Errors.NotALongLeg.selector);
-        //settleLongPremium(pp, new TokenId[](0), collateralIdLists[2], Buyers[0], 1, true);
+        //settlePremium(pp, new TokenId[](0), collateralIdLists[2], Buyers[0], 1, true);
 
         // test positionIdList validation
         // snapshot so we don't have to reset changes to collateralIdLists array
@@ -3368,7 +3897,7 @@ contract Misctest is Test, PositionUtils {
 
         collateralIdLists[0].pop();
         vm.expectRevert(Errors.InputListFail.selector);
-        settleLongPremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[0], 0, true);
+        settlePremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[0], 0, true);
         vm.revertTo(snap);
 
         // test collateral checking (basic)
@@ -3381,7 +3910,7 @@ contract Misctest is Test, PositionUtils {
             vm.expectRevert(
                 abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
             );
-            settleLongPremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[i], 0, true);
+            settlePremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[i], 0, true);
             vm.revertTo(snap);
         }
 
@@ -3415,7 +3944,7 @@ contract Misctest is Test, PositionUtils {
         }
     }
 
-    function test_success_settleLongPremium_tokenSubstitution() public {
+    function test_success_settlePremium_tokenSubstitution() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
@@ -3472,7 +4001,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 $posIdLists[1],
                 1_000_000,
-                type(uint64).max,
+                type(uint24).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -3489,7 +4018,7 @@ contract Misctest is Test, PositionUtils {
         int256 premium0 = 10388;
         int256 premium1 = 10388989;
 
-        uint160 lastObservedPrice = Math.getSqrtRatioAtTick(44);
+        uint160 lastObservedPrice = Math.getSqrtRatioAtTick(pp.getTWAP());
 
         vm.startPrank(Alice);
 
@@ -3502,7 +4031,7 @@ contract Misctest is Test, PositionUtils {
         uint256 settleeBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[0]));
         uint256 settleeBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[0]));
 
-        settleLongPremium(pp, $posIdLists[0], $posIdLists[1], Buyers[0], 0, true);
+        settlePremium(pp, $posIdLists[0], $posIdLists[1], Buyers[0], 0, true);
 
         int256 balanceDelta0 = int256(ct0.convertToAssets(ct0.balanceOf(Buyers[0]))) -
             int256(settleeBalanceBefore0);
@@ -3535,7 +4064,7 @@ contract Misctest is Test, PositionUtils {
         settleeBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[1]));
         settleeBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[1]));
 
-        settleLongPremium(pp, $posIdLists[0], $posIdLists[1], Buyers[1], 0, true);
+        settlePremium(pp, $posIdLists[0], $posIdLists[1], Buyers[1], 0, true);
 
         balanceDelta0 =
             int256(ct0.convertToAssets(ct0.balanceOf(Buyers[1]))) -
@@ -3567,7 +4096,7 @@ contract Misctest is Test, PositionUtils {
         vm.expectRevert(
             abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
         );
-        settleLongPremium(pp, $posIdLists[0], $posIdLists[1], Buyers[2], 0, true);
+        settlePremium(pp, $posIdLists[0], $posIdLists[1], Buyers[2], 0, true);
     }
 
     function test_success_settledPremiumDistribution() public {
@@ -3646,7 +4175,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             44_468,
-            type(uint64).max,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -3659,7 +4188,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             44_468,
-            type(uint64).max,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -3945,11 +4474,11 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
 
@@ -4015,11 +4544,11 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
 
@@ -4084,11 +4613,11 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
 
@@ -4262,11 +4791,11 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
 
@@ -4514,14 +5043,15 @@ contract Misctest is Test, PositionUtils {
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(953));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
-
+        console2.log("currentTick", currentTick);
+        console2.log("slowOracleTick", slowOracleTick);
         assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation 0");
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(955));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation1 ");
@@ -4538,17 +5068,17 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-1060));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-1066));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
@@ -4591,13 +5121,13 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
@@ -4705,13 +5235,13 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
@@ -4804,13 +5334,13 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
@@ -4906,11 +5436,11 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
         swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
         vm.warp((block.timestamp >> 6) * 64 + 128);
@@ -4950,10 +5480,14 @@ contract Misctest is Test, PositionUtils {
             Constants.MIN_POOL_TICK,
             true
         );
-        (, , int24 slowOracleTickStale, , uint256 oraclePackStale) = pp.getOracleTicks();
+        (, , int24 slowOracleTickStale, , OraclePack oraclePackStale) = pp.getOracleTicks();
 
         assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update 1");
-        assertEq(oraclePack, oraclePackStale, "no slow oracle update 2");
+        assertEq(
+            OraclePack.unwrap(oraclePack),
+            OraclePack.unwrap(oraclePackStale),
+            "no slow oracle update 2"
+        );
 
         vm.warp(block.timestamp + 1);
         vm.roll(block.number + 1);
@@ -4971,7 +5505,10 @@ contract Misctest is Test, PositionUtils {
         (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update 3");
-        assertTrue(oraclePack != oraclePackStale, "oracle median data update 4");
+        assertTrue(
+            OraclePack.unwrap(oraclePack) != OraclePack.unwrap(oraclePackStale),
+            "oracle median data update 4"
+        );
 
         vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
@@ -4980,7 +5517,10 @@ contract Misctest is Test, PositionUtils {
         (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
-        assertTrue(oraclePack != oraclePackStale, "oracle median data update");
+        assertTrue(
+            OraclePack.unwrap(oraclePack) != OraclePack.unwrap(oraclePackStale),
+            "oracle median data update"
+        );
 
         vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
@@ -4989,7 +5529,10 @@ contract Misctest is Test, PositionUtils {
         (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
-        assertTrue(oraclePack != oraclePackStale, "oracle median data update");
+        assertTrue(
+            OraclePack.unwrap(oraclePack) != OraclePack.unwrap(oraclePackStale),
+            "oracle median data update"
+        );
 
         vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
@@ -4998,7 +5541,10 @@ contract Misctest is Test, PositionUtils {
         (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick != slowOracleTickStale, "no slow oracle update");
-        assertTrue(oraclePack != oraclePackStale, "oracle median data update");
+        assertTrue(
+            OraclePack.unwrap(oraclePack) != OraclePack.unwrap(oraclePackStale),
+            "oracle median data update"
+        );
     }
 
     function test_Success_OraclePoke_burn() public {
@@ -5052,10 +5598,14 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        (, , int24 slowOracleTickStale, , uint256 oraclePackStale) = pp.getOracleTicks();
+        (, , int24 slowOracleTickStale, , OraclePack oraclePackStale) = pp.getOracleTicks();
 
         assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update");
-        assertEq(oraclePack, oraclePackStale, "no slow oracle update");
+        assertEq(
+            OraclePack.unwrap(oraclePack),
+            OraclePack.unwrap(oraclePackStale),
+            "no slow oracle update"
+        );
 
         vm.warp(block.timestamp + 1);
         vm.roll(block.number + 1);
@@ -5072,7 +5622,10 @@ contract Misctest is Test, PositionUtils {
         (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
-        assertTrue(oraclePack != oraclePackStale, "oracle median data updated");
+        assertTrue(
+            OraclePack.unwrap(oraclePack) != OraclePack.unwrap(oraclePackStale),
+            "oracle median data updated"
+        );
 
         vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
@@ -5081,7 +5634,10 @@ contract Misctest is Test, PositionUtils {
         (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
-        assertTrue(oraclePack != oraclePackStale, "oracle median data updated");
+        assertTrue(
+            OraclePack.unwrap(oraclePack) != OraclePack.unwrap(oraclePackStale),
+            "oracle median data updated"
+        );
 
         vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
@@ -5090,7 +5646,10 @@ contract Misctest is Test, PositionUtils {
         (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
-        assertTrue(oraclePack != oraclePackStale, "oracle median data updated");
+        assertTrue(
+            OraclePack.unwrap(oraclePack) != OraclePack.unwrap(oraclePackStale),
+            "oracle median data updated"
+        );
 
         vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
@@ -5099,7 +5658,10 @@ contract Misctest is Test, PositionUtils {
         (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick != slowOracleTickStale, "slow oracle updated");
-        assertTrue(oraclePack != oraclePackStale, "oracle median data updated");
+        assertTrue(
+            OraclePack.unwrap(oraclePack) != OraclePack.unwrap(oraclePackStale),
+            "oracle median data updated"
+        );
     }
 
     function test_Success_OraclePoke_loop() public {
@@ -5115,11 +5677,11 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
         swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
         vm.warp(2 ** 30 - 1);
@@ -5151,10 +5713,14 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        (, , int24 slowOracleTickStale, , uint256 oraclePackStale) = pp.getOracleTicks();
+        (, , int24 slowOracleTickStale, , OraclePack oraclePackStale) = pp.getOracleTicks();
 
         assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update");
-        assertEq(oraclePack, oraclePackStale, "no slow oracle update");
+        assertEq(
+            OraclePack.unwrap(oraclePack),
+            OraclePack.unwrap(oraclePackStale),
+            "no slow oracle update"
+        );
 
         vm.warp(block.timestamp + 2);
         vm.roll(block.number + 1);
@@ -5171,7 +5737,10 @@ contract Misctest is Test, PositionUtils {
         (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update here?");
-        assertTrue(oraclePack != oraclePackStale, "oracle median data updated here?");
+        assertTrue(
+            OraclePack.unwrap(oraclePack) != OraclePack.unwrap(oraclePackStale),
+            "oracle median data updated here?"
+        );
     }
 
     function test_Success_OraclePoke_Max_Deviation() public {
@@ -5184,29 +5753,29 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
 
         (currentTick, , , , oraclePack) = pp.getOracleTicks();
 
         // swap to more than MAX_MEDIAN_DELTA ticks away
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-Constants.MAX_MEDIAN_DELTA - 10));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-MAX_CLAMP_DELTA - 10));
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
         vm.warp(block.timestamp + 120);
         vm.roll(block.number + 1);
         swapperc.burn(uniPool, -10000, 10000, 10 ** 18);
         pp.pokeOracle();
 
-        (int24 currentTickNew, , int24 slowOracleTickNew, , uint256 oraclePackNew) = pp
+        (int24 currentTickNew, , int24 slowOracleTickNew, , OraclePack oraclePackNew) = pp
             .getOracleTicks();
 
         assertEq(
-            int24(uint24(oraclePack)) - Constants.MAX_MEDIAN_DELTA,
-            int24(uint24(oraclePackNew)),
+            int24(uint24(OraclePack.unwrap(oraclePack))) - MAX_CLAMP_DELTA,
+            int24(uint24(OraclePack.unwrap(oraclePackNew))),
             "uncapped slow oracle update"
         );
     }
@@ -5250,18 +5819,17 @@ contract Misctest is Test, PositionUtils {
                 2
             );
             uint128[] memory sizeList = new uint128[](1);
-            uint64[] memory spreadList = new uint64[](1);
             TokenId[] memory mintList = new TokenId[](1);
-            int24[2][] memory tickLimits = new int24[2][](1);
+            int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
 
             sizeList[0] = positionSize;
-            spreadList[0] = 0;
             mintList[0] = $tokenIdShort;
-            tickLimits[0][0] = int24(-887272);
-            tickLimits[0][1] = int24(887272);
+            tickAndSpreadLimits[0][0] = int24(-887272);
+            tickAndSpreadLimits[0][1] = int24(887272);
+            tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
 
             // Try to mint and check if it reverts
-            try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+            try pp.dispatch(mintList, mintList, sizeList, tickAndSpreadLimits, true, 0) {
                 // SUCCESS CASE - mintOptions didn't revert
                 console2.log("Found non-reverting strike:", strike);
 
@@ -5366,18 +5934,17 @@ contract Misctest is Test, PositionUtils {
                 2
             );
             uint128[] memory sizeList = new uint128[](1);
-            uint64[] memory spreadList = new uint64[](1);
             TokenId[] memory mintList = new TokenId[](1);
-            int24[2][] memory tickLimits = new int24[2][](1);
+            int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
 
             sizeList[0] = positionSize;
-            spreadList[0] = type(uint64).max;
             mintList[0] = $tokenIdShort;
-            tickLimits[0][0] = int24(-887272);
-            tickLimits[0][1] = int24(887272);
+            tickAndSpreadLimits[0][0] = int24(-887272);
+            tickAndSpreadLimits[0][1] = int24(887272);
+            tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
 
             // Try to mint and check if it reverts
-            try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+            try pp.dispatch(mintList, mintList, sizeList, tickAndSpreadLimits, true, 0) {
                 // SUCCESS CASE - mintOptions didn't revert
 
                 // Alice Buys
@@ -5399,7 +5966,7 @@ contract Misctest is Test, PositionUtils {
                     );
                 }
                 mintList[0] = $tokenIdLong;
-                try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+                try pp.dispatch(mintList, mintList, sizeList, tickAndSpreadLimits, true, 0) {
                     console2.log("Found non-reverting strike:", strike);
                     (, , PositionBalance[] memory positionBalanceArray) = pp
                         .getAccumulatedFeesAndPositionsData(Alice, false, mintList);
@@ -5437,8 +6004,8 @@ contract Misctest is Test, PositionUtils {
                 } catch (bytes memory reason) {
                     if (reason.length >= 4) {
                         bytes4 receivedSelector = bytes4(reason);
-                        if (receivedSelector == Errors.NotEnoughLiquidityToBuy.selector) {
-                            console2.log("LONG: NotEnoughLiquidityToBuy at strike:", strike);
+                        if (receivedSelector == Errors.NotEnoughLiquidityInChunk.selector) {
+                            console2.log("LONG: NotEnoughLiquidityInChunk at strike:", strike);
                         } else if (
                             receivedSelector == Errors.EffectiveLiquidityAboveThreshold.selector
                         ) {
@@ -5478,8 +6045,8 @@ contract Misctest is Test, PositionUtils {
                         console2.log("Uniswap constraint at strike:", strike);
                     } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
                         console2.log("LiquidityTooHigh at strike:", strike);
-                    } else if (receivedSelector == Errors.NotEnoughLiquidityToBuy.selector) {
-                        console2.log("NotEnoughLiquidityToBuy at strike:", strike);
+                    } else if (receivedSelector == Errors.NotEnoughLiquidityInChunk.selector) {
+                        console2.log("NotEnoughLiquidityInChunk at strike:", strike);
                     } else if (
                         receivedSelector ==
                         bytes4(
@@ -5548,18 +6115,17 @@ contract Misctest is Test, PositionUtils {
                 2
             );
             uint128[] memory sizeList = new uint128[](1);
-            uint64[] memory spreadList = new uint64[](1);
             TokenId[] memory mintList = new TokenId[](1);
-            int24[2][] memory tickLimits = new int24[2][](1);
+            int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
 
             sizeList[0] = positionSize;
-            spreadList[0] = type(uint64).max;
             mintList[0] = $tokenIdShort;
-            tickLimits[0][0] = int24(-887272);
-            tickLimits[0][1] = int24(887272);
+            tickAndSpreadLimits[0][0] = int24(-887272);
+            tickAndSpreadLimits[0][1] = int24(887272);
+            tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max));
 
             // Try to mint and check if it reverts
-            try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+            try pp.dispatch(mintList, mintList, sizeList, tickAndSpreadLimits, true, 0) {
                 // SUCCESS CASE - mintOptions didn't revert
 
                 // Alice Buys
@@ -5584,7 +6150,7 @@ contract Misctest is Test, PositionUtils {
                         );
                 }
                 mintList[0] = $tokenIdLong;
-                try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+                try pp.dispatch(mintList, mintList, sizeList, tickAndSpreadLimits, true, 0) {
                     console2.log("");
                     console2.log("Found non-reverting strike:", $strike);
                     (, , PositionBalance[] memory positionBalanceArray) = pp
@@ -5646,8 +6212,8 @@ contract Misctest is Test, PositionUtils {
                 } catch (bytes memory reason) {
                     if (reason.length >= 4) {
                         bytes4 receivedSelector = bytes4(reason);
-                        if (receivedSelector == Errors.NotEnoughLiquidityToBuy.selector) {
-                            console2.log("LONG: NotEnoughLiquidityToBuy at strike:", $strike);
+                        if (receivedSelector == Errors.NotEnoughLiquidityInChunk.selector) {
+                            console2.log("LONG: NotEnoughLiquidityInChunk at strike:", $strike);
                         } else if (
                             receivedSelector == Errors.EffectiveLiquidityAboveThreshold.selector
                         ) {
@@ -5700,8 +6266,8 @@ contract Misctest is Test, PositionUtils {
                         console2.log("Uniswap constraint at strike:", $strike);
                     } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
                         console2.log("LiquidityTooHigh at strike:", $strike);
-                    } else if (receivedSelector == Errors.NotEnoughLiquidityToBuy.selector) {
-                        console2.log("NotEnoughLiquidityToBuy at strike:", $strike);
+                    } else if (receivedSelector == Errors.NotEnoughLiquidityInChunk.selector) {
+                        console2.log("NotEnoughLiquidityInChunk at strike:", $strike);
                     } else if (
                         receivedSelector ==
                         bytes4(
@@ -5730,7 +6296,7 @@ contract Misctest is Test, PositionUtils {
     function test_success_PremiumRollover() public {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
 
         // L = 1
         uniPool.liquidity();
@@ -5750,7 +6316,7 @@ contract Misctest is Test, PositionUtils {
         mintOptions(pp, posIdList, 3, 0, Constants.MAX_POOL_TICK, Constants.MIN_POOL_TICK, true);
 
         vm.startPrank(Swapper);
-        swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
 
         // L = 2
         uniPool.liquidity();
@@ -5759,7 +6325,7 @@ contract Misctest is Test, PositionUtils {
         accruePoolFeesInRange(address(uniPool), 1, 2 ** 64 - 1, 0);
 
         vm.startPrank(Swapper);
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
 
         vm.startPrank(Bob);
         // works fine
@@ -5789,7 +6355,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.startPrank(Swapper);
-        swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
 
         // overflow back to ~1_000_000_000_000 (fees per liq)
         accruePoolFeesInRange(address(uniPool), 412639631, 1_000_000_000_000, 1_000_000_000_000);
@@ -5808,7 +6374,7 @@ contract Misctest is Test, PositionUtils {
         assertEq(premium1, 44704247211996718928643);
 
         vm.startPrank(Swapper);
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
         vm.startPrank(Alice);
 
         // tough luck... PLPs just stole ~2**64 tokens per liquidity Alice had because of an overflow
@@ -5849,7 +6415,7 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 10000, 10 ** 24);
 
         vm.startPrank(Seller);
 
@@ -5917,7 +6483,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             1_000_000,
-            type(uint64).max,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -5963,13 +6529,13 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
             pp.pokeOracle();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 24);
         }
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
 
         vm.startPrank(Seller);
 
@@ -6037,7 +6603,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             1_000_000,
-            type(uint64).max,
+            type(uint24).max,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK,
             true
@@ -6081,7 +6647,7 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
 
         vm.startPrank(Seller);
 
@@ -6131,7 +6697,7 @@ contract Misctest is Test, PositionUtils {
             pp,
             $posIdList,
             1_000_000,
-            type(uint64).max,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
@@ -8016,7 +8582,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 posIdList,
                 10_000,
-                2 ** 30,
+                type(uint24).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -8151,7 +8717,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 posIdList,
                 10_000,
-                2 ** 30,
+                type(uint24).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true
@@ -8287,7 +8853,7 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 posIdList,
                 10_000,
-                2 ** 30,
+                type(uint24).max,
                 Constants.MAX_POOL_TICK,
                 Constants.MIN_POOL_TICK,
                 true

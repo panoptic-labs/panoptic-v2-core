@@ -29,11 +29,6 @@ contract RiskEngineProperties is Test {
 
     function setUp() public {
         E = new RiskEngineHarness(
-            SELL,
-            BUY,
-            FE,
-            U_TARGET,
-            U_SAT,
             /*CROSS_BUFFER_0*/ 5_000_000, // 0.5
             /*CROSS_BUFFER_1*/ 5_000_000
         );

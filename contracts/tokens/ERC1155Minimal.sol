@@ -231,7 +231,7 @@ abstract contract ERC1155 {
 
     /// @notice Internal utility to burn tokens from a user's account.
     /// @param from The user to burn tokens from
-    /// @param id The ERC1155 token id to mint
+    /// @param id The ERC1155 token id to burn
     /// @param amount The amount of tokens to burn
     function _burn(address from, uint256 id, uint256 amount) internal {
         balanceOf[from][id] -= amount;

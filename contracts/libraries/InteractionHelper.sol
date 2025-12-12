@@ -22,6 +22,7 @@ library InteractionHelper {
     /// @param ct1 The CollateralTracker (token1) being approved for token1
     /// @param token0 The token0 (in Uniswap) being approved for
     /// @param token1 The token1 (in Uniswap) being approved for
+    /// @param poolManager The Uniswap V4 pool manager address (zero address if using V3)
     function doApprovals(
         ISemiFungiblePositionManager sfpm,
         CollateralTracker ct0,

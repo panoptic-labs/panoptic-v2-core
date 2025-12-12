@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.0;
-import {RiskEngine} from "@contracts/RiskEngine.sol";
-import {PoolKey} from "v4-core/types/PoolKey.sol";
 
 /// @title Efficient Keccak256 Library
 /// @notice Provides gas-efficient keccak256 hashing using inline assembly
@@ -79,27 +77,6 @@ library EfficientHash {
             let dataStart := add(data, 0x20)
 
             hash := keccak256(dataStart, dataLength)
-        }
-    }
-
-    /// @notice Assembly implementation of keccak256(abi.encode(key, riskEngine))
-    /// @dev Duplicates abi.encode behavior: 6 words (192 bytes)
-    function efficientKeccak256(
-        PoolKey calldata keyV4,
-        RiskEngine riskEngine
-    ) internal pure returns (bytes32 hash) {
-        assembly {
-            let freeMemPtr := mload(0x40)
-
-            // Copy the PoolKey struct (5 words = 160 bytes) directly from calldata to memory
-            // keyV4 in assembly points to the start of the struct in calldata
-            calldatacopy(freeMemPtr, keyV4, 0xa0)
-
-            // Store the riskEngine as the 6th word (offset 160 / 0xa0)
-            mstore(add(freeMemPtr, 0xa0), riskEngine)
-
-            // Hash 192 bytes (0xc0)
-            hash := keccak256(freeMemPtr, 0xc0)
         }
     }
 }

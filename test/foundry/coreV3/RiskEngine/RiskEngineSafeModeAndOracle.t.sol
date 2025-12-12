@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import "forge-std/Test.sol";
 import {RiskEngineHarness} from "./RiskEngineHarness.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
+import {OraclePack} from "@types/OraclePack.sol";
 
 contract RiskEngineSafeModeAndOracle is Test {
     RiskEngineHarness internal E;
@@ -27,7 +28,7 @@ contract RiskEngineSafeModeAndOracle is Test {
         int24 fast,
         int24 spot,
         int24 median
-    ) internal pure returns (uint256) {
+    ) internal pure returns (OraclePack) {
         // PanopticMath.getEMAs(oraclePack) returns (, slow, fast, spot, median)
         // Use PanopticMath helpers if exposed; otherwise mirror your packing here.
         // For now assume PanopticMath has a pack helper in your codebase; if not, stub as needed.
@@ -36,28 +37,28 @@ contract RiskEngineSafeModeAndOracle is Test {
             ((uint256(uint24(slow)) & BITMASK_UINT22) << 44);
 
         // store median as referenceTick
-        return (updatedEMAs << 120) + (uint256(uint24(median)) << 96);
+        return OraclePack.wrap((updatedEMAs << 120) + (uint256(uint24(median)) << 96));
     }
 
     function test_SafeMode_flags_trip_independently() public {
         int24 K = 953; // MAX_TICKS_DELTA in your config, adjust if needed via public const
         // external shock only
-        uint256 p1 = _packEMAs(0, 0, 0, 0);
+        OraclePack p1 = _packEMAs(0, 0, 0, 0);
         uint8 s1 = E.isSafeMode(int24(K + 1), p1);
         assertEq(s1, 1, "external shock only");
 
         // internal disagreement only: |spot - fast| > K/2
-        uint256 p2 = _packEMAs(0, int24(0), int24(K / 2 + 1), 0);
+        OraclePack p2 = _packEMAs(0, int24(0), int24(K / 2 + 1), 0);
         uint8 s2 = E.isSafeMode(0, p2);
         assertEq(s2, 1, "internal disagreement only");
 
         // high divergence only: |median - slow| > 2K
-        uint256 p3 = _packEMAs(int24(0), 0, 0, int24(2 * K + 1));
+        OraclePack p3 = _packEMAs(int24(0), 0, 0, int24(2 * K + 1));
         uint8 s3 = E.isSafeMode(0, p3);
         assertEq(s3, 1, "high divergence only");
 
         // combo: two conditions true
-        uint256 p4 = _packEMAs(int24(0), int24(K / 2 + 1), int24(0), int24(2 * K + 1));
+        OraclePack p4 = _packEMAs(int24(0), int24(K / 2 + 1), int24(0), int24(2 * K + 1));
         uint8 s4 = E.isSafeMode(int24(K + 1), p4);
         assertEq(s4, 3, "sum of flags");
     }

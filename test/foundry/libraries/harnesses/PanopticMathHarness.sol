@@ -8,6 +8,7 @@ import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
+import {OraclePack, OraclePackLibrary} from "@types/OraclePack.sol";
 
 import "forge-std/Test.sol";
 
@@ -203,18 +204,19 @@ contract PanopticMathHarness is Test {
     }
 
     function int12toInt24(uint256 x) public pure returns (int24) {
-        return PanopticMath.int12toInt24(x);
+        return OraclePackLibrary.int12toInt24(x);
     }
 
     function computeInternalMedian(
-        uint256 oraclePack,
+        OraclePack oraclePack,
         int24 currentTick
-    ) public view returns (int24, uint256) {
+    ) public view returns (int24, OraclePack) {
         return
-            PanopticMath.computeInternalMedian(
+            OraclePackLibrary.computeInternalMedian(
                 oraclePack,
                 currentTick,
-                uint96(180 + (600 << 24) + (3600 << 48) + (21600 << 72))
+                uint96(180 + (600 << 24) + (3600 << 48) + (21600 << 72)),
+                149
             );
     }
 }

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
-import "forge-std/Test.sol";
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
@@ -17,6 +16,7 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import {RiskParameters} from "@types/RiskParameters.sol";
 
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
 /// @notice Contains Panoptic-specific helpers and math functions.
@@ -181,7 +181,7 @@ library PanopticMath {
                     );
         }
         */
-        {
+        unchecked {
             // LtHash, k=2
             uint256 itemHash = uint256(EfficientHash.efficientKeccak256(abi.encode(item)));
 
@@ -250,32 +250,6 @@ library PanopticMath {
                           ORACLE CALCULATIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Computes various oracle prices corresponding to a Uniswap pool.
-    /// @param currentTick The current tick in the Uniswap pool
-    /// @param oraclePackIn The packed structure representing the sorted 8-slot queue of internal median observations
-    /// @return spotEMATick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
-    /// @return medianTick The slow oracle tick computed with the method specified in `SLOW_ORACLE_UNISWAP_MODE`
-    /// @return latestTick The latest observation from the Uniswap pool (price at the end of the last block)
-    /// @return oraclePack The updated value for `s_oraclePack` (0 if not enough time has passed since last observation or if `SLOW_ORACLE_UNISWAP_MODE` is true)
-    function getOracleTicks(
-        int24 currentTick,
-        uint256 oraclePackIn,
-        uint96 EMAperiods
-    )
-        internal
-        view
-        returns (int24 spotEMATick, int24 medianTick, int24 latestTick, uint256 oraclePack)
-    {
-        // Extract the spote EMA from the lowest 22 bits of the packed EMAs value and assign it as the fast oracle price.
-        uint256 EMAs = (oraclePackIn >> 120) & BITMASK_UINT88;
-        spotEMATick = int22toInt24(EMAs & BITMASK_UINT22);
-
-        // Reconstruct the absolute tick of the last observation by adding the reference tick (bits 96-119) to the latest residual (bits 0-11).
-        latestTick = int24(uint24(oraclePackIn >> 96)) + int12toInt24(oraclePackIn % 2 ** 12);
-        // finally, get the median tick
-        (medianTick, oraclePack) = computeInternalMedian(oraclePackIn, currentTick, EMAperiods);
-    }
-
     /// @notice Returns the median of the last `cardinality` average prices over `period` observations from `univ3pool`.
     /// @dev Used when we need a manipulation-resistant TWAP price.
     /// @dev Uniswap observations snapshot the closing price of the last block before the first interaction of a given block.
@@ -325,300 +299,6 @@ library PanopticMath {
             // get the median of the `ticks` array (assuming `cardinality` is odd)
             return (int24(Math.sort(ticks)[cardinality / 2]), latestTick);
         }
-    }
-
-    /// @notice Converts a 12-bit signed integer to a 24-bit signed integer with proper sign extension
-    /// @dev Handles two's complement sign extension for 12-bit values stored in larger integer types
-    /// @dev The function checks bit 11 (the sign bit for 12-bit integers) and extends the sign
-    /// @dev if the number is negative by setting bits 12-15 to 1
-    /// @param x The input value containing a 12-bit signed integer in its lower 12 bits
-    /// @return The sign-extended 24-bit signed integer (as int24)
-    function int12toInt24(uint256 x) internal pure returns (int24) {
-        unchecked {
-            // Extract only the lower 12 bits
-            uint16 u = uint16(x & 0x0FFF);
-
-            // Check if bit 11 is set
-            // This is the sign bit for a 12-bit signed integer
-            if ((u & 0x0800) != 0) {
-                // Number is negative, extend the sign by setting bits 12-15 to 1
-                u |= 0xF000;
-            }
-            return int24(int16(u));
-        }
-    }
-
-    /// @notice Converts a 22-bit signed integer to a 24-bit signed integer with proper sign extension
-    /// @dev Handles two's complement sign extension for 22-bit values stored in larger integer types
-    /// @dev The function checks bit 21 (the sign bit for 22-bit integers) and extends the sign
-    /// @dev if the number is negative by setting bits 22-31 to 1
-    /// @param x The input value containing a 22-bit signed integer in its lower 22 bits
-    /// @return The sign-extended 24-bit signed integer (as int24)
-    function int22toInt24(uint256 x) internal pure returns (int24) {
-        unchecked {
-            // Extract only the lower 22 bits
-            uint32 u = uint32(x & BITMASK_UINT22);
-
-            // Check if bit 21 is set
-            // This is the sign bit for a 22-bit signed integer
-            if ((u & 0x200000) != 0) {
-                // Number is negative, extend the sign by setting bits 22-31 to 1
-                u |= 0xFFC00000;
-            }
-            return int24(int32(u));
-        }
-    }
-
-    /// @notice Takes a packed structure representing a sorted 8-slot queue of ticks and returns the median of those values and an updated queue if another observation is warranted.
-    /// @dev Also inserts the latest Uniswap observation into the buffer, resorts, and returns if the last entry is at least `period` seconds old.
-    /// @param oraclePack The packed structure representing the sorted 8-slot queue of ticks
-    /// @param currentTick The current tick as return from slot0
-    /// @return medianTick The median of the provided 8-slot queue of ticks in `oraclePack`
-    /// @return updatedOraclePack The updated 8-slot queue of ticks with the latest observation inserted if the last entry is at least `period` seconds old (returns 0 otherwise)
-    function computeInternalMedian(
-        uint256 oraclePack,
-        int24 currentTick,
-        uint96 EMAperiods
-    ) internal view returns (int24 medianTick, uint256 updatedOraclePack) {
-        unchecked {
-            // return the average of the rank 3 and 4 values
-            medianTick = getMedianTick(oraclePack);
-
-            uint256 currentEpoch;
-            bool differentEpoch;
-            int256 timeDelta;
-            {
-                currentEpoch = (block.timestamp >> 6) & 0xFFFFFF; // mod 2**24
-                uint256 recordedEpoch = oraclePack >> 232;
-                differentEpoch = currentEpoch != recordedEpoch;
-                timeDelta = int256(uint256(uint24(currentEpoch - recordedEpoch))) * 64;
-            }
-            // only proceed if last entry is in a different epoch (takes care of looping edge case in a way that ">" doesn't)
-            if (differentEpoch) {
-                int24 clampedTick = clampTick(currentTick, oraclePack);
-                updatedOraclePack = insertObservation(
-                    oraclePack,
-                    clampedTick,
-                    currentEpoch,
-                    timeDelta,
-                    EMAperiods
-                );
-            }
-        }
-    }
-
-    /// @notice Inserts a new tick observation into the median data structure and updates EMAs
-    /// @dev Updates the sorted queue by finding the correct insertion point for the new tick residual
-    /// @dev The function maintains an 8-slot sorted queue using a 24-bit order map where each 3-bit segment
-    /// @dev represents the rank of the corresponding slot. Slot 7 is reserved for the new observation.
-    /// @param oraclePack The current packed median data structure containing:
-    ///                   - Bits 255-232: Current epoch timestamp
-    ///                   - Bits 231-208: 24-bit order map (8 slots × 3 bits each)
-    ///                   - Bits 207-128: Reserved for EMA data (88 bits): 10mins, 1hour, 8hour and 1day
-    ///                   - Bits 127-96:  Reference tick (24 bits)
-    ///                   - Bits 95-12:   Previous observations as 12-bit residuals (84 bits)
-    ///                   - Bits 11-0:    Most recent observation residual (12 bits)
-    /// @param newTick The new tick observation to insert (as a residual relative to reference tick)
-    /// @param currentEpoch The current epoch timestamp ((block.timestamp >> 6) & 0xFFFFFF)
-    /// @param timeDelta Time difference in seconds between current and last epoch (currentEpoch - recordedEpoch) * 64
-    /// @return updatedMedianData The updated packed median data structure with the new observation inserted
-    function insertObservation(
-        uint256 oraclePack,
-        int24 newTick,
-        uint256 currentEpoch,
-        int256 timeDelta,
-        uint96 EMAperiods
-    ) internal pure returns (uint256 updatedMedianData) {
-        unchecked {
-            int24 referenceTick = int24(uint24(oraclePack >> 96));
-            int24 lastResidual = newTick - referenceTick;
-
-            if (
-                (lastResidual > Constants.MAX_RESIDUAL_THRESHOLD) ||
-                (lastResidual < -Constants.MAX_RESIDUAL_THRESHOLD)
-            ) {
-                (referenceTick, oraclePack) = rebaseMedianData(oraclePack);
-                lastResidual = newTick - referenceTick;
-            }
-
-            uint24 orderMap = uint24(oraclePack >> 208);
-
-            uint24 newOrderMap;
-            {
-                uint256 _oraclePack = oraclePack;
-                uint24 shift = 1;
-                bool below = true;
-                uint24 rank;
-                int24 entry;
-                for (uint8 i; i < 8; ++i) {
-                    // read the rank from the existing ordering
-                    rank = (orderMap >> (3 * i)) & 7; // mod 2**3
-
-                    if (rank == 7) {
-                        shift -= 1;
-                        continue;
-                    }
-
-                    // read the corresponding entry
-                    entry = int12toInt24((_oraclePack >> (rank * 12)) & 0x0FFF); // mod 2**12
-                    if ((below) && (lastResidual > entry)) {
-                        shift += 1;
-                        below = false;
-                    }
-
-                    newOrderMap = newOrderMap + ((rank + 1) << (3 * (i + shift - 1)));
-                }
-            }
-
-            uint256 EMAs = updateEMAs(oraclePack, timeDelta, newTick, EMAperiods);
-
-            updatedMedianData =
-                (currentEpoch << 232) +
-                (uint256(newOrderMap) << 208) +
-                (EMAs << 120) +
-                (uint256(uint24(referenceTick)) << 96) +
-                uint256(uint96(oraclePack << 12)) +
-                uint256(uint16(uint24(lastResidual) & 0x0FFF));
-        }
-    }
-
-    /// @notice Calculates the median tick from a packed median data structure
-    /// @dev Retrieves the 3rd and 4th ranked values from the sorted 8-slot queue and returns their average
-    /// @dev The median is calculated as: referenceTick + (rank3_residual + rank4_residual) / 2
-    /// @param oraclePack The packed structure containing:
-    ///                   - Order map indicating the rank of each slot
-    ///                   - Reference tick for absolute positioning
-    ///                   - 8 tick observations stored as 12-bit signed residuals relative to reference tick
-    /// @return medianTick The median tick value, representing the middle value of the sorted observations
-    function getMedianTick(uint256 oraclePack) internal pure returns (int24) {
-        int24 rank3 = int12toInt24(
-            uint256(oraclePack >> ((uint24(oraclePack >> (208 + 3 * 3)) % 8) * 12)) & 0x0FFF
-        );
-        int24 rank4 = int12toInt24(
-            uint256(oraclePack >> ((uint24(oraclePack >> (208 + 3 * 4)) % 8) * 12)) & 0x0FFF
-        );
-        int24 referenceTick = int24(uint24(oraclePack >> 96));
-        return referenceTick + ((rank3) + (rank4)) / 2;
-    }
-
-    /// @notice Clamps a new tick observation to prevent large price movements that could manipulate the median
-    /// @dev Limits the new tick to be within MAX_MEDIAN_DELTA of the most recent tick observation
-    /// @dev This prevents flash loan attacks or other price manipulation attempts from skewing the median calculation
-    /// @param newTick The new tick observation from Uniswap TWAP that needs to be clamped
-    /// @param _oraclePack The current median data structure containing the reference tick and most recent observation
-    /// @return clamped The clamped tick value, guaranteed to be within MAX_MEDIAN_DELTA of the last observation
-    function clampTick(int24 newTick, uint256 _oraclePack) private pure returns (int24 clamped) {
-        unchecked {
-            int24 refTick = int24(uint24(_oraclePack >> 96));
-            // Clamp lastObservedTick to be within MAX_MEDIAN_DELTA of lastTick
-            int24 lastTick = refTick + int12toInt24(_oraclePack & 0x0FFF); // mod 2**12
-            //int24 lastTick = int24(uint24(oraclePack));
-            int24 maxDelta = Constants.MAX_MEDIAN_DELTA;
-            if (newTick > lastTick + maxDelta) {
-                clamped = lastTick + maxDelta;
-            } else if (newTick < lastTick - maxDelta) {
-                clamped = lastTick - maxDelta;
-            } else {
-                clamped = newTick;
-            }
-        }
-    }
-
-    /// @notice Rebases the median data structure when tick residuals exceed the 12-bit signed integer range
-    /// @dev When residuals become too large (>2047 or <-2048), this function shifts the reference tick
-    /// @dev to the current median and adjusts all stored residuals relative to the new reference
-    /// @dev This maintains precision while keeping residuals within the 12-bit storage constraint
-    /// @param data The current median data structure with residuals that have exceeded the threshold
-    /// @return newReferenceTick The new reference tick (set to the current median)
-    /// @return rebasedData The updated median data structure with:
-    ///                     - New reference tick set to the current median
-    ///                     - All residuals recalculated relative to the new reference
-    ///                     - All other data (order map, EMAs, epoch) preserved
-    function rebaseMedianData(
-        uint256 data
-    ) internal pure returns (int24 newReferenceTick, uint256 rebasedData) {
-        int24 referenceTick = int24(uint24(data >> 96));
-
-        newReferenceTick = getMedianTick(data);
-        int24 deltaOffset = newReferenceTick - referenceTick;
-
-        uint256 offsetData;
-        for (uint8 i; i < 8; ++i) {
-            int24 newEntry = int12toInt24((data >> (i * 12)) & 0x0FFF) - deltaOffset;
-            offsetData += (uint256(uint16(uint24(newEntry) & 0x0FFF)) & 0x0FFF) << (i * 12);
-        }
-
-        rebasedData =
-            (data & UPPER_120BITS_MASK) +
-            (uint256(uint24(newReferenceTick)) << 96) +
-            offsetData;
-    }
-
-    /// @notice Updates exponential moving averages (EMAs) at multiple timescales with a new tick observation
-    /// @dev Implements a cascading time delta cap to prevent excessive convergence after periods of inactivity
-    /// @dev EMAs converge at most 75% toward the new tick value using linear approximation: exp(-x) ≈ 1-x
-    /// @dev The function modifies timeDelta in cascade: longer periods cap it first, affecting shorter periods
-    /// @param oraclePack The packed median data containing current EMA values in bits 207-120
-    /// @param timeDelta Time elapsed since last update in seconds (will be modified by cascading caps)
-    /// @param newTick The new tick observation to update EMAs toward
-    /// @return updatedEMAs The packed 88-bit value containing all four updated EMAs
-    function updateEMAs(
-        uint256 oraclePack,
-        int256 timeDelta,
-        int24 newTick,
-        uint96 EMAperiods
-    ) internal pure returns (uint256 updatedEMAs) {
-        unchecked {
-            int256 EMA_PERIOD_SPOT = int24(uint24(EMAperiods));
-            int256 EMA_PERIOD_FAST = int24(uint24(EMAperiods >> 24));
-            int256 EMA_PERIOD_SLOW = int24(uint24(EMAperiods >> 48));
-            int256 EMA_PERIOD_EONS = int24(uint24(EMAperiods >> 72));
-
-            // Extract current EMAs from oraclePack (88 bits starting at bit 120)
-            uint256 EMAs = (oraclePack >> 120) & BITMASK_UINT88;
-
-            // Update 1-day EMA (bits 87-66)
-            int24 eonsEMA = int22toInt24((EMAs >> 66) & BITMASK_UINT22);
-            if (timeDelta > (3 * EMA_PERIOD_EONS) / 4) timeDelta = (3 * EMA_PERIOD_EONS) / 4;
-            eonsEMA = int24(eonsEMA + (timeDelta * (newTick - eonsEMA)) / EMA_PERIOD_EONS);
-
-            // Update 8-hour EMA (bits 65-44)
-            int24 slowEMA = int22toInt24((EMAs >> 44) & BITMASK_UINT22);
-            if (timeDelta > (3 * EMA_PERIOD_SLOW) / 4) timeDelta = (3 * EMA_PERIOD_SLOW) / 4;
-            slowEMA = int24(slowEMA + (timeDelta * (newTick - slowEMA)) / EMA_PERIOD_SLOW);
-
-            // Update 1-hour EMA (bits 43-22)
-            int24 fastEMA = int22toInt24((EMAs >> 22) & BITMASK_UINT22);
-            if (timeDelta > (3 * EMA_PERIOD_FAST) / 4) timeDelta = (3 * EMA_PERIOD_FAST) / 4;
-            fastEMA = int24(fastEMA + (timeDelta * (newTick - fastEMA)) / EMA_PERIOD_FAST);
-
-            // Update 10-minute EMA (bits 21-0)
-            int24 spotEMA = int22toInt24(EMAs & BITMASK_UINT22);
-            if (timeDelta > (3 * EMA_PERIOD_SPOT) / 4) timeDelta = (3 * EMA_PERIOD_SPOT) / 4;
-            spotEMA = int24(spotEMA + (timeDelta * (newTick - spotEMA)) / EMA_PERIOD_SPOT);
-
-            // Pack updated EMAs back into 88-bit format
-            updatedEMAs =
-                (uint256(uint24(spotEMA)) & BITMASK_UINT22) +
-                ((uint256(uint24(fastEMA)) & BITMASK_UINT22) << 22) +
-                ((uint256(uint24(slowEMA)) & BITMASK_UINT22) << 44) +
-                ((uint256(uint24(eonsEMA)) & BITMASK_UINT22) << 66);
-        }
-    }
-
-    function getEMAs(
-        uint256 oraclePack
-    )
-        internal
-        pure
-        returns (int24 eonsEMA, int24 slowEMA, int24 fastEMA, int24 spotEMA, int24 medianTick)
-    {
-        uint256 EMAs = (oraclePack >> 120) & BITMASK_UINT88;
-        eonsEMA = int22toInt24((EMAs >> 66) & BITMASK_UINT22);
-        slowEMA = int22toInt24((EMAs >> 44) & BITMASK_UINT22);
-        fastEMA = int22toInt24((EMAs >> 22) & BITMASK_UINT22);
-        spotEMA = int22toInt24(EMAs & BITMASK_UINT22);
-        medianTick = getMedianTick(oraclePack);
     }
 
     /// @notice Computes the TWAP of a Uniswap V3 pool using data from its oracle.
@@ -748,6 +428,17 @@ library PanopticMath {
         return (
             (width * tickSpacing) / 2,
             int24(int256(Math.unsafeDivRoundingUp(uint24(width) * uint24(tickSpacing), 2)))
+        );
+    }
+
+    /// @notice Computes the chunk key for a given leg of a position.
+    /// @dev The chunk key uniquely identifies a liquidity chunk by its strike, width, and token type.
+    /// @param tokenId The option position
+    /// @param leg The leg index within the position
+    /// @return chunkKey The keccak256 hash identifying this chunk
+    function getChunkKey(TokenId tokenId, uint256 leg) internal pure returns (bytes32 chunkKey) {
+        chunkKey = EfficientHash.efficientKeccak256(
+            abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
         );
     }
 
@@ -1204,9 +895,23 @@ library PanopticMath {
             }
 
             if (haircutTotal.rightSlot() != 0)
-                collateral0.settleBurn(_liquidatee, 0, 0, 0, int128(haircutTotal.rightSlot()));
+                collateral0.settleBurn(
+                    _liquidatee,
+                    0,
+                    0,
+                    0,
+                    int128(haircutTotal.rightSlot()),
+                    RiskParameters.wrap(0)
+                );
             if (haircutTotal.leftSlot() != 0)
-                collateral1.settleBurn(_liquidatee, 0, 0, 0, int128(haircutTotal.leftSlot()));
+                collateral1.settleBurn(
+                    _liquidatee,
+                    0,
+                    0,
+                    0,
+                    int128(haircutTotal.leftSlot()),
+                    RiskParameters.wrap(0)
+                );
 
             return
                 LeftRightSigned.wrap(0).addToRightSlot(int128(collateralDelta0)).addToLeftSlot(
