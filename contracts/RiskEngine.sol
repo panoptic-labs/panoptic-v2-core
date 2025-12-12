@@ -515,15 +515,10 @@ contract RiskEngine {
                         2 ** 128,
                         thresholdCross
                     );
+                    uint256 bonus0U = Math.mulDiv128(bonusCross, requiredRatioX128);
+                    bonus0 = int256(bonus0U);
 
-                    bonus0 = int256(Math.mulDiv128(bonusCross, requiredRatioX128));
-
-                    bonus1 = int256(
-                        PanopticMath.convert0to1(
-                            Math.mulDiv128(bonusCross, 2 ** 128 - requiredRatioX128),
-                            atSqrtPriceX96
-                        )
-                    );
+                    bonus1 = int256(PanopticMath.convert0to1(bonusCross - bonus0U, atSqrtPriceX96));
                 } else {
                     // required1 / (token1(required0) + required1)
                     uint256 requiredRatioX128 = Math.mulDiv(
@@ -531,15 +526,10 @@ contract RiskEngine {
                         2 ** 128,
                         thresholdCross
                     );
+                    uint256 bonus1U = Math.mulDiv128(bonusCross, requiredRatioX128);
+                    bonus1 = int256(bonus1U);
 
-                    bonus1 = int256(Math.mulDiv128(bonusCross, requiredRatioX128));
-
-                    bonus0 = int256(
-                        PanopticMath.convert1to0(
-                            Math.mulDiv128(bonusCross, 2 ** 128 - requiredRatioX128),
-                            atSqrtPriceX96
-                        )
-                    );
+                    bonus0 = int256(PanopticMath.convert1to0(bonusCross - bonus1U, atSqrtPriceX96));
                 }
             }
 
