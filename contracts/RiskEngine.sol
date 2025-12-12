@@ -564,7 +564,7 @@ contract RiskEngine {
                         PanopticMath.convert0to1(paid0 - balance0, atSqrtPriceX96)
                     );
                     bonus0 -= Math.min(
-                        PanopticMath.convert1to0(balance1 - paid1, atSqrtPriceX96),
+                        PanopticMath.convert1to0RoundingUp(balance1 - paid1, atSqrtPriceX96),
                         paid0 - balance0
                     );
                 }
@@ -582,7 +582,7 @@ contract RiskEngine {
                         PanopticMath.convert1to0(paid1 - balance1, atSqrtPriceX96)
                     );
                     bonus1 -= Math.min(
-                        PanopticMath.convert0to1(balance0 - paid0, atSqrtPriceX96),
+                        PanopticMath.convert0to1RoundingUp(balance0 - paid0, atSqrtPriceX96),
                         paid1 - balance1
                     );
                 }
