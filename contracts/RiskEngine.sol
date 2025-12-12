@@ -264,13 +264,9 @@ contract RiskEngine {
         TokenId tokenId,
         PositionBalance positionBalance
     ) external view returns (LeftRightSigned exerciseFees) {
-        (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
-            tokenId,
-            positionBalance.positionSize(),
-            true
-        );
         unchecked {
             // we find whether the price is within any leg; any in-range leg will have a cost. Otherwise, the force-exercise fee is 1bps
+            LeftRightSigned longAmounts;
             bool hasLegsInRange;
 
             for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
@@ -279,17 +275,25 @@ contract RiskEngine {
 
                 // credit/loans are not counted
                 if (tokenId.width(leg) == 0) continue;
+                // compute notional moved, add to tally.
+                (LeftRightSigned longs, ) = PanopticMath.calculateIOAmounts(
+                    tokenId,
+                    positionBalance.positionSize(),
+                    leg,
+                    true
+                );
+                longAmounts = longAmounts.add(longs);
 
                 {
-                    int24 range = int24(
-                        int256(
-                            Math.unsafeDivRoundingUp(
-                                uint24(tokenId.width(leg) * tokenId.tickSpacing()),
-                                2
-                            )
-                        )
+                    (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(
+                        tokenId.width(leg),
+                        tokenId.tickSpacing()
                     );
-                    if (Math.abs(currentTick - tokenId.strike(leg)) < range) hasLegsInRange = true;
+                    int24 _strike = tokenId.strike(leg);
+
+                    if ((currentTick < _strike + rangeUp) || (currentTick >= _strike - rangeDown)) {
+                        hasLegsInRange = true;
+                    }
                 }
 
                 uint256 currentValue0;

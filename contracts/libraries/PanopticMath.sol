@@ -792,7 +792,7 @@ library PanopticMath {
     ) internal pure returns (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) {
         uint256 numLegs = tokenId.countLegs();
         for (uint256 leg = 0; leg < numLegs; ) {
-            (LeftRightSigned longs, LeftRightSigned shorts) = _calculateIOAmounts(
+            (LeftRightSigned longs, LeftRightSigned shorts) = calculateIOAmounts(
                 tokenId,
                 positionSize,
                 leg,
@@ -1011,7 +1011,7 @@ library PanopticMath {
     /// @param opening Whether this position is being opened or closed
     /// @return longs A LeftRight-packed word containing the total amount of long positions
     /// @return shorts A LeftRight-packed word containing the amount of short positions
-    function _calculateIOAmounts(
+    function calculateIOAmounts(
         TokenId tokenId,
         uint128 positionSize,
         uint256 legIndex,
