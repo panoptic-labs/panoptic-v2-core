@@ -125,6 +125,7 @@ abstract contract ERC20Minimal {
         unchecked {
             balanceOf[to] += amount;
         }
+        // keep checked to prevent overflows
         _internalSupply += amount;
 
         emit Transfer(address(0), to, amount);
@@ -136,11 +137,8 @@ abstract contract ERC20Minimal {
     function _burn(address from, uint256 amount) internal {
         balanceOf[from] -= amount;
 
-        // Cannot underflow because a user's balance
-        // will never be larger than the total supply.
-        unchecked {
-            _internalSupply -= amount;
-        }
+        // keep checked to prevent underflows
+        _internalSupply -= amount;
 
         emit Transfer(from, address(0), amount);
     }
