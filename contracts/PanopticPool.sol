@@ -1178,7 +1178,6 @@ contract PanopticPool is Clone, Multicall {
 
         if (positionSize == 0) revert Errors.PositionNotOwned();
 
-        LeftRightSigned refundAmounts;
         for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
             if (tokenId.width(leg) != 0 && tokenId.isLong(leg) != 0) {
                 LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
@@ -1250,15 +1249,20 @@ contract PanopticPool is Clone, Multicall {
                         LeftRightUnsigned.wrap(uint256(LeftRightSigned.unwrap(realizedPremia)))
                     );
                 }
-                refundAmounts = riskEngine()
-                    .getRefundAmounts(owner, LeftRightSigned.wrap(0), twapTick, ct0, ct1)
-                    .add(refundAmounts);
                 emit PremiumSettled(owner, tokenId, leg, realizedPremia);
             }
             unchecked {
                 ++leg;
             }
         }
+        LeftRightSigned refundAmounts = riskEngine().getRefundAmounts(
+            owner,
+            LeftRightSigned.wrap(0),
+            twapTick,
+            ct0,
+            ct1
+        );
+
         // allow the caller to settle tokens owed to the protocol by the settlee in exchange for the surplus token
         ct0.refund(owner, msg.sender, refundAmounts.rightSlot());
         ct1.refund(owner, msg.sender, refundAmounts.leftSlot());
