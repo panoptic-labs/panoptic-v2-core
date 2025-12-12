@@ -413,15 +413,16 @@ contract RiskEngine {
                 if (tokenId.width(leg) == 0) continue;
 
                 {
-                    int24 range = int24(
-                        int256(
-                            Math.unsafeDivRoundingUp(
-                                uint24(tokenId.width(leg) * tokenId.tickSpacing()),
-                                2
-                            )
-                        )
+                    (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(
+                        tokenId.width(leg),
+                        tokenId.tickSpacing()
                     );
-                    if (Math.abs(currentTick - tokenId.strike(leg)) < range) hasLegsInRange = true;
+
+                    int24 _strike = tokenId.strike(leg);
+
+                    if ((currentTick >= _strike + rangeUp) || (currentTick < _strike - rangeDown)) {
+                        hasLegsInRange = true;
+                    }
                 }
 
                 uint256 currentValue0;
@@ -586,10 +587,11 @@ contract RiskEngine {
                         paid1 - balance1
                     );
                 }
+                // recompute netPaid based on new bonus amounts
+                paid0 = bonus0 + int256(netPaid.rightSlot());
+                paid1 = bonus1 + int256(netPaid.leftSlot());
             }
 
-            paid0 = bonus0 + int256(netPaid.rightSlot());
-            paid1 = bonus1 + int256(netPaid.leftSlot());
             return (
                 LeftRightSigned.wrap(0).addToRightSlot(int128(bonus0)).addToLeftSlot(
                     int128(bonus1)
