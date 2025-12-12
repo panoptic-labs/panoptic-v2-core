@@ -301,10 +301,10 @@ contract RiskEngine {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         unchecked {
             // if the refunder lacks sufficient currency0 to pay back the virtual shares, have the caller cover the difference in exchange for currency1 (and vice versa)
-
+            int128 fees0 = -int128(Math.min(0, fees.rightSlot()));
             int256 balanceShortage = int256(uint256(type(uint248).max)) -
                 int256(ct0.balanceOf(payor)) -
-                int256(ct0.convertToShares(uint128(-fees.rightSlot())));
+                int256(ct0.convertToShares(uint128(fees0)));
 
             if (balanceShortage > 0) {
                 return
@@ -334,10 +334,11 @@ contract RiskEngine {
                         );
             }
 
+            int128 fees1 = -int128(Math.min(0, fees.leftSlot()));
             balanceShortage =
                 int256(uint256(type(uint248).max)) -
                 int256(ct1.balanceOf(payor)) -
-                int256(ct1.convertToShares(uint128(-fees.leftSlot())));
+                int256(ct1.convertToShares(uint128(fees1)));
             if (balanceShortage > 0) {
                 return
                     LeftRightSigned
