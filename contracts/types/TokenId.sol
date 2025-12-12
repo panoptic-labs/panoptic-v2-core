@@ -153,7 +153,7 @@ library TokenIdLibrary {
     /// @notice Get the strike price tick of the nth leg (with index `legIndex`).
     /// @param self The TokenId to extract `strike` at `legIndex` from
     /// @param legIndex The leg index of this position (in {0,1,2,3})
-    /// @return The strike price (the underlying price of the leg)
+    /// @return The strike price tick of the leg
     function strike(TokenId self, uint256 legIndex) internal pure returns (int24) {
         unchecked {
             return int24(int256(TokenId.unwrap(self) >> (64 + legIndex * 48 + 12)));

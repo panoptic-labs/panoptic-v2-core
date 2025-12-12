@@ -736,7 +736,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @dev Loops over each leg in the tokenId and calls _createLegInAMM for each, which does the mint/burn in the AMM.
     /// @param account The address of the user creating the position
     /// @param key The Uniswap V4 pool key in which to create the position
-    /// @param invertedLimits Whether the onputted lower limit > upper limit
+    /// @param invertedLimits Whether the inputted lower limit > upper limit
     /// @param positionSize The size of the option position
     /// @param tokenId The option position
     /// @param isBurn Whether a position is being minted (false) or burned (true)
@@ -905,7 +905,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param tokenId The option position
     /// @param leg The leg index that needs to be modified
     /// @param liquidityChunk The liquidity chunk in Uniswap represented by the leg
-    /// @param isBurn Whether a position is being minted (true) or burned (false)
+    /// @param isBurn Whether a position is being burned (true) or minted (false)
     /// @return moved The net amount of funds moved to/from Uniswap
     /// @return collectedSingleLeg LeftRight encoded words containing the amount of currency0 and currency1 collected as fees
     function _createLegInAMM(
@@ -1202,7 +1202,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param atTick The current tick. Set `atTick < (type(int24).max = 8388608)` to get latest premium up to the current block
     /// @param isLong Whether the position is long (=1) or short (=0)
     /// @return The amount of premium (per liquidity X64) for currency0 = `sum(feeGrowthLast0X128)` over every block where the position has been touched
-    /// @return The amount of premium (per liquidity X64) for currency1 = `sum(feeGrowthLast0X128)` over every block where the position has been touche
+    /// @return The amount of premium (per liquidity X64) for currency1 = `sum(feeGrowthLast0X128)` over every block where the position has been touched
     function getAccountPremium(
         bytes calldata poolKey,
         address owner,
@@ -1316,7 +1316,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         return s_V4toSFPMIdData[idV4].poolId();
     }
 
+    /// @notice Returns the current tick of a given Uniswap V4 pool
     /// @param poolKey the poolKey of the UniswapV4 pool
+    /// @return currentTick The current tick of the Uniswap pool
     function getCurrentTick(bytes memory poolKey) public view returns (int24 currentTick) {
         PoolKey memory key = abi.decode(poolKey, (PoolKey));
         currentTick = V4StateReader.getTick(POOL_MANAGER_V4, key.toId());

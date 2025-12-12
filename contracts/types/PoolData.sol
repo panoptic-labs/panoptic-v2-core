@@ -63,7 +63,7 @@ library PoolDataLibrary {
 
     /// @notice Get the maxLiquidityPerTick of `self`.
     /// @param self The PoolData to retrieve the max liquidity from
-    /// @return The maxLiquidityPreTick of `self`
+    /// @return The maxLiquidityPerTick of `self`
     function maxLiquidityPerTick(PoolData self) internal pure returns (uint128) {
         unchecked {
             return uint128(PoolData.unwrap(self));

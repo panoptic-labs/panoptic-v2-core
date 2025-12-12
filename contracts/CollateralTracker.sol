@@ -271,7 +271,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         COMMISSION_FEE = _commissionFee;
     }
 
-    /// @notice Initializes a new `CollateralTracker` instance with 1 virtual asset and 10^6 virtual shares.
+    /// @notice Initializes a new `CollateralTracker` instance with 1 virtual asset and 10^6 virtual shares. Can only be called once; reverts if already initialized.
     function initialize() external {
         // fails if already initialized
         if (s_initialized) revert Errors.CollateralTokenAlreadyInitialized();
@@ -434,7 +434,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @notice Uniswap V4 unlock callback implementation.
     /// @dev Parameters are `(address account, int256 delta, uint256 valueOrigin)`.
     /// @dev Wraps/unwraps `delta` amount of the underlying asset and transfers to/from the Panoptic Pool.
-    /// @param data The encoded data containing the account and delta
+    /// @param data The encoded data containing the account, delta, and valueOrigin
     /// @return This function returns no data
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(poolManager())) revert Errors.UnauthorizedUniswapCallback();
@@ -495,6 +495,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         }
     }
 
+    /// @notice Returns the total supply of shares including credited shares
+    /// @return The total supply of shares (internal supply + credited shares)
     function totalSupply() public view returns (uint256) {
         unchecked {
             return _internalSupply + s_creditedShares;
@@ -830,7 +832,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
     }
 
-    /// @notice Accrues protocol-wide interest.
+    /// @notice Accrues protocol-wide interest for the calling user
+    /// @dev Updates global interest state and settles any outstanding interest for msg.sender
     function accrueInterest() public {
         _accrueInterest(msg.sender, IS_NOT_DEPOSIT);
     }
@@ -985,6 +988,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         return avgRate;
     }
 
+    /// @notice Returns the current interest rate per second based on pool utilization
+    /// @return The current interest rate per second in WAD (18 decimal precision)
     function interestRate() public view returns (uint128) {
         uint128 avgRate = riskEngine().interestRate(_poolUtilizationWadView(), s_marketState);
         return avgRate;
@@ -1034,6 +1039,10 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         return _owedInterest(owner);
     }
 
+    /// @notice Returns the assets and interest owed for a specific user
+    /// @param owner Address of the user to check
+    /// @return The amount of assets owned by the user (in token units)
+    /// @return The amount of interest currently owed by the user (in token units)
     function assetsAndInterest(address owner) external view returns (uint256, uint256) {
         unchecked {
             return (convertToAssets(balanceOf[owner]), _owedInterest(owner));
@@ -1443,7 +1452,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param shortAmount The amount of shorts
     /// @param ammDeltaAmount The amount of tokens moved during creation of the option position
     /// @param riskParameters The RiskEngine's core parameters
-    /// @return The final utilization of the collateral vault (rightSlot) and the total amount of commission (base rate + ITM spread) paid (leftSlot)
+    /// @return utilization The final utilization of the collateral vault (in basis points)
+    /// @return tokenPaid The total amount of tokens paid by the option owner (negative if tokens were received)
     function settleMint(
         address optionOwner,
         int128 longAmount,
@@ -1504,6 +1514,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param shortAmount The notional value of the short legs of the position (if any)
     /// @param ammDeltaAmount The amount of tokens moved during the option close
     /// @param realizedPremium Premium to settle on the current positions
+    /// @param riskParameters The RiskEngine's core risk parameters
     /// @return The amount of tokens paid when closing that position
     function settleBurn(
         address optionOwner,

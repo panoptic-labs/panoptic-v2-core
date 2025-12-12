@@ -236,6 +236,8 @@ contract RiskEngine {
         pool.unlockSafeMode();
     }
 
+    /// @notice Returns the address of the guardian
+    /// @return The guardian address that can override safe mode
     function guardian() external returns (address) {
         return GUARDIAN;
     }
@@ -662,6 +664,11 @@ contract RiskEngine {
                      HEALTH AND COLLATERAL TRACKING
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Computes and returns the risk parameters for the pool
+    /// @param currentTick The current tick of the pool
+    /// @param oraclePack The oracle pack containing historical price data
+    /// @param builderCode The builder code for determining fee recipient
+    /// @return The computed risk parameters including safe mode status and fee configuration
     function getRiskParameters(
         int24 currentTick,
         OraclePack oraclePack,
@@ -686,6 +693,9 @@ contract RiskEngine {
             );
     }
 
+    /// @notice Computes the fee recipient address from a builder code
+    /// @param builderCode The builder code to compute the fee recipient from
+    /// @return feeRecipient The computed fee recipient address
     function getFeeRecipient(uint256 builderCode) external view returns (address feeRecipient) {
         feeRecipient = _computeBuilderWallet(builderCode);
 
@@ -696,9 +706,12 @@ contract RiskEngine {
     }
 
     /// @notice Checks for significant oracle deviation to determine if Safe Mode should be active.
-    /// @dev Safe Mode is triggered if EITHER of two conditions are met:
-    ///      1. "External Shock": The live spot price deviates too far from the responsive spot EMA .
-    ///      2. "Internal Disagreement": The fast EMA deviates too far from the more stable slow EMA, indicating high volatility.
+    /// @param currentTick The current tick of the pool
+    /// @param oraclePack The oracle pack containing historical price data
+    /// @dev Safe Mode is triggered if ANY of three conditions are met:
+    ///      1. "External Shock": The live spot price deviates too far from the responsive spot EMA
+    ///      2. "Internal Disagreement": The fast EMA deviates too far from the more stable slow EMA, indicating high volatility
+    ///      3. "High Divergence": The EMAs show significant divergence from each other
     /// @return safeMode A number representing whether the protocol is in Safe Mode.
     function isSafeMode(
         int24 currentTick,
@@ -733,6 +746,11 @@ contract RiskEngine {
         }
     }
 
+    /// @notice Determines which ticks to check for solvency based on market volatility
+    /// @param currentTick The current tick of the pool
+    /// @param _oraclePack The oracle pack containing historical price data
+    /// @return atTicks Array of ticks at which to check solvency
+    /// @return oraclePack The oracle pack (potentially updated)
     function getSolvencyTicks(
         int24 currentTick,
         OraclePack _oraclePack
@@ -1918,6 +1936,10 @@ contract RiskEngine {
                   ADAPTIVE INTEREST RATE MODEL
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Calculates the current interest rate based on utilization
+    /// @param utilization The current pool utilization
+    /// @param interestRateAccumulator The current state of the interest rate accumulator
+    /// @return The calculated interest rate per second
     function interestRate(
         uint256 utilization,
         MarketState interestRateAccumulator
@@ -1926,6 +1948,11 @@ contract RiskEngine {
         return uint128(avgRate);
     }
 
+    /// @notice Calculates both the average interest rate and the new rate at target
+    /// @param utilization The current pool utilization
+    /// @param interestRateAccumulator The current state of the interest rate accumulator
+    /// @return The average interest rate
+    /// @return The new rate at target
     function updateInterestRate(
         uint256 utilization,
         MarketState interestRateAccumulator

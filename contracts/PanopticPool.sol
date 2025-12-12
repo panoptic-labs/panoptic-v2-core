@@ -567,6 +567,7 @@ contract PanopticPool is Clone, Multicall {
     /// @param tickAndSpreadLimits A Nx3 array containing: the lower [0] and upper [1] bounds of an acceptable open interval for the ending price, and the maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
     /// denominated as X10_000 = (`ratioLimit * 10_000`)
     /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
+    /// @param builderCode The builder code for fee distribution
     function dispatch(
         TokenId[] calldata positionIdList,
         TokenId[] calldata finalPositionIdList,
@@ -827,8 +828,10 @@ contract PanopticPool is Clone, Multicall {
     /// @param tickLimits The lower and upper bound of an acceptable open interval for the ending price on each option close
     /// @param owner The owner of the option position to be burned
     /// @param commitLongSettled Whether to commit the long premium that will be settled to storage (disabled during liquidations)
+    /// @param riskParameters The RiskEngine's core risk parameters
     /// @return paidAmounts The net amount of tokens paid after closing the position
     /// @return premiaByLeg The amount of premia settled by the user for each leg of the position
+    /// @return finalTick The final tick after burning the options
     function _burnOptions(
         TokenId tokenId,
         uint128 positionSize,
@@ -1085,7 +1088,7 @@ contract PanopticPool is Clone, Multicall {
     /// @param tokenId The option position that was burnt
     /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position
     /// @param positionSize The size of the position, expressed in terms of the asset
-    /// @param commitLongSettledAndKeepOpen Whether to commit the long premium that will be settled to storage (rightSlot != 0) and keep the position open (rightSlot != 0)
+    /// @param commitLongSettledAndKeepOpen Whether to commit the long premium that will be settled to storage (rightSlot != 0) and whether the position is being burned (leftSlot == 0)
     /// @return realizedPremia The amount of premia settled by the user
     /// @return premiaByLeg The amount of premia settled by the user for each leg of the position
     function _updateSettlementPostBurn(
@@ -1642,6 +1645,7 @@ contract PanopticPool is Clone, Multicall {
     /// @notice Check whether an account is solvent at a given `atTick` with a collateral requirement of `buffer/10_000` multiplied by the requirement of `positionIdList`.
     /// @dev Reverts if `account` is not solvent at all provided ticks and `expectedSolvent == true`, or if `account` is solvent at all ticks and `!expectedSolvent`.
     /// @param account The account to check solvency for
+    /// @param safeMode The current safe mode status
     /// @param positionIdList The list of positions to check solvency for
     /// @param currentTick The current tick of the Uniswap pool (needed for fee calculations)
     /// @param atTicks An array of ticks to check solvency at
@@ -1703,6 +1707,7 @@ contract PanopticPool is Clone, Multicall {
     /// @notice Check whether an account is solvent at a given `atTick` with a collateral requirement of `buffer/10_000` multiplied by the requirement of `positionBalanceArray`.
     /// @param account The account to check solvency for
     /// @param atTick The tick to check solvency at
+    /// @param positionIdList The list of all option positions held by the user
     /// @param positionBalanceArray A list of balances and pool utilization for each position, of the form `[[tokenId0, balances0], [tokenId1, balances1], ...]`
     /// @param shortPremium The total amount of premium (prorated by available settled tokens) owed to the short legs of `account`
     /// @param longPremium The total amount of premium owed by the long legs of `account`
@@ -1732,7 +1737,7 @@ contract PanopticPool is Clone, Multicall {
     }
 
     /// @notice Get risk parameters from the risk engine.
-    /// @dev Also checks whether the current tick has deviated too much from the previouslyt stored ticks. Computed in the RiskEngine
+    /// @dev Also checks whether the current tick has deviated too much from the previously stored ticks. Computed in the RiskEngine
     function getRiskParameters(
         uint256 builderCode
     ) public view returns (RiskParameters riskParameters, int24 currentTick) {
@@ -1740,7 +1745,7 @@ contract PanopticPool is Clone, Multicall {
         riskParameters = riskEngine().getRiskParameters(currentTick, s_oraclePack, builderCode);
     }
 
-    /// @notice Checks whether the current tick has deviated too much from the previouslyt stored ticks. Computed in the RiskEngine
+    /// @notice Checks whether the current tick has deviated too much from the previously stored ticks. Computed in the RiskEngine
     /// @return Whether the current tick has deviated too much to warrant putting the protocol in safe mode
     function isSafeMode() external view returns (uint8) {
         (RiskParameters riskParameters, ) = getRiskParameters(0);

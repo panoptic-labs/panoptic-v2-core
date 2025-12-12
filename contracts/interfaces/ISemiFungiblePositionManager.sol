@@ -53,7 +53,7 @@ interface ISemiFungiblePositionManager {
             int24 finalTick
         );
 
-    /// @notice Burn a new position containing up to 4 legs.
+    /// @notice Burn an existing position containing up to 4 legs.
     function burnTokenizedPosition(
         bytes calldata poolKey,
         TokenId tokenId,

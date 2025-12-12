@@ -69,6 +69,13 @@ library OraclePackLibrary {
     uint256 internal constant LOCK_MODE_OFF = 0;
 
     /// @notice Create a new `OraclePack` given the relevant parameters.
+    /// @param _currentEpoch The current epoch timestamp
+    /// @param _newOrderMap The new order map for the observations
+    /// @param _updatedEMAs The updated EMA values
+    /// @param _referenceTick The reference tick
+    /// @param _currentResiduals The current residual ticks
+    /// @param _latestResidual The latest residual tick
+    /// @param _lockMode The lock mode state
     /// @return The new OraclePack
     function storeOraclePack(
         uint256 _currentEpoch,
@@ -94,6 +101,10 @@ library OraclePackLibrary {
     }
 
     /// @notice Concatenate all oracle ticks into a single uint96.
+    /// @param _spotEMA The spot EMA tick
+    /// @param _fastEMA The fast EMA tick
+    /// @param _slowEMA The slow EMA tick
+    /// @param _eonsEMA The eons EMA tick
     /// @return A 96bit word concatenating all 4 input ticks
     function packEMAs(
         int24 _spotEMA,
@@ -112,12 +123,18 @@ library OraclePackLibrary {
         }
     }
 
+    /// @notice Lock the oracle pack.
+    /// @param self The OraclePack to lock
+    /// @return The locked OraclePack
     function lock(OraclePack self) internal pure returns (OraclePack) {
         unchecked {
             return OraclePack.wrap((OraclePack.unwrap(self) & LOCK_MODE_MASK) + (LOCK_MODE_ON));
         }
     }
 
+    /// @notice Unlock the oracle pack.
+    /// @param self The OraclePack to unlock
+    /// @return The unlocked OraclePack
     function unlock(OraclePack self) internal pure returns (OraclePack) {
         unchecked {
             return OraclePack.wrap((OraclePack.unwrap(self) & LOCK_MODE_MASK) + (LOCK_MODE_OFF));
@@ -188,6 +205,7 @@ library OraclePackLibrary {
     /// @return _fastEMA The fastEMA of `self`
     /// @return _slowEMA The slowEMA of `self`
     /// @return _eonsEMA The eonsEMA of `self`
+    /// @return _medianTick The median tick of `self`
     function getEMAs(
         OraclePack self
     )
@@ -207,9 +225,9 @@ library OraclePackLibrary {
         }
     }
 
-    /// @notice Get the reference tick of `self`.
-    /// @param self The OrackePack to retrieve the reference tick from
-    /// @return The last reference tick of `self`
+    /// @notice Get the order map of `self`.
+    /// @param self The OraclePack to retrieve the order map from
+    /// @return The order map of `self`
     function orderMap(OraclePack self) internal pure returns (uint24) {
         unchecked {
             return uint24(OraclePack.unwrap(self) >> 208);
@@ -217,7 +235,7 @@ library OraclePackLibrary {
     }
 
     /// @notice Get the reference tick of `self`.
-    /// @param self The OrackePack to retrieve the reference tick from
+    /// @param self The OraclePack to retrieve the reference tick from
     /// @return The last reference tick of `self`
     function referenceTick(OraclePack self) internal pure returns (int24) {
         unchecked {
@@ -226,7 +244,8 @@ library OraclePackLibrary {
     }
 
     /// @notice Get the residual tick of `self` at position i.
-    /// @param self The OrackePack to retrieve the residual tick from
+    /// @param self The OraclePack to retrieve the residual tick from
+    /// @param i The position index
     /// @return The residual tick of `self` at position i
     function residualTickOrdered(OraclePack self, uint8 i) internal pure returns (int24) {
         unchecked {
@@ -237,7 +256,8 @@ library OraclePackLibrary {
     }
 
     /// @notice Get the residual tick of `self` at position i.
-    /// @param self The OrackePack to retrieve the residual tick from
+    /// @param self The OraclePack to retrieve the residual tick from
+    /// @param i The position index
     /// @return The residual tick of `self` at position i
     function residualTick(OraclePack self, uint8 i) internal pure returns (int24) {
         unchecked {
@@ -246,7 +266,7 @@ library OraclePackLibrary {
     }
 
     /// @notice Get the current residuals of `self`.
-    /// @param self The OrackePack to retrieve the current resoduals from
+    /// @param self The OraclePack to retrieve the current residuals from
     /// @return The current residuals of `self`
     function currentResiduals(OraclePack self) internal pure returns (uint96) {
         unchecked {
@@ -255,7 +275,7 @@ library OraclePackLibrary {
     }
 
     /// @notice Get the lock mode  of `self`.
-    /// @param self The OrackePack to retrieve the lock mode from
+    /// @param self The OraclePack to retrieve the lock mode from
     /// @return The lock mode of `self`
     function lockMode(OraclePack self) internal pure returns (uint8) {
         unchecked {
@@ -265,7 +285,7 @@ library OraclePackLibrary {
 
     /// @notice Get the timestamp of `self`.
     /// @dev Returns a timestamp in seconds
-    /// @param self The OrackePack to retrieve the timestamp from.
+    /// @param self The OraclePack to retrieve the timestamp from.
     /// @return The timestamp of `self`
     function timestamp(OraclePack self) internal pure returns (uint24) {
         unchecked {
@@ -275,7 +295,7 @@ library OraclePackLibrary {
 
     /// @notice Get the epoch of `self`.
     /// @dev Returns a timestamp in 64s based epochs
-    /// @param self The OrackePack to retrieve the epoch from.
+    /// @param self The OraclePack to retrieve the epoch from.
     /// @return The epoch of `self`
     function epoch(OraclePack self) internal pure returns (uint24) {
         unchecked {
@@ -336,6 +356,7 @@ library OraclePackLibrary {
     /// @param oraclePack The packed median data containing current EMA values
     /// @param timeDelta Time elapsed since last update in seconds (at least 64s since observations have to be in different epochs)
     /// @param newTick The new tick observation to update EMAs toward
+    /// @param EMAperiods The packed EMA period values for spot, fast, slow, and eons EMAs
     /// @return updatedEMAs The packed 88-bit value containing all four updated EMAs
     function updateEMAs(
         OraclePack oraclePack,
@@ -410,6 +431,7 @@ library OraclePackLibrary {
     /// @param newTick The new tick observation to insert (as a residual relative to reference tick)
     /// @param currentEpoch The current epoch timestamp ((block.timestamp >> 6) & 0xFFFFFF)
     /// @param timeDelta Time difference in seconds between current and last epoch (currentEpoch - recordedEpoch) * 64
+    /// @param EMAperiods The packed EMA period values for spot, fast, slow, and eons EMAs
     /// @return newOraclePack The updated oraclePack with the new observation inserted
     function insertObservation(
         OraclePack oraclePack,
@@ -480,11 +502,12 @@ library OraclePackLibrary {
     }
 
     /// @notice Clamps a new tick observation to prevent large price movements that could manipulate the median
-    /// @dev Limits the new tick to be within MAX_MEDIAN_DELTA of the most recent tick observation
+    /// @dev Limits the new tick to be within `clampDelta` of the most recent tick observation
     /// @dev This prevents flash loan attacks or other price manipulation attempts from skewing the median calculation
     /// @param newTick The new tick observation from Uniswap TWAP that needs to be clamped
     /// @param _oraclePack The current OraclePack containing the reference tick and most recent observation
-    /// @return clamped The clamped tick value, guaranteed to be within MAX_MEDIAN_DELTA of the last observation
+    /// @param clampDelta The maximum allowed tick deviation from the last observation
+    /// @return clamped The clamped tick value, guaranteed to be within `clampDelta` of the last observation
     function clampTick(
         int24 newTick,
         OraclePack _oraclePack,

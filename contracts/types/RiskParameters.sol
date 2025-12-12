@@ -154,9 +154,9 @@ library RiskParametersLibrary {
         }
     }
 
-    /// @notice Get the bpDecreaseBuffer of `self`.
-    /// @param self The RiskParameters to retrieve the bpDecreaseBuffer from
-    /// @return result The bpDecreaseBuffer of `self`
+    /// @notice Get the maxLegs of `self`.
+    /// @param self The RiskParameters to retrieve the maxLegs from
+    /// @return result The maxLegs of `self`
     function maxLegs(RiskParameters self) internal pure returns (uint8 result) {
         assembly {
             result := and(shr(121, self), 0x7F)

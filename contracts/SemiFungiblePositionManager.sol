@@ -567,12 +567,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
     /// @notice Burn a new position containing up to 4 legs wrapped in a ERC1155 token.
     /// @dev Auto-collect all accumulated fees.
+    /// @param poolKey The abi.encode(address) of the Uniswap V3 Pool
     /// @param tokenId The tokenId of the minted position, which encodes information about up to 4 legs
     /// @param positionSize The number of contracts minted, expressed in terms of the asset
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @return An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
     /// @return The net amount of token0 and token1 moved to/from the Uniswap V3 pool
+    /// @return currentTick The current tick of the Uniswap pool after the burn
     function burnTokenizedPosition(
         bytes calldata poolKey,
         TokenId tokenId,
@@ -605,12 +607,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     }
 
     /// @notice Create a new position `tokenId` containing up to 4 legs.
+    /// @param poolKey The abi.encode(address) of the Uniswap V3 Pool
     /// @param tokenId The tokenId of the minted position, which encodes information for up to 4 legs
     /// @param positionSize The number of contracts minted, expressed in terms of the asset
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @return An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
     /// @return The net amount of token0 and token1 moved to/from the Uniswap V3 pool
+    /// @return currentTick The current tick of the Uniswap pool after the mint
     function mintTokenizedPosition(
         bytes calldata poolKey,
         TokenId tokenId,
@@ -774,7 +778,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @notice Create the position in the AMM defined by `tokenId`.
     /// @dev Loops over each leg in the tokenId and calls _createLegInAMM for each, which does the mint/burn in the AMM.
     /// @param poolKey The abi.encode(address) of the Uniswap V3 Pool
-    /// @param invertedLimits Whether the onputted lower limit > upper limit
+    /// @param invertedLimits Whether the inputted lower limit > upper limit
     /// @param positionSize The size of the option position
     /// @param tokenId The option position
     /// @param isBurn Whether a position is being minted (false) or burned (true)
@@ -909,7 +913,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param tokenId The option position
     /// @param leg The leg index that needs to be modified
     /// @param liquidityChunk The liquidity chunk in Uniswap represented by the leg
-    /// @param isBurn Whether a position is being minted (true) or burned (false)
+    /// @param isBurn Whether a position is being burned (true) or minted (false)
     /// @return moved The net amount of funds moved to/from Uniswap
     /// @return collectedSingleLeg LeftRight encoded words containing the amount of token0 and token1 collected as fees
     function _createLegInAMM(
@@ -1342,7 +1346,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Return the liquidity associated with a given liquidity chunk/tokenType for a user on a Uniswap pool.
-    /// @param poolKey The abs.encode(address) of the Uniswap V3 Pool
+    /// @param poolKey The abi.encode(address) of the Uniswap V3 Pool
     /// @param owner The address of the account that is queried
     /// @param tokenType The tokenType of the position
     /// @param tickLower The lower end of the tick range for the position
@@ -1506,6 +1510,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         poolId = s_addressToPoolData[univ3pool].poolId();
     }
 
+    /// @notice Returns the current tick of a given Uniswap V3 pool
+    /// @param poolKey The abi.encode(address) of the Uniswap V3 Pool
+    /// @return currentTick The current tick of the Uniswap pool
     function getCurrentTick(bytes memory poolKey) public view returns (int24 currentTick) {
         IUniswapV3Pool univ3pool = IUniswapV3Pool(abi.decode(poolKey, (address)));
         (, currentTick, , , , , ) = univ3pool.slot0();

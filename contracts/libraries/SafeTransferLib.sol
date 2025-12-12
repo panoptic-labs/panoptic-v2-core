@@ -100,6 +100,10 @@ library SafeTransferLib {
         }
     }
 
+    /// @notice Safely queries the balance of an ERC20 token, returning zero if the call fails.
+    /// @param token The address of the ERC20 token
+    /// @param who The address to query the balance for
+    /// @return bal The balance of the address, or zero if the call fails or returns invalid data
     function balanceOfOrZero(address token, address who) internal view returns (uint256 bal) {
         assembly ("memory-safe") {
             let p := mload(0x40)

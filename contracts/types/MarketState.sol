@@ -71,6 +71,9 @@ library MarketStateLibrary {
     }
 
     /// @notice Update the Global Borrow Index (Lowest 80 bits)
+    /// @param self The MarketState to update
+    /// @param newIndex The new borrow index value
+    /// @return result The updated MarketState with the new borrow index
     function updateBorrowIndex(
         MarketState self,
         uint80 newIndex
@@ -84,6 +87,9 @@ library MarketStateLibrary {
     }
 
     /// @notice Update the Market Epoch (Bits 80-111)
+    /// @param self The MarketState to update
+    /// @param newEpoch The new market epoch value
+    /// @return result The updated MarketState with the new market epoch
     function updateMarketEpoch(
         MarketState self,
         uint32 newEpoch
@@ -97,6 +103,9 @@ library MarketStateLibrary {
     }
 
     /// @notice Update the Rate At Target (Bits 112-149)
+    /// @param self The MarketState to update
+    /// @param newRate The new rate at target value
+    /// @return result The updated MarketState with the new rate at target
     function updateRateAtTarget(
         MarketState self,
         uint40 newRate
@@ -115,6 +124,9 @@ library MarketStateLibrary {
     }
 
     /// @notice Update the Unrealized Interest (Bits 150-255)
+    /// @param self The MarketState to update
+    /// @param newInterest The new unrealized interest value
+    /// @return result The updated MarketState with the new unrealized interest
     function updateUnrealizedInterest(
         MarketState self,
         uint128 newInterest
