@@ -1387,7 +1387,8 @@ contract PanopticPool is Clone, Multicall {
                         _settlePremium(account, tokenId, twapTick, currentTick);
                     } else if (toLength == (finalLength + 1)) {
                         // final is one element shorter, that's a force exercise
-                        if (tokenId.countLongs() == 0) revert Errors.NoLegsExercisable();
+                        if (tokenId.countLongs() == 0 || tokenId.validateIsExercisable() == 0)
+                            revert Errors.NoLegsExercisable();
                         _forceExercise(account, tokenId, twapTick, currentTick);
                     } else if (finalLength == 0) {
                         // if final length was zero, this was intended to be liquidation, but revert because not margin called and solvent at some of the tested ticks
