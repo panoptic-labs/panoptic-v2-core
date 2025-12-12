@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 // Interfaces
+import "forge-std/Test.sol";
 import {CollateralTracker} from "./CollateralTracker.sol";
 import {PanopticPool} from "./PanopticPool.sol";
 // Libraries
@@ -950,9 +951,23 @@ contract RiskEngine {
             atTick,
             longPremia
         );
-        (uint256 balance0, uint256 interest0) = ct0.assetsAndInterest(user);
-        (uint256 balance1, uint256 interest1) = ct1.assetsAndInterest(user);
-
+        uint256 balance0;
+        uint256 balance1;
+        uint256 interest0;
+        uint256 interest1;
+        {
+            (balance0, interest0) = ct0.assetsAndInterest(user);
+            (balance1, interest1) = ct1.assetsAndInterest(user);
+            console2.log("balance0, interest0", balance0, interest0);
+            console2.log("balance1, interest1", balance1, interest1);
+            // if the interest rate is more than the available balance, the use will only pay what's available when accrueing interest
+            if (interest0 > balance0) {
+                interest0 = balance0;
+            }
+            if (interest1 > balance1) {
+                interest1 = balance1;
+            }
+        }
         unchecked {
             balance0 += shortPremia.rightSlot();
             balance1 += shortPremia.leftSlot();
