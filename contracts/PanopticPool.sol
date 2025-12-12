@@ -316,39 +316,37 @@ contract PanopticPool is Clone, Multicall {
         int24 currentTick = SFPM.getCurrentTick(poolKey());
 
         // Store the median data
-        unchecked {
-            uint96 EMAs = OraclePackLibrary.packEMAs(
-                currentTick,
-                currentTick,
-                currentTick,
-                currentTick
-            );
-            s_oraclePack = OraclePackLibrary.storeOraclePack(
-                block.timestamp >> 6,
-                0xf590a6, // orderMap
-                EMAs,
-                currentTick,
-                0xe00200e00200e00200e00000, // current residuals
-                0,
-                0
-            );
-            /*
-                (uint256((block.timestamp >> 6) % 2 ** 24) << 232) +
-                // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
-                // see comment on s_oraclePack initialization for format of this magic number
-                (uint256(0xf590a60000000000000000000000000000800e00200e00200e00000000)) +
-                // eonsEMA at bits 207-186
-                (uint256(uint24(currentTick) & 0x3FFFFF) << 186) +
-                // slowEMA at bits 185-164
-                (uint256(uint24(currentTick) & 0x3FFFFF) << 164) +
-                // fastEMA at bits 163-142
-                (uint256(uint24(currentTick) & 0x3FFFFF) << 142) +
-                // spotEMA at bits 141-120
-                (uint256(uint24(currentTick) & 0x3FFFFF) << 120) +
-                // store currentTick as the reference tick at bits 119-96
-                (uint256(uint24(currentTick)) << 96);
-               */
-        }
+        uint96 EMAs = OraclePackLibrary.packEMAs(
+            currentTick,
+            currentTick,
+            currentTick,
+            currentTick
+        );
+        s_oraclePack = OraclePackLibrary.storeOraclePack(
+            block.timestamp >> 6,
+            0xf590a6, // orderMap
+            EMAs,
+            currentTick,
+            0xe00200e00200e00200e00000, // current residuals
+            0,
+            0
+        );
+        /*
+            (uint256((block.timestamp >> 6) % 2 ** 24) << 232) +
+            // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
+            // see comment on s_oraclePack initialization for format of this magic number
+            (uint256(0xf590a60000000000000000000000000000800e00200e00200e00000000)) +
+            // eonsEMA at bits 207-186
+            (uint256(uint24(currentTick) & 0x3FFFFF) << 186) +
+            // slowEMA at bits 185-164
+            (uint256(uint24(currentTick) & 0x3FFFFF) << 164) +
+            // fastEMA at bits 163-142
+            (uint256(uint24(currentTick) & 0x3FFFFF) << 142) +
+            // spotEMA at bits 141-120
+            (uint256(uint24(currentTick) & 0x3FFFFF) << 120) +
+            // store currentTick as the reference tick at bits 119-96
+            (uint256(uint24(currentTick)) << 96);
+           */
 
         // consolidate all 4 approval calls to one library delegatecall in order to reduce bytecode size
         // approves:
@@ -635,7 +633,9 @@ contract PanopticPool is Clone, Multicall {
                     );
                 }
             }
+
             unchecked {
+                // can never miscast because ticks are int24
                 cumulativeTickDeltas = cumulativeTickDeltas.addToRightSlot(
                     int128(Math.abs(cumulativeTickDeltas.leftSlot() - finalTick))
                 );
@@ -643,12 +643,14 @@ contract PanopticPool is Clone, Multicall {
             }
         }
 
-        /// @dev revert if the total deviation is more than twice the ickDeltaLiquidation (ie. roundtrips more than the allowed tick liquidation delta per trip)
-        if (
-            cumulativeTickDeltas.rightSlot() >
-            int256(uint256(2 * riskParameters.tickDeltaLiquidation()))
-        ) revert Errors.PriceImpactTooLarge();
-
+        unchecked {
+            // can never overflow as tickDeltaLiquidation is a int24
+            /// @dev revert if the total deviation is more than twice the tickDeltaLiquidation (ie. roundtrips more than the allowed tick liquidation delta per trip)
+            if (
+                cumulativeTickDeltas.rightSlot() >
+                int256(uint256(2 * riskParameters.tickDeltaLiquidation()))
+            ) revert Errors.PriceImpactTooLarge();
+        }
         // Perform solvency check on user's account to ensure they had enough buying power to mint the option
         // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
         OraclePack oraclePack = _validateSolvency(
@@ -765,14 +767,15 @@ contract PanopticPool is Clone, Multicall {
                 netAmmDelta.leftSlot(),
                 riskParameters
             );
-            utilizations += uint32(utilization1 << 16);
+            unchecked {
+                // no miscast because utilization is <=10_000
+                utilizations += uint32(utilization1 << 16);
+            }
             paidAmounts = paidAmounts.addToLeftSlot(paid1);
         }
 
         // return pool utilizations as two uint16 (pool Utilization is always <= 10_000)
-        unchecked {
-            return (utilizations, paidAmounts);
-        }
+        return (utilizations, paidAmounts);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -954,14 +957,17 @@ contract PanopticPool is Clone, Multicall {
         // call _updateSettlementPostBurn to settle the long premia or the short premia (only for self calling)
         LeftRightUnsigned[4] memory emptyCollectedByLegs;
         LeftRightSigned realizedPremia;
-        (realizedPremia, ) = _updateSettlementPostBurn(
-            owner,
-            tokenId,
-            emptyCollectedByLegs,
-            positionSize,
-            riskParameters,
-            LeftRightSigned.wrap(1).addToLeftSlot(1 + (int128(currentTick) << 2))
-        );
+        unchecked {
+            // cannot be miscast because currentTick is a int24
+            (realizedPremia, ) = _updateSettlementPostBurn(
+                owner,
+                tokenId,
+                emptyCollectedByLegs,
+                positionSize,
+                riskParameters,
+                LeftRightSigned.wrap(1).addToLeftSlot(1 + (int128(currentTick) << 2))
+            );
+        }
         // deduct the paid premium tokens from the owner's balance
         collateralToken0().settleBurn(owner, 0, 0, 0, realizedPremia.rightSlot(), riskParameters);
         collateralToken1().settleBurn(owner, 0, 0, 0, realizedPremia.leftSlot(), riskParameters);
@@ -1155,10 +1161,13 @@ contract PanopticPool is Clone, Multicall {
                             );
                         }
                         // T (totalLiquidity is (T - R) after burning)
-                        uint256 totalLiquidityBefore = commitLongSettledAndKeepOpen.leftSlot() == 0
-                            ? totalLiquidity + positionLiquidity
-                            : totalLiquidity;
-
+                        uint256 totalLiquidityBefore;
+                        unchecked {
+                            // cannot overflow because total liquidity is less than uint128
+                            totalLiquidityBefore = commitLongSettledAndKeepOpen.leftSlot() == 0
+                                ? totalLiquidity + positionLiquidity
+                                : totalLiquidity;
+                        }
                         LeftRightUnsigned grossPremiumLast = s_grossPremiumLast[chunkKey];
 
                         LeftRightUnsigned availablePremium = _getAvailablePremium(
@@ -1676,12 +1685,15 @@ contract PanopticPool is Clone, Multicall {
 
         // if safeMode is ON, make the collateral requirements for 100% utilizations: no cross-margining, fully covered positions
         if (safeMode > 0) {
-            uint32 maxUtilizations = uint32(DECIMALS + (DECIMALS << 16));
-            positionBalanceArray[0] = PositionBalanceLibrary.storeBalanceData(
-                positionBalanceArray[0].positionSize(),
-                maxUtilizations,
-                0
-            );
+            unchecked {
+                // cannot miscast because DECIMAL = 10_000
+                uint32 maxUtilizations = uint32(DECIMALS + (DECIMALS << 16));
+                positionBalanceArray[0] = PositionBalanceLibrary.storeBalanceData(
+                    positionBalanceArray[0].positionSize(),
+                    maxUtilizations,
+                    0
+                );
+            }
         }
         uint256 solvent;
         for (uint256 i; i < atTicks.length; ) {
@@ -1905,6 +1917,7 @@ contract PanopticPool is Clone, Multicall {
 
         uint256 effectiveLiquidityFactor;
         unchecked {
+            // cannot overflow because liquidities are uint128
             effectiveLiquidityFactor = (removedLiquidity * DECIMALS) / netLiquidity;
         }
 

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 // Interfaces
-import "forge-std/Test.sol";
 import {CollateralTracker} from "./CollateralTracker.sol";
 import {PanopticPool} from "./PanopticPool.sol";
 // Libraries
@@ -299,7 +298,8 @@ contract RiskEngine {
         CollateralTracker ct1
     ) external view returns (LeftRightSigned) {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
-        unchecked {
+        // keep everything checked to catch any under/overflow or miscastings
+        {
             // if the refunder lacks sufficient currency0 to pay back the virtual shares, have the caller cover the difference in exchange for currency1 (and vice versa)
             int128 fees0 = -int128(Math.min(0, fees.rightSlot()));
             int256 balanceShortage = int256(uint256(type(uint248).max)) -
@@ -400,7 +400,8 @@ contract RiskEngine {
             positionBalance.positionSize(),
             true
         );
-        unchecked {
+        // keep everything checked to catch any under/overflow or miscastings
+        {
             // we find whether the price is within any leg; any in-range leg will have a cost. Otherwise, the force-exercise fee is 1bps
             bool hasLegsInRange;
 
@@ -494,7 +495,8 @@ contract RiskEngine {
     ) external pure returns (LeftRightSigned, LeftRightSigned) {
         int256 bonus0;
         int256 bonus1;
-        unchecked {
+        // keep everything checked to catch any under/overflow or miscastings
+        {
             // compute bonus as min(collateralBalance/2, required-collateralBalance)
             {
                 // compute the ratio of token0 to total collateral requirements
@@ -713,6 +715,7 @@ contract RiskEngine {
         (int24 spotEMA, int24 fastEMA, int24 slowEMA, , int24 medianTick) = oraclePack.getEMAs();
 
         unchecked {
+            // can never miscart because all math is int24 or below
             // Condition 1: Check for a sudden deviation of the spot price from the spot EMA.
             // This is your primary defense against a flash crash or single-block manipulation.
             bool externalShock = Math.abs(currentTick - spotEMA) > MAX_TICKS_DELTA;
@@ -949,8 +952,6 @@ contract RiskEngine {
         {
             (balance0, interest0) = ct0.assetsAndInterest(user);
             (balance1, interest1) = ct1.assetsAndInterest(user);
-            console2.log("balance0, interest0", balance0, interest0);
-            console2.log("balance1, interest1", balance1, interest1);
             // if the interest rate is more than the available balance, the use will only pay what's available when accrueing interest
             if (interest0 > balance0) {
                 interest0 = balance0;
@@ -1006,6 +1007,7 @@ contract RiskEngine {
         }
 
         unchecked {
+            // can never miscast because utilization < 10_000
             globalUtilizations = PositionBalanceLibrary.storeBalanceData(
                 0,
                 uint32(uint256(utilization0) + (uint256(utilization1) << 16)),
@@ -1051,7 +1053,8 @@ contract RiskEngine {
                 uint128 positionSize = positionBalance.positionSize();
                 int24 _atTick = atTick;
 
-                {
+                unchecked {
+                    // can never miscast because utilization < 10_000
                     // Use the global utilizations for all positions
                     int16 utilization0 = int16(globalUtilizations.utilization0());
                     (_tokenRequired0, _credits0) = _getRequiredCollateralAtTickSinglePosition(
@@ -1062,7 +1065,8 @@ contract RiskEngine {
                         true
                     );
                 }
-                {
+                unchecked {
+                    // can never miscast because utilization < 10_000
                     // Use the global utilizations for all positions
                     int16 utilization1 = int16(globalUtilizations.utilization1());
                     (_tokenRequired1, _credits1) = _getRequiredCollateralAtTickSinglePosition(
@@ -1561,7 +1565,7 @@ contract RiskEngine {
         spreadRequirement = 1;
 
         uint256 splitRequirement;
-        {
+        unchecked {
             uint256 _required = _getRequiredCollateralSingleLegNoPartner(
                 tokenId,
                 index,
@@ -1593,7 +1597,7 @@ contract RiskEngine {
                 index,
                 false
             );
-            {
+            unchecked {
                 // This is a CALENDAR SPREAD adjustment, where the collateral requirement is the max loss of the position
                 // real formula is contractSize * (1/(sqrt(r1)+1) - 1/(sqrt(r2)+1))
                 // Taylor expand to get a rough approximation of: contractSize * ∆width * tickSpacing / 40000
@@ -1751,11 +1755,13 @@ contract RiskEngine {
             poolUtilization
         );
 
-        if (tokenId.isLong(index) == 0) {
-            return _required + requiredPartner;
-        } else {
-            // return the max of the requirement between a loan and the long option position
-            return Math.max(_required, requiredPartner);
+        unchecked {
+            if (tokenId.isLong(index) == 0) {
+                return _required + requiredPartner;
+            } else {
+                // return the max of the requirement between a loan and the long option position
+                return Math.max(_required, requiredPartner);
+            }
         }
     }
 
@@ -1788,42 +1794,44 @@ contract RiskEngine {
         uint256 partnerIndex,
         int24 atTick
     ) internal view returns (uint256) {
-        // can only be called when partnerIndex is the credit
-        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
-            tokenId,
-            positionSize,
-            index,
-            false
-        );
+        unchecked {
+            // can only be called when partnerIndex is the credit
+            LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
+                tokenId,
+                positionSize,
+                index,
+                false
+            );
 
-        LeftRightUnsigned amountsMovedP = PanopticMath.getAmountsMoved(
-            tokenId,
-            positionSize,
-            partnerIndex,
-            false
-        );
+            LeftRightUnsigned amountsMovedP = PanopticMath.getAmountsMoved(
+                tokenId,
+                positionSize,
+                partnerIndex,
+                false
+            );
 
-        uint256 loanAmount = tokenId.tokenType(index) == 0
-            ? amountsMoved.rightSlot()
-            : amountsMoved.leftSlot();
-        uint256 required = Math.mulDivRoundingUp(
-            loanAmount,
-            SELLER_COLLATERAL_RATIO + DECIMALS,
-            DECIMALS
-        );
+            uint256 loanAmount = tokenId.tokenType(index) == 0
+                ? amountsMoved.rightSlot()
+                : amountsMoved.leftSlot();
+            uint256 required = Math.mulDivRoundingUp(
+                loanAmount,
+                SELLER_COLLATERAL_RATIO + DECIMALS,
+                DECIMALS
+            );
 
-        uint256 creditAmount = tokenId.tokenType(partnerIndex) == 0
-            ? amountsMovedP.rightSlot()
-            : amountsMovedP.leftSlot();
+            uint256 creditAmount = tokenId.tokenType(partnerIndex) == 0
+                ? amountsMovedP.rightSlot()
+                : amountsMovedP.leftSlot();
 
-        uint256 convertedCredit = tokenId.tokenType(partnerIndex) == 0
-            ? PanopticMath.convert0to1RoundingUp(creditAmount, Math.getSqrtRatioAtTick(atTick))
-            : PanopticMath.convert1to0RoundingUp(creditAmount, Math.getSqrtRatioAtTick(atTick));
+            uint256 convertedCredit = tokenId.tokenType(partnerIndex) == 0
+                ? PanopticMath.convert0to1RoundingUp(creditAmount, Math.getSqrtRatioAtTick(atTick))
+                : PanopticMath.convert1to0RoundingUp(creditAmount, Math.getSqrtRatioAtTick(atTick));
 
-        if (required > convertedCredit) {
-            return required;
-        } else {
-            return convertedCredit;
+            if (required > convertedCredit) {
+                return required;
+            } else {
+                return convertedCredit;
+            }
         }
     }
 
@@ -1862,7 +1870,9 @@ contract RiskEngine {
             }
         }
 
-        utilization *= 1_000;
+        unchecked {
+            utilization *= 1_000;
+        }
         // return the basal sell ratio if pool utilization is lower than target
         if (uint256(utilization) < TARGET_POOL_UTIL) {
             return min_sell_ratio;
@@ -1918,21 +1928,18 @@ contract RiskEngine {
            0% -  +---------+-------∓---+--->   POOL_
                           50%     90% 100%      UTILIZATION
          */
+        unchecked {
+            uint256 utilizationScaled = uint256(utilization * 1_000);
+            // return the basal cross buffer ratio if pool utilization is lower than target
+            if (utilizationScaled < TARGET_POOL_UTIL) {
+                return crossBuffer;
+            }
 
-        uint256 utilizationScaled = uint256(utilization * 1_000);
-        // return the basal cross buffer ratio if pool utilization is lower than target
-        if (utilizationScaled < TARGET_POOL_UTIL) {
-            return crossBuffer;
-        }
-
-        // return 0 if pool utilization is above saturated pool utilization
-        if (utilizationScaled > SATURATED_POOL_UTIL) {
-            unchecked {
+            // return 0 if pool utilization is above saturated pool utilization
+            if (utilizationScaled > SATURATED_POOL_UTIL) {
                 return 0;
             }
-        }
 
-        unchecked {
             return ((crossBuffer * (SATURATED_POOL_UTIL - utilizationScaled)) /
                 (SATURATED_POOL_UTIL - TARGET_POOL_UTIL));
         }
@@ -1976,64 +1983,70 @@ contract RiskEngine {
         uint256 utilization,
         MarketState interestRateAccumulator
     ) internal view returns (uint256, int256) {
-        // Safe "unchecked" cast because the utilization is smaller than 1 (scaled by WAD).
-        int256 _utilization = int256(utilization);
-        int256 errNormFactor = int256(_utilization) > TARGET_UTILIZATION
-            ? WAD - TARGET_UTILIZATION
-            : TARGET_UTILIZATION;
-        int256 err = Math.wDivToZero(_utilization - TARGET_UTILIZATION, errNormFactor);
+        unchecked {
+            // Safe "unchecked" cast because the utilization is smaller than 1 (scaled by WAD).
+            int256 _utilization = int256(utilization);
+            int256 errNormFactor = int256(_utilization) > TARGET_UTILIZATION
+                ? WAD - TARGET_UTILIZATION
+                : TARGET_UTILIZATION;
+            int256 err = Math.wDivToZero(_utilization - TARGET_UTILIZATION, errNormFactor);
 
-        // 38-bit rateAtTarget, 32-bit epoch<<2 in accumulator
-        int256 startRateAtTarget = int256(uint256(interestRateAccumulator.rateAtTarget()));
+            // 38-bit rateAtTarget, 32-bit epoch<<2 in accumulator
+            int256 startRateAtTarget = int256(uint256(interestRateAccumulator.rateAtTarget()));
 
-        // convert from epoch to time. Used to avoid Y2K38
-        uint256 previousTime = interestRateAccumulator.marketEpoch() << 2;
+            // convert from epoch to time. Used to avoid Y2K38
+            uint256 previousTime = interestRateAccumulator.marketEpoch() << 2;
 
-        int256 avgRateAtTarget;
-        int256 endRateAtTarget;
+            int256 avgRateAtTarget;
+            int256 endRateAtTarget;
 
-        if (startRateAtTarget == 0) {
-            // First interaction.
-            avgRateAtTarget = INITIAL_RATE_AT_TARGET;
-            endRateAtTarget = INITIAL_RATE_AT_TARGET;
-        } else {
-            // The speed is assumed constant between two updates, but it is in fact not constant because of interest.
-            // So the rate is always underestimated.
-            int256 speed = Math.wMulToZero(ADJUSTMENT_SPEED, err);
-            // Safe "unchecked" cast because block.timestamp - market.lastUpdate <= block.timestamp <= type(int256).max.
-            // Cap the elapsed time to prevent IRM drift
-            int256 elapsed = Math.min(
-                int256(block.timestamp) - int256(previousTime),
-                IRM_MAX_ELAPSED_TIME
-            );
-            int256 linearAdaptation = speed * elapsed;
-
-            if (linearAdaptation == 0) {
-                // If linearAdaptation == 0, avgRateAtTarget = endRateAtTarget = startRateAtTarget;
-                avgRateAtTarget = startRateAtTarget;
-                endRateAtTarget = startRateAtTarget;
+            if (startRateAtTarget == 0) {
+                // First interaction.
+                avgRateAtTarget = INITIAL_RATE_AT_TARGET;
+                endRateAtTarget = INITIAL_RATE_AT_TARGET;
             } else {
-                // Formula of the average rate that should be returned to Morpho Blue:
-                // avg = 1/T * ∫_0^T curve(startRateAtTarget*exp(speed*x), err) dx
-                // The integral is approximated with the trapezoidal rule:
-                // avg ~= 1/T * Σ_i=1^N [curve(f((i-1) * T/N), err) + curve(f(i * T/N), err)] / 2 * T/N
-                // Where f(x) = startRateAtTarget*exp(speed*x)
-                // avg ~= Σ_i=1^N [curve(f((i-1) * T/N), err) + curve(f(i * T/N), err)] / (2 * N)
-                // As curve is linear in its first argument:
-                // avg ~= curve([Σ_i=1^N [f((i-1) * T/N) + f(i * T/N)] / (2 * N), err)
-                // avg ~= curve([(f(0) + f(T))/2 + Σ_i=1^(N-1) f(i * T/N)] / N, err)
-                // avg ~= curve([(startRateAtTarget + endRateAtTarget)/2 + Σ_i=1^(N-1) f(i * T/N)] / N, err)
-                // With N = 2:
-                // avg ~= curve([(startRateAtTarget + endRateAtTarget)/2 + startRateAtTarget*exp(speed*T/2)] / 2, err)
-                // avg ~= curve([startRateAtTarget + endRateAtTarget + 2*startRateAtTarget*exp(speed*T/2)] / 4, err)
-                endRateAtTarget = _newRateAtTarget(startRateAtTarget, linearAdaptation);
-                int256 midRateAtTarget = _newRateAtTarget(startRateAtTarget, linearAdaptation / 2);
-                avgRateAtTarget = (startRateAtTarget + endRateAtTarget + 2 * midRateAtTarget) / 4;
-            }
-        }
+                // The speed is assumed constant between two updates, but it is in fact not constant because of interest.
+                // So the rate is always underestimated.
+                int256 speed = Math.wMulToZero(ADJUSTMENT_SPEED, err);
+                // Safe "unchecked" cast because block.timestamp - market.lastUpdate <= block.timestamp <= type(int256).max.
+                // Cap the elapsed time to prevent IRM drift
+                int256 elapsed = Math.min(
+                    int256(block.timestamp) - int256(previousTime),
+                    IRM_MAX_ELAPSED_TIME
+                );
+                int256 linearAdaptation = speed * elapsed;
 
-        // Safe "unchecked" cast because avgRateAtTarget >= 0.
-        return (uint256(_curve(avgRateAtTarget, err)), endRateAtTarget);
+                if (linearAdaptation == 0) {
+                    // If linearAdaptation == 0, avgRateAtTarget = endRateAtTarget = startRateAtTarget;
+                    avgRateAtTarget = startRateAtTarget;
+                    endRateAtTarget = startRateAtTarget;
+                } else {
+                    // Formula of the average rate that should be returned to Morpho Blue:
+                    // avg = 1/T * ∫_0^T curve(startRateAtTarget*exp(speed*x), err) dx
+                    // The integral is approximated with the trapezoidal rule:
+                    // avg ~= 1/T * Σ_i=1^N [curve(f((i-1) * T/N), err) + curve(f(i * T/N), err)] / 2 * T/N
+                    // Where f(x) = startRateAtTarget*exp(speed*x)
+                    // avg ~= Σ_i=1^N [curve(f((i-1) * T/N), err) + curve(f(i * T/N), err)] / (2 * N)
+                    // As curve is linear in its first argument:
+                    // avg ~= curve([Σ_i=1^N [f((i-1) * T/N) + f(i * T/N)] / (2 * N), err)
+                    // avg ~= curve([(f(0) + f(T))/2 + Σ_i=1^(N-1) f(i * T/N)] / N, err)
+                    // avg ~= curve([(startRateAtTarget + endRateAtTarget)/2 + Σ_i=1^(N-1) f(i * T/N)] / N, err)
+                    // With N = 2:
+                    // avg ~= curve([(startRateAtTarget + endRateAtTarget)/2 + startRateAtTarget*exp(speed*T/2)] / 2, err)
+                    // avg ~= curve([startRateAtTarget + endRateAtTarget + 2*startRateAtTarget*exp(speed*T/2)] / 4, err)
+                    endRateAtTarget = _newRateAtTarget(startRateAtTarget, linearAdaptation);
+                    int256 midRateAtTarget = _newRateAtTarget(
+                        startRateAtTarget,
+                        linearAdaptation / 2
+                    );
+                    avgRateAtTarget =
+                        (startRateAtTarget + endRateAtTarget + 2 * midRateAtTarget) /
+                        4;
+                }
+            }
+            // Safe "unchecked" cast because avgRateAtTarget >= 0.
+            return (uint256(_curve(avgRateAtTarget, err)), endRateAtTarget);
+        }
     }
 
     /// @dev Returns the rate for a given `_rateAtTarget` and an `err`.
@@ -2042,11 +2055,13 @@ contract RiskEngine {
     ///     ((C-1)*err + 1) * rateAtTarget else.
     function _curve(int256 _rateAtTarget, int256 err) private pure returns (int256) {
         // Non negative because 1 - 1/C >= 0, C - 1 >= 0.
-        int256 coeff = err < 0
-            ? WAD - Math.wDivToZero(WAD, CURVE_STEEPNESS)
-            : CURVE_STEEPNESS - WAD;
-        // Non negative if _rateAtTarget >= 0 because if err < 0, coeff <= 1.
-        return Math.wMulToZero(Math.wMulToZero(coeff, err) + WAD, _rateAtTarget);
+        unchecked {
+            int256 coeff = err < 0
+                ? WAD - Math.wDivToZero(WAD, CURVE_STEEPNESS)
+                : CURVE_STEEPNESS - WAD;
+            // Non negative if _rateAtTarget >= 0 because if err < 0, coeff <= 1.
+            return Math.wMulToZero(Math.wMulToZero(coeff, err) + WAD, _rateAtTarget);
+        }
     }
 
     /// @dev Returns the new rate at target, for a given `startRateAtTarget` and a given `linearAdaptation`.
