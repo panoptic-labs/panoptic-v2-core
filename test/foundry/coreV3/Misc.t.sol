@@ -1949,13 +1949,13 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, 2 ** 96);
 
-        editCollateral(ct0, Alice, ct0.convertToShares(5000));
-        editCollateral(ct1, Alice, ct1.convertToShares(5000));
+        editCollateral(ct0, Alice, ct0.convertToShares(30000));
+        editCollateral(ct1, Alice, ct1.convertToShares(30000));
 
-        editCollateral(ct0, Bob, ct0.convertToShares(5000));
-        editCollateral(ct1, Bob, ct1.convertToShares(5000));
-        console2.log("share0", ct0.convertToShares(5000));
-        console2.log("share1", ct1.convertToShares(5000));
+        editCollateral(ct0, Bob, ct0.convertToShares(30000));
+        editCollateral(ct1, Bob, ct1.convertToShares(30000));
+        console2.log("share0", ct0.convertToShares(30000));
+        console2.log("share1", ct1.convertToShares(30000));
         vm.startPrank(Bob);
 
         $tempIdList = $posIdList;
