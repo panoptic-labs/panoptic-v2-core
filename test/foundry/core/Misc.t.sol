@@ -2187,7 +2187,6 @@ contract Misctest is Test, PositionUtils {
 
         vm.revertToState(snap);
         console2.log("here?");
-        console2.log("there?");
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -2205,6 +2204,7 @@ contract Misctest is Test, PositionUtils {
             LeftRightUnsigned.wrap(0).addToLeftSlot(0)
         );
 
+        console2.log("there?");
         vm.expectRevert(
             abi.encodeWithSelector(
                 Errors.AccountInsolvent.selector,
@@ -2220,6 +2220,7 @@ contract Misctest is Test, PositionUtils {
             $tempIdList,
             LeftRightUnsigned.wrap(0).addToLeftSlot(1)
         );
+        console2.log("there2?");
 
         vm.expectRevert(
             abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
@@ -2242,6 +2243,7 @@ contract Misctest is Test, PositionUtils {
             Constants.MAX_POOL_TICK,
             true
         );
+        console2.log("there3?");
 
         vm.expectRevert(
             abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
@@ -7323,13 +7325,10 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.startPrank(Swapper);
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-800_000));
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-800_000));
+        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-500_000));
         for (uint256 j = 0; j < 10000; ++j) {
             vm.warp(block.timestamp + 3600);
             vm.roll(block.number + 10);
-            swapperc.mint(uniPool, -887200, 887200, 10 ** 10);
-            swapperc.burn(uniPool, -887200, 887200, 10 ** 10);
             pp.pokeOracle();
         }
         (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp

@@ -2115,7 +2115,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256 bobBefore1 = (ct1.balanceOf(Bob));
 
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            ._calculateIOAmounts(tokenId, uint128(positionSize), 0, true);
+            .calculateIOAmounts(tokenId, uint128(positionSize), 0, true);
 
         int256 newSharesFromLoan0;
         int256 newSharesFromLoan1;
@@ -2233,7 +2233,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256 bobBefore0 = (ct0.balanceOf(Bob));
         uint256 bobBefore1 = (ct1.balanceOf(Bob));
 
-        (, LeftRightSigned amountsMoved) = PanopticMath._calculateIOAmounts(
+        (, LeftRightSigned amountsMoved) = PanopticMath.calculateIOAmounts(
             tokenId,
             uint128(positionSize),
             0,
@@ -2605,7 +2605,7 @@ contract PanopticPoolTest is PositionUtils {
             Constants.MAX_POOL_TICK,
             true
         );
-        (, $shortAmounts) = PanopticMath._calculateIOAmounts(
+        (, $shortAmounts) = PanopticMath.calculateIOAmounts(
             tokenIdA,
             uint128(positionSize * 10),
             0,
@@ -2634,7 +2634,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256 bobBefore1 = (ct1.balanceOf(Bob));
 
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            ._calculateIOAmounts(tokenId, uint128(positionSize), 0, true);
+            .calculateIOAmounts(tokenId, uint128(positionSize), 0, true);
         //vm.assume(longAmounts.rightSlot() > 101 || longAmounts.leftSlot() > 101);
 
         console2.log("");
@@ -2783,7 +2783,7 @@ contract PanopticPoolTest is PositionUtils {
             Constants.MAX_POOL_TICK,
             true
         );
-        (, $shortAmounts) = PanopticMath._calculateIOAmounts(
+        (, $shortAmounts) = PanopticMath.calculateIOAmounts(
             tokenIdA,
             uint128(positionSize * 10),
             0,
@@ -2811,7 +2811,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256 bobBefore1 = (ct1.balanceOf(Bob));
 
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            ._calculateIOAmounts(tokenId, uint128(positionSize), 0, true);
+            .calculateIOAmounts(tokenId, uint128(positionSize), 0, true);
 
         int256 newSharesFromLoan0;
         int256 newSharesFromLoan1;
@@ -7650,15 +7650,17 @@ contract PanopticPoolTest is PositionUtils {
             if (isLongs[i] == 0) continue;
 
             {
-                int24 range = int24(
-                    int256(
-                        Math.unsafeDivRoundingUp(
-                            uint24(tokenId.width(i) * tokenId.tickSpacing()),
-                            2
-                        )
-                    )
+                (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(
+                    tokenId.width(i),
+                    tokenId.tickSpacing()
                 );
-                if (Math.abs(currentTick - tokenId.strike(i)) < range) hasLegsInRange = true;
+
+                if (
+                    (currentTick < tokenId.strike(i) + rangeUp) ||
+                    (currentTick >= tokenId.strike(i) - rangeDown)
+                ) {
+                    hasLegsInRange = true;
+                }
             }
 
             TWAPtick = pp._getTWAP();

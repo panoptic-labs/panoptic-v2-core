@@ -6783,7 +6783,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.startPrank(Swapper);
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-800_000));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-500_000));
         for (uint256 j = 0; j < 10000; ++j) {
             vm.warp(block.timestamp + 3600);
             vm.roll(block.number + 10);

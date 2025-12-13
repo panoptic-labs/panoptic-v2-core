@@ -22,7 +22,7 @@ contract TokenIdTest is Test, PositionUtils {
 
     // mask to clear all width bits (12 bits, offset of 36 bits)
     uint256 internal constant CLEAR_WIDTH_MASK =
-        0xFFFFFFFFFFFF_000FFFFFFFFF_000FFFFFFFFF_000FFFFFFFFF_FFFFFFFFFFFFFFFF;
+        0xFFFFFFFFF_000FFFFFFFFF_000FFFFFFFFF_000FFFFFFFFF_FFFFFFFFFFFFFFFF;
 
     // mask to clear all strike bits (24 bits, starting offset of 12 bits)
     uint256 internal constant CLEAR_STRIKE_MASK =
@@ -1085,7 +1085,7 @@ contract TokenIdTest is Test, PositionUtils {
             tokenId = harness.addIsLong(tokenId, 1, i);
         }
 
-        harness.validateIsExercisable(tokenId, currentTick);
+        assertEq(harness.validateIsExercisable(tokenId), 1);
     }
 
     function test_Success_validateIsExercisable_aboveTick(
@@ -1137,7 +1137,7 @@ contract TokenIdTest is Test, PositionUtils {
             tokenId = harness.addIsLong(tokenId, 1, i);
         }
 
-        harness.validateIsExercisable(tokenId, currentTick);
+        assertEq(harness.validateIsExercisable(tokenId), 1);
     }
 
     function test_Fail_validateIsExercisable_shortPos(
@@ -1170,8 +1170,7 @@ contract TokenIdTest is Test, PositionUtils {
         // clear isLong
         tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_IS_LONG_MASK);
 
-        vm.expectRevert(Errors.NoLegsExercisable.selector);
-        harness.validateIsExercisable(tokenId, currentTick);
+        assertEq(harness.validateIsExercisable(tokenId), 0);
     }
 
     function test_Fail_validateIsExercisable_inRange(
@@ -1224,8 +1223,46 @@ contract TokenIdTest is Test, PositionUtils {
             tokenId = harness.addIsLong(tokenId, 1, i);
         }
 
-        vm.expectRevert(Errors.NoLegsExercisable.selector);
-        harness.validateIsExercisable(tokenId, currentTick);
+        assertEq(harness.validateIsExercisable(tokenId), 1);
+    }
+
+    function test_Fail_validateIsExercisable_loans(
+        uint64 poolId,
+        uint256 optionRatioSeed,
+        uint256 assetSeed,
+        uint256 isLongSeed,
+        uint256 tokenTypeSeed,
+        int24 strikeSeed,
+        int256 widthSeed,
+        int24 poolStatusSeed
+    ) public {
+        TokenId tokenId;
+
+        // fuzzes a valid currentTick
+        setPoolStatus(poolStatusSeed);
+
+        //construct one leg token
+        tokenId = fuzzedPosition(
+            4, // total amount of legs
+            poolId,
+            optionRatioSeed,
+            assetSeed,
+            isLongSeed,
+            tokenTypeSeed,
+            strikeSeed,
+            widthSeed
+        );
+
+        // clear width (all loans)
+        tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_WIDTH_MASK);
+        // clear isLong
+        tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_IS_LONG_MASK);
+        // l
+        for (uint256 i; i < 4; i++) {
+            tokenId = harness.addIsLong(tokenId, 1, i);
+        }
+
+        assertEq(harness.validateIsExercisable(tokenId), 0);
     }
 
     /*//////////////////////////////////////////////////////////////

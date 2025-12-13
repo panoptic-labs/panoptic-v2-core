@@ -1513,7 +1513,6 @@ contract PanopticPool is Clone, Multicall {
             address _liquidatee = liquidatee;
             int24 _twapTick = twapTick;
             TokenId[] memory _positionIdList = positionIdList;
-
             LeftRightSigned bonusDeltas = PanopticMath.haircutPremia(
                 _liquidatee,
                 _positionIdList,
