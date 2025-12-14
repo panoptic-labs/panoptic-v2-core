@@ -548,6 +548,20 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         }
     }
 
+    /// @notice Returns The maximum amount of assets that can be withdrawn for a given user.
+    /// If the user has any open positions, the max withdrawable balance is zero.
+    /// @dev Calculated from the balance of the user; limited by the assets the pool has available.
+    /// @param owner The address being withdrawn for
+    /// @return maxAssets The maximum amount of assets that can be withdrawn
+    function _maxWithdrawWithPositions(address owner) internal view returns (uint256 maxAssets) {
+        uint256 depositedAssets = s_depositedAssets;
+        unchecked {
+            uint256 available = depositedAssets > 0 ? depositedAssets - 1 : 0;
+            uint256 balance = convertToAssets(balanceOf[owner]);
+            return Math.min(available, balance);
+        }
+    }
+
     /// @notice Returns the amount of shares that would be burned to withdraw a given amount of assets.
     /// @param assets The amount of assets to be withdrawn
     /// @return shares The amount of shares that would be burned
@@ -618,7 +632,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         bool usePremiaAsCollateral
     ) external returns (uint256 shares) {
         _accrueInterest(owner, IS_NOT_DEPOSIT);
-        if (assets > maxWithdraw(owner)) revert Errors.ExceedsMaximumRedemption();
+        if (assets > _maxWithdrawWithPositions(owner)) revert Errors.ExceedsMaximumRedemption();
         if (assets == 0) revert Errors.BelowMinimumRedemption();
 
         shares = previewWithdraw(assets);

@@ -4289,7 +4289,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // attempt to withdraw
         // fail as assets > maxWithdraw(owner)
-        vm.expectRevert(stdError.arithmeticError);
+        vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
         collateralToken0.withdraw(maxAssets + 1, Bob, Bob, new TokenId[](0), true);
     }
 
@@ -4482,7 +4482,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.withdraw(assets, Bob, Bob);
 
         // no erc4626 maxWithdraw check, so s_poolAssets math underflows instead
-        vm.expectRevert(stdError.arithmeticError);
+        vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
         collateralToken0.withdraw(assets, Bob, Bob, new TokenId[](0), true);
     }
 
@@ -10992,7 +10992,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
                 positionSize0 / 4,
-                false
+                true
             );
 
             uint256 currNumRangesFromStrikeDown = uint256(
@@ -11138,7 +11138,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
                 positionSize0 / 4,
-                false
+                true
             );
             bool hasLegsInRange;
             if ((currentTick < strike + rangeUp) || (currentTick >= strike - rangeDown)) {
@@ -11422,7 +11422,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
                 positionSize0 / 4,
-                false
+                true
             );
 
             bool hasLegsInRange;
