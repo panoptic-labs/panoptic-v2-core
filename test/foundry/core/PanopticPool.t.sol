@@ -7656,7 +7656,7 @@ contract PanopticPoolTest is PositionUtils {
                 );
 
                 if (
-                    (currentTick < tokenId.strike(i) + rangeUp) ||
+                    (currentTick < tokenId.strike(i) + rangeUp) &&
                     (currentTick >= tokenId.strike(i) - rangeDown)
                 ) {
                     hasLegsInRange = true;
