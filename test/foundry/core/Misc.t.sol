@@ -7297,9 +7297,13 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(ct1), 1_005);
         ct1.deposit(1_005, Bob);
 
+        console2.log("ct0.balance", ct0.balanceOf(Bob));
+        console2.log("ct1.balance", ct1.balanceOf(Bob));
         vm.startPrank(Charlie);
-        token1.mint(Charlie, 1_003_003);
-        token1.approve(address(ct1), 1_003_003);
+        token0.mint(Charlie, 1);
+        token0.approve(address(ct0), 1);
+        token1.mint(Charlie, 1_003_004);
+        token1.approve(address(ct1), 1_003_004);
 
         ct1.deposit(1_003_003, Charlie);
 
@@ -7323,6 +7327,8 @@ contract Misctest is Test, PositionUtils {
             Constants.MIN_POOL_TICK,
             true
         );
+        console2.log("ct0.balance", ct0.balanceOf(Bob));
+        console2.log("ct1.balance", ct1.balanceOf(Bob));
 
         vm.startPrank(Swapper);
         routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-500_000));
@@ -7338,6 +7344,9 @@ contract Misctest is Test, PositionUtils {
         console2.log("twapTick", twapTick);
 
         vm.startPrank(Charlie);
+        console2.log("tokem0", address(token0));
+        console2.log("tokem1", address(token1));
+        console2.log("balanceC1", token1.balanceOf(Charlie));
         liquidate(pp, new TokenId[](0), Bob, $posIdList);
 
         assertLe(ct1.totalSupply() / totalSupplyBefore, 10_000, "protocol loss failed to cap");
