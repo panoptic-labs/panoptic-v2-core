@@ -504,10 +504,12 @@ library TokenIdLibrary {
         }
     }
 
-    /// @notice Validate that a position `self` and its legs/chunks are exercisable.
-    /// @dev Must have at least one long leg that is not a loan
-    /// @dev Reverts if the position is not exercisable.
-    /// @param self The TokenId to validate for exercisability
+    /// @notice Check whether a position `self` contains at least one exercisable long leg.
+    /// @dev A leg is considered exercisable if it is:
+    ///      - long (isLong == 1), and
+    ///      - not a loan/credit leg (width != 0).
+    /// @dev This function does NOT check moneyness or price ranges.
+    /// @return hasExercisableLong Returns 1 if such a leg exists, 0 otherwise.
     function validateIsExercisable(TokenId self) internal pure returns (uint256) {
         unchecked {
             uint256 numLegs = self.countLegs();
