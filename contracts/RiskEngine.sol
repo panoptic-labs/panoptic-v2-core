@@ -293,7 +293,7 @@ contract RiskEngine {
                     );
                     int24 _strike = tokenId.strike(leg);
 
-                    if ((currentTick < _strike + rangeUp) || (currentTick >= _strike - rangeDown)) {
+                    if ((currentTick < _strike + rangeUp) && (currentTick >= _strike - rangeDown)) {
                         hasLegsInRange = true;
                     }
                 }

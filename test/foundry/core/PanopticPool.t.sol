@@ -7425,15 +7425,17 @@ contract PanopticPoolTest is PositionUtils {
             if (isLongs[i] == 0) continue;
 
             {
-                int24 range = int24(
-                    int256(
-                        Math.unsafeDivRoundingUp(
-                            uint24(tokenId.width(i) * tokenId.tickSpacing()),
-                            2
-                        )
-                    )
+                (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(
+                    tokenId.width(i),
+                    tokenId.tickSpacing()
                 );
-                if (Math.abs(currentTick - tokenId.strike(i)) < range) hasLegsInRange = true;
+
+                if (
+                    (currentTick < tokenId.strike(i) + rangeUp) &&
+                    (currentTick >= tokenId.strike(i) - rangeDown)
+                ) {
+                    hasLegsInRange = true;
+                }
             }
 
             TWAPtick = pp._getTWAP();

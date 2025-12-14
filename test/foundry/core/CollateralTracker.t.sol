@@ -11000,7 +11000,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             bool hasLegsInRange;
-            if ((currentTick < strike + rangeUp) || (currentTick >= strike - rangeDown)) {
+            if ((currentTick < strike + rangeUp) && (currentTick >= strike - rangeDown)) {
                 hasLegsInRange = true;
             }
 
@@ -11141,7 +11141,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 true
             );
             bool hasLegsInRange;
-            if ((currentTick < strike + rangeUp) || (currentTick >= strike - rangeDown)) {
+            if ((currentTick < strike + rangeUp) && (currentTick >= strike - rangeDown)) {
                 hasLegsInRange = true;
             }
 
@@ -11284,7 +11284,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             bool hasLegsInRange;
 
-            if ((currentTick < strike + rangeUp) || (currentTick >= strike - rangeDown)) {
+            if ((currentTick < strike + rangeUp) && (currentTick >= strike - rangeDown)) {
                 hasLegsInRange = true;
             }
 
@@ -11426,7 +11426,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             bool hasLegsInRange;
-            if ((currentTick < strike + rangeUp) || (currentTick >= strike - rangeDown)) {
+            if ((currentTick < strike + rangeUp) && (currentTick >= strike - rangeDown)) {
                 hasLegsInRange = true;
             }
             int256 feeUp = hasLegsInRange ? -int256(1024000) : -int256(1000);
