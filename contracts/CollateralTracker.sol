@@ -483,6 +483,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         _mint(receiver, shares);
 
         // update tracked asset balance
+        // keep checked to avoid underflows
         s_depositedAssets += uint128(assets);
 
         emit Deposit(msg.sender, receiver, assets, shares);
@@ -529,6 +530,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         _mint(receiver, shares);
 
         // update tracked asset balance
+        // keep checked to avoid underflows
         s_depositedAssets += uint128(assets);
 
         emit Deposit(msg.sender, receiver, assets, shares);
@@ -600,9 +602,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         _burn(owner, shares);
 
         // update tracked asset balance
-        unchecked {
-            s_depositedAssets -= uint128(assets);
-        }
+        // keep checked to avoid underflows
+        s_depositedAssets -= uint128(assets);
 
         // transfer assets (underlying token funds) from the PanopticPool to the LP
         SafeTransferLib.safeTransferFrom(
@@ -648,6 +649,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         _burn(owner, shares);
 
         // update tracked asset balance
+        // keep checked to avoid underflows
         s_depositedAssets -= uint128(assets);
 
         // reverts if account is not solvent/eligible to withdraw
@@ -712,9 +714,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         _burn(owner, shares);
 
         // update tracked asset balance
-        unchecked {
-            s_depositedAssets -= uint128(assets);
-        }
+        // keep checked to avoid underflows
+        s_depositedAssets -= uint128(assets);
 
         // transfer assets (underlying token funds) from the PanopticPool to the LP
         SafeTransferLib.safeTransferFrom(
