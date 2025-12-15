@@ -2142,15 +2142,15 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, 2 ** 96);
         routerV4.swapTo(address(0), poolKey, 2 ** 96);
 
-        editCollateral(ct0, Alice, ct0.convertToShares(5000));
-        editCollateral(ct1, Alice, ct1.convertToShares(5000));
+        editCollateral(ct0, Alice, ct0.convertToShares(30000));
+        editCollateral(ct1, Alice, ct1.convertToShares(30000));
 
-        editCollateral(ct0, Bob, ct0.convertToShares(5000));
-        editCollateral(ct1, Bob, ct1.convertToShares(5000));
+        editCollateral(ct0, Bob, ct0.convertToShares(20000));
+        editCollateral(ct1, Bob, ct1.convertToShares(20000));
         vm.startPrank(Bob);
 
-        console2.log("share0", ct0.convertToShares(5000));
-        console2.log("share1", ct1.convertToShares(5000));
+        console2.log("share0", ct0.convertToShares(20000));
+        console2.log("share1", ct1.convertToShares(20000));
         $tempIdList = $posIdList;
 
         {
@@ -2187,7 +2187,6 @@ contract Misctest is Test, PositionUtils {
 
         vm.revertToState(snap);
         console2.log("here?");
-        console2.log("there?");
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -2205,6 +2204,7 @@ contract Misctest is Test, PositionUtils {
             LeftRightUnsigned.wrap(0).addToLeftSlot(0)
         );
 
+        console2.log("there?");
         vm.expectRevert(
             abi.encodeWithSelector(
                 Errors.AccountInsolvent.selector,
@@ -2220,6 +2220,7 @@ contract Misctest is Test, PositionUtils {
             $tempIdList,
             LeftRightUnsigned.wrap(0).addToLeftSlot(1)
         );
+        console2.log("there2?");
 
         vm.expectRevert(
             abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
@@ -2242,6 +2243,7 @@ contract Misctest is Test, PositionUtils {
             Constants.MAX_POOL_TICK,
             true
         );
+        console2.log("there3?");
 
         vm.expectRevert(
             abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
@@ -7295,9 +7297,13 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(ct1), 1_005);
         ct1.deposit(1_005, Bob);
 
+        console2.log("ct0.balance", ct0.balanceOf(Bob));
+        console2.log("ct1.balance", ct1.balanceOf(Bob));
         vm.startPrank(Charlie);
-        token1.mint(Charlie, 1_003_003);
-        token1.approve(address(ct1), 1_003_003);
+        token0.mint(Charlie, 1);
+        token0.approve(address(ct0), 1);
+        token1.mint(Charlie, 1_003_004);
+        token1.approve(address(ct1), 1_003_004);
 
         ct1.deposit(1_003_003, Charlie);
 
@@ -7321,15 +7327,14 @@ contract Misctest is Test, PositionUtils {
             Constants.MIN_POOL_TICK,
             true
         );
+        console2.log("ct0.balance", ct0.balanceOf(Bob));
+        console2.log("ct1.balance", ct1.balanceOf(Bob));
 
         vm.startPrank(Swapper);
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-800_000));
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-800_000));
+        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-500_000));
         for (uint256 j = 0; j < 10000; ++j) {
             vm.warp(block.timestamp + 3600);
             vm.roll(block.number + 10);
-            swapperc.mint(uniPool, -887200, 887200, 10 ** 10);
-            swapperc.burn(uniPool, -887200, 887200, 10 ** 10);
             pp.pokeOracle();
         }
         (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
@@ -7339,6 +7344,9 @@ contract Misctest is Test, PositionUtils {
         console2.log("twapTick", twapTick);
 
         vm.startPrank(Charlie);
+        console2.log("tokem0", address(token0));
+        console2.log("tokem1", address(token1));
+        console2.log("balanceC1", token1.balanceOf(Charlie));
         liquidate(pp, new TokenId[](0), Bob, $posIdList);
 
         assertLe(ct1.totalSupply() / totalSupplyBefore, 10_000, "protocol loss failed to cap");

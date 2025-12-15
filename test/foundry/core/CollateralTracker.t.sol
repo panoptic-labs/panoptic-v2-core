@@ -4604,7 +4604,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // attempt to withdraw
         // fail as assets > maxWithdraw(owner)
-        vm.expectRevert(stdError.arithmeticError);
+        vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
         collateralToken0.withdraw(maxAssets + 1, Bob, Bob, new TokenId[](0), true);
     }
 
@@ -4796,8 +4796,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
         collateralToken0.withdraw(assets, Bob, Bob);
 
-        // no erc4626 maxWithdraw check, so s_poolAssets math underflows instead
-        vm.expectRevert(stdError.arithmeticError);
+        vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
         collateralToken0.withdraw(assets, Bob, Bob, new TokenId[](0), true);
     }
 
@@ -11633,7 +11632,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             atTick = (atTick / tickSpacing) * tickSpacing;
 
             (legLowerTick, legUpperTick) = tokenId1.asTicks(0);
-            (, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
+            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
             // strike - rangeDown
             vm.assume(atTick < legLowerTick);
@@ -11641,7 +11640,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
                 positionSize0 / 4,
-                false
+                true
             );
 
             uint256 currNumRangesFromStrikeDown = uint256(
@@ -11649,9 +11648,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             bool hasLegsInRange;
-            if (Math.abs(atTick - strike) < rangeUp) hasLegsInRange = true;
+            if ((currentTick < strike + rangeUp) && (currentTick >= strike - rangeDown)) {
+                hasLegsInRange = true;
+            }
 
-            int256 feeUp = hasLegsInRange ? -int256(1024000) : -int256(1000);
+            int256 feeUp = hasLegsInRange ? -int256(102400) : -int256(1000);
 
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);
@@ -11777,7 +11778,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             atTick = (atTick / tickSpacing) * tickSpacing;
 
             (legLowerTick, legUpperTick) = tokenId1.asTicks(0);
-            (, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
+            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
             // strike - rangeDown
             vm.assume(atTick < legLowerTick);
@@ -11788,9 +11789,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 false
             );
             bool hasLegsInRange;
-            if (Math.abs(atTick - strike) < rangeUp) hasLegsInRange = true;
+            if ((currentTick < strike + rangeUp) && (currentTick >= strike - rangeDown)) {
+                hasLegsInRange = true;
+            }
 
-            int256 feeUp = hasLegsInRange ? -int256(1024000) : -int256(1000);
+            int256 feeUp = hasLegsInRange ? -int256(102400) : -int256(1000);
 
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);
@@ -11916,7 +11919,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             atTick = (atTick / tickSpacing) * tickSpacing;
 
             (legLowerTick, legUpperTick) = tokenId1.asTicks(0);
-            (, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
+            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
             // strike - rangeDown
             vm.assume(atTick > legUpperTick);
@@ -11928,9 +11931,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             bool hasLegsInRange;
-            if (Math.abs(atTick - strike) < rangeUp) hasLegsInRange = true;
+            if ((currentTick < strike + rangeUp) && (currentTick >= strike - rangeDown)) {
+                hasLegsInRange = true;
+            }
 
-            int256 feeUp = hasLegsInRange ? -int256(1024000) : -int256(1000);
+            int256 feeUp = hasLegsInRange ? -int256(102400) : -int256(1000);
 
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);
@@ -12056,7 +12061,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             atTick = (atTick / tickSpacing) * tickSpacing;
 
             (legLowerTick, legUpperTick) = tokenId1.asTicks(0);
-            (, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
+            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
             // strike - rangeDown
             vm.assume(atTick > legUpperTick);
@@ -12068,9 +12073,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             bool hasLegsInRange;
-            if (Math.abs(atTick - strike) < rangeUp) hasLegsInRange = true;
+            if ((currentTick < strike + rangeUp) && (currentTick >= strike - rangeDown)) {
+                hasLegsInRange = true;
+            }
 
-            int256 feeUp = hasLegsInRange ? -int256(1024000) : -int256(1000);
+            int256 feeUp = hasLegsInRange ? -int256(102400) : -int256(1000);
 
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);

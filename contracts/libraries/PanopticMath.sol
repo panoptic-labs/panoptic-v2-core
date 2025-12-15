@@ -459,7 +459,7 @@ library PanopticMath {
     ) internal pure returns (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) {
         uint256 numLegs = tokenId.countLegs();
         for (uint256 leg = 0; leg < numLegs; ) {
-            (LeftRightSigned longs, LeftRightSigned shorts) = _calculateIOAmounts(
+            (LeftRightSigned longs, LeftRightSigned shorts) = calculateIOAmounts(
                 tokenId,
                 positionSize,
                 leg,
@@ -576,6 +576,35 @@ library PanopticMath {
         }
     }
 
+    /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
+    /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
+    /// @param amount The amount of token0 to convert into token1
+    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token0 into token1
+    /// @return The converted `amount` of token0 represented in terms of token1
+    function convert0to1RoundingUp(
+        int256 amount,
+        uint160 sqrtPriceX96
+    ) internal pure returns (int256) {
+        unchecked {
+            // the tick 443636 is the maximum price where (price) * 2**192 fits into a uint256 (< 2**256-1)
+            // above that tick, we are forced to reduce the amount of decimals in the final price by 2**64 to 2**128
+            if (sqrtPriceX96 < type(uint128).max) {
+                int256 absResult = Math
+                    .mulDiv192RoundingUp(Math.absUint(amount), uint256(sqrtPriceX96) ** 2)
+                    .toInt256();
+                return amount < 0 ? -absResult : absResult;
+            } else {
+                int256 absResult = Math
+                    .mulDiv128RoundingUp(
+                        Math.absUint(amount),
+                        Math.mulDiv64(sqrtPriceX96, sqrtPriceX96)
+                    )
+                    .toInt256();
+                return amount < 0 ? -absResult : absResult;
+            }
+        }
+    }
+
     /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
     /// @param amount The amount of token1 to convert into token0
@@ -593,6 +622,36 @@ library PanopticMath {
             } else {
                 int256 absResult = Math
                     .mulDiv(
+                        Math.absUint(amount),
+                        2 ** 128,
+                        Math.mulDiv64(sqrtPriceX96, sqrtPriceX96)
+                    )
+                    .toInt256();
+                return amount < 0 ? -absResult : absResult;
+            }
+        }
+    }
+
+    /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
+    /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
+    /// @param amount The amount of token1 to convert into token0
+    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token1 into token0
+    /// @return The converted `amount` of token1 represented in terms of token0
+    function convert1to0RoundingUp(
+        int256 amount,
+        uint160 sqrtPriceX96
+    ) internal pure returns (int256) {
+        unchecked {
+            // the tick 443636 is the maximum price where (price) * 2**192 fits into a uint256 (< 2**256-1)
+            // above that tick, we are forced to reduce the amount of decimals in the final price by 2**64 to 2**128
+            if (sqrtPriceX96 < type(uint128).max) {
+                int256 absResult = Math
+                    .mulDivRoundingUp(Math.absUint(amount), 2 ** 192, uint256(sqrtPriceX96) ** 2)
+                    .toInt256();
+                return amount < 0 ? -absResult : absResult;
+            } else {
+                int256 absResult = Math
+                    .mulDivRoundingUp(
                         Math.absUint(amount),
                         2 ** 128,
                         Math.mulDiv64(sqrtPriceX96, sqrtPriceX96)
@@ -678,7 +737,7 @@ library PanopticMath {
     /// @param opening Whether this position is being opened or closed
     /// @return longs A LeftRight-packed word containing the total amount of long positions
     /// @return shorts A LeftRight-packed word containing the amount of short positions
-    function _calculateIOAmounts(
+    function calculateIOAmounts(
         TokenId tokenId,
         uint128 positionSize,
         uint256 legIndex,

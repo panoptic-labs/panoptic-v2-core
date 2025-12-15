@@ -1949,13 +1949,13 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, 2 ** 96);
 
-        editCollateral(ct0, Alice, ct0.convertToShares(5000));
-        editCollateral(ct1, Alice, ct1.convertToShares(5000));
+        editCollateral(ct0, Alice, ct0.convertToShares(30000));
+        editCollateral(ct1, Alice, ct1.convertToShares(30000));
 
-        editCollateral(ct0, Bob, ct0.convertToShares(5000));
-        editCollateral(ct1, Bob, ct1.convertToShares(5000));
-        console2.log("share0", ct0.convertToShares(5000));
-        console2.log("share1", ct1.convertToShares(5000));
+        editCollateral(ct0, Bob, ct0.convertToShares(30000));
+        editCollateral(ct1, Bob, ct1.convertToShares(30000));
+        console2.log("share0", ct0.convertToShares(30000));
+        console2.log("share1", ct1.convertToShares(30000));
         vm.startPrank(Bob);
 
         $tempIdList = $posIdList;
@@ -6756,8 +6756,10 @@ contract Misctest is Test, PositionUtils {
         ct1.deposit(1_005, Bob);
 
         vm.startPrank(Charlie);
-        token1.mint(Charlie, 1_003_003);
-        token1.approve(address(ct1), 1_003_003);
+        token0.mint(Charlie, 1);
+        token0.approve(address(ct0), 1);
+        token1.mint(Charlie, 1_003_004);
+        token1.approve(address(ct1), 1_003_004);
 
         ct1.deposit(1_003_003, Charlie);
 
@@ -6783,7 +6785,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.startPrank(Swapper);
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-800_000));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-500_000));
         for (uint256 j = 0; j < 10000; ++j) {
             vm.warp(block.timestamp + 3600);
             vm.roll(block.number + 10);

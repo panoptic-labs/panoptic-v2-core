@@ -349,7 +349,7 @@ contract PanopticMathTest is Test, PositionUtils {
         }
 
         (LeftRightSigned expectedLongs, LeftRightSigned expectedShorts) = harness
-            .calculateIOAmounts(tokenId, positionSize, 0, opening);
+            ._calculateIOAmounts(tokenId, positionSize, 0, opening);
 
         (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
             .computeExercisedAmounts(tokenId, positionSize, opening);
@@ -1470,7 +1470,7 @@ contract PanopticMathTest is Test, PositionUtils {
             Math.toInt128(contractsNotional.rightSlot())
         );
         (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
-            .calculateIOAmounts(tokenId, positionSize, 0, opening);
+            ._calculateIOAmounts(tokenId, positionSize, 0, opening);
 
         assertEq(LeftRightSigned.unwrap(expectedShorts), LeftRightSigned.unwrap(returnedShorts));
         assertEq(0, LeftRightSigned.unwrap(returnedLongs));
@@ -1547,7 +1547,7 @@ contract PanopticMathTest is Test, PositionUtils {
             Math.toInt128(contractsNotional.rightSlot())
         );
         (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
-            .calculateIOAmounts(tokenId, positionSize, 0, opening);
+            ._calculateIOAmounts(tokenId, positionSize, 0, opening);
 
         assertEq(LeftRightSigned.unwrap(expectedLongs), LeftRightSigned.unwrap(returnedLongs));
         assertEq(0, LeftRightSigned.unwrap(returnedShorts));
@@ -1609,7 +1609,7 @@ contract PanopticMathTest is Test, PositionUtils {
             Math.toInt128(contractsNotional.leftSlot())
         );
         (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
-            .calculateIOAmounts(tokenId, positionSize, 0, opening);
+            ._calculateIOAmounts(tokenId, positionSize, 0, opening);
 
         assertEq(LeftRightSigned.unwrap(expectedShorts), LeftRightSigned.unwrap(returnedShorts));
         assertEq(0, LeftRightSigned.unwrap(returnedLongs));
@@ -1675,7 +1675,7 @@ contract PanopticMathTest is Test, PositionUtils {
         );
 
         (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
-            .calculateIOAmounts(tokenId, positionSize, 0, opening);
+            ._calculateIOAmounts(tokenId, positionSize, 0, opening);
 
         assertEq(LeftRightSigned.unwrap(expectedLongs), LeftRightSigned.unwrap(returnedLongs));
         assertEq(0, LeftRightSigned.unwrap(returnedShorts));
