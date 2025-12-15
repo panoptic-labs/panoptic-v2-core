@@ -59,6 +59,11 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         uint256 shares
     );
 
+    /// @notice Emitted when shares are donated to the protocol.
+    /// @param sender The address of the caller
+    /// @param shares The amount of shares burned by the sender
+    event Donate(address indexed sender, uint256 shares);
+
     /// @notice Emitted when a user attempts to settle interest but lacks sufficient shares to pay in full.
     /// @dev The user's borrow index is not updated, meaning they will need to pay this interest again in the future.
     /// @param owner The address of the insolvent user
@@ -728,6 +733,23 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
     }
 
+    /// @notice Donate exact shares to all shareholders.
+    /// @dev Can only be used when the user has no open positions
+    /// @param shares Amount of shares to be donated
+    function donate(uint256 shares) external {
+        _accrueInterest(msg.sender, IS_NOT_DEPOSIT);
+
+        if (shares > maxRedeem(msg.sender)) revert Errors.ExceedsMaximumRedemption();
+
+        uint256 assets = previewRedeem(shares);
+        if (assets == 0) revert Errors.BelowMinimumRedemption();
+
+        // burn collateral shares of the Panoptic Pool funds (this ERC20 token)
+        _burn(msg.sender, shares);
+
+        emit Donate(msg.sender, shares);
+    }
+
     /// @notice Accrues protocol-wide interest.
     function accrueInterest() public {
         _accrueInterest(msg.sender, IS_NOT_DEPOSIT);
@@ -858,7 +880,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                     Math.wTaylorCompounded(interestRateSnapshot, uint128(deltaTime))
                 ).toUint128();
                 // Calculate interest owed on borrowed amount
-
                 uint128 interestOwed = Math
                     .mulDivWadRoundingUp(_assetsInAMM, rawInterest)
                     .toUint128();
