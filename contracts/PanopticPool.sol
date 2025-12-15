@@ -127,6 +127,9 @@ contract PanopticPool is Clone, Multicall {
     /// @dev uint type for composability with unsigned integer based mathematical operations.
     uint256 internal constant DECIMALS = 10_000;
 
+    /// @notice Transient storage slot for the utilization
+    bytes32 internal constant PRICE_TRANSIENT_SLOT = keccak256("panoptic.price.snapshot");
+
     /// @notice The "engine" of Panoptic - manages AMM liquidity and executes all mints/burns/exercises.
     ISemiFungiblePositionManager internal immutable SFPM;
 
@@ -576,11 +579,22 @@ contract PanopticPool is Clone, Multicall {
     ) external {
         // if safeMode, enforce covered at mint and exercise at burn
         RiskParameters riskParameters;
+
         LeftRightSigned cumulativeTickDeltas;
+        {
+            //assembly tload
+            bytes32 slot = PRICE_TRANSIENT_SLOT;
+            assembly {
+                cumulativeTickDeltas := tload(slot)
+            }
+        }
         {
             int24 startTick;
             (riskParameters, startTick) = getRiskParameters(builderCode);
-            cumulativeTickDeltas = cumulativeTickDeltas.addToLeftSlot(startTick);
+            cumulativeTickDeltas = LeftRightSigned
+                .wrap(0)
+                .addToRightSlot(cumulativeTickDeltas.rightSlot())
+                .addToLeftSlot(startTick);
         }
         for (uint256 i = 0; i < positionIdList.length; ) {
             TokenId tokenId = positionIdList[i];
@@ -650,6 +664,14 @@ contract PanopticPool is Clone, Multicall {
                 cumulativeTickDeltas.rightSlot() >
                 int256(uint256(2 * riskParameters.tickDeltaLiquidation()))
             ) revert Errors.PriceImpactTooLarge();
+
+            {
+                //assembly tstore
+                bytes32 slot = PRICE_TRANSIENT_SLOT;
+                assembly {
+                    tstore(slot, cumulativeTickDeltas)
+                }
+            }
         }
         // Perform solvency check on user's account to ensure they had enough buying power to mint the option
         // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
