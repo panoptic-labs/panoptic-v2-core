@@ -649,10 +649,15 @@ contract PanopticPool is Clone, Multicall {
             }
 
             unchecked {
+                // update starting tick in leftSlot() and add the cumulative delta to the rightSlot()
                 // can never miscast because ticks are int24
-                cumulativeTickDeltas = cumulativeTickDeltas.addToRightSlot(
-                    int128(Math.abs(cumulativeTickDeltas.leftSlot() - finalTick))
-                );
+                cumulativeTickDeltas = LeftRightSigned
+                    .wrap(0)
+                    .addToRightSlot(
+                        cumulativeTickDeltas.rightSlot() +
+                            int128(Math.abs(cumulativeTickDeltas.leftSlot() - finalTick))
+                    )
+                    .addToLeftSlot(finalTick);
                 ++i;
             }
         }
