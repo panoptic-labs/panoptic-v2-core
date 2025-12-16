@@ -137,14 +137,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @notice Flag used to indicate that a position burn (with a burnTokenId) is occurring.
     bool internal constant BURN = true;
 
-    /// @notice Parameter used to modify the [equation](https://www.desmos.com/calculator/mdeqob2m04) of the utilization-based multiplier for long premium.
-    // ν = 1/2**VEGOID = multiplicative factor for long premium (Eqns 1-5)
-    // Similar to vega in options because the liquidity utilization is somewhat reflective of the implied volatility (IV),
-    // and vegoid modifies the sensitivity of the streamia to changes in that utilization,
-    // much like vega measures the sensitivity of traditional option prices to IV.
-    // The effect of vegoid on the long premium multiplier can be explored here: https://www.desmos.com/calculator/mdeqob2m04
-    uint128 private constant VEGOID = 2;
-
     /// @notice Canonical Uniswap V3 Factory address.
     /// @dev Used to verify callbacks and initialize pools.
     IUniswapV3Factory internal immutable FACTORY;
@@ -232,7 +224,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
               spread = ν*(liquidity removed from that strike)/(netLiquidity remaining at that strike)
                      = ν*R/N
 
-        For an arbitrary parameter 0 <= ν <= 1 (ν = 1/2^VEGOID). This way, the gross_feesCollectedX128 will be given by:
+        For an arbitrary parameter 0 <= ν <= 1 (ν = 1/VEGOID). This way, the gross_feesCollectedX128 will be given by:
 
               gross_feesCollectedX128 = feeGrowthX128 * N + feeGrowthX128*R*(1 + ν*R/N)
                                       = feeGrowthX128 * T + feesGrowthX128*ν*R^2/N
@@ -411,16 +403,19 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
     /// @notice Given an address to a Uniswap V3 pool, return its 64-bit ID as used in the `TokenId` of Panoptic.
     // Example:
-    //      the 64 bits are the 48 *last* (most significant) bits - and thus corresponds to the *first* 12 hex characters (reading left to right)
-    //      of the Uniswap V3 pool address, with the tickSpacing written in the highest 16 bits (i.e, max tickSpacing is 32767)
+    //      the 64 bits are the 40 *last* (most significant) bits - and thus corresponds to the *first* 10 hex characters (reading left to right)
+    //      of the Uniswap V3 pool address, with the vegoid written in the next 8 bits and the tickSpacing written in the highest 16 bits (i.e, max tickSpacing is 32767)
     //      e.g.:
-    //        univ3pool   = 0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8
-    //        tickSpacing = 60
+    //      [16-bit tickSpacing][8-bits vegoid][first 40 bits of Uniswap V3 pool address] = poolId
+    //         univ3pool   = 0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8
+    //         vegoid      = 42 (0x2a)
+    //         tickSpacing = 60 (0x3c)
     //      the returned id is then:
-    //        poolPattern = 0x00008ad599c3A0ff
-    //        tickSpacing = 0x003c000000000000    +
-    //        --------------------------------------------
-    //        poolId      = 0x003c8ad599c3A0ff
+    //         poolPattern = 0x0000008ad599c3A0
+    //         vegoid      = 0x00002a0000000000
+    //         tickSpacing = 0x003c000000000000    +
+    //         --------------------------------------------
+    //         poolId      = 0x003c2a8ad599c3A0
     //
     /// @param univ3pool The address of the Uniswap V3 pool to get the ID of
     /// @param tickSpacing The tick spacing of `univ3pool`

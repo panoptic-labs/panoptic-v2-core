@@ -133,14 +133,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @notice Flag used to indicate that a position burn (with a burnTokenId) is occurring.
     bool internal constant BURN = true;
 
-    /// @notice Parameter used to modify the [equation](https://www.desmos.com/calculator/mdeqob2m04) of the utilization-based multiplier for long premium.
-    // ν = 1/2**VEGOID = multiplicative factor for long premium (Eqns 1-5)
-    // Similar to vega in options because the liquidity utilization is somewhat reflective of the implied volatility (IV),
-    // and vegoid modifies the sensitivity of the streamia to changes in that utilization,
-    // much like vega measures the sensitivity of traditional option prices to IV.
-    // The effect of vegoid on the long premium multiplier can be explored here: https://www.desmos.com/calculator/mdeqob2m04
-    uint128 private constant VEGOID = 2;
-
     /// @notice The canonical Uniswap V4 Pool Manager address.
     IPoolManager internal immutable POOL_MANAGER_V4;
 
@@ -230,7 +222,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
               spread = ν*(liquidity removed from that strike)/(netLiquidity remaining at that strike)
                      = ν*R/N
 
-        For an arbitrary parameter 0 <= ν <= 1 (ν = 1/2^VEGOID). This way, the gross_feesCollectedX128 will be given by:
+        For an arbitrary parameter 0 <= ν <= 1 (ν = 1/VEGOID). This way, the gross_feesCollectedX128 will be given by:
 
               gross_feesCollectedX128 = feeGrowthX128 * N + feeGrowthX128*R*(1 + ν*R/N)
                                       = feeGrowthX128 * T + feesGrowthX128*ν*R^2/N
@@ -399,17 +391,17 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
     /// @notice Given a 256-bit Uniswap V4 pool ID (hash) and the corresponding `tickSpacing`, return its 64-bit ID as used in the `TokenId` of Panoptic.
     // Example:
-    //      [16-bit tickSpacing][last 48 bits of Uniswap V4 pool ID] = poolId
+    //      [16-bit tickSpacing][8-bits vegoid][last 40 bits of Uniswap V4 pool ID] = poolId
     //      e.g.:
-    //        idV4        = 0x9c33e1937fe23c3ff82d7725f2bb5af696db1c89a9b8cae141cb0e986847638a
-    //        tickSpacing = 60
-    //        vegoid      = 9
+    //         idV4        = 0x9c33e1937fe23c3ff82d7725f2bb5af696db1c89a9b8cae141cb0e986847638a
+    //         vegoid      = 42 (0x2a)
+    //         tickSpacing = 60 (0x3c)
     //      the returned id is then:
-    //        poolPattern = 0x0000e986847638a
-    //        tickSpacing = 0x003c000000000000    +
-    //        --------------------------------------------
-    //        poolId      = 0x003ce986847638a
-    //                      0x03c09986847638a
+    //         poolPattern = 0x000000986847638a
+    //         vegoid      = 0x00002a0000000000
+    //         tickSpacing = 0x003c000000000000    +
+    //         --------------------------------------------
+    //         poolId      = 0x0032a986847638a
     /// @param idV4 The 256-bit Uniswap V4 pool ID
     /// @param tickSpacing The tick spacing of the Uniswap V4 pool identified by `idV4`
     /// @param vegoid The vegoid of the SFPM, must be 8 bits
