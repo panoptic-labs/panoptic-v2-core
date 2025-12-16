@@ -63,6 +63,16 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         uint256 shares
     );
 
+    /// @notice Emitted when shares are donated to the protocol.
+    /// @param sender The address of the caller
+    /// @param shares The amount of shares burned by the sender
+    event Donate(address indexed sender, uint256 shares);
+
+    /// @notice Emitted when a commission is paid.
+    /// @param owner The address of the owner of the shares being used to pay for the commission
+    /// @param builder The address of the account that received the commission if a builderCode is provided
+    /// @param commissionPaidProtocol The amount of assets paid that goes to the PLPs (if builder == address(0)) or to the protocol
+    /// @param commissionPaidBuilder The amount of assets paid that goes to the builder
     event CommissionPaid(
         address indexed owner,
         address indexed builder,
@@ -847,9 +857,26 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
     }
 
+    /// @notice Donate exact shares to all shareholders.
+    /// @dev Can only be used when the user has no open positions
+    /// @param shares Amount of shares to be donated
+    function donate(uint256 shares) external {
+        _accrueInterest(msg.sender, IS_NOT_DEPOSIT);
+
+        if (shares > maxRedeem(msg.sender)) revert Errors.ExceedsMaximumRedemption();
+
+        uint256 assets = previewRedeem(shares);
+        if (assets == 0) revert Errors.BelowMinimumRedemption();
+
+        // burn collateral shares of the Panoptic Pool funds (this ERC20 token)
+        _burn(msg.sender, shares);
+
+        emit Donate(msg.sender, shares);
+    }
+
     /// @notice Accrues protocol-wide interest for the calling user
     /// @dev Updates global interest state and settles any outstanding interest for msg.sender
-    function accrueInterest() public {
+    function accrueInterest() external {
         _accrueInterest(msg.sender, IS_NOT_DEPOSIT);
     }
 
