@@ -313,7 +313,7 @@ contract PanopticPool is Clone, Multicall {
         // reverts if this contract has already been initialized (assuming block.timestamp > 0)
         if (OraclePack.unwrap(s_oraclePack) != 0) revert Errors.PoolAlreadyInitialized();
 
-        int24 currentTick = SFPM.getCurrentTick(poolKey());
+        int24 currentTick = getCurrentTick();
 
         // Store the median data
         uint96 EMAs = OraclePackLibrary.packEMAs(
@@ -431,7 +431,7 @@ contract PanopticPool is Clone, Multicall {
         TokenId[] calldata positionIdList
     ) external view returns (LeftRightUnsigned, LeftRightUnsigned, PositionBalance[] memory) {
         // Get the current tick of the Uniswap pool
-        int24 currentTick = SFPM.getCurrentTick(poolKey());
+        int24 currentTick = getCurrentTick();
         // Compute the accumulated premia for all tokenId in positionIdList (includes short+long premium)
         return
             _calculateAccumulatedPremia(
@@ -547,7 +547,7 @@ contract PanopticPool is Clone, Multicall {
 
     /// @notice Updates the internal oracle.
     function pokeOracle() external {
-        int24 currentTick = SFPM.getCurrentTick(poolKey());
+        int24 currentTick = getCurrentTick();
 
         (, OraclePack oraclePack) = riskEngine().computeInternalMedian(s_oraclePack, currentTick);
 
@@ -620,7 +620,7 @@ contract PanopticPool is Clone, Multicall {
 
                 // if input positionSize matches the size stored, this is a settlePremium. Otherwise, this is a burn.
                 if (positionSize == positionSizes[i]) {
-                    finalTick = SFPM.getCurrentTick(poolKey());
+                    finalTick = getCurrentTick();
                     _settleOptions(msg.sender, tokenId, positionSize, riskParameters, finalTick);
                 } else {
                     (, , finalTick) = _burnOptions(
@@ -919,7 +919,7 @@ contract PanopticPool is Clone, Multicall {
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(user, positionIdList);
 
-        int24 currentTick = SFPM.getCurrentTick(poolKey());
+        int24 currentTick = getCurrentTick();
 
         OraclePack oraclePack;
         int24[] memory atTicks;
@@ -1328,7 +1328,7 @@ contract PanopticPool is Clone, Multicall {
     ) external payable {
         // Assert the account we are liquidating is actually insolvent
         int24 twapTick = getTWAP();
-        int24 currentTick = SFPM.getCurrentTick(poolKey());
+        int24 currentTick = getCurrentTick();
 
         TokenId tokenId;
 
@@ -1759,7 +1759,7 @@ contract PanopticPool is Clone, Multicall {
     function getRiskParameters(
         uint256 builderCode
     ) public view returns (RiskParameters riskParameters, int24 currentTick) {
-        currentTick = SFPM.getCurrentTick(poolKey());
+        currentTick = getCurrentTick();
         riskParameters = riskEngine().getRiskParameters(currentTick, s_oraclePack, builderCode);
     }
 
@@ -1858,7 +1858,7 @@ contract PanopticPool is Clone, Multicall {
             OraclePack oraclePack
         )
     {
-        currentTick = SFPM.getCurrentTick(poolKey());
+        currentTick = getCurrentTick();
         (spotTick, medianTick, latestTick, ) = riskEngine().getOracleTicks(
             currentTick,
             s_oraclePack
@@ -1894,6 +1894,11 @@ contract PanopticPool is Clone, Multicall {
     /// @return twapTick The current oracle price used to check solvency in liquidations
     function getTWAP() public view returns (int24 twapTick) {
         twapTick = riskEngine().twapEMA(s_oraclePack);
+    }
+
+    /// @notice Get the current tick of the underlying pool.
+    function getCurrentTick() public view returns (int24 currentTick) {
+        currentTick = SFPM.getCurrentTick(poolKey());
     }
 
     /*//////////////////////////////////////////////////////////////
