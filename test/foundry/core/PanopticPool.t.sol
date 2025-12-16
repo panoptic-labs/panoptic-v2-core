@@ -15,6 +15,7 @@ import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {FullMath} from "v3-core/libraries/FullMath.sol";
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
+import {RiskParameters} from "@types/RiskParameters.sol";
 import {IUniswapV3Factory} from "v3-core/interfaces/IUniswapV3Factory.sol";
 import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
@@ -113,9 +114,88 @@ contract PanopticPoolHarness is PanopticPool {
         return (premiasByLeg, netExchanged);
     }
 
+    function readPriceSlot() external view returns (int24 t) {
+        bytes32 slot = keccak256("panoptic.price.snapshot");
+        assembly {
+            t := tload(slot)
+        }
+    }
+
+    function wipePriceSlot() external {
+        bytes32 slot = keccak256("panoptic.price.snapshot");
+        assembly {
+            tstore(slot, 0)
+        }
+    }
+
     constructor(
         SemiFungiblePositionManager _sfpm
     ) PanopticPool(ISemiFungiblePositionManager(address(_sfpm))) {}
+}
+
+contract PriceImpactAttacker {
+    PanopticPoolHarness internal pp;
+
+    constructor(PanopticPoolHarness _pp) {
+        pp = _pp;
+    }
+
+    /// @notice Bundles 3 operations: Mint T0 -> Mint T1 -> Burn T1
+    /// This forces a large cumulative tick movement in a single transaction.
+    function triggerTransientPriceImpact(
+        TokenId tokenId0,
+        TokenId tokenId1,
+        uint128 positionSize
+    ) external {
+        // Shared limits: [0] > [1] forces a swap-at-mint (MAX > MIN)
+        int24[3][] memory limits = new int24[3][](1);
+        limits[0][0] = 887272; // MAX_POOL_TICK (using constant literal for clarity)
+        limits[0][1] = -887272; // MIN_POOL_TICK
+        limits[0][2] = int24(uint24(type(uint24).max));
+
+        // --- STEP 1: Mint Token 0 ---
+        // Price moves X
+        TokenId[] memory posIdList0 = new TokenId[](1);
+        posIdList0[0] = tokenId0;
+
+        uint128[] memory sizeList = new uint128[](1);
+        sizeList[0] = positionSize;
+
+        // Current portfolio: [] -> New: [T0]
+        pp.dispatch(posIdList0, posIdList0, sizeList, limits, false, 0);
+
+        // --- STEP 2: Mint Token 1 ---
+        // Price moves Y. Transient accumulator = X + Y
+        TokenId[] memory posIdList1 = new TokenId[](1);
+        posIdList1[0] = tokenId1;
+
+        // Current portfolio: [T0] -> New: [T0, T1]
+        TokenId[] memory finalPosList1 = new TokenId[](2);
+        finalPosList1[0] = tokenId0;
+        finalPosList1[1] = tokenId1;
+
+        pp.dispatch(posIdList1, finalPosList1, sizeList, limits, false, 0);
+
+        // --- STEP 3: Burn Token 1 ---
+        // Price moves Z (reverting Step 2's price impact, but ACCUMULATING the delta).
+        // Transient accumulator = X + Y + Z
+
+        // For burn, we target T1.
+        // Current: [T0, T1] -> New: [T0]
+        TokenId[] memory finalPosList2 = new TokenId[](1);
+        finalPosList2[0] = tokenId0;
+
+        uint128[] memory sizeList1 = new uint128[](1);
+
+        pp.dispatch(
+            posIdList1, // We are acting on T1
+            finalPosList2, // Resulting portfolio
+            sizeList1, // Size to burn
+            limits,
+            false,
+            0
+        );
+    }
 }
 
 contract PanopticPoolTest is PositionUtils {
@@ -348,7 +428,7 @@ contract PanopticPoolTest is PositionUtils {
     LeftRightSigned $netExchanged;
 
     function mintOptions(
-        PanopticPool pp,
+        PanopticPoolHarness pp,
         TokenId[] memory positionIdList,
         uint128 positionSize,
         uint24 effectiveLiquidityLimitX32,
@@ -368,10 +448,11 @@ contract PanopticPoolTest is PositionUtils {
         tickAndSpreadLimits[0][2] = int24(uint24(effectiveLiquidityLimitX32));
 
         pp.dispatch(mintList, positionIdList, sizeList, tickAndSpreadLimits, premiaAsCollateral, 0);
+        pp.wipePriceSlot();
     }
 
     function burnOptions(
-        PanopticPool pp,
+        PanopticPoolHarness pp,
         TokenId tokenId,
         TokenId[] memory positionIdList,
         int24 tickLimitLow,
@@ -388,10 +469,11 @@ contract PanopticPoolTest is PositionUtils {
         tickAndSpreadLimits[0][1] = tickLimitHigh;
         tickAndSpreadLimits[0][2] = int24(uint24(type(uint24).max / 2));
         pp.dispatch(burnList, positionIdList, sizeList, tickAndSpreadLimits, premiaAsCollateral, 0);
+        pp.wipePriceSlot();
     }
 
     function burnOptions(
-        PanopticPool pp,
+        PanopticPoolHarness pp,
         TokenId[] memory tokenIds,
         TokenId[] memory positionIdList,
         int24 tickLimitLow,
@@ -408,6 +490,7 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         pp.dispatch(tokenIds, positionIdList, sizeList, tickAndSpreadLimits, premiaAsCollateral, 0);
+        pp.wipePriceSlot();
     }
 
     function liquidate(
@@ -5466,6 +5549,134 @@ contract PanopticPoolTest is PositionUtils {
             tickAndSpreadLimits[2][2] = int24(uint24(type(uint24).max));
 
             pp.dispatch(posIdListPass, posIdListFinal, sizeListPass, tickAndSpreadLimits, true, 0);
+        }
+    }
+
+    function test_Fail_dispatch_transient_price_impact() public {
+        _initPool(0);
+
+        // remove liquidity
+        vm.startPrank(Swapper);
+        routerV4.modifyLiquidity(
+            address(0),
+            poolKey,
+            (TickMath.MIN_TICK / tickSpacing) * tickSpacing,
+            (TickMath.MAX_TICK / tickSpacing) * tickSpacing,
+            -1_000_000 ether
+        );
+
+        routerV4.modifyLiquidity(
+            address(0),
+            poolKey,
+            (TickMath.MIN_TICK / tickSpacing) * tickSpacing,
+            (TickMath.MAX_TICK / tickSpacing) * tickSpacing,
+            100
+        );
+
+        vm.startPrank(Alice);
+
+        TokenId tokenId0 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            (currentTick / tickSpacing) * tickSpacing,
+            100
+        );
+
+        TokenId tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            10,
+            isWETH,
+            0,
+            0,
+            0,
+            (currentTick / tickSpacing) * tickSpacing - 100 * tickSpacing,
+            100
+        );
+
+        // different transaction doesn't trigger the price impact
+        {
+            $posIdList.push(tokenId0);
+            int24 initialTick = sfpm.getCurrentTick(abi.encode(poolKey));
+            int24 deltaTick;
+            mintOptions(
+                pp,
+                $posIdList,
+                56 * 10 ** 2,
+                type(uint24).max,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                false
+            );
+            deltaTick += int24(Math.abs(initialTick - sfpm.getCurrentTick(abi.encode(poolKey))));
+            initialTick = sfpm.getCurrentTick(abi.encode(poolKey));
+            console2.log("deltaTick", deltaTick);
+
+            $posIdList.push(tokenId1);
+            mintOptions(
+                pp,
+                $posIdList,
+                56 * 10 ** 2,
+                type(uint24).max,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                false
+            );
+            deltaTick += int24(Math.abs(initialTick - sfpm.getCurrentTick(abi.encode(poolKey))));
+            initialTick = sfpm.getCurrentTick(abi.encode(poolKey));
+            console2.log("deltaTick", deltaTick);
+
+            $posIdList.pop();
+            burnOptions(
+                pp,
+                tokenId1,
+                $posIdList,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                false
+            );
+            deltaTick += int24(Math.abs(initialTick - sfpm.getCurrentTick(abi.encode(poolKey))));
+            initialTick = sfpm.getCurrentTick(abi.encode(poolKey));
+
+            console2.log("deltaTick", deltaTick);
+
+            (RiskParameters riskParameters, ) = pp.getRiskParameters(0);
+            assertGt(
+                int256(deltaTick),
+                int256(uint256(2 * riskParameters.tickDeltaLiquidation())),
+                "delta Tick is larger than riskParameters.tickDeltaLiquidation"
+            );
+        }
+
+        // attacker triggers the transient price impact because it's in the same transaction
+        {
+            PriceImpactAttacker attacker = new PriceImpactAttacker(pp);
+
+            vm.startPrank(address(attacker));
+
+            // Grant tokens to attacker (helper function assumption)
+            deal(token0, address(attacker), type(uint104).max);
+            deal(token1, address(attacker), type(uint104).max);
+
+            IERC20Partial(token0).approve(address(router), type(uint256).max);
+            IERC20Partial(token1).approve(address(router), type(uint256).max);
+            IERC20Partial(token0).approve(address(pp), type(uint256).max);
+            IERC20Partial(token1).approve(address(pp), type(uint256).max);
+            IERC20Partial(token0).approve(address(ct0), type(uint256).max);
+            IERC20Partial(token1).approve(address(ct1), type(uint256).max);
+
+            ct0.deposit(type(uint104).max, address(attacker));
+            ct1.deposit(type(uint104).max, address(attacker));
+
+            // 4. EXECUTE ATTACK
+            // Expect Revert: The cumulative delta of Mint(T0) + Mint(T1) + Burn(T1)
+            // will exceed 2 * tickDeltaLiquidation.
+            vm.expectRevert(Errors.PriceImpactTooLarge.selector);
+
+            attacker.triggerTransientPriceImpact(tokenId0, tokenId1, 5 * 10 ** 17);
         }
     }
 
