@@ -21,16 +21,17 @@ using TokenIdLibrary for TokenId global;
 // From the LSB to the MSB:
 // ===== 1 time (same for all legs) ==============================================================
 //      Property         Size      Offset      Comment
-// (0) univ3pool        48bits     0bits      : first 6 bytes of the Uniswap V3 pool address (first 48 bits; little-endian), plus a pseudorandom number in the event of a collision
-// (1) tickSpacing      16bits     48bits     : tickSpacing for the univ3pool. Up to 16 bits
+// (0) univ3pool        40bits     0bits      : first 6 bytes of the Uniswap V3 pool address (first 48 bits; little-endian), plus a pseudorandom number in the event of a collision
+// (1) vegoid           8bits     40bits      : vegoid for the sfpm pool
+// (2) tickSpacing      16bits     48bits     : tickSpacing for the univ3pool. Up to 16 bits
 // ===== 4 times (one for each leg) ==============================================================
-// (2) asset             1bit      0bits      : Specifies the asset (0: token0, 1: token1)
-// (3) optionRatio       7bits     1bits      : number of contracts per leg
-// (4) isLong            1bit      8bits      : long==1 means liquidity is removed, long==0 -> liquidity is added
-// (5) tokenType         1bit      9bits      : put/call: which token is moved when deployed (0 -> token0, 1 -> token1)
-// (6) riskPartner       2bits     10bits     : normally its own index. Partner in defined risk position otherwise
-// (7) strike           24bits     12bits     : strike price; defined as (tickUpper + tickLower) / 2
-// (8) width            12bits     36bits     : width; defined as (tickUpper - tickLower) / tickSpacing
+// (3) asset             1bit      0bits      : Specifies the asset (0: token0, 1: token1)
+// (4) optionRatio       7bits     1bits      : number of contracts per leg
+// (5) isLong            1bit      8bits      : long==1 means liquidity is removed, long==0 -> liquidity is added
+// (6) tokenType         1bit      9bits      : put/call: which token is moved when deployed (0 -> token0, 1 -> token1)
+// (7) riskPartner       2bits     10bits     : normally its own index. Partner in defined risk position otherwise
+// (8) strike           24bits     12bits     : strike price; defined as (tickUpper + tickLower) / 2
+// (9) width            12bits     36bits     : width; defined as (tickUpper - tickLower) / tickSpacing
 // Total                48bits                : Each leg takes up this many bits
 // ===============================================================================================
 //
@@ -39,9 +40,9 @@ using TokenIdLibrary for TokenId global;
 //                        (strike price tick of the 3rd leg)
 //                            |             (width of the 2nd leg)
 //                            |                   |
-// (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)   (8)(7)(6)(5)(4)(3)(2)        (1)           (0)
-//  <---- 48 bits ---->    <---- 48 bits ---->    <---- 48 bits ---->     <---- 48 bits ---->   <- 16 bits ->   <- 48 bits ->
-//         Leg 4                  Leg 3                  Leg 2                   Leg 1           tickSpacing Uniswap Pool Pattern
+// (9)(8)(7)(6)(5)(4)(3)  (9)(8)(7)(6)(5)(4)(3)  (9)(8)(7)(6)(5)(4)(3)   (9)(8)(7)(6)(5)(4)(3)       (2)          (1)           (0)
+//  <---- 48 bits ---->    <---- 48 bits ---->    <---- 48 bits ---->     <---- 48 bits ---->   <- 16 bits -> <- 8 bits ->  <- 40 bits ->
+//         Leg 4                  Leg 3                  Leg 2                   Leg 1           tickSpacing   vegoid    Uniswap Pool Pattern
 //
 //  <--- most significant bit                                                                             least significant bit --->
 //
@@ -87,6 +88,15 @@ library TokenIdLibrary {
     function poolId(TokenId self) internal pure returns (uint64) {
         unchecked {
             return uint64(TokenId.unwrap(self));
+        }
+    }
+
+    /// @notice The vegoid of this option position.
+    /// @param self The TokenId to extract `vegoid` from
+    /// @return The `vegoid` of the Uniswap V3 pool
+    function vegoid(TokenId self) internal pure returns (uint8) {
+        unchecked {
+            return uint8((TokenId.unwrap(self) >> 40) % 2 ** 8);
         }
     }
 

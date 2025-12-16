@@ -160,7 +160,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Retrieve the corresponding poolId for a given Uniswap V3 pool address.
-    /// @dev pool address => pool id + 2 ** 255 (initialization bit for `poolId == 0`, set if the pool exists)
     mapping(address univ3pool => PoolData poolData) internal s_addressToPoolData;
 
     /// @notice Retrieve the PoolData struct corresponding to a given poolId.
@@ -338,7 +337,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     function initializeAMMPool(
         address token0,
         address token1,
-        uint24 fee
+        uint24 fee,
+        uint256 vegoid
     ) external returns (uint64 poolId) {
         // sort the tokens, if necessary:
         (token0, token1) = token0 < token1 ? (token0, token1) : (token1, token0);
@@ -360,7 +360,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         // The base poolId is composed as follows:
         // [tickSpacing][pool pattern]
         // [16 bit tickSpacing][most significant 48 bits of the pool address]
-        poolId = _getPoolId(univ3pool, tickSpacing);
+        poolId = _getPoolId(univ3pool, tickSpacing, vegoid);
 
         // There are 281,474,976,710,655 possible pool patterns.
         // A modern GPU can generate a collision in such a space relatively quickly,
@@ -425,9 +425,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param univ3pool The address of the Uniswap V3 pool to get the ID of
     /// @param tickSpacing The tick spacing of `univ3pool`
     /// @return A uint64 representing a fingerprint of the Uniswap V3 pool address
-    function _getPoolId(address univ3pool, int24 tickSpacing) internal pure returns (uint64) {
+    function _getPoolId(
+        address univ3pool,
+        int24 tickSpacing,
+        uint256 vegoid
+    ) internal pure returns (uint64) {
         unchecked {
-            uint64 poolId = uint64(uint160(univ3pool) >> 112);
+            uint64 poolId = uint40(uint160(univ3pool) >> 112);
+            poolId += (uint64(uint8(vegoid)) << 40);
             poolId += uint64(uint24(tickSpacing)) << 48;
             return poolId;
         }

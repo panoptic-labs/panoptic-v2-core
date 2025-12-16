@@ -327,7 +327,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @notice Initialize a Uniswap V4 pool in the SFPM.
     /// @dev Revert if already initialized.
     /// @param key An identifying key for a Uniswap V4 pool
-    function initializeAMMPool(PoolKey calldata key) external returns (uint64 poolId) {
+    function initializeAMMPool(
+        PoolKey calldata key,
+        uint256 vegoid
+    ) external returns (uint64 poolId) {
         PoolId idV4 = key.toId();
 
         if (V4StateReader.getSqrtPriceX96(POOL_MANAGER_V4, idV4) == 0)
@@ -341,7 +344,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         // The base poolId is composed as follows:
         // [tickSpacing][pool pattern]
         // [16 bit tickSpacing][most significant 48 bits of the V4 poolId]
-        poolId = _getPoolId(idV4, key.tickSpacing);
+        poolId = _getPoolId(idV4, key.tickSpacing, vegoid);
 
         // There are 281,474,976,710,655 possible pool patterns.
         // A modern GPU can generate a collision in such a space relatively quickly,
@@ -400,17 +403,27 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     //      e.g.:
     //        idV4        = 0x9c33e1937fe23c3ff82d7725f2bb5af696db1c89a9b8cae141cb0e986847638a
     //        tickSpacing = 60
+    //        vegoid      = 9
     //      the returned id is then:
     //        poolPattern = 0x0000e986847638a
     //        tickSpacing = 0x003c000000000000    +
     //        --------------------------------------------
     //        poolId      = 0x003ce986847638a
+    //                      0x03c09986847638a
     /// @param idV4 The 256-bit Uniswap V4 pool ID
     /// @param tickSpacing The tick spacing of the Uniswap V4 pool identified by `idV4`
+    /// @param vegoid The vegoid of the SFPM, must be 8 bits
     /// @return A fingerprint representing the Uniswap V4 pool
-    function _getPoolId(PoolId idV4, int24 tickSpacing) internal pure returns (uint64) {
+    function _getPoolId(
+        PoolId idV4,
+        int24 tickSpacing,
+        uint256 vegoid
+    ) internal pure returns (uint64) {
         unchecked {
-            return uint48(uint256(PoolId.unwrap(idV4))) + (uint64(uint24(tickSpacing)) << 48);
+            return
+                uint40(uint256(PoolId.unwrap(idV4))) +
+                (uint64(uint8(vegoid)) << 40) +
+                (uint64(uint24(tickSpacing)) << 48);
         }
     }
 

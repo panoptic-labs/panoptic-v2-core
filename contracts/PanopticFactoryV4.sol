@@ -132,7 +132,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
             revert Errors.PoolAlreadyInitialized();
 
         // initialize pool in SFPM if it has not already been initialized
-        uint64 poolId = SFPM.initializeAMMPool(key);
+        uint64 poolId = SFPM.initializeAMMPool(key, riskEngine.vegoid());
 
         // Users can specify a salt, the aim is to incentivize the mining of addresses with leading zeros
         // salt format: (first 20 characters of deployer address) + (first 10 characters of UniswapV3Pool) + (first 10 characters of RiskEngine) + (uint96 user supplied salt)
