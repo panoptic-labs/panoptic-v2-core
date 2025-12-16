@@ -1024,13 +1024,15 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
         // if there was liquidity at that tick before the transaction, collect any accumulated fees
         if (currentLiquidity.rightSlot() > 0) {
+            uint256 vegoid = tokenId.vegoid();
             collectedSingleLeg = _collectAndWritePositionData(
                 liquidityChunk,
                 univ3pool,
                 currentLiquidity,
                 positionKey,
                 moved,
-                isLong
+                isLong,
+                vegoid
             );
         }
 
@@ -1051,12 +1053,13 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     function _updateStoredPremia(
         bytes32 positionKey,
         LeftRightUnsigned currentLiquidity,
-        LeftRightUnsigned collectedAmounts
+        LeftRightUnsigned collectedAmounts,
+        uint256 vegoid
     ) private {
         (
             LeftRightUnsigned deltaPremiumOwed,
             LeftRightUnsigned deltaPremiumGross
-        ) = _getPremiaDeltas(currentLiquidity, collectedAmounts);
+        ) = _getPremiaDeltas(currentLiquidity, collectedAmounts, vegoid);
 
         // add deltas to accumulators and freeze both accumulators (for a token) if one of them overflows
         // (i.e if only token0 (right slot) of the owed premium overflows, then stop accumulating  both token0 owed premium and token0 gross premium for the chunk)
@@ -1196,20 +1199,19 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         LeftRightUnsigned currentLiquidity,
         bytes32 positionKey,
         LeftRightSigned movedInLeg,
-        uint256 isLong
+        uint256 isLong,
+        uint256 vegoid
     ) internal returns (LeftRightUnsigned collectedChunk) {
-        uint128 startingLiquidity = currentLiquidity.rightSlot();
-        // round down current fees base to minimize Δfeesbase
-        // If the current feesBase is close or identical to the stored one, the amountToCollect can be negative.
-        // This is because the stored feesBase is rounded up, and the current feesBase is rounded down.
-        // When this is the case, we want to behave as if there are 0 fees, so we just rectify the values.
-        LeftRightUnsigned amountToCollect = _getFeesBase(
-            univ3pool,
-            startingLiquidity,
-            liquidityChunk,
-            false
-        ).subRect(s_accountFeesBase[positionKey]);
-
+        LeftRightUnsigned amountToCollect;
+        {
+            uint128 startingLiquidity = currentLiquidity.rightSlot();
+            // round down current fees base to minimize Δfeesbase
+            // If the current feesBase is close or identical to the stored one, the amountToCollect can be negative.
+            // This is because the stored feesBase is rounded up, and the current feesBase is rounded down.
+            // When this is the case, we want to behave as if there are 0 fees, so we just rectify the values.
+            amountToCollect = _getFeesBase(univ3pool, startingLiquidity, liquidityChunk, false)
+                .subRect(s_accountFeesBase[positionKey]);
+        }
         if (isLong == 1) {
             // movedInLeg deltas are always represented as negative during liquidity burns (for long positions), so the result here will always be positive
             amountToCollect = LeftRightUnsigned.wrap(
@@ -1250,7 +1252,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             collectedChunk = LeftRightUnsigned.wrap(collected0).addToLeftSlot(collected1);
 
             // record the collected amounts in the s_accountPremiumOwed and s_accountPremiumGross accumulators
-            _updateStoredPremia(positionKey, currentLiquidity, collectedChunk);
+            _updateStoredPremia(positionKey, currentLiquidity, collectedChunk, vegoid);
         }
     }
 
@@ -1262,7 +1264,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @return deltaPremiumGross The extra premium (per liquidity X64) to be added to the gross accumulator for token0 (right) and token1 (left)
     function _getPremiaDeltas(
         LeftRightUnsigned currentLiquidity,
-        LeftRightUnsigned collectedAmounts
+        LeftRightUnsigned collectedAmounts,
+        uint256 vegoid
     )
         private
         pure
@@ -1306,7 +1309,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 uint128 premium1X64_owed;
                 {
                     // compute the owed premium (from Eqn 3)
-                    uint256 numerator = netLiquidity + (removedLiquidity / 2 ** VEGOID);
+                    uint256 numerator = netLiquidity + (removedLiquidity / vegoid);
 
                     premium0X64_owed = Math
                         .mulDiv(premium0X64_base, numerator, totalLiquidity)
@@ -1329,7 +1332,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                     uint256 numerator = totalLiquidity ** 2 -
                         totalLiquidity *
                         removedLiquidity +
-                        ((removedLiquidity ** 2) / 2 ** (VEGOID));
+                        ((removedLiquidity ** 2) / vegoid);
 
                     premium0X64_gross = Math
                         .mulDiv(premium0X64_base, numerator, totalLiquidity ** 2)
@@ -1395,7 +1398,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         int24 tickLower,
         int24 tickUpper,
         int24 atTick,
-        uint256 isLong
+        uint256 isLong,
+        uint256 vegoid
     ) external view returns (uint128, uint128) {
         IUniswapV3Pool univ3pool = IUniswapV3Pool(abi.decode(poolKey, (address)));
 
@@ -1439,7 +1443,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
             (LeftRightUnsigned premiumOwed, LeftRightUnsigned premiumGross) = _getPremiaDeltas(
                 accountLiquidities,
-                amountToCollect
+                amountToCollect,
+                vegoid
             );
 
             // add deltas to accumulators and freeze both accumulators (for a token) if one of them overflows
