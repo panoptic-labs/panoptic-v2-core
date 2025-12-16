@@ -5974,7 +5974,7 @@ contract PanopticPoolTest is PositionUtils {
 
             i += numLegs;
 
-            if (i > 32) vm.expectRevert(Errors.TooManyLegsOpen.selector);
+            if (i > 33) vm.expectRevert(Errors.TooManyLegsOpen.selector);
             mintOptions(
                 pp,
                 tokenIds,
@@ -5985,7 +5985,7 @@ contract PanopticPoolTest is PositionUtils {
                 true
             );
 
-            if (i > 32) break;
+            if (i > 33) break;
 
             positionsHash = uint248(PanopticMath.updatePositionsHash(positionsHash, tokenId, true));
 
