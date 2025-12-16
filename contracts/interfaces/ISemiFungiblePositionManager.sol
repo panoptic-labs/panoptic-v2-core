@@ -90,7 +90,8 @@ interface ISemiFungiblePositionManager {
         int24 tickLower,
         int24 tickUpper,
         int24 atTick,
-        uint256 isLong
+        uint256 isLong,
+        uint256 vegoid
     ) external view returns (uint128 premium0, uint128 premium1);
 
     function getPoolId(bytes memory id) external view returns (uint64 poolId);
