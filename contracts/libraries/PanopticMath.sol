@@ -27,8 +27,8 @@ library PanopticMath {
     /// @notice This is equivalent to `type(uint256).max` — used in assembly blocks as a replacement.
     uint256 internal constant MAX_UINT256 = 2 ** 256 - 1;
 
-    /// @notice Masks 16-bit tickSpacing out of 64-bit `[16-bit tickspacing][48-bit poolPattern]` format poolId.
-    uint64 internal constant TICKSPACING_MASK = 0xFFFF000000000000;
+    /// @notice Masks 16-bit tickSpacing and 8 bits of vegoid out of 64-bit `[16-bit tickspacing][8-bit vegoid][40-bit poolPattern]` format poolId.
+    uint64 internal constant TICKSPACING_VEGOID_MASK = 0xFFFFFF0000000000;
 
     uint256 internal constant PRIME_MODULUS_248 =
         0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff13;
@@ -54,7 +54,7 @@ library PanopticMath {
     /// @return The provided `poolId` with its pool pattern slot incremented by 1
     function incrementPoolPattern(uint64 poolId) internal pure returns (uint64) {
         unchecked {
-            return (poolId & TICKSPACING_MASK) + (uint48(poolId) + 1);
+            return (poolId & TICKSPACING_VEGOID_MASK) + (uint40(poolId + 1));
         }
     }
 
@@ -771,211 +771,6 @@ library PanopticMath {
                     Math.toInt128(amountsMoved.leftSlot())
                 );
             }
-        }
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                LIQUIDATION/FORCE EXERCISE CALCULATIONS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Haircut/clawback any premium paid by `liquidatee` on `positionIdList` over the protocol loss threshold during a liquidation.
-    /// @dev Note that the storage mapping provided as the `settledTokens` parameter WILL be modified on the caller by this function.
-    /// @param liquidatee The address of the user being liquidated
-    /// @param positionIdList The list of position ids being liquidated
-    /// @param premiasByLeg The premium paid (or received) by the liquidatee for each leg of each position
-    /// @param collateralRemaining The remaining collateral after the liquidation (negative if protocol loss)
-    /// @param atSqrtPriceX96 The oracle price used to swap tokens between the liquidator/liquidatee and determine solvency for the liquidatee
-    /// @param collateral0 The collateral tracker for token0
-    /// @param collateral1 The collateral tracker for token1
-    /// @param settledTokens The per-chunk accumulator of settled tokens in storage from which to subtract the haircut premium
-    /// @return The delta, if any, to apply to the existing liquidation bonus
-    function haircutPremia(
-        address liquidatee,
-        TokenId[] memory positionIdList,
-        LeftRightSigned[4][] memory premiasByLeg,
-        LeftRightSigned collateralRemaining,
-        CollateralTracker collateral0,
-        CollateralTracker collateral1,
-        uint160 atSqrtPriceX96,
-        mapping(bytes32 chunkKey => LeftRightUnsigned settledTokens) storage settledTokens
-    ) external returns (LeftRightSigned) {
-        unchecked {
-            // get the amount of premium paid by the liquidatee
-            LeftRightSigned longPremium;
-            for (uint256 i = 0; i < positionIdList.length; ++i) {
-                TokenId tokenId = positionIdList[i];
-                uint256 numLegs = tokenId.countLegs();
-                for (uint256 leg = 0; leg < numLegs; ++leg) {
-                    if (tokenId.isLong(leg) == 1) {
-                        longPremium = longPremium.sub(premiasByLeg[i][leg]);
-                    }
-                }
-            }
-            // Ignore any surplus collateral - the liquidatee is either solvent or it converts to <1 unit of the other token
-            int256 collateralDelta0 = -Math.min(collateralRemaining.rightSlot(), 0);
-            int256 collateralDelta1 = -Math.min(collateralRemaining.leftSlot(), 0);
-            LeftRightSigned haircutBase;
-
-            // if the premium in the same token is not enough to cover the loss and there is a surplus of the other token,
-            // the liquidator will provide the tokens (reflected in the bonus amount) & receive compensation in the other token
-            if (
-                longPremium.rightSlot() < collateralDelta0 &&
-                longPremium.leftSlot() > collateralDelta1
-            ) {
-                int256 protocolLoss1 = collateralDelta1;
-                (collateralDelta0, collateralDelta1) = (
-                    -Math.min(
-                        collateralDelta0 - longPremium.rightSlot(),
-                        PanopticMath.convert1to0(
-                            longPremium.leftSlot() - collateralDelta1,
-                            atSqrtPriceX96
-                        )
-                    ),
-                    Math.min(
-                        longPremium.leftSlot() - collateralDelta1,
-                        PanopticMath.convert0to1(
-                            collateralDelta0 - longPremium.rightSlot(),
-                            atSqrtPriceX96
-                        )
-                    )
-                );
-
-                // It is assumed the sum of `protocolLoss1` and `collateralDelta1` does not exceed `2^127 - 1` given practical constraints
-                // on token supplies and deposit limits
-                haircutBase = LeftRightSigned.wrap(longPremium.rightSlot()).addToLeftSlot(
-                    int128(protocolLoss1 + collateralDelta1)
-                );
-            } else if (
-                longPremium.leftSlot() < collateralDelta1 &&
-                longPremium.rightSlot() > collateralDelta0
-            ) {
-                int256 protocolLoss0 = collateralDelta0;
-                (collateralDelta0, collateralDelta1) = (
-                    Math.min(
-                        longPremium.rightSlot() - collateralDelta0,
-                        PanopticMath.convert1to0(
-                            collateralDelta1 - longPremium.leftSlot(),
-                            atSqrtPriceX96
-                        )
-                    ),
-                    -Math.min(
-                        collateralDelta1 - longPremium.leftSlot(),
-                        PanopticMath.convert0to1(
-                            longPremium.rightSlot() - collateralDelta0,
-                            atSqrtPriceX96
-                        )
-                    )
-                );
-
-                // It is assumed the sum of `protocolLoss0` and `collateralDelta0` does not exceed `2^127 - 1` given practical constraints
-                // on token supplies and deposit limits
-                haircutBase = LeftRightSigned
-                    .wrap(int128(protocolLoss0 + collateralDelta0))
-                    .addToLeftSlot(longPremium.leftSlot());
-            } else {
-                // for each token, haircut until the protocol loss is mitigated or the premium paid is exhausted
-                // the size of `collateralDelta0/1` and `longPremium.rightSlot()/leftSlot()` is limited to `2^127 - 1` given that they originate from LeftRightSigned types
-                haircutBase = LeftRightSigned
-                    .wrap(int128(Math.min(collateralDelta0, longPremium.rightSlot())))
-                    .addToLeftSlot(int128(Math.min(collateralDelta1, longPremium.leftSlot())));
-
-                collateralDelta0 = 0;
-                collateralDelta1 = 0;
-            }
-
-            // total haircut after rounding up prorated haircut amounts for each leg
-            LeftRightUnsigned haircutTotal;
-            address _liquidatee = liquidatee;
-            for (uint256 i = 0; i < positionIdList.length; i++) {
-                TokenId tokenId = positionIdList[i];
-                LeftRightSigned[4][] memory _premiasByLeg = premiasByLeg;
-                for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
-                    if (
-                        tokenId.isLong(leg) == 1 &&
-                        LeftRightSigned.unwrap(_premiasByLeg[i][leg]) != 0
-                    ) {
-                        // calculate prorated (by target/liquidity) haircut amounts to revoke from settled for each leg
-                        // `-premiasByLeg[i][leg]` (and `longPremium` which is the sum of all -premiasByLeg[i][leg]`) is always positive because long premium is represented as a negative delta
-                        // `haircutBase` is always positive because all of its possible constituent values (`collateralDelta`, `longPremium`) are guaranteed to be positive
-                        // the sum of all prorated haircut amounts for each token is assumed to be less than `2^127 - 1` given practical constraints on token supplies and deposit limits
-
-                        LeftRightSigned haircutAmounts = LeftRightSigned
-                            .wrap(
-                                int128(
-                                    uint128(
-                                        Math.unsafeDivRoundingUp(
-                                            uint128(-_premiasByLeg[i][leg].rightSlot()) *
-                                                uint256(uint128(haircutBase.rightSlot())),
-                                            uint128(longPremium.rightSlot())
-                                        )
-                                    )
-                                )
-                            )
-                            .addToLeftSlot(
-                                int128(
-                                    uint128(
-                                        Math.unsafeDivRoundingUp(
-                                            uint128(-_premiasByLeg[i][leg].leftSlot()) *
-                                                uint256(uint128(haircutBase.leftSlot())),
-                                            uint128(longPremium.leftSlot())
-                                        )
-                                    )
-                                )
-                            );
-
-                        haircutTotal = haircutTotal.add(
-                            LeftRightUnsigned.wrap(uint256(LeftRightSigned.unwrap(haircutAmounts)))
-                        );
-
-                        emit PanopticPool.PremiumSettled(
-                            _liquidatee,
-                            tokenId,
-                            leg,
-                            LeftRightSigned.wrap(0).sub(haircutAmounts)
-                        );
-
-                        bytes32 chunkKey = EfficientHash.efficientKeccak256(
-                            abi.encodePacked(
-                                tokenId.strike(leg),
-                                tokenId.width(leg),
-                                tokenId.tokenType(leg)
-                            )
-                        );
-
-                        // The long premium is not committed to storage during the liquidation, so we add the entire adjusted amount
-                        // for the haircut directly to the accumulator
-                        settledTokens[chunkKey] = settledTokens[chunkKey].add(
-                            (LeftRightSigned.wrap(0).sub(_premiasByLeg[i][leg])).subRect(
-                                haircutAmounts
-                            )
-                        );
-                    }
-                }
-            }
-
-            if (haircutTotal.rightSlot() != 0)
-                collateral0.settleBurn(
-                    _liquidatee,
-                    0,
-                    0,
-                    0,
-                    int128(haircutTotal.rightSlot()),
-                    RiskParameters.wrap(0)
-                );
-            if (haircutTotal.leftSlot() != 0)
-                collateral1.settleBurn(
-                    _liquidatee,
-                    0,
-                    0,
-                    0,
-                    int128(haircutTotal.leftSlot()),
-                    RiskParameters.wrap(0)
-                );
-
-            return
-                LeftRightSigned.wrap(0).addToRightSlot(int128(collateralDelta0)).addToLeftSlot(
-                    int128(collateralDelta1)
-                );
         }
     }
 }

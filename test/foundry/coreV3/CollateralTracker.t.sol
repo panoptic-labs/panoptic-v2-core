@@ -191,8 +191,12 @@ contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
         return s_accountLiquidity[positionKey];
     }
 
-    function __getPoolId(address pool, int24 tickSpacing) external view returns (uint64 poolId) {
-        poolId = _getPoolId(pool, tickSpacing);
+    function __getPoolId(
+        address pool,
+        int24 tickSpacing,
+        uint256 vegoid
+    ) external view returns (uint64 poolId) {
+        poolId = _getPoolId(pool, tickSpacing, vegoid);
     }
 }
 
@@ -384,6 +388,8 @@ contract Attacker {
 contract CollateralTrackerTest is Test, PositionUtils {
     using Math for uint256;
 
+    event Donate(address indexed sender, uint256 shares);
+
     // users who will send/receive deposits, transfers, and withdrawals
     address Alice = makeAddr("Alice");
     address Bob = makeAddr("Bob");
@@ -440,6 +446,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     // store some data about the pool we are testing
     IUniswapV3Pool pool;
     uint64 poolId;
+    uint256 vegoid = 4;
     uint256 isWETH;
     address token0;
     address token1;
@@ -765,7 +772,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     function _cacheWorldState(IUniswapV3Pool _pool) internal {
         pool = _pool;
         {
-            poolId = uint64(uint160(address(_pool)) >> 112);
+            poolId = uint40(uint160(address(_pool)) >> 112) + uint64(vegoid << 40);
             poolId += uint64(uint24(_pool.tickSpacing())) << 48;
         }
         token0 = _pool.token0();
@@ -787,7 +794,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         sfpm = new SemiFungiblePositionManagerHarness(V3FACTORY);
         // enforce token sort like the factory does
         (address t0, address t1) = _token0 < _token1 ? (_token0, _token1) : (_token1, _token0);
-        poolId = sfpm.initializeAMMPool(t0, t1, fee);
+        poolId = sfpm.initializeAMMPool(t0, t1, fee, vegoid);
 
         // 2) Risk engine
         riskEngine = new RiskEngineHarness(10_000_000, 10_000_000, address(0));
@@ -882,7 +889,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         sfpm = new SemiFungiblePositionManagerHarness(V3FACTORY);
         // enforce token sort like the factory does
         (address t0, address t1) = _token0 < _token1 ? (_token0, _token1) : (_token1, _token0);
-        poolId = sfpm.initializeAMMPool(t0, t1, fee);
+        poolId = sfpm.initializeAMMPool(t0, t1, fee, vegoid);
 
         // 2) Risk engine
         riskEngine = new RiskEngineHarness(crossBuffer0, crossBuffer1, address(0));
@@ -976,7 +983,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         sfpm = new SemiFungiblePositionManagerHarness(V3FACTORY);
         // enforce token sort like the factory does
         (address t0, address t1) = _token0 < _token1 ? (_token0, _token1) : (_token1, _token0);
-        poolId = sfpm.initializeAMMPool(t0, t1, fee);
+        poolId = sfpm.initializeAMMPool(t0, t1, fee, vegoid);
 
         // 2) Risk engine
         riskEngine = new RiskEngineHarness(10_000_000, 10_000_000, guardian);
@@ -6171,6 +6178,381 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         vm.expectRevert(Errors.BelowMinimumRedemption.selector);
         collateralToken1.redeem(sharesBelow1, Alice, Bob);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        SHARE DONATION TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_Success_donate(uint256 x, uint104 shares) public {
+        uint256 assetsToken0;
+        uint256 assetsToken1;
+
+        {
+            _initWorld(x);
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.startPrank(Bob);
+
+            // give Bob the max amount of tokens
+            _grantTokens(Bob);
+
+            // calculate underlying assets via amount of shares
+            assetsToken0 = convertToAssets(shares, collateralToken0);
+            assetsToken1 = convertToAssets(shares, collateralToken1);
+
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), assetsToken0);
+            IERC20Partial(token1).approve(address(collateralToken1), assetsToken1);
+
+            // deposit a number of assets determined via fuzzing
+            _mockMaxDeposit(Bob);
+        }
+
+        // We must ensure Bob leaves at least 1 share to avoid "CannotBurnLastShare" logic
+        // We also ensure shares > 0 to avoid BelowMinimumRedemption
+        uint256 maxRedeem0 = collateralToken0.maxRedeem(Bob);
+        uint256 maxRedeem1 = collateralToken1.maxRedeem(Bob);
+
+        // If maxRedeem is too small to split (need at least 2 shares: 1 to donate, 1 to keep), skip
+        if (maxRedeem0 < 2) return;
+        if (maxRedeem1 < 2) return;
+
+        // Bound shares to [previewWithdraw(1), maxRedeem - 1]
+        // This ensures we don't burn the very last share of the protocol
+        uint256 shares0 = bound(shares, collateralToken0.previewWithdraw(1), maxRedeem0 - 1);
+        uint256 shares1 = bound(shares, collateralToken1.previewWithdraw(1), maxRedeem1 - 1);
+
+        // Snapshot state before
+        uint256 sharesBefore0 = collateralToken0.balanceOf(Bob);
+        uint256 sharesBefore1 = collateralToken1.balanceOf(Bob);
+        uint256 totalSupplyBefore0 = collateralToken0.totalSupply();
+        uint256 totalSupplyBefore1 = collateralToken1.totalSupply();
+
+        // Expect Event
+        vm.expectEmit(true, false, false, true, address(collateralToken0));
+        emit Donate(Bob, shares0);
+        collateralToken0.donate(shares0);
+
+        vm.expectEmit(true, false, false, true, address(collateralToken1));
+        emit Donate(Bob, shares1);
+        collateralToken1.donate(shares1);
+
+        // Snapshot state after
+        uint256 sharesAfter0 = collateralToken0.balanceOf(Bob);
+        uint256 sharesAfter1 = collateralToken1.balanceOf(Bob);
+
+        // assertions
+        assertEq(sharesAfter0, sharesBefore0 - shares0, "Bob shares not burned correctly");
+        assertEq(sharesAfter1, sharesBefore1 - shares1, "Bob shares not burned correctly");
+
+        assertEq(
+            collateralToken0.totalSupply(),
+            totalSupplyBefore0 - shares0,
+            "Total supply not updated"
+        );
+        assertEq(
+            collateralToken1.totalSupply(),
+            totalSupplyBefore1 - shares1,
+            "Total supply not updated"
+        );
+
+        // Verify assets did NOT move (Balance of pool should be same)
+        // Indirectly checked because no transfer events were emitted and balance check would show no change
+    }
+
+    function test_Success_donate_IncreasesSharePrice(uint256 x) public {
+        _initWorld(x);
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+
+        // 1. Bob deposits 1000 assets -> gets 1000 shares (assuming 1:1 initially)
+        uint256 depositAmt = 1000e18;
+        IERC20Partial(token0).approve(address(collateralToken0), depositAmt);
+        uint256 shares = collateralToken0.deposit(depositAmt, Bob);
+
+        // 2. Alice deposits 1000 assets -> gets 1000 shares
+        vm.stopPrank();
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), depositAmt);
+        collateralToken0.deposit(depositAmt, Alice);
+
+        // Current state: Total Assets 2000, Total Shares 2000. Price = 1.0
+
+        // 3. Alice donates 500 shares
+        // Alice burns 500 shares, but assets remain 2000.
+        // New State: Total Assets 2000, Total Shares 1500.
+        // Expected Price = 2000 / 1500 = 1.333...
+        collateralToken0.donate(collateralToken0.convertToShares(500e18));
+        vm.stopPrank();
+
+        // 4. Bob checks exchange rate
+        vm.startPrank(Bob);
+
+        // If Bob redeems his 1000 shares now, he should get > 1000 assets
+        uint256 previewAssets = collateralToken0.previewRedeem(shares);
+
+        assertGt(previewAssets, 1000e18, "Share price did not increase after donation");
+
+        // Math check: (1000 shares / 1500 total shares) * 2000 total assets = 1333.33
+        assertEq(previewAssets, 1333333333333333333333);
+    }
+
+    function testFuzz_Success_donate_IncreasesSharePrice(uint256 donationSize) public {
+        // 0. Init
+        _initWorld(1);
+        uint256 depositAmt = 1000e18;
+
+        // 1. Bob deposits
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), depositAmt);
+        uint256 bobShares = collateralToken0.deposit(depositAmt, Bob);
+        vm.stopPrank();
+
+        // 2. Alice deposits
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), depositAmt);
+        uint256 aliceShares = collateralToken0.deposit(depositAmt, Alice);
+
+        // 3. Fuzz Constraint
+        // Alice cannot donate less than 0 assets and cannot donate more than she has.
+        uint256 minimumDonation = collateralToken0.previewWithdraw(1);
+        donationSize = bound(donationSize, minimumDonation, aliceShares);
+
+        // Capture state before donation
+        uint256 totalAssetsBefore = collateralToken0.totalAssets();
+        uint256 totalSupplyBefore = collateralToken0.totalSupply();
+
+        // 4. Alice donates (burns shares)
+        collateralToken0.donate(donationSize);
+        vm.stopPrank();
+
+        // 5. Invariant Checks
+
+        // Bob's Check: His 1000 shares should now be worth MORE than 1000 assets
+        // because the total assets are the same, but there are fewer shares in existence.
+        uint256 bobPreviewAssets = collateralToken0.previewRedeem(bobShares);
+        assertGe(bobPreviewAssets, depositAmt, "Bob's share value should increase after donation");
+
+        // Alice's Check: Her remaining value must be LOWER than her initial deposit
+        // because she literally gave away value to the pool.
+        uint256 aliceRemainingShares = aliceShares - donationSize;
+        uint256 alicePreviewAssets = collateralToken0.previewRedeem(aliceRemainingShares);
+        assertLt(
+            alicePreviewAssets,
+            depositAmt,
+            "Alice's share value should decrease after donation"
+        );
+
+        assertEq(
+            collateralToken0.totalAssets(),
+            totalAssetsBefore,
+            "Total assets changed during share donation"
+        );
+        assertEq(
+            collateralToken0.totalSupply(),
+            totalSupplyBefore - donationSize,
+            "Total supply did not decrease by donation amount"
+        );
+        // Allow for 1 wei rounding error due to division
+        assertApproxEqAbs(
+            bobPreviewAssets + alicePreviewAssets,
+            totalAssetsBefore,
+            3,
+            "Assets extracted do not match assets in vault"
+        );
+        assertLe(
+            bobPreviewAssets + alicePreviewAssets,
+            totalAssetsBefore,
+            "Assets after are less than before (although should be same)"
+        );
+    }
+
+    function test_Fail_donate_exceedsMax(uint256 x, uint256 sharesSeed) public {
+        _initWorld(x);
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        _mockMaxDeposit(Bob);
+
+        // We want to try donating more than we own OR more than allowed
+        // maxRedeem is the strict upper bound
+        uint256 maxRedeem0 = collateralToken0.maxRedeem(Bob);
+        uint256 maxRedeem1 = collateralToken1.maxRedeem(Bob);
+
+        uint256 badShares0 = bound(sharesSeed, maxRedeem0 + 1, type(uint136).max);
+        uint256 badShares1 = bound(sharesSeed, maxRedeem1 + 1, type(uint136).max);
+
+        vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
+        collateralToken0.donate(badShares0);
+
+        vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
+        collateralToken1.donate(badShares1);
+    }
+
+    function test_Fail_donate_LastShare(uint256 x) public {
+        // This tests the "Zero Supply Bug" protection logic
+        _initWorld(x);
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+
+        uint256 virtualShares = collateralToken0.totalSupply();
+        uint256 oneShareAssets = collateralToken0.previewRedeem(1);
+
+        // Deposit
+        uint256 depositAmt = 1000e18;
+        IERC20Partial(token0).approve(address(collateralToken0), depositAmt);
+        uint256 shares = collateralToken0.deposit(depositAmt, Bob);
+
+        // Verify Bob owns everything
+        assertEq(collateralToken0.totalSupply(), shares + 1_000_000, "totalSupply");
+        assertEq(collateralToken0.balanceOf(Bob), shares, "bob shares");
+
+        // Attempt to donate EVERYTHING (totalSupply)
+        // This should revert because shares >= totalSupply()
+        collateralToken0.donate(shares);
+
+        assertEq(collateralToken0.balanceOf(Bob), 0, "Bob should be empty");
+        assertEq(collateralToken0.totalSupply(), virtualShares, "Only virtual shares remain");
+
+        // 5. Verify the Virtual Shares now have huge value (PPS increased)
+        assertGt(collateralToken0.previewRedeem(1), oneShareAssets);
+
+        // The virtual shares now claim the 1 virtual asset + Bob's 1000e18 assets
+        // Price Per Share = ~1000e18 / 10**6 = 10**12
+        assertEq(
+            collateralToken0.previewRedeem(1),
+            depositAmt / virtualShares,
+            "one share is 1e15 assets"
+        );
+    }
+
+    function test_Fail_donate_BelowMinimumRedemption(uint256 x, uint104 depositAssets) public {
+        _initWorld(x);
+        depositAssets = uint104(bound(depositAssets, 1e18, type(uint104).max));
+
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+
+        IERC20Partial(token0).approve(address(collateralToken0), depositAssets);
+        IERC20Partial(token1).approve(address(collateralToken1), depositAssets);
+
+        collateralToken0.deposit(depositAssets, Bob);
+        collateralToken1.deposit(depositAssets, Bob);
+
+        // 1. Try to donate 0
+        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
+        collateralToken0.donate(0);
+
+        // 2. Try to donate amount that converts to 0 assets
+        // (This catches rounding issues where shares are non-zero but assets are zero)
+        uint256 sharesBelow0 = collateralToken0.convertToShares(1) - 1;
+        uint256 sharesBelow1 = collateralToken1.convertToShares(1) - 1;
+
+        // Only run if rounding actually creates a gap (sharesBelow > 0)
+        if (sharesBelow0 > 0) {
+            vm.expectRevert(Errors.BelowMinimumRedemption.selector);
+            collateralToken0.donate(sharesBelow0);
+        }
+        if (sharesBelow1 > 0) {
+            vm.expectRevert(Errors.BelowMinimumRedemption.selector);
+            collateralToken1.donate(sharesBelow1);
+        }
+    }
+
+    function test_Fail_donate_RevertDueToAccruedInterestLiquidityCrunch() public {
+        _initWorld(0);
+
+        uint104 assets = 1000 ether; // Use a fixed deposit amount
+
+        // Get the initial borrow index right after initialization
+        uint128 initialBorrowIndex = collateralToken0.borrowIndex();
+
+        // --- Alice deposits ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        uint256 initialShares = collateralToken0.deposit(assets, Alice);
+        IERC20Partial(token1).approve(address(collateralToken1), assets);
+        collateralToken1.deposit(assets, Alice);
+        vm.stopPrank();
+
+        // --- Bob deposits + Mints ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(assets, Bob);
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+
+        strike = 198600 + 6000;
+        width = 2;
+
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            (assets * 15) / 10,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        // At this specific moment (price 1:1), maxRedeem is exactly 100 shares (worth 100 assets).
+        // But Bob has 1000 shares.
+        // If he tried to donate 100 shares now, it would work.
+        // We want to show that INTEREST ACCRUAL specifically tightens this constraint.
+
+        // 3. Accrue Massive Interest
+        // We warp time forward significantly.
+        uint256 blockAfterBorrow = block.number;
+        uint256 timestampAfterBorrow = block.timestamp;
+        uint32 timeSkip = 20 * 365 days; // Large time jump to generate significant interest
+
+        vm.roll(blockAfterBorrow + timeSkip / 12);
+        vm.warp(timestampAfterBorrow + timeSkip);
+
+        burnOptions(
+            panopticPool,
+            positionIdList,
+            new TokenId[](0),
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+        assertEq(collateralToken0.balanceOf(Bob), 0, "bob has zero balance");
+        // 4. Alice burns
+
+        vm.startPrank(Alice);
+        uint256 maxRedeemableShares = collateralToken0.maxRedeem(Alice);
+
+        assertLt(maxRedeemableShares, initialShares, "less shares due to interest rate accrual");
+
+        uint256 aliceAssetValue = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Alice)
+        );
+        // 5. Bob tries to donate what WAS a valid liquid amount (e.g. 100 shares)
+        vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
+        collateralToken0.donate(initialShares);
+
+        vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
+        collateralToken0.donate(maxRedeemableShares + 1);
+
+        collateralToken0.donate(maxRedeemableShares);
+
+        assertLt(
+            collateralToken0.convertToAssets(collateralToken0.balanceOf(Alice)),
+            aliceAssetValue,
+            "Alice's balance is zero"
+        );
     }
 
     /*//////////////////////////////////////////////////////////////

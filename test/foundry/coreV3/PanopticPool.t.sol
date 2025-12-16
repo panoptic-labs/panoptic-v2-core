@@ -147,6 +147,7 @@ contract PanopticPoolTest is PositionUtils {
     // store some data about the pool we are testing
     IUniswapV3Pool pool;
     uint64 poolId;
+    uint256 vegoid = 4;
     address token0;
     address token1;
     // We range position size in terms of WETH, so need to figure out which token is WETH
@@ -495,7 +496,7 @@ contract PanopticPoolTest is PositionUtils {
         pool = _pool;
 
         {
-            poolId = uint64(uint160(address(_pool)) >> 112);
+            poolId = uint40(uint160(address(_pool)) >> 112) + uint64(vegoid << 40);
             poolId += uint64(uint24(_pool.tickSpacing())) << 48;
         }
 
@@ -1906,7 +1907,8 @@ contract PanopticPoolTest is PositionUtils {
                 tickLowers[0],
                 tickUppers[0],
                 currentTick,
-                0
+                0,
+                vegoid
             );
 
             expectedPremia[0] += (premiumToken0 * expectedLiqs[0]) / 2 ** 64;
@@ -1922,7 +1924,8 @@ contract PanopticPoolTest is PositionUtils {
                 tickLowers[1],
                 tickUppers[1],
                 currentTick,
-                0
+                0,
+                vegoid
             );
 
             expectedPremia[0] += (premiumToken0 * expectedLiqs[1]) / 2 ** 64;
@@ -5759,7 +5762,7 @@ contract PanopticPoolTest is PositionUtils {
 
             i += numLegs;
 
-            if (i > 32) vm.expectRevert(Errors.TooManyLegsOpen.selector);
+            if (i > 33) vm.expectRevert(Errors.TooManyLegsOpen.selector);
             mintOptions(
                 pp,
                 tokenIds,
@@ -5770,7 +5773,7 @@ contract PanopticPoolTest is PositionUtils {
                 true
             );
 
-            if (i > 32) break;
+            if (i > 33) break;
 
             positionsHash = uint248(PanopticMath.updatePositionsHash(positionsHash, tokenId, true));
 
