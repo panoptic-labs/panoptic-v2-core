@@ -90,6 +90,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     // immutable data about the pool being tested
     IUniswapV3Pool pool;
     uint64 poolId;
+    uint256 vegoid = 4;
     address token0;
     address token1;
     uint24 fee;
@@ -181,7 +182,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     /// @notice Intialize testing pool in the SFPM instance after world state is setup
     function _initPool(uint256 seed) internal {
         _initWorld(seed);
-        sfpm.initializeAMMPool(token0, token1, fee);
+        sfpm.initializeAMMPool(token0, token1, fee, vegoid);
     }
 
     /// @notice Set up world state with data from a random pool off the list and fund+approve actors
@@ -225,7 +226,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     function _cacheWorldState(IUniswapV3Pool _pool) internal {
         pool = _pool;
         {
-            poolId = uint64(uint160(address(_pool)) >> 112);
+            poolId = uint40(uint160(address(_pool)) >> 112) + uint64(vegoid << 40);
             poolId += uint64(uint24(_pool.tickSpacing())) << 48;
         }
         token0 = _pool.token0();
@@ -898,7 +899,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         uint64 poolId;
 
         {
-            poolId = uint64(uint160(address(pool)) >> 112);
+            poolId = uint40(uint160(address(pool)) >> 112) + uint64(vegoid << 40);
             poolId += uint64(uint24(pool.tickSpacing())) << 48;
         }
 
@@ -913,11 +914,11 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         // Loop through all pools and test
         for (uint256 i = 0; i < pools.length; i++) {
             _cacheWorldState(pools[i]);
-            sfpm.initializeAMMPool(token0, token1, fee);
+            sfpm.initializeAMMPool(token0, token1, fee, vegoid);
             uint64 poolId;
 
             {
-                poolId = uint64(uint160(address(pool)) >> 112);
+                poolId = uint40(uint160(address(pool)) >> 112) + uint64(vegoid << 40);
                 poolId += uint64(uint24(pool.tickSpacing())) << 48;
             }
 
@@ -939,7 +940,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         UniPoolPriceMock pm = new UniPoolPriceMock();
-        uint64 poolIdNew = (200 << 48);
+        uint64 poolIdNew = (200 << 48) + (4 << 40);
         for (uint160 i = 0; i < 100; i++) {
             factoryMock.increment();
 
@@ -966,18 +967,25 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
             // etch tickSpacing
             // These values are zero at this point, but they are ignored by the factory mock
-            sfpm_t.initializeAMMPool(token0, token1, fee);
+            sfpm_t.initializeAMMPool(token0, token1, fee, vegoid);
 
             if (i != 0) {
                 poolIdNew = PanopticMath.incrementPoolPattern(poolIdNew);
             }
-
             // Check that the pool address is set correctly
-            assertEq(address(sfpm_t.getUniswapV3PoolFromId(poolIdNew)), address((i + 1) << 24));
+            assertEq(
+                address(sfpm_t.getUniswapV3PoolFromId(poolIdNew)),
+                address((i + 1) << 24),
+                "address is set correctly"
+            );
 
             // Check that the pool ID is set correctly
             // Addresses output from the factory mock start at 1 to avoid errors so we need to add that to the address
-            assertEq(sfpm_t.addressToPoolData(address((i + 1) << 24)).initialized(), true);
+            assertEq(
+                sfpm_t.addressToPoolData(address((i + 1) << 24)).initialized(),
+                true,
+                "initialized"
+            );
 
             token0 = address(uint160(token0) + 1);
         }
@@ -991,7 +999,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         vm.expectRevert(Errors.PoolNotInitialized.selector);
 
         // These values are zero at this point; thus there is no corresponding uni pool and we should revert
-        sfpm.initializeAMMPool(token0, token1, fee);
+        sfpm.initializeAMMPool(token0, token1, fee, vegoid);
     }
 
     /// NOTE - the definitions of "call" and "put" can vary by Uniswap pair and which token is considered the asset
@@ -2031,7 +2039,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         IERC20Partial(token1).approve(address(sfpm), type(uint256).max);
 
         // Initialize the world pool
-        sfpm.initializeAMMPool(token0, token1, fee);
+        sfpm.initializeAMMPool(token0, token1, fee, vegoid);
 
         (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
             widthSeed,
@@ -2100,7 +2108,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         IERC20Partial(token1).approve(address(sfpm), type(uint256).max);
 
         // Initialize the world pool
-        sfpm.initializeAMMPool(token0, token1, fee);
+        sfpm.initializeAMMPool(token0, token1, fee, vegoid);
 
         (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
             widthSeed,
@@ -2321,7 +2329,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         vm.startPrank(Alice);
         deal(token1, Alice, 10 ** 6);
         IERC20Partial(token1).approve(address(sfpm), type(uint256).max);
-        sfpm.initializeAMMPool(token0, token1, fee);
+        sfpm.initializeAMMPool(token0, token1, fee, vegoid);
 
         // --- GIVEN: A short put option (pays token0) ---
         int24 strike = currentTick + 10 * tickSpacing; // In-the-money
@@ -3842,7 +3850,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 tickLower,
                 tickUpper,
                 currentTick,
-                0
+                0,
+                vegoid
             );
             assertEq(premiumToken0, 0);
             assertEq(premiumtoken1, 0);
@@ -3897,7 +3906,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 tickLower,
                 tickUpper,
                 currentTick,
-                0
+                0,
+                vegoid
             );
             assertEq(
                 premiumToken0,
@@ -3940,7 +3950,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 tickLower,
                 tickUpper,
                 type(int24).max,
-                0
+                0,
+                vegoid
             );
             assertEq(premiumToken0, 0);
             assertEq(premiumtoken1, 0);
@@ -4052,7 +4063,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickLower,
             tickUpper,
             type(int24).max,
-            0
+            0,
+            vegoid
         );
         assertEq(premium0Short, 0);
         assertEq(premium1Short, 0);
@@ -4064,7 +4076,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickLower,
             tickUpper,
             type(int24).max,
-            1
+            1,
+            vegoid
         );
         assertEq(premium0Long, 0);
         assertEq(premium1Long, 0);
@@ -4085,7 +4098,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickLower,
             tickUpper,
             currentTick,
-            0
+            0,
+            vegoid
         );
 
         assertApproxEqAbs(
@@ -4106,7 +4120,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickLower,
             tickUpper,
             currentTick,
-            1
+            1,
+            vegoid
         );
         assertApproxEqAbs(
             premium0Long,
@@ -4176,7 +4191,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickLower,
             tickUpper,
             type(int24).max,
-            0
+            0,
+            vegoid
         );
 
         assertApproxEqAbs(
@@ -4197,7 +4213,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickLower,
             tickUpper,
             type(int24).max,
-            1
+            1,
+            vegoid
         );
         assertApproxEqAbs(
             premium0Long,
@@ -4231,7 +4248,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickLower,
             tickUpper,
             currentTick,
-            0
+            0,
+            vegoid
         );
 
         {
@@ -4311,7 +4329,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickLower,
             tickUpper,
             currentTick,
-            1
+            1,
+            vegoid
         );
 
         {
@@ -4373,7 +4392,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickLower,
             tickUpper,
             type(int24).max,
-            1
+            1,
+            vegoid
         );
         assertApproxEqAbs(premium0Long, premium0LongOld, premiaError0[1]);
         assertApproxEqAbs(premium1Long, premium1LongOld, premiaError1[1]);
@@ -4385,7 +4405,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickLower,
             tickUpper,
             currentTick,
-            1
+            1,
+            vegoid
         );
         assertApproxEqAbs(premium0Long, premium0LongOld, premiaError0[1]);
         assertApproxEqAbs(premium1Long, premium1LongOld, premiaError1[1]);
@@ -4410,7 +4431,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickLower,
             tickUpper,
             type(int24).max,
-            0
+            0,
+            vegoid
         );
 
         assertApproxEqAbs(premium0Short, premium0ShortOld, premiaError0[0]);
@@ -4423,7 +4445,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickLower,
             tickUpper,
             currentTick,
-            0
+            0,
+            vegoid
         );
         assertApproxEqAbs(premium0Short, premium0ShortOld, premiaError0[0]);
         assertApproxEqAbs(premium1Short, premium1ShortOld, premiaError1[0]);
@@ -4900,7 +4923,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // need a super wide position to exxagerate position size units
         _cacheWorldState(USDC_WETH_30);
-        sfpm.initializeAMMPool(token0, token1, fee);
+        sfpm.initializeAMMPool(token0, token1, fee, vegoid);
 
         int24 width = 4090;
         int24 strike = 0;
@@ -4962,7 +4985,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         _cacheWorldState(USDC_WETH_30);
 
-        sfpm.initializeAMMPool(token0, token1, fee);
+        sfpm.initializeAMMPool(token0, token1, fee, vegoid);
 
         int24 width = 4090;
         int24 strike = 0;

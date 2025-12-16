@@ -308,4 +308,11 @@ interface IRiskEngine {
         uint256 utilization,
         MarketState interestRateAccumulator
     ) external view returns (uint128, uint256);
+
+    /*//////////////////////////////////////////////////////////////
+                             QUERY HELPERS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Returns the stored VEGOID parameter
+    function vegoid() external view returns (uint256);
 }

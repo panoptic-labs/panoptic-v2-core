@@ -327,7 +327,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @notice Initialize a Uniswap V4 pool in the SFPM.
     /// @dev Revert if already initialized.
     /// @param key An identifying key for a Uniswap V4 pool
-    function initializeAMMPool(PoolKey calldata key) external returns (uint64 poolId) {
+    function initializeAMMPool(
+        PoolKey calldata key,
+        uint256 vegoid
+    ) external returns (uint64 poolId) {
         PoolId idV4 = key.toId();
 
         if (V4StateReader.getSqrtPriceX96(POOL_MANAGER_V4, idV4) == 0)
@@ -341,7 +344,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         // The base poolId is composed as follows:
         // [tickSpacing][pool pattern]
         // [16 bit tickSpacing][most significant 48 bits of the V4 poolId]
-        poolId = _getPoolId(idV4, key.tickSpacing);
+        poolId = _getPoolId(idV4, key.tickSpacing, vegoid);
 
         // There are 281,474,976,710,655 possible pool patterns.
         // A modern GPU can generate a collision in such a space relatively quickly,
@@ -400,17 +403,27 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     //      e.g.:
     //        idV4        = 0x9c33e1937fe23c3ff82d7725f2bb5af696db1c89a9b8cae141cb0e986847638a
     //        tickSpacing = 60
+    //        vegoid      = 9
     //      the returned id is then:
     //        poolPattern = 0x0000e986847638a
     //        tickSpacing = 0x003c000000000000    +
     //        --------------------------------------------
     //        poolId      = 0x003ce986847638a
+    //                      0x03c09986847638a
     /// @param idV4 The 256-bit Uniswap V4 pool ID
     /// @param tickSpacing The tick spacing of the Uniswap V4 pool identified by `idV4`
+    /// @param vegoid The vegoid of the SFPM, must be 8 bits
     /// @return A fingerprint representing the Uniswap V4 pool
-    function _getPoolId(PoolId idV4, int24 tickSpacing) internal pure returns (uint64) {
+    function _getPoolId(
+        PoolId idV4,
+        int24 tickSpacing,
+        uint256 vegoid
+    ) internal pure returns (uint64) {
         unchecked {
-            return uint48(uint256(PoolId.unwrap(idV4))) + (uint64(uint24(tickSpacing)) << 48);
+            return
+                uint40(uint256(PoolId.unwrap(idV4))) +
+                (uint64(uint8(vegoid)) << 40) +
+                (uint64(uint24(tickSpacing)) << 48);
         }
     }
 
@@ -820,14 +833,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                     LeftRightSigned movedLeg;
                     TokenId _tokenId = tokenId;
                     bool _isBurn = isBurn;
-
                     (movedLeg, collectedByLeg[leg]) = _createLegInAMM(
                         _account,
                         _key,
                         _tokenId,
                         leg,
                         liquidityChunk,
-                        _isBurn
+                        _isBurn,
+                        _tokenId.vegoid()
                     );
 
                     totalMoved = totalMoved.add(movedLeg);
@@ -914,7 +927,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         TokenId tokenId,
         uint256 leg,
         LiquidityChunk liquidityChunk,
-        bool isBurn
+        bool isBurn,
+        uint256 vegoid
     ) internal returns (LeftRightSigned moved, LeftRightUnsigned collectedSingleLeg) {
         // unique key to identify the liquidity chunk in this Uniswap pool
         bytes32 positionKey = EfficientHash.efficientKeccak256(
@@ -1039,7 +1053,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 .addToRightSlot(uint128(feesAccrued.amount0()))
                 .addToLeftSlot(uint128(feesAccrued.amount1()));
 
-            _updateStoredPremia(positionKey, currentLiquidity, collectedSingleLeg);
+            _updateStoredPremia(positionKey, currentLiquidity, collectedSingleLeg, vegoid);
         }
     }
 
@@ -1050,12 +1064,13 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     function _updateStoredPremia(
         bytes32 positionKey,
         LeftRightUnsigned currentLiquidity,
-        LeftRightUnsigned collectedAmounts
+        LeftRightUnsigned collectedAmounts,
+        uint256 vegoid
     ) private {
         (
             LeftRightUnsigned deltaPremiumOwed,
             LeftRightUnsigned deltaPremiumGross
-        ) = _getPremiaDeltas(currentLiquidity, collectedAmounts);
+        ) = _getPremiaDeltas(currentLiquidity, collectedAmounts, vegoid);
 
         // add deltas to accumulators and freeze both accumulators (for a token) if one of them overflows
         // (i.e if only currency0 (right slot) of the owed premium overflows, then stop accumulating  both currency0 owed premium and currency0 gross premium for the chunk)
@@ -1077,7 +1092,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @return deltaPremiumGross The extra premium (per liquidity X64) to be added to the gross accumulator for currency0 (right) and currency1 (left)
     function _getPremiaDeltas(
         LeftRightUnsigned currentLiquidity,
-        LeftRightUnsigned collectedAmounts
+        LeftRightUnsigned collectedAmounts,
+        uint256 vegoid
     )
         private
         pure
@@ -1121,7 +1137,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 uint128 premium1X64_owed;
                 {
                     // compute the owed premium (from Eqn 3)
-                    uint256 numerator = netLiquidity + (removedLiquidity / 2 ** VEGOID);
+                    uint256 numerator = netLiquidity + (removedLiquidity / vegoid);
 
                     premium0X64_owed = Math
                         .mulDiv(premium0X64_base, numerator, totalLiquidity)
@@ -1144,7 +1160,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                     uint256 numerator = totalLiquidity ** 2 -
                         totalLiquidity *
                         removedLiquidity +
-                        ((removedLiquidity ** 2) / 2 ** (VEGOID));
+                        ((removedLiquidity ** 2) / vegoid);
 
                     premium0X64_gross = Math
                         .mulDiv(premium0X64_base, numerator, totalLiquidity ** 2)
@@ -1210,7 +1226,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         int24 tickLower,
         int24 tickUpper,
         int24 atTick,
-        uint256 isLong
+        uint256 isLong,
+        uint256 vegoid
     ) external view returns (uint128, uint128) {
         PoolKey memory key = abi.decode(poolKey, (PoolKey));
         bytes32 positionKey = EfficientHash.efficientKeccak256(
@@ -1268,7 +1285,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
             (LeftRightUnsigned premiumOwed, LeftRightUnsigned premiumGross) = _getPremiaDeltas(
                 accountLiquidities,
-                amountToCollect
+                amountToCollect,
+                vegoid
             );
 
             // add deltas to accumulators and freeze both accumulators (for a token) if one of them overflows

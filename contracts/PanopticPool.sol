@@ -1019,17 +1019,22 @@ contract PanopticPool is Clone, Multicall {
                 uint256 grossCurrent0;
                 uint256 grossCurrent1;
                 {
-                    uint256 tokenType = tokenId.tokenType(leg);
-                    // can use (type(int24).max flag because premia accumulators were updated during the mintTokenizedPosition step.
-                    (grossCurrent0, grossCurrent1) = SFPM.getAccountPremium(
-                        poolKey(),
-                        address(this),
-                        tokenType,
-                        liquidityChunk.tickLower(),
-                        liquidityChunk.tickUpper(),
-                        type(int24).max,
-                        isLong
-                    );
+                    {
+                        uint256 tokenType = tokenId.tokenType(leg);
+                        uint256 vegoid = tokenId.vegoid();
+                        uint256 _isLong = isLong;
+                        // can use (type(int24).max flag because premia accumulators were updated during the mintTokenizedPosition step.
+                        (grossCurrent0, grossCurrent1) = SFPM.getAccountPremium(
+                            poolKey(),
+                            address(this),
+                            tokenType,
+                            liquidityChunk.tickLower(),
+                            liquidityChunk.tickUpper(),
+                            type(int24).max,
+                            _isLong,
+                            vegoid
+                        );
+                    }
 
                     s_options[owner][tokenId][leg] = LeftRightUnsigned
                         .wrap(uint128(grossCurrent0))
@@ -2021,18 +2026,22 @@ contract PanopticPool is Clone, Multicall {
                     leg,
                     positionSize
                 );
-                uint256 tokenType = tokenId.tokenType(leg);
-
-                (premiumAccumulatorsByLeg[leg][0], premiumAccumulatorsByLeg[leg][1]) = SFPM
-                    .getAccountPremium(
-                        poolKey(),
-                        address(this),
-                        tokenType,
-                        liquidityChunk.tickLower(),
-                        liquidityChunk.tickUpper(),
-                        atTick,
-                        isLong
-                    );
+                {
+                    uint256 vegoid = tokenId.vegoid();
+                    uint256 tokenType = tokenId.tokenType(leg);
+                    int24 _atTick = atTick;
+                    (premiumAccumulatorsByLeg[leg][0], premiumAccumulatorsByLeg[leg][1]) = SFPM
+                        .getAccountPremium(
+                            poolKey(),
+                            address(this),
+                            tokenType,
+                            liquidityChunk.tickLower(),
+                            liquidityChunk.tickUpper(),
+                            _atTick,
+                            isLong,
+                            vegoid
+                        );
+                }
                 unchecked {
                     LeftRightUnsigned premiumAccumulatorLast = s_options[owner][tokenId][leg];
                     premiaByLeg[leg] = LeftRightSigned

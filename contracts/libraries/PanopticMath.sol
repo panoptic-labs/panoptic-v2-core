@@ -27,8 +27,8 @@ library PanopticMath {
     /// @notice This is equivalent to `type(uint256).max` — used in assembly blocks as a replacement.
     uint256 internal constant MAX_UINT256 = 2 ** 256 - 1;
 
-    /// @notice Masks 16-bit tickSpacing out of 64-bit `[16-bit tickspacing][48-bit poolPattern]` format poolId.
-    uint64 internal constant TICKSPACING_MASK = 0xFFFF000000000000;
+    /// @notice Masks 16-bit tickSpacing and 8 bits of vegoid out of 64-bit `[16-bit tickspacing][8-bit vegoid][40-bit poolPattern]` format poolId.
+    uint64 internal constant TICKSPACING_VEGOID_MASK = 0xFFFFFF0000000000;
 
     uint256 internal constant PRIME_MODULUS_248 =
         0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff13;
@@ -54,7 +54,7 @@ library PanopticMath {
     /// @return The provided `poolId` with its pool pattern slot incremented by 1
     function incrementPoolPattern(uint64 poolId) internal pure returns (uint64) {
         unchecked {
-            return (poolId & TICKSPACING_MASK) + (uint48(poolId) + 1);
+            return (poolId & TICKSPACING_VEGOID_MASK) + (uint40(poolId + 1));
         }
     }
 

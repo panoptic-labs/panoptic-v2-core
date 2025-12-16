@@ -209,8 +209,12 @@ contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
         return s_accountLiquidity[positionKey];
     }
 
-    function __getPoolId(PoolId idV4, int24 tickSpacing) external view returns (uint64 poolId) {
-        poolId = _getPoolId(idV4, tickSpacing);
+    function __getPoolId(
+        PoolId idV4,
+        int24 tickSpacing,
+        uint256 vegoid
+    ) external view returns (uint64 poolId) {
+        poolId = _getPoolId(idV4, tickSpacing, vegoid);
     }
 }
 
@@ -461,6 +465,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     // store some data about the pool we are testing
     IUniswapV3Pool pool;
     uint64 poolId;
+    uint256 vegoid = 4;
     uint256 isWETH;
     address token0;
     address token1;
@@ -778,7 +783,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             IHooks(address(0))
         );
         {
-            poolId = uint48(uint256(PoolId.unwrap(poolKey.toId())));
+            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(vegoid << 40);
             poolId += uint64(uint24(_pool.tickSpacing())) << 48;
         }
     }
@@ -818,7 +823,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         address t0 = address(uint160(poolKey.currency0.toId()));
         address t1 = address(uint160(poolKey.currency1.toId()));
         // Initialize the world pool
-        uint64 poolId = sfpm.initializeAMMPool(poolKey);
+        uint64 poolId = sfpm.initializeAMMPool(poolKey, vegoid);
 
         // 2) Risk engine
         riskEngine = new RiskEngineHarness(10_000_000, 10_000_000, address(0), address(0));
@@ -948,7 +953,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         address t0 = address(uint160(poolKey.currency0.toId()));
         address t1 = address(uint160(poolKey.currency1.toId()));
         // Initialize the world pool
-        uint64 poolId = sfpm.initializeAMMPool(poolKey);
+        uint64 poolId = sfpm.initializeAMMPool(poolKey, vegoid);
 
         // 2) Risk engine
         riskEngine = new RiskEngineHarness(crossBuffer0, crossBuffer1, address(0), address(0));
@@ -1074,7 +1079,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         address t0 = address(uint160(poolKey.currency0.toId()));
         address t1 = address(uint160(poolKey.currency1.toId()));
         // Initialize the world pool
-        uint64 poolId = sfpm.initializeAMMPool(poolKey);
+        uint64 poolId = sfpm.initializeAMMPool(poolKey, vegoid);
 
         // 2) Risk engine
         builderFactory = new BuilderFactory(guardian);

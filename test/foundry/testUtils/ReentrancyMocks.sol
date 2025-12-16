@@ -57,9 +57,10 @@ contract ReenterBurn {
         bool reenter = !activated;
         activated = true;
         uint64 poolId;
+        uint256 vegoid = 4;
 
         {
-            poolId = uint64(uint160(address(this)) >> 112);
+            poolId = uint40(uint160(address(this)) >> 112) + uint64(vegoid << 40);
             poolId += uint64(uint24(tickSpacing)) << 48;
         }
 
@@ -124,9 +125,10 @@ contract ReenterMint {
         bool reenter = !activated;
         activated = true;
         uint64 poolId;
+        uint256 vegoid = 4;
 
         {
-            poolId = uint64(uint160(address(this)) >> 112);
+            poolId = uint40(uint160(address(this)) >> 112) + uint64(vegoid << 40);
             poolId += uint64(uint24(tickSpacing)) << 48;
         }
 
@@ -191,9 +193,9 @@ contract ReenterTransferSingle {
         bool reenter = !activated;
         activated = true;
         uint64 poolId;
-
+        uint256 vegoid = 4;
         {
-            poolId = uint64(uint160(address(this)) >> 112);
+            poolId = uint40(uint160(address(this)) >> 112) + uint64(vegoid << 40);
             poolId += uint64(uint24(tickSpacing)) << 48;
         }
 
@@ -258,9 +260,9 @@ contract ReenterTransferBatch {
         bool reenter = !activated;
         activated = true;
         uint64 poolId;
-
+        uint256 vegoid = 4;
         {
-            poolId = uint64(uint160(address(this)) >> 112);
+            poolId = uint40(uint160(address(this)) >> 112) + uint64(vegoid << 40);
             poolId += uint64(uint24(tickSpacing)) << 48;
         }
 
@@ -283,7 +285,7 @@ contract Reenter1155Initialize {
     address public token1;
     uint24 public fee;
     uint64 poolId;
-
+    uint256 vegoid = 4;
     bool activated;
 
     function construct(address _token0, address _token1, uint24 _fee, uint64 _poolId) public {
@@ -304,7 +306,12 @@ contract Reenter1155Initialize {
         activated = true;
 
         if (reenter)
-            SemiFungiblePositionManagerHarness(msg.sender).initializeAMMPool(token0, token1, fee);
+            SemiFungiblePositionManagerHarness(msg.sender).initializeAMMPool(
+                token0,
+                token1,
+                fee,
+                vegoid
+            );
         if (reenter)
             SemiFungiblePositionManagerHarness(msg.sender).mintTokenizedPosition(
                 new bytes(0),
@@ -323,7 +330,7 @@ contract Reenter1155InitializeV4 {
     uint256[65535] private __gap;
 
     PoolKey key;
-
+    uint256 vegoid = 4;
     bool activated;
 
     function construct(PoolKey memory _key) public {
@@ -347,7 +354,7 @@ contract Reenter1155InitializeV4 {
         activated = true;
 
         PoolKey memory _key = key;
-        if (reenter) SFPMHarnessV4(msg.sender).initializeAMMPool(key);
+        if (reenter) SFPMHarnessV4(msg.sender).initializeAMMPool(key, vegoid);
         if (reenter)
             SFPMHarnessV4(msg.sender).mintTokenizedPosition(
                 abi.encode(_key),

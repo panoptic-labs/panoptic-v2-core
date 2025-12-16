@@ -96,6 +96,14 @@ contract RiskEngine {
     /// @notice The maximum amount of change, in ticks, permitted between internal median updates.
     int24 internal constant MAX_CLAMP_DELTA = 149;
 
+    /// @notice Parameter used to modify the [equation](https://www.desmos.com/calculator/mdeqob2m04) of the utilization-based multiplier for long premium.
+    // ν = 1/VEGOID = multiplicative factor for long premium (Eqns 1-5)
+    // Similar to vega in options because the liquidity utilization is somewhat reflective of the implied volatility (IV),
+    // and vegoid modifies the sensitivity of the streamia to changes in that utilization,
+    // much like vega measures the sensitivity of traditional option prices to IV.
+    // The effect of vegoid on the long premium multiplier can be explored here: https://www.desmos.com/calculator/mdeqob2m04
+    uint8 internal constant VEGOID = 4;
+
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS
     //////////////////////////////////////////////////////////////*/
@@ -2277,7 +2285,20 @@ contract RiskEngine {
                 MAX_RATE_AT_TARGET
             );
     }
+
+    /*//////////////////////////////////////////////////////////////
+                             QUERY HELPERS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Returns the stored VEGOID parameter
+    function vegoid() external view returns (uint256) {
+        return VEGOID;
+    }
 }
+
+/*//////////////////////////////////////////////////////////////
+                       BUILDER WALLETS
+//////////////////////////////////////////////////////////////*/
 
 interface IERC20 {
     function balanceOf(address) external view returns (uint256);
