@@ -314,5 +314,5 @@ interface IRiskEngine {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Returns the stored VEGOID parameter
-    function vegoid() external view returns (uint256);
+    function vegoid() external view returns (uint8);
 }

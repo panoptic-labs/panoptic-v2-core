@@ -465,7 +465,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     // store some data about the pool we are testing
     IUniswapV3Pool pool;
     uint64 poolId;
-    uint256 vegoid = 4;
+    uint8 vegoid = 4;
     uint256 isWETH;
     address token0;
     address token1;
@@ -783,7 +783,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             IHooks(address(0))
         );
         {
-            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(vegoid << 40);
+            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(_pool.tickSpacing())) << 48;
         }
     }

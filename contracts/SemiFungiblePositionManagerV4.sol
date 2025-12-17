@@ -150,7 +150,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Retrieve the SFPM PoolIdData struct associated with a given Uniswap V4 poolId.
-    mapping(PoolId idV4 => PoolData poolData) internal s_V4toSFPMIdData;
+    mapping(PoolId idV4 => mapping(uint256 vegoid => PoolData poolData)) internal s_V4toSFPMIdData;
 
     /// @notice Retrieve the Uniswap V4 pool key corresponding to a given poolId.
     mapping(uint64 poolId => PoolKey key) internal s_poolIdToKey;
@@ -321,7 +321,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param key An identifying key for a Uniswap V4 pool
     function initializeAMMPool(
         PoolKey calldata key,
-        uint256 vegoid
+        uint8 vegoid
     ) external returns (uint64 poolId) {
         PoolId idV4 = key.toId();
 
@@ -331,14 +331,15 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         // return if the pool has already been initialized in SFPM
         // pools can be initialized from the Panoptic Factory or by calling initializeAMMPool directly, so reverting
         // could prevent a PanopticPool from being deployed on a previously initialized but otherwise valid pool
-        if (s_V4toSFPMIdData[idV4].initialized()) return s_V4toSFPMIdData[idV4].poolId();
+        if (s_V4toSFPMIdData[idV4][vegoid].initialized())
+            return s_V4toSFPMIdData[idV4][vegoid].poolId();
 
         // The base poolId is composed as follows:
         // [tickSpacing][pool pattern]
         // [16 bit tickSpacing][most significant 48 bits of the V4 poolId]
         poolId = _getPoolId(idV4, key.tickSpacing, vegoid);
 
-        // There are 281,474,976,710,655 possible pool patterns.
+        // There are 1,099,511,627,776 possible pool patterns.
         // A modern GPU can generate a collision in such a space relatively quickly,
         // so if a collision is detected increment the pool pattern until a unique poolId is found
         while (s_poolIdToKey[poolId].tickSpacing != 0) {
@@ -376,7 +377,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             );
         }
 
-        s_V4toSFPMIdData[idV4] = PoolDataLibrary.storePoolData(
+        s_V4toSFPMIdData[idV4][vegoid] = PoolDataLibrary.storePoolData(
             maxLiquidityPerTick,
             poolId,
             minEnforcedTick,
@@ -430,7 +431,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         PoolKey memory key = s_poolIdToKey[poolId];
         PoolId idV4 = key.toId();
 
-        PoolData dataOld = s_V4toSFPMIdData[idV4];
+        uint256 vegoid = uint8(poolId >> 40);
+        PoolData dataOld = s_V4toSFPMIdData[idV4][vegoid];
 
         if (!dataOld.initialized()) revert Errors.PoolNotInitialized();
 
@@ -474,7 +476,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             );
         }
 
-        s_V4toSFPMIdData[idV4] = PoolDataLibrary.storePoolData(
+        s_V4toSFPMIdData[idV4][vegoid] = PoolDataLibrary.storePoolData(
             maxLiquidityPerTick,
             dataOld.poolId(),
             minEnforcedTick,
@@ -763,7 +765,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         LeftRightUnsigned totalCollected;
 
         {
-            PoolData poolData = s_V4toSFPMIdData[key.toId()];
+            PoolData poolData = s_V4toSFPMIdData[key.toId()][tokenId.vegoid()];
             if (poolData.poolId() != tokenId.poolId() || !poolData.initialized())
                 revert Errors.WrongUniswapPool();
 
@@ -1314,16 +1316,17 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @return The maximum enforced tick for chunks created in the pool corresponding to `poolId`
     function getEnforcedTickLimits(uint64 poolId) external view returns (int24, int24) {
         PoolKey memory poolKey = s_poolIdToKey[poolId];
-        PoolData poolData = s_V4toSFPMIdData[poolKey.toId()];
+        uint256 vegoid = uint8(poolId >> 40);
+        PoolData poolData = s_V4toSFPMIdData[poolKey.toId()][vegoid];
         return (poolData.minEnforcedTick(), poolData.maxEnforcedTick());
     }
 
     /// @notice Returns the `poolId` for a given Uniswap pool.
     /// @param id The PoolId of the Uniswap V4 Pool
     /// @return poolId The unique pool identifier corresponding to a idV4
-    function getPoolId(bytes memory id) external view returns (uint64) {
+    function getPoolId(bytes memory id, uint8 vegoid) external view returns (uint64) {
         PoolId idV4 = abi.decode(id, (PoolId));
-        return s_V4toSFPMIdData[idV4].poolId();
+        return s_V4toSFPMIdData[idV4][vegoid].poolId();
     }
 
     /// @notice Returns the current tick of a given Uniswap V4 pool

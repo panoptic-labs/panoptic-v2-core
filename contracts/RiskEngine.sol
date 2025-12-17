@@ -2291,8 +2291,8 @@ contract RiskEngine {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Returns the stored VEGOID parameter
-    function vegoid() external view returns (uint256) {
-        return VEGOID;
+    function vegoid() external view returns (uint8) {
+        return uint8(VEGOID);
     }
 }
 
