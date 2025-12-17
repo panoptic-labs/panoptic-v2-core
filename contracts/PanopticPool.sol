@@ -1557,8 +1557,8 @@ contract PanopticPool is Clone, Multicall {
             int24 _twapTick = twapTick;
             TokenId[] memory _positionIdList = positionIdList;
             LeftRightSigned bonusDeltas;
-            LeftRightUnsigned[4][] memory amountsToSettle;
-            (bonusDeltas, haircutTotal, amountsToSettle) = riskEngine().haircutPremia(
+            LeftRightSigned[4][] memory haircutPerLeg;
+            (bonusDeltas, haircutTotal, haircutPerLeg) = riskEngine().haircutPremia(
                 _liquidatee,
                 _positionIdList,
                 premiasByLeg,
@@ -1568,11 +1568,14 @@ contract PanopticPool is Clone, Multicall {
 
             bonusAmounts = bonusAmounts.add(bonusDeltas);
 
-            settleAmounts(
+            InteractionHelper.settleAmounts(
                 _liquidatee,
                 _positionIdList,
                 haircutTotal,
-                amountsToSettle,
+                haircutPerLeg,
+                premiasByLeg,
+                collateralToken0(),
+                collateralToken1(),
                 s_settledTokens
             );
         }
@@ -1587,55 +1590,6 @@ contract PanopticPool is Clone, Multicall {
         collateralToken1().settleLiquidation(msg.sender, liquidatee, bonusAmounts.leftSlot());
 
         emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
-    }
-
-    function settleAmounts(
-        address liquidatee,
-        TokenId[] memory positionIdList,
-        LeftRightUnsigned haircutTotal,
-        LeftRightUnsigned[4][] memory amountsToSettle,
-        mapping(bytes32 chunkKey => LeftRightUnsigned settledTokens) storage settledTokens
-    ) internal {
-        if (haircutTotal.rightSlot() != 0)
-            collateralToken0().settleBurn(
-                liquidatee,
-                0,
-                0,
-                0,
-                int128(haircutTotal.rightSlot()),
-                RiskParameters.wrap(0)
-            );
-        if (haircutTotal.leftSlot() != 0)
-            collateralToken1().settleBurn(
-                liquidatee,
-                0,
-                0,
-                0,
-                int128(haircutTotal.leftSlot()),
-                RiskParameters.wrap(0)
-            );
-
-        for (uint256 i = 0; i < positionIdList.length; i++) {
-            TokenId tokenId = positionIdList[i];
-            for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
-                if (
-                    tokenId.isLong(leg) == 1 &&
-                    LeftRightUnsigned.unwrap(amountsToSettle[i][leg]) != 0
-                ) {
-                    bytes32 chunkKey = EfficientHash.efficientKeccak256(
-                        abi.encodePacked(
-                            tokenId.strike(leg),
-                            tokenId.width(leg),
-                            tokenId.tokenType(leg)
-                        )
-                    );
-
-                    // The long premium is not committed to storage during the liquidation, so we add the entire adjusted amount
-                    // for the haircut directly to the accumulator
-                    settledTokens[chunkKey] = settledTokens[chunkKey].add(amountsToSettle[i][leg]);
-                }
-            }
-        }
     }
 
     /// @notice Force the exercise of a single position. Exercisor will have to pay a fee to the force exercisee.

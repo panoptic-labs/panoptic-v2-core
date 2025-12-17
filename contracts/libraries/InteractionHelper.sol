@@ -7,8 +7,13 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {PanopticPool} from "@contracts/PanopticPool.sol";
 // Libraries
 import {PanopticMath} from "@libraries/PanopticMath.sol";
+import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
+import {TokenId} from "@types/TokenId.sol";
+import {RiskParameters} from "@types/RiskParameters.sol";
+import {EfficientHash} from "@libraries/EfficientHash.sol";
 
 /// @title InteractionHelper - contains helper functions for external interactions such as approvals.
 /// @notice Used to delegate logic with multiple external calls.
@@ -101,6 +106,71 @@ library InteractionHelper {
             return _decimals;
         } catch {
             return 0;
+        }
+    }
+
+    function settleAmounts(
+        address liquidatee,
+        TokenId[] memory positionIdList,
+        LeftRightUnsigned haircutTotal,
+        LeftRightSigned[4][] memory haircutPerLeg,
+        LeftRightSigned[4][] memory premiasByLeg,
+        CollateralTracker ct0,
+        CollateralTracker ct1,
+        mapping(bytes32 chunkKey => LeftRightUnsigned settledTokens) storage settledTokens
+    ) external {
+        unchecked {
+            for (uint256 i = 0; i < positionIdList.length; i++) {
+                TokenId tokenId = positionIdList[i];
+                for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
+                    if (
+                        tokenId.isLong(leg) == 1 &&
+                        LeftRightSigned.unwrap(premiasByLeg[i][leg]) != 0
+                    ) {
+                        bytes32 chunkKey = EfficientHash.efficientKeccak256(
+                            abi.encodePacked(
+                                tokenId.strike(leg),
+                                tokenId.width(leg),
+                                tokenId.tokenType(leg)
+                            )
+                        );
+
+                        emit PanopticPool.PremiumSettled(
+                            liquidatee,
+                            tokenId,
+                            leg,
+                            LeftRightSigned.wrap(0).sub(haircutPerLeg[i][leg])
+                        );
+
+                        // The long premium is not committed to storage during the liquidation, so we add the entire adjusted amount
+                        // for the haircut directly to the accumulator
+                        settledTokens[chunkKey] = settledTokens[chunkKey].add(
+                            (LeftRightSigned.wrap(0).sub(premiasByLeg[i][leg])).subRect(
+                                haircutPerLeg[i][leg]
+                            )
+                        );
+                    }
+                }
+            }
+
+            if (haircutTotal.rightSlot() != 0)
+                ct0.settleBurn(
+                    liquidatee,
+                    0,
+                    0,
+                    0,
+                    int128(haircutTotal.rightSlot()),
+                    RiskParameters.wrap(0)
+                );
+            if (haircutTotal.leftSlot() != 0)
+                ct1.settleBurn(
+                    liquidatee,
+                    0,
+                    0,
+                    0,
+                    int128(haircutTotal.leftSlot()),
+                    RiskParameters.wrap(0)
+                );
         }
     }
 }
