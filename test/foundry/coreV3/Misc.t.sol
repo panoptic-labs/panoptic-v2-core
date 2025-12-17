@@ -159,7 +159,7 @@ contract Misctest is Test, PositionUtils {
     OraclePack oraclePack;
     uint64 $poolId;
     uint64 poolId;
-    uint256 vegoid = 4;
+    uint8 vegoid = 4;
     uint256 medianData;
 
     uint256 assetsBefore0;
@@ -537,7 +537,7 @@ contract Misctest is Test, PositionUtils {
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
-                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
             TokenId posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
@@ -598,7 +598,9 @@ contract Misctest is Test, PositionUtils {
 
             if (i == positionCount - 1) {
                 {
-                    poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                    poolId =
+                        uint40(uint160(address(uniPool)) >> 112) +
+                        uint64(uint256(vegoid) << 40);
                     poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
                 }
 
@@ -680,7 +682,7 @@ contract Misctest is Test, PositionUtils {
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
-                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
             TokenId posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
@@ -710,7 +712,9 @@ contract Misctest is Test, PositionUtils {
 
             if (i == positionCount - 1) {
                 {
-                    poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                    poolId =
+                        uint40(uint160(address(uniPool)) >> 112) +
+                        uint64(uint256(vegoid) << 40);
                     poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
                 }
                 posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
@@ -760,7 +764,7 @@ contract Misctest is Test, PositionUtils {
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
-                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
             TokenId posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
@@ -820,7 +824,7 @@ contract Misctest is Test, PositionUtils {
             );
 
             {
-                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
             posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
@@ -866,7 +870,9 @@ contract Misctest is Test, PositionUtils {
 
             if (i == 0) {
                 {
-                    poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                    poolId =
+                        uint40(uint160(address(uniPool)) >> 112) +
+                        uint64(uint256(vegoid) << 40);
                     poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
                 }
                 posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
@@ -947,7 +953,7 @@ contract Misctest is Test, PositionUtils {
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
-                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
             TokenId posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
@@ -976,7 +982,7 @@ contract Misctest is Test, PositionUtils {
             );
 
             {
-                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
             posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
@@ -992,7 +998,9 @@ contract Misctest is Test, PositionUtils {
 
             if (i == 0) {
                 {
-                    poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                    poolId =
+                        uint40(uint160(address(uniPool)) >> 112) +
+                        uint64(uint256(vegoid) << 40);
                     poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
                 }
                 posId = TokenId.wrap(0).addPoolId(poolId).addLeg({
@@ -1084,7 +1092,7 @@ contract Misctest is Test, PositionUtils {
         uint256 expectedDOSCost = Math.max(2100 * 10 ** 18, token0Supply);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
         (int24 tickLimitLower, int24 tickLimitUpper) = sfpm.getEnforcedTickLimits(poolId);
@@ -1159,7 +1167,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Alice);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
         TokenId tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
@@ -1185,7 +1193,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
         tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
@@ -1223,7 +1231,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Alice);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
         tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
@@ -1249,7 +1257,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
         tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
@@ -1322,7 +1330,7 @@ contract Misctest is Test, PositionUtils {
         token1.editSupply(token1Supply);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
         sfpm.expandEnforcedTickRange(poolId);
@@ -1345,7 +1353,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1421,7 +1429,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Alice);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1448,7 +1456,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1487,7 +1495,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Alice);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1514,7 +1522,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1559,7 +1567,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.mint(uniPool, -100000, 100000, 10 ** 24);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1608,7 +1616,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1652,7 +1660,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Seller);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1672,7 +1680,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1694,7 +1702,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Seller);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1711,7 +1719,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1760,7 +1768,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Seller);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1820,7 +1828,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1839,7 +1847,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1901,7 +1909,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -1962,7 +1970,7 @@ contract Misctest is Test, PositionUtils {
         $tempIdList = $posIdList;
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2229,7 +2237,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2248,13 +2256,13 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
         $posIdList[0] = TokenId
             .wrap(0)
-            .addPoolId(sfpm.getPoolId(abi.encode(address(uniPool))))
+            .addPoolId(sfpm.getPoolId(abi.encode(address(uniPool)), vegoid))
             .addLeg(0, 1, 1, 1, 0, 0, 15, 1);
 
         vm.startPrank(Alice);
@@ -2317,7 +2325,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2361,7 +2369,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2382,7 +2390,7 @@ contract Misctest is Test, PositionUtils {
         TokenId[] memory longPositionList = new TokenId[](256);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2456,7 +2464,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2581,7 +2589,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2603,7 +2611,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2684,7 +2692,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2706,7 +2714,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -2760,7 +2768,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
         swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
@@ -2810,7 +2818,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -3019,7 +3027,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
         swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
@@ -3069,7 +3077,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -3278,7 +3286,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -3330,7 +3338,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Seller);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -3347,7 +3355,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -3368,7 +3376,7 @@ contract Misctest is Test, PositionUtils {
         }
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -3400,7 +3408,7 @@ contract Misctest is Test, PositionUtils {
         }
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -3432,7 +3440,7 @@ contract Misctest is Test, PositionUtils {
         }
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -3665,12 +3673,12 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Seller);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -3963,7 +3971,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, 2 ** 96);
 
         $posIdLists[0].push(
-            TokenId.wrap(0).addPoolId(sfpm.getPoolId(abi.encode(address(uniPool)))).addLeg(
+            TokenId.wrap(0).addPoolId(sfpm.getPoolId(abi.encode(address(uniPool)), vegoid)).addLeg(
                 0,
                 1,
                 1,
@@ -3988,7 +3996,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         $posIdLists[1].push(
-            TokenId.wrap(0).addPoolId(sfpm.getPoolId(abi.encode(address(uniPool)))).addLeg(
+            TokenId.wrap(0).addPoolId(sfpm.getPoolId(abi.encode(address(uniPool)), vegoid)).addLeg(
                 0,
                 1,
                 1,
@@ -4113,7 +4121,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4167,7 +4175,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4336,7 +4344,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4370,7 +4378,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4404,7 +4412,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4441,7 +4449,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4488,7 +4496,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4558,7 +4566,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4627,7 +4635,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4805,7 +4813,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -4987,7 +4995,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -5146,7 +5154,7 @@ contract Misctest is Test, PositionUtils {
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -5258,7 +5266,7 @@ contract Misctest is Test, PositionUtils {
         assertTrue(pp.isSafeMode() > 0, "in safe mode");
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -5350,7 +5358,7 @@ contract Misctest is Test, PositionUtils {
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -5455,7 +5463,7 @@ contract Misctest is Test, PositionUtils {
         (, , slowOracleTick, , oraclePack) = pp.getOracleTicks();
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -5578,7 +5586,7 @@ contract Misctest is Test, PositionUtils {
         (, , slowOracleTick, , oraclePack) = pp.getOracleTicks();
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -5697,7 +5705,7 @@ contract Misctest is Test, PositionUtils {
         (, , slowOracleTick, , oraclePack) = pp.getOracleTicks();
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -5794,7 +5802,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -5910,7 +5918,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -6086,7 +6094,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -6307,7 +6315,7 @@ contract Misctest is Test, PositionUtils {
         uniPool.liquidity();
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -6426,7 +6434,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Seller);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -6467,7 +6475,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -6494,35 +6502,6 @@ contract Misctest is Test, PositionUtils {
             Constants.MIN_POOL_TICK,
             true
         );
-
-        // 0.25, 0.6, 0.9, 1.1, 1.4, 1.6
-        int16[6] memory ticks = [-13862, -5108, -1053, 952, 3364, 4699];
-
-        for (uint256 i = 0; i < ticks.length; ++i) {
-            uint256 snap = vm.snapshot();
-            vm.startPrank(Swapper);
-            swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(ticks[i]));
-
-            vm.startPrank(Alice);
-            burnOptions(
-                pp,
-                $posIdList[0],
-                new TokenId[](0),
-                Constants.MAX_POOL_TICK,
-                Constants.MIN_POOL_TICK,
-                true
-            );
-
-            console2.log(
-                "balance0Delta",
-                int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0)
-            );
-            console2.log(
-                "balance1Delta",
-                int256(ct1.convertToAssets(ct1.balanceOf(Alice))) - int256(balanceBefore1)
-            );
-            vm.revertTo(snap);
-        }
     }
 
     function test_Success_CallCondor() public {
@@ -6546,7 +6525,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Seller);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -6581,13 +6560,13 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             2_000_000,
             0,
-            Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -6614,35 +6593,6 @@ contract Misctest is Test, PositionUtils {
             Constants.MAX_POOL_TICK,
             true
         );
-
-        // 1.3, 1.6, 1.8, 2.1
-        uint16[5] memory ticks = [0, 12623, 24699, 35877, 47419];
-
-        for (uint256 i = 0; i < ticks.length; ++i) {
-            uint256 snap = vm.snapshot();
-            vm.startPrank(Swapper);
-            swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int16(ticks[i])));
-
-            vm.startPrank(Alice);
-            burnOptions(
-                pp,
-                $posIdList[0],
-                new TokenId[](0),
-                Constants.MAX_POOL_TICK,
-                Constants.MIN_POOL_TICK,
-                true
-            );
-
-            console2.log(
-                "balance0Delta",
-                int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0)
-            );
-            console2.log(
-                "balance1Delta",
-                int256(ct1.convertToAssets(ct1.balanceOf(Alice))) - int256(balanceBefore1)
-            );
-            vm.revertTo(snap);
-        }
     }
 
     function test_Success_PutCondor() public {
@@ -6658,7 +6608,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Seller);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -6680,8 +6630,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             2_000_000,
             0,
-            Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
@@ -6704,39 +6654,10 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             type(uint24).max,
-            Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
-
-        // 0.2, 0.4, 0.6, 0.8, 1.1
-        int16[5] memory ticks = [-16093, -9162, -5108, -2231, 952];
-
-        for (uint256 i = 0; i < ticks.length; ++i) {
-            uint256 snap = vm.snapshot();
-            vm.startPrank(Swapper);
-            swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(ticks[i]));
-
-            vm.startPrank(Alice);
-            burnOptions(
-                pp,
-                $posIdList[0],
-                new TokenId[](0),
-                Constants.MAX_POOL_TICK,
-                Constants.MIN_POOL_TICK,
-                true
-            );
-
-            console2.log(
-                "balance0Delta",
-                int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0)
-            );
-            console2.log(
-                "balance1Delta",
-                int256(ct1.convertToAssets(ct1.balanceOf(Alice))) - int256(balanceBefore1)
-            );
-            vm.revertTo(snap);
-        }
     }
 
     function test_success_liquidate_100p_protocolLoss() public {
@@ -6772,7 +6693,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Bob);
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -6827,7 +6748,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = i / 2;
 
             {
-                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -6981,7 +6902,7 @@ contract Misctest is Test, PositionUtils {
         uint256 tokenType = 0;
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -7063,7 +6984,7 @@ contract Misctest is Test, PositionUtils {
         uint256 tokenType = 0;
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -7178,7 +7099,7 @@ contract Misctest is Test, PositionUtils {
         uint256 tokenType = 0;
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
         TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
@@ -7328,7 +7249,7 @@ contract Misctest is Test, PositionUtils {
         uint256 tokenType = 0;
 
         {
-            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
@@ -7473,7 +7394,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = i / 2;
 
             {
-                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -7572,7 +7493,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = i / 2;
 
             {
-                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -7677,7 +7598,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = ((i % 4) / 2);
 
             {
-                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -7785,7 +7706,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = ((i % 4) / 2);
 
             {
-                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -7894,7 +7815,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = ((i % 4) / 2);
 
             {
-                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -8013,7 +7934,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = i / 2;
 
             {
-                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -8104,7 +8025,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = i / 2;
 
             {
-                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -8204,7 +8125,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = (i / 2);
 
             {
-                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -8307,7 +8228,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = (i / 2);
 
             {
-                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -8408,7 +8329,7 @@ contract Misctest is Test, PositionUtils {
             uint256 tokenType = (i / 2);
 
             {
-                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
             }
 
@@ -8514,7 +8435,9 @@ contract Misctest is Test, PositionUtils {
                 vm.startPrank(Charlie);
 
                 {
-                    poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                    poolId =
+                        uint40(uint160(address(uniPool)) >> 112) +
+                        uint64(uint256(vegoid) << 40);
                     poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
                 }
 
@@ -8543,7 +8466,9 @@ contract Misctest is Test, PositionUtils {
                 );
 
                 {
-                    poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                    poolId =
+                        uint40(uint160(address(uniPool)) >> 112) +
+                        uint64(uint256(vegoid) << 40);
                     poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
                 }
 
@@ -8654,7 +8579,9 @@ contract Misctest is Test, PositionUtils {
                 vm.startPrank(Charlie);
 
                 {
-                    poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                    poolId =
+                        uint40(uint160(address(uniPool)) >> 112) +
+                        uint64(uint256(vegoid) << 40);
                     poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
                 }
 
@@ -8790,7 +8717,9 @@ contract Misctest is Test, PositionUtils {
                 vm.startPrank(Charlie);
 
                 {
-                    poolId = uint40(uint160(address(uniPool)) >> 112) + uint64(vegoid << 40);
+                    poolId =
+                        uint40(uint160(address(uniPool)) >> 112) +
+                        uint64(uint256(vegoid) << 40);
                     poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
                 }
 

@@ -446,7 +446,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     // store some data about the pool we are testing
     IUniswapV3Pool pool;
     uint64 poolId;
-    uint256 vegoid = 4;
+    uint8 vegoid = 4;
     uint256 isWETH;
     address token0;
     address token1;
@@ -772,7 +772,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     function _cacheWorldState(IUniswapV3Pool _pool) internal {
         pool = _pool;
         {
-            poolId = uint40(uint160(address(_pool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(_pool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(_pool.tickSpacing())) << 48;
         }
         token0 = _pool.token0();

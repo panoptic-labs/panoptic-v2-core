@@ -610,13 +610,14 @@ contract RiskEngine {
     }
 
     /// @notice Haircut/clawback any premium paid by `liquidatee` on `positionIdList` over the protocol loss threshold during a liquidation.
-    /// @dev Note that the storage mapping provided as the `settledTokens` parameter WILL be modified on the caller by this function.
     /// @param liquidatee The address of the user being liquidated
     /// @param positionIdList The list of position ids being liquidated
     /// @param premiasByLeg The premium paid (or received) by the liquidatee for each leg of each position
     /// @param collateralRemaining The remaining collateral after the liquidation (negative if protocol loss)
     /// @param atSqrtPriceX96 The oracle price used to swap tokens between the liquidator/liquidatee and determine solvency for the liquidatee
     /// @return bonusDeltas The delta, if any, to apply to the existing liquidation bonus
+    /// @return haircutTotal Total premium clawed back from the liquidatee
+    /// @return haircutPerLeg Per-position/per-leg haircut amounts
     function haircutPremia(
         address liquidatee,
         TokenId[] memory positionIdList,
@@ -628,7 +629,7 @@ contract RiskEngine {
         returns (
             LeftRightSigned bonusDeltas,
             LeftRightUnsigned haircutTotal,
-            LeftRightUnsigned[4][] memory amountsToSettle
+            LeftRightSigned[4][] memory haircutPerLeg
         )
     {
         unchecked {
@@ -732,7 +733,7 @@ contract RiskEngine {
             // longPremium
             // settledTokens
             {
-                amountsToSettle = new LeftRightUnsigned[4][](positionIdList.length);
+                haircutPerLeg = new LeftRightSigned[4][](positionIdList.length);
                 // total haircut after rounding up prorated haircut amounts for each leg
                 address _liquidatee = liquidatee;
                 for (uint256 i = 0; i < positionIdList.length; i++) {
@@ -791,16 +792,7 @@ contract RiskEngine {
                                 )
                             );
 
-                            amountsToSettle[i][leg] = (
-                                LeftRightSigned.wrap(0).sub(_premiasByLeg[i][leg])
-                            ).subRect(haircutAmounts);
-
-                            emit PanopticPool.PremiumSettled(
-                                _liquidatee,
-                                tokenId,
-                                leg,
-                                LeftRightSigned.wrap(0).sub(haircutAmounts)
-                            );
+                            haircutPerLeg[i][leg] = haircutAmounts;
                         }
                     }
                 }
@@ -2291,8 +2283,8 @@ contract RiskEngine {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Returns the stored VEGOID parameter
-    function vegoid() external view returns (uint256) {
-        return VEGOID;
+    function vegoid() external view returns (uint8) {
+        return uint8(VEGOID);
     }
 }
 

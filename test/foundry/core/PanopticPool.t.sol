@@ -599,7 +599,7 @@ contract PanopticPoolTest is PositionUtils {
         pool = _pool;
 
         {
-            poolId = uint40((uint160(address(_pool)) >> 112)) + uint64(vegoid << 40);
+            poolId = uint40((uint160(address(_pool)) >> 112)) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(_pool.tickSpacing())) << 48;
         }
 
@@ -622,7 +622,7 @@ contract PanopticPoolTest is PositionUtils {
             IHooks(address(0))
         );
         {
-            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(vegoid << 40);
+            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(_pool.tickSpacing())) << 48;
         }
     }

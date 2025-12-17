@@ -21,8 +21,8 @@ using TokenIdLibrary for TokenId global;
 // From the LSB to the MSB:
 // ===== 1 time (same for all legs) ==============================================================
 //      Property         Size      Offset      Comment
-// (0) univ3pool        40bits     0bits      : first 6 bytes of the Uniswap V3 pool address (first 48 bits; little-endian), plus a pseudorandom number in the event of a collision
-// (1) vegoid           8bits     40bits      : vegoid for the sfpm pool
+// (0) univ3pool        40bits     0bits      : first 5 bytes representing the Uniswap pool  (first 40 bits; little-endian), plus an incrementing number in the event of a collision
+// (1) vegoid           8bits      40bits     : vegoid for the sfpm pool
 // (2) tickSpacing      16bits     48bits     : tickSpacing for the univ3pool. Up to 16 bits
 // ===== 4 times (one for each leg) ==============================================================
 // (3) asset             1bit      0bits      : Specifies the asset (0: token0, 1: token1)

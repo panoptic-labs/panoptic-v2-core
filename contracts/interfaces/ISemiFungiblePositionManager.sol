@@ -94,7 +94,7 @@ interface ISemiFungiblePositionManager {
         uint256 vegoid
     ) external view returns (uint128 premium0, uint128 premium1);
 
-    function getPoolId(bytes memory id) external view returns (uint64 poolId);
+    function getPoolId(bytes memory id, uint8 vegoid) external view returns (uint64 poolId);
 
     function getEnforcedTickLimits(uint64 poolId) external view returns (int24, int24);
 

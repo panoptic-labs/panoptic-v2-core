@@ -33,12 +33,12 @@ import {ReenterMint, ReenterBurn, Reenter1155Initialize, ReenterTransferSingle, 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory, 10 ** 13, 0) {}
 
-    function addressToPoolData(address pool) public view returns (PoolData) {
-        return s_addressToPoolData[pool];
+    function addressToPoolData(address pool, uint8 vegoid) public view returns (PoolData) {
+        return s_addressToPoolData[pool][vegoid];
     }
 
     function poolIdToPoolData(uint64 poolId) public view returns (PoolData) {
-        return s_addressToPoolData[s_poolIdToAddress[poolId]];
+        return s_addressToPoolData[s_poolIdToAddress[poolId]][uint8(poolId >> 40)];
     }
 }
 
@@ -90,7 +90,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     // immutable data about the pool being tested
     IUniswapV3Pool pool;
     uint64 poolId;
-    uint256 vegoid = 4;
+    uint8 vegoid = 4;
     address token0;
     address token1;
     uint24 fee;
@@ -226,7 +226,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     function _cacheWorldState(IUniswapV3Pool _pool) internal {
         pool = _pool;
         {
-            poolId = uint40(uint160(address(_pool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(_pool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(_pool.tickSpacing())) << 48;
         }
         token0 = _pool.token0();
@@ -899,7 +899,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         uint64 poolId;
 
         {
-            poolId = uint40(uint160(address(pool)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(pool)) >> 112) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(pool.tickSpacing())) << 48;
         }
 
@@ -918,7 +918,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             uint64 poolId;
 
             {
-                poolId = uint40(uint160(address(pool)) >> 112) + uint64(vegoid << 40);
+                poolId = uint40(uint160(address(pool)) >> 112) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(pool.tickSpacing())) << 48;
             }
 
@@ -982,7 +982,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             // Check that the pool ID is set correctly
             // Addresses output from the factory mock start at 1 to avoid errors so we need to add that to the address
             assertEq(
-                sfpm_t.addressToPoolData(address((i + 1) << 24)).initialized(),
+                sfpm_t.addressToPoolData(address((i + 1) << 24), vegoid).initialized(),
                 true,
                 "initialized"
             );

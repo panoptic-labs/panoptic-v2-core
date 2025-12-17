@@ -47,12 +47,8 @@ contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
         IPoolManager _manager
     ) SemiFungiblePositionManager(_manager, 10 ** 13, 10 ** 13, 0) {}
 
-    function getPoolIdData(PoolId poolId) external view returns (PoolData) {
-        return s_V4toSFPMIdData[poolId];
-    }
-
     function poolIdToPoolData(uint64 poolId) public view returns (PoolData) {
-        return s_V4toSFPMIdData[s_poolIdToKey[poolId].toId()];
+        return s_V4toSFPMIdData[s_poolIdToKey[poolId].toId()][uint8(poolId >> 40)];
     }
 }
 
@@ -101,7 +97,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     // immutable data about the pool being tested
     IUniswapV3Pool pool;
     uint64 poolId;
-    uint256 vegoid = 4;
+    uint8 vegoid = 4;
     address token0;
     address token1;
     uint24 fee;
@@ -281,7 +277,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             IHooks(address(0))
         );
         {
-            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(vegoid << 40);
+            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(tickSpacing)) << 48;
         }
     }
@@ -995,7 +991,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         uint64 poolId;
 
         {
-            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(vegoid << 40);
+            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(pool.tickSpacing())) << 48;
         }
 
@@ -1022,7 +1018,9 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             uint64 poolId;
 
             {
-                poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(vegoid << 40);
+                poolId =
+                    uint40(uint256(PoolId.unwrap(poolKey.toId()))) +
+                    uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(pool.tickSpacing())) << 48;
             }
 
