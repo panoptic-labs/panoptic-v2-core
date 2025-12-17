@@ -7069,36 +7069,6 @@ contract Misctest is Test, PositionUtils {
             Constants.MIN_POOL_TICK,
             true
         );
-
-        // 0.25, 0.6, 0.9, 1.1, 1.4, 1.6
-        int16[6] memory ticks = [-13862, -5108, -1053, 952, 3364, 4699];
-
-        for (uint256 i = 0; i < ticks.length; ++i) {
-            uint256 snap = vm.snapshot();
-            vm.startPrank(Swapper);
-            swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(ticks[i]));
-            routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(ticks[i]));
-
-            vm.startPrank(Alice);
-            burnOptions(
-                pp,
-                $posIdList[0],
-                new TokenId[](0),
-                Constants.MAX_POOL_TICK,
-                Constants.MIN_POOL_TICK,
-                true
-            );
-
-            console2.log(
-                "balance0Delta",
-                int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0)
-            );
-            console2.log(
-                "balance1Delta",
-                int256(ct1.convertToAssets(ct1.balanceOf(Alice))) - int256(balanceBefore1)
-            );
-            vm.revertTo(snap);
-        }
     }
 
     function test_Success_CallCondor() public {
@@ -7158,8 +7128,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             2_000_000,
             0,
-            Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
@@ -7191,36 +7161,6 @@ contract Misctest is Test, PositionUtils {
             Constants.MAX_POOL_TICK,
             true
         );
-
-        // 1.3, 1.6, 1.8, 2.1
-        uint16[5] memory ticks = [0, 12623, 24699, 35877, 47419];
-
-        for (uint256 i = 0; i < ticks.length; ++i) {
-            uint256 snap = vm.snapshot();
-            vm.startPrank(Swapper);
-            swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int16(ticks[i])));
-            routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(int16(ticks[i])));
-
-            vm.startPrank(Alice);
-            burnOptions(
-                pp,
-                $posIdList[0],
-                new TokenId[](0),
-                Constants.MAX_POOL_TICK,
-                Constants.MIN_POOL_TICK,
-                true
-            );
-
-            console2.log(
-                "balance0Delta",
-                int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0)
-            );
-            console2.log(
-                "balance1Delta",
-                int256(ct1.convertToAssets(ct1.balanceOf(Alice))) - int256(balanceBefore1)
-            );
-            vm.revertTo(snap);
-        }
     }
 
     function test_Success_PutCondor() public {
@@ -7259,8 +7199,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             2_000_000,
             0,
-            Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
 
@@ -7283,40 +7223,10 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             type(uint24).max,
-            Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
             true
         );
-
-        // 0.2, 0.4, 0.6, 0.8, 1.1
-        int16[5] memory ticks = [-16093, -9162, -5108, -2231, 952];
-
-        for (uint256 i = 0; i < ticks.length; ++i) {
-            uint256 snap = vm.snapshot();
-            vm.startPrank(Swapper);
-            swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(ticks[i]));
-            routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(ticks[i]));
-
-            vm.startPrank(Alice);
-            burnOptions(
-                pp,
-                $posIdList[0],
-                new TokenId[](0),
-                Constants.MAX_POOL_TICK,
-                Constants.MIN_POOL_TICK,
-                true
-            );
-
-            console2.log(
-                "balance0Delta",
-                int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0)
-            );
-            console2.log(
-                "balance1Delta",
-                int256(ct1.convertToAssets(ct1.balanceOf(Alice))) - int256(balanceBefore1)
-            );
-            vm.revertTo(snap);
-        }
     }
 
     function test_success_liquidate_100p_protocolLoss() public {
