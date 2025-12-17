@@ -127,7 +127,7 @@ contract PanopticPool is Clone, Multicall {
     /// @dev uint type for composability with unsigned integer based mathematical operations.
     uint256 internal constant DECIMALS = 10_000;
 
-    /// @notice Transient storage slot for the utilization
+    /// @notice Transient storage slot for the tick price
     bytes32 internal constant PRICE_TRANSIENT_SLOT = keccak256("panoptic.price.snapshot");
 
     /// @notice The "engine" of Panoptic - manages AMM liquidity and executes all mints/burns/exercises.
@@ -591,10 +591,21 @@ contract PanopticPool is Clone, Multicall {
         {
             int24 startTick;
             (riskParameters, startTick) = getRiskParameters(builderCode);
-            cumulativeTickDeltas = LeftRightSigned
-                .wrap(0)
-                .addToRightSlot(cumulativeTickDeltas.rightSlot())
-                .addToLeftSlot(startTick);
+
+            if (cumulativeTickDeltas.rightSlot() == 0) {
+                // initializes +1 sentinel
+                cumulativeTickDeltas = LeftRightSigned.wrap(0).addToRightSlot(1).addToLeftSlot(
+                    startTick
+                );
+            } else {
+                cumulativeTickDeltas = LeftRightSigned
+                    .wrap(0)
+                    .addToRightSlot(
+                        cumulativeTickDeltas.rightSlot() +
+                            int128(Math.abs(int24(cumulativeTickDeltas.leftSlot()) - startTick))
+                    )
+                    .addToLeftSlot(startTick);
+            }
         }
         for (uint256 i = 0; i < positionIdList.length; ) {
             TokenId tokenId = positionIdList[i];
@@ -655,7 +666,7 @@ contract PanopticPool is Clone, Multicall {
                     .wrap(0)
                     .addToRightSlot(
                         cumulativeTickDeltas.rightSlot() +
-                            int128(Math.abs(cumulativeTickDeltas.leftSlot() - finalTick))
+                            int128(Math.abs(int24(cumulativeTickDeltas.leftSlot()) - finalTick))
                     )
                     .addToLeftSlot(finalTick);
                 ++i;

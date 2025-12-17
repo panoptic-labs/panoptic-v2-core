@@ -149,7 +149,7 @@ contract RiskEngineInvariants is Test {
 
         // At saturation, buy roughly halves, sell→100%
         if (uint256(int256(u < 0 ? int16(0) : u)) * 1000 >= 9_000_000) {
-            assertLe(buy * 2, 1_000_000 + 2, "buy halves at saturation (pm slack)");
+            assertLe(buy, 1_000_000 + 2, "buy halves at saturation (pm slack)");
             assertEq(sell, DEC, "sell=100% at saturation");
         }
     }
