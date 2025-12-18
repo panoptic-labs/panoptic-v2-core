@@ -75,10 +75,10 @@ contract RiskEngineProperties is Test {
         );
 
         // left = requirement, right = balance including short premia and credits
-        assertEq(td0.leftSlot(), 1 ether, "req0 equals interest0 only");
-        assertEq(td1.leftSlot(), 2 ether, "req1 equals interest1 only");
-        assertEq(td0.rightSlot(), 10 ether, "bal0");
-        assertEq(td1.rightSlot(), 20 ether, "bal1");
+        assertEq(td0.leftSlot(), 0 ether, "req0 equals interest0 only");
+        assertEq(td1.leftSlot(), 0 ether, "req1 equals interest1 only");
+        assertEq(td0.rightSlot(), 10 ether - 1 ether, "bal0");
+        assertEq(td1.rightSlot(), 20 ether - 2 ether, "bal1");
     }
 
     // -------- B. Linearity in position size --------

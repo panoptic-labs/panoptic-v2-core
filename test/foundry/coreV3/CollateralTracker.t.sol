@@ -3366,7 +3366,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         console2.log("b-before", bobAssetsBefore);
 
         uint256 expectedBonus = Math.min(
-            bobAssetsBefore / 2,
+            (bobAssetsBefore - previewedInterest) / 2,
             (tokenData0.leftSlot() - tokenData0.rightSlot())
         );
         console.log("expectedBonus", expectedBonus);

@@ -475,8 +475,8 @@ contract RiskEngineInvariants is Test {
 
         // In the insolvent-interest case, balance is zeroed since those assets
         // will be consumed paying interest
-        uint256 effectiveAssets0 = interest0 > assets0 ? 0 : assets0;
-        uint256 effectiveAssets1 = interest1 > assets1 ? 0 : assets1;
+        uint256 effectiveAssets0 = interest0 > assets0 ? 0 : assets0 - interest0;
+        uint256 effectiveAssets1 = interest1 > assets1 ? 0 : assets1 - interest1;
 
         assertEq(
             td0.rightSlot(),

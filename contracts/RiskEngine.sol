@@ -1147,7 +1147,7 @@ contract RiskEngine {
         uint256 balance1;
         uint256 interest0;
         uint256 interest1;
-        {
+        unchecked {
             (balance0, interest0) = ct0.assetsAndInterest(user);
             (balance1, interest1) = ct1.assetsAndInterest(user);
 
@@ -1156,12 +1156,18 @@ contract RiskEngine {
             // as both spendable collateral and interest payment.
             // The capped interest is later added to collateral requirements.
             if (interest0 > balance0) {
-                interest0 = balance0;
-                balance0 = 0;
+                interest0 = balance0; // Cap interest
+                balance0 = 0; // Zero balance
+            } else {
+                balance0 -= interest0; // Subtract interest from balance
+                interest0 = 0; // Zero interest (nothing to add to requirements)
             }
             if (interest1 > balance1) {
                 interest1 = balance1;
                 balance1 = 0;
+            } else {
+                balance1 -= interest1; // Subtract interest from balance
+                interest1 = 0; // Zero interest (nothing to add to requirements)
             }
         }
         unchecked {
