@@ -175,10 +175,14 @@ contract RiskEngine {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         unchecked {
             // if the refunder lacks sufficient currency0 to pay back the virtual shares, have the caller cover the difference in exchange for currency1 (and vice versa)
-            int128 fees0 = -int128(Math.min(0, fees.rightSlot()));
+            int128 fees0 = fees.rightSlot();
+            uint256 feeShares0 = ct0.convertToShares(fees0 < 0 ? uint128(-fees0) : uint128(fees0));
+
+            // Liability (>0) adds to shortage; Asset (<0) subtracts from shortage
             int256 balanceShortage = int256(uint256(type(uint248).max)) -
-                int256(ct0.balanceOf(payor)) -
-                int256(ct0.convertToShares(uint128(fees0)));
+                int256(ct0.balanceOf(payor)) +
+                (fees0 > 0 ? int256(feeShares0) : -int256(feeShares0));
+
             if (balanceShortage > 0) {
                 return
                     LeftRightSigned
@@ -207,11 +211,15 @@ contract RiskEngine {
                         );
             }
 
-            int128 fees1 = -int128(Math.min(0, fees.leftSlot()));
+            int128 fees1 = fees.leftSlot();
+            uint256 feeShares1 = ct1.convertToShares(fees1 < 0 ? uint128(-fees1) : uint128(fees1));
+
+            // Liability (>0) adds to shortage; Asset (<0) subtracts from shortage
             balanceShortage =
                 int256(uint256(type(uint248).max)) -
-                int256(ct1.balanceOf(payor)) -
-                int256(ct1.convertToShares(uint128(fees1)));
+                int256(ct1.balanceOf(payor)) +
+                (fees1 > 0 ? int256(feeShares1) : -int256(feeShares1));
+
             if (balanceShortage > 0) {
                 return
                     LeftRightSigned
