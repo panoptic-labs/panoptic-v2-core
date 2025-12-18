@@ -1077,9 +1077,9 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             .toUint128();
     }
 
-    /// @notice Returns the current interest owed by a specific user
+    /// @notice Returns the current interest owed by a specific user in assets
     /// @param owner Address of the user to check
-    /// @return The amount of interest currently owed by the user
+    /// @return The amount of interest currently owed by the user in assets
     function owedInterest(address owner) external view returns (uint128) {
         return _owedInterest(owner);
     }
@@ -1213,19 +1213,45 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
     /// @notice Increase the share balance of a user by `2^248 - 1` without updating the total supply.
     /// @dev This is controlled by the Panoptic Pool - not individual users.
+    /// @dev When the user owes more interest than their balance, we reduce the delegation amount
+    /// by their entire balance. This accounts for the fact that _accrueInterest will consume
+    /// their real shares for interest payment, preventing the delegated virtual shares from
+    /// being incorrectly used to pay interest obligations.
     /// @param delegatee The account to increase the balance of
     function delegate(address delegatee) external onlyPanopticPool {
+        // Round up to match _accrueInterest's share calculation
+        uint256 interestShares = previewWithdraw(_owedInterest(delegatee));
+        uint256 balance = balanceOf[delegatee];
+
+        // If user owes more interest than they have, their entire balance will be consumed
+        // paying interest. Reduce delegation by this amount so virtual shares aren't used
+        // for interest payment.
+        uint256 balanceConsumedByInterest = interestShares > balance ? balance : 0;
+
         // keep checked to catch overflows
-        balanceOf[delegatee] += type(uint248).max;
+        balanceOf[delegatee] += type(uint248).max - balanceConsumedByInterest;
     }
 
     /// @notice Decrease the share balance of a user by `2^248 - 1` without updating the total supply.
-    /// @dev Assumes that `delegatee` has `>=(2^248 - 1)` tokens, will revert otherwise.
     /// @dev This is controlled by the Panoptic Pool - not individual users.
+    /// @dev If the user's balance is less than `2^248 - 1` (i.e., some phantom shares were consumed
+    /// during the delegation period, e.g., by interest payments), their balance is zeroed and
+    /// `_internalSupply` is increased to compensate for the phantom shares that were incorrectly
+    /// deducted by `_burn` operations during the delegation period.
     /// @param delegatee The account to decrease the balance of
     function revoke(address delegatee) external onlyPanopticPool {
-        // keep checked to catch underflows
-        balanceOf[delegatee] -= type(uint248).max;
+        uint256 balance = balanceOf[delegatee];
+        if (type(uint248).max > balance) {
+            // Phantom shares were consumed during delegation (e.g., burned for interest).
+            // This can happen when the user owed more interest than their real balance
+            // at the time delegate() was called. Zero the balance and restore
+            // _internalSupply for the overcounted burn.
+            balanceOf[delegatee] = 0;
+            _internalSupply += type(uint248).max - balance;
+        } else {
+            // Normal case: user still has all phantom shares plus any real shares
+            balanceOf[delegatee] = balance - type(uint248).max;
+        }
     }
 
     /// @notice Settles liquidation bonus and returns remaining virtual shares to the protocol.

@@ -3636,7 +3636,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         console2.log("preview, bobBefore", previewedInterest, bobAssetsBefore);
         uint256 expectedBonus = Math.min(
-            bobAssetsBefore / 2,
+            0, // bonus is balance/2, but here balance is 0 so bonus is zero
             (previewedInterest + tokenData0.leftSlot() - bobAssetsBefore)
         );
         console2.log("expectedBonus", expectedBonus);
@@ -3672,7 +3672,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
         assertApproxEqAbs(
             charlieAssetsAfter - charlieAssetsBefore,
-            bobAssetsBefore - expectedBonus,
+            0,
             1,
             "FAIL: charlie did not get his share of the interests"
         );

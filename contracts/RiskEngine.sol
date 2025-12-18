@@ -309,10 +309,13 @@ contract RiskEngine {
         // keep everything checked to catch any under/overflow or miscastings
         {
             // if the refunder lacks sufficient currency0 to pay back the virtual shares, have the caller cover the difference in exchange for currency1 (and vice versa)
-            int128 fees0 = -int128(Math.min(0, fees.rightSlot()));
+            int128 fees0 = fees.rightSlot();
+            uint256 feeShares0 = ct0.convertToShares(fees0 < 0 ? uint128(-fees0) : uint128(fees0));
+
+            // Liability (>0) adds to shortage; Asset (<0) subtracts from shortage
             int256 balanceShortage = int256(uint256(type(uint248).max)) -
-                int256(ct0.balanceOf(payor)) -
-                int256(ct0.convertToShares(uint128(fees0)));
+                int256(ct0.balanceOf(payor)) +
+                (fees0 > 0 ? int256(feeShares0) : -int256(feeShares0));
 
             if (balanceShortage > 0) {
                 return
@@ -342,11 +345,15 @@ contract RiskEngine {
                         );
             }
 
-            int128 fees1 = -int128(Math.min(0, fees.leftSlot()));
+            int128 fees1 = fees.leftSlot();
+            uint256 feeShares1 = ct1.convertToShares(fees1 < 0 ? uint128(-fees1) : uint128(fees1));
+
+            // Liability (>0) adds to shortage; Asset (<0) subtracts from shortage
             balanceShortage =
                 int256(uint256(type(uint248).max)) -
-                int256(ct1.balanceOf(payor)) -
-                int256(ct1.convertToShares(uint128(fees1)));
+                int256(ct1.balanceOf(payor)) +
+                (fees1 > 0 ? int256(feeShares1) : -int256(feeShares1));
+
             if (balanceShortage > 0) {
                 return
                     LeftRightSigned
@@ -383,15 +390,7 @@ contract RiskEngine {
     /// @notice Get the cost of exercising an option. Used during a forced exercise.
     /// @notice This one computes the cost of calling the forceExercise function on a position:
     /// - The forceExercisor will have to *pay* the exercisee because their position will be closed "against their will"
-    /// - The cost must be larger when the position is close to being in-range, and should be minimal when it is far from being in range. eg. Exercising a (1000, 1050)
-    ///   position will cost more if the price is 999 than if it is 100
-    /// - The cost is an exponentially decaying function of the distance between the position's strike and the current price
-    /// - The cost decreases by a factor of 2 for every "position's width"
-    /// - Note that the cost is the largest among all active legs, not the sum
-    /// @notice Example exercise cost progression:
-    /// - 10% if the position is liquidated when the price is between 950 and 1000, or if it is between 1050 and 1100
-    /// - 5% if the price is between 900 and 950 or (1100, 1150)
-    /// - 2.5% if between (850, 900) or (1150, 1200)
+    /// - The cost must be larger when the position is in-range, and should be minimal when it is out of range
     /// @param currentTick The current price tick
     /// @param oracleTick The price oracle tick
     /// @param tokenId The position to be exercised
@@ -1151,12 +1150,18 @@ contract RiskEngine {
         {
             (balance0, interest0) = ct0.assetsAndInterest(user);
             (balance1, interest1) = ct1.assetsAndInterest(user);
-            // if the interest rate is more than the available balance, the use will only pay what's available when accrueing interest
+
+            // Insolvent-interest case: a user cannot pay more interest than their balance.
+            // Cap interest to available balance and zero the balance so we don't treat the same funds
+            // as both spendable collateral and interest payment.
+            // The capped interest is later added to collateral requirements.
             if (interest0 > balance0) {
                 interest0 = balance0;
+                balance0 = 0;
             }
             if (interest1 > balance1) {
                 interest1 = balance1;
+                balance1 = 0;
             }
         }
         unchecked {
@@ -1307,6 +1312,7 @@ contract RiskEngine {
 
         unchecked {
             for (uint256 index = 0; index < numLegs; ++index) {
+                // bypass the collateral calculation if tokenType doesn't match the requested token (underlyingIsToken0)
                 if (tokenId.tokenType(index) != (underlyingIsToken0 ? 0 : 1)) continue;
 
                 if (tokenId.width(index) == 0 && tokenId.isLong(index) == 1) {
@@ -1604,26 +1610,20 @@ contract RiskEngine {
                                     atTick,
                                     poolUtilization
                                 );
-                        } else if (_isLong != isLongP) {
-                            // SYNTHETIC STOCK: different token types, one is long and the other is short
+                        } else if (
+                            _isLong != isLongP &&
+                            tokenId.strike(index) == tokenId.strike(partnerIndex)
+                        ) {
+                            // SYNTHETIC STOCK: different token types, one is long and the other is short. MUST BE AT THE SAME STRIKE
                             return
-                                // return the largest collateral requirement of the two legs
-                                index < partnerIndex
-                                    ? Math.max(
-                                        _getRequiredCollateralSingleLegNoPartner(
-                                            tokenId,
-                                            index,
-                                            positionSize,
-                                            atTick,
-                                            poolUtilization
-                                        ),
-                                        _getRequiredCollateralSingleLegNoPartner(
-                                            tokenId,
-                                            partnerIndex,
-                                            positionSize,
-                                            atTick,
-                                            poolUtilization
-                                        )
+                                // return the collateral requirement of the short leg only (the long leg comes for free™)
+                                _isLong == 0
+                                    ? _getRequiredCollateralSingleLegNoPartner(
+                                        tokenId,
+                                        index,
+                                        positionSize,
+                                        atTick,
+                                        poolUtilization
                                     )
                                     : 0;
                         }
@@ -1939,6 +1939,7 @@ contract RiskEngine {
         int24 atTick,
         int16 poolUtilization
     ) internal view returns (uint256) {
+        // compute both token requirements. Can directly compare them because they have the same tokenType
         uint256 _required = _getRequiredCollateralSingleLegNoPartner(
             tokenId,
             index,
@@ -1974,7 +1975,6 @@ contract RiskEngine {
         // required amount for the option leg
         // Assume 100% utilization, which means
         //  - 100% collateralization for sold options (cash account requirement)
-        //  - more capital efficiency for long options because prepaid (5% vs 10% BPR)
         uint256 _required = _getRequiredCollateralSingleLegNoPartner(
             tokenId,
             index,
