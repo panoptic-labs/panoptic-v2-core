@@ -309,10 +309,13 @@ contract RiskEngine {
         // keep everything checked to catch any under/overflow or miscastings
         {
             // if the refunder lacks sufficient currency0 to pay back the virtual shares, have the caller cover the difference in exchange for currency1 (and vice versa)
-            int128 fees0 = -int128(Math.min(0, fees.rightSlot()));
+            int128 fees0 = fees.rightSlot();
+            uint256 feeShares0 = ct0.convertToShares(fees0 < 0 ? uint128(-fees0) : uint128(fees0));
+
+            // Liability (>0) adds to shortage; Asset (<0) subtracts from shortage
             int256 balanceShortage = int256(uint256(type(uint248).max)) -
-                int256(ct0.balanceOf(payor)) -
-                int256(ct0.convertToShares(uint128(fees0)));
+                int256(ct0.balanceOf(payor)) +
+                (fees0 > 0 ? int256(feeShares0) : -int256(feeShares0));
 
             if (balanceShortage > 0) {
                 return
@@ -342,11 +345,15 @@ contract RiskEngine {
                         );
             }
 
-            int128 fees1 = -int128(Math.min(0, fees.leftSlot()));
+            int128 fees1 = fees.leftSlot();
+            uint256 feeShares1 = ct1.convertToShares(fees1 < 0 ? uint128(-fees1) : uint128(fees1));
+
+            // Liability (>0) adds to shortage; Asset (<0) subtracts from shortage
             balanceShortage =
                 int256(uint256(type(uint248).max)) -
-                int256(ct1.balanceOf(payor)) -
-                int256(ct1.convertToShares(uint128(fees1)));
+                int256(ct1.balanceOf(payor)) +
+                (fees1 > 0 ? int256(feeShares1) : -int256(feeShares1));
+
             if (balanceShortage > 0) {
                 return
                     LeftRightSigned
@@ -383,15 +390,7 @@ contract RiskEngine {
     /// @notice Get the cost of exercising an option. Used during a forced exercise.
     /// @notice This one computes the cost of calling the forceExercise function on a position:
     /// - The forceExercisor will have to *pay* the exercisee because their position will be closed "against their will"
-    /// - The cost must be larger when the position is close to being in-range, and should be minimal when it is far from being in range. eg. Exercising a (1000, 1050)
-    ///   position will cost more if the price is 999 than if it is 100
-    /// - The cost is an exponentially decaying function of the distance between the position's strike and the current price
-    /// - The cost decreases by a factor of 2 for every "position's width"
-    /// - Note that the cost is the largest among all active legs, not the sum
-    /// @notice Example exercise cost progression:
-    /// - 10% if the position is liquidated when the price is between 950 and 1000, or if it is between 1050 and 1100
-    /// - 5% if the price is between 900 and 950 or (1100, 1150)
-    /// - 2.5% if between (850, 900) or (1150, 1200)
+    /// - The cost must be larger when the position is in-range, and should be minimal when it is out of range
     /// @param currentTick The current price tick
     /// @param oracleTick The price oracle tick
     /// @param tokenId The position to be exercised
