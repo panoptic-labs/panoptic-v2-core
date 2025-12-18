@@ -1151,12 +1151,18 @@ contract RiskEngine {
         {
             (balance0, interest0) = ct0.assetsAndInterest(user);
             (balance1, interest1) = ct1.assetsAndInterest(user);
-            // if the interest rate is more than the available balance, the use will only pay what's available when accrueing interest
+
+            // Insolvent-interest case: a user cannot pay more interest than their balance.
+            // Cap interest to available balance and zero the balance so we don't treat the same funds
+            // as both spendable collateral and interest payment.
+            // The capped interest is later added to collateral requirements.
             if (interest0 > balance0) {
                 interest0 = balance0;
+                balance0 = 0;
             }
             if (interest1 > balance1) {
                 interest1 = balance1;
+                balance1 = 0;
             }
         }
         unchecked {

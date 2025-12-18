@@ -321,8 +321,8 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(ct0), type(uint104).max);
         token1.approve(address(ct1), type(uint104).max);
 
-        ct0.deposit(type(uint104).max, Charlie);
-        ct1.deposit(type(uint104).max, Charlie);
+        ct0.deposit(type(uint104).max / 2, Charlie);
+        ct1.deposit(type(uint104).max / 2, Charlie);
 
         vm.startPrank(Seller);
 
@@ -6974,10 +6974,10 @@ contract Misctest is Test, PositionUtils {
         // make sure Alice earns no fees on token 0 (her delta is slightly negative due to commission fees/precision etc)
         // the accumulator overflowed, so the accumulation was frozen. If she had poked before the accumulator overflowed,
         // she could have still earned some fees, but now the accumulation is frozen forever.
-        // old with itmSpreadFee = -931093
+        // old with itmSpreadFee = -864427
         assertEq(
             int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0),
-            -931093
+            -864427
         );
 
         // but she earns all of fees on token 1 since the premium accumulator did not overflow (!)
@@ -7838,11 +7838,7 @@ contract Misctest is Test, PositionUtils {
     function test_success_liquidation_currentTick_bonusOptimization_scenarios() public {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
-        swapperc.mint(uniPool, -1000, 1000, 10 ** 18);
         routerV4.modifyLiquidity(address(0), poolKey, -1000, 1000, 10 ** 18);
-
-        // L = 1
-        uniPool.liquidity();
 
         /// @dev single leg, wide atm call, liquidation through price move making options ITM, no-cross collateral
 
@@ -7868,7 +7864,7 @@ contract Misctest is Test, PositionUtils {
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
-        (, currentTick, , , , , ) = uniPool.slot0();
+        currentTick = sfpm.getCurrentTick(abi.encode(poolKey));
 
         vm.startPrank(Bob);
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
@@ -7884,7 +7880,7 @@ contract Misctest is Test, PositionUtils {
 
         mintOptions(pp, posIdList, 3000, 0, Constants.MAX_POOL_TICK, Constants.MIN_POOL_TICK, true);
 
-        (, currentTick, , , , , ) = uniPool.slot0();
+        currentTick = sfpm.getCurrentTick(abi.encode(poolKey));
 
         (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph.checkCollateral(
             pp,
@@ -7898,17 +7894,13 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
 
         // swap to 1.21 or 0.82, depending on tokenType
-        swapperc.swapTo(
-            uniPool,
-            tokenType == 0 ? 87150978765690778389772763136 : 72025602285694849958832766976
-        );
         routerV4.swapTo(
             address(0),
             poolKey,
             tokenType == 0 ? 87150978765690778389772763136 : 72025602285694849958832766976
         );
 
-        (, currentTick, , , , , ) = uniPool.slot0();
+        currentTick = sfpm.getCurrentTick(abi.encode(poolKey));
 
         (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
             pp,
@@ -7960,7 +7952,6 @@ contract Misctest is Test, PositionUtils {
         for (int24 t = -350; t <= 510; t += 10) {
             // swap to 1.21*1.05 or 0.82/1.05, depending on tokenType
             vm.startPrank(Swapper);
-            swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(twapTick) + t));
             routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(int24(twapTick) + t));
 
             vm.startPrank(Alice);
@@ -7983,6 +7974,280 @@ contract Misctest is Test, PositionUtils {
         console2.log("maxBonus1", maxBonus1);
         console2.log("twapTick", twapTick);
         console2.log("maxTick", maxTick);
+    }
+
+    function test_success_liquidation_interest_stale_scenarios() public {
+        vm.startPrank(Swapper);
+        // JIT a bunch of liquidity so swaps at mint can happen normally
+        routerV4.modifyLiquidity(address(0), poolKey, -600000, 600000, 10 ** 18);
+
+        /// @dev Alice sells a call, Bob buys it. Bob sells a large straddle as well. Bob owes a lot of long premia on that call, enought to trigger the haircut branch, but received none fron that straddle. He also has to pay of lot of interest for that straddle, so the loss will be capped/avoided?
+
+        uint256 asset = 0;
+        uint256 tokenType = 0;
+
+        {
+            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+        int24 tickSpacing = uniPool.tickSpacing();
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            asset,
+            0,
+            tokenType,
+            0,
+            (currentTick / tickSpacing) * tickSpacing,
+            2
+        );
+
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+        vm.startPrank(Alice);
+        mintOptions(
+            pp,
+            posIdList,
+            10 ** 12,
+            0,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        currentTick = sfpm.getCurrentTick(abi.encode(poolKey));
+
+        console2.log("currentTick", currentTick);
+
+        vm.startPrank(Bob);
+
+        TokenId tokenIdLong = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            asset,
+            1,
+            tokenType,
+            0,
+            (currentTick / tickSpacing) * tickSpacing,
+            2
+        );
+
+        $posIdList.push(tokenIdLong);
+
+        console2.log("");
+        console2.log("Bob mint");
+        mintOptions(
+            pp,
+            $posIdList,
+            9 * 10 ** 11,
+            type(uint24).max,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        TokenId tokenIdStraddle;
+        {
+            tokenIdStraddle = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                asset,
+                0,
+                tokenType,
+                0,
+                (currentTick / tickSpacing) * tickSpacing + 100 * tickSpacing,
+                2
+            );
+            tokenIdStraddle = tokenIdStraddle.addLeg(
+                1,
+                1,
+                asset,
+                0,
+                1 - tokenType,
+                1,
+                (currentTick / tickSpacing) * tickSpacing + 100 * tickSpacing,
+                2
+            );
+        }
+        $posIdList.push(tokenIdStraddle);
+
+        mintOptions(
+            pp,
+            $posIdList,
+            10 ** 24,
+            0,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        currentTick = sfpm.getCurrentTick(abi.encode(poolKey));
+
+        editCollateral(ct0, Bob, ct0.convertToShares(421033078520736539448040 / 2));
+        editCollateral(ct1, Bob, ct1.convertToShares(421033078520736539448040 / 2));
+
+        (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable");
+
+        // Bob is liquidatable!
+        uint256 snapshot = vm.snapshot();
+
+        vm.startPrank(Charlie);
+
+        console2.log("");
+        console2.log("NORMAL LIQUIUDATION, NO PROTOCOL LOSS");
+        // NORMAL LIQUIDATION, NO PROTOCOL LOSS
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            assertEq(valueBefore0, valueAfter0, "share price 0 stays the same");
+            assertEq(valueBefore1, valueAfter1, "share price 1 stays the same");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
+        vm.revertTo(snapshot);
+
+        console2.log("");
+        console2.log("STREAMIA ACCRUAL BUT NO INTEREST, HAIRCUT SO NO PROTOCOL LOSS");
+        // STREAMIA ACCRUAL BUT NO INTEREST, HAIRCUT SO NO PROTOCOL LOSS
+
+        accruePoolFeesInRange(
+            manager,
+            poolKey,
+            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
+            2 ** 85,
+            2 ** 85
+        );
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable");
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            assertEq(valueBefore0, valueAfter0, "share price 0 stays the same");
+            assertEq(valueBefore1, valueAfter1, "share price 1 stays the same");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
+
+        vm.revertTo(snapshot);
+        console2.log("");
+        console2.log("NO STREAMIA ACCRUAL BUT INTEREST, BUT MINIMAL PROTOCOL LOSS");
+
+        // NO STREAMIA ACCRUAL BUT INTEREST, BUT MINIMAL PROTOCOL LOSS
+
+        // increase interest owed  (100 years)
+        vm.warp(block.timestamp + 100 * 365 * 24 * 3600);
+        vm.roll(block.number + 10);
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            assertEq(valueBefore0, valueAfter0, "share price 0 stays the same");
+            assertGt(valueBefore1, valueAfter1, "share price 1 decreases");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
+
+        vm.revertTo(snapshot);
+        console2.log("");
+        console2.log("STREAMIA ACCRUAL AND INTEREST, ");
+
+        // STREAMIA ACCRUAL AND INTEREST,
+
+        // increase interest owed  (100 years)
+        vm.warp(block.timestamp + 100 * 365 * 24 * 3600);
+        vm.roll(block.number + 10);
+
+        accruePoolFeesInRange(
+            manager,
+            poolKey,
+            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
+            2 ** 85,
+            2 ** 85
+        );
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            assertEq(valueBefore0, valueAfter0, "share price 0 stays the same");
+            assertGt(valueBefore1, valueAfter1, "share price 1 decreases");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
     }
 
     function test_success_liquidation_ITM_scenarios() public {
