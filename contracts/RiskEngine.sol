@@ -761,30 +761,48 @@ contract RiskEngine {
 
         uint256 balance0;
         uint256 balance1;
-        uint256 interest0;
-        uint256 interest1;
-        {
+        unchecked {
+            uint256 interest0;
+            uint256 interest1;
             (balance0, interest0) = ct0.assetsAndInterest(user);
             (balance1, interest1) = ct1.assetsAndInterest(user);
-            // if the interest rate is more than the available balance, the use will only pay what's available when accrueing interest
+
+            // Subtract the interest from the balance
+            //
+            // Insolvent-interest case: a user cannot pay more interest than their balance.
+            // Cap interest to available balance and zero the balance so we don't treat the same funds
+            // as both spendable collateral and interest payment.
+            // The capped interest is later added to collateral requirements.
+            // This flow reflects how accrueInterest is called before any settlement
             if (interest0 > balance0) {
-                interest0 = balance0;
+                interest0 -= balance0; // Cap interest
+                balance0 = 0; // Zero balance
+            } else {
+                balance0 -= interest0; // Subtract interest from balance
+                interest0 = 0; // Zero interest (nothing to add to requirements)
             }
             if (interest1 > balance1) {
-                interest1 = balance1;
+                interest1 -= balance1;
+                balance1 = 0; // Zero balance
+            } else {
+                balance1 -= interest1; // Subtract interest from balance
+                interest1 = 0; // Zero interest (nothing to add to requirements)
             }
-        }
 
-        unchecked {
+            // add owed premia to balance
             balance0 += shortPremia.rightSlot();
             balance1 += shortPremia.leftSlot();
 
+            // add owed premia to balance
             balance0 += creditAmounts.rightSlot();
             balance1 += creditAmounts.leftSlot();
-            tokensRequired = tokensRequired.addToRightSlot(uint128(interest0)).addToLeftSlot(
-                uint128(interest1)
+
+            // Add remaining interest (if any) to the tokens required
+            tokensRequired = tokensRequired.addToRightSlot(interest0.toUint128()).addToLeftSlot(
+                interest1.toUint128()
             );
         }
+
         tokenData0 = LeftRightUnsigned.wrap(balance0.toUint128()).addToLeftSlot(
             tokensRequired.rightSlot()
         );

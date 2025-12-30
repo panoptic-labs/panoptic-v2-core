@@ -4081,14 +4081,10 @@ contract PanopticPoolTest is PositionUtils {
                     uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10),
                     "b0"
                 );
-
+                int256 val1 = expectedSwap1 - (shortAmounts.leftSlot() * 9990) / 10000;
                 assertApproxEqAbs(
                     ct1.balanceOf(Alice),
-                    uint256(
-                        int256(uint256(type(uint104).max)) +
-                            (shortAmounts.leftSlot() * 9990) /
-                            10_000
-                    ),
+                    uint256(int256(uint256(type(uint104).max)) - val1),
                     uint256(int256(shortAmounts.leftSlot()) / 1_000_000 + 10),
                     "b1"
                 );
@@ -4357,8 +4353,8 @@ contract PanopticPoolTest is PositionUtils {
 
             uint256 sharesToBurn;
             int256[2] memory notionalVals;
-            int256[2] memory ITMSpreads;
             {
+                int256[2] memory ITMSpreads;
                 notionalVals = [
                     amount0s +
                         $amount0Moveds[1] +
@@ -4395,9 +4391,10 @@ contract PanopticPoolTest is PositionUtils {
                 );
             }
 
+            int256 expectedSwap1;
+
             {
                 int256 expectedSwap0;
-                int256 expectedSwap1;
                 {
                     uint256 snapshot = vm.snapshot();
 
@@ -4516,13 +4513,10 @@ contract PanopticPoolTest is PositionUtils {
             }
 
             {
+                int256 val1 = expectedSwap1 - (shortAmounts.leftSlot() * 9990) / 10000;
                 assertApproxEqAbs(
                     ct1.balanceOf(Alice),
-                    uint256(
-                        int256(uint256(type(uint104).max)) +
-                            (shortAmounts.leftSlot() * 9990) /
-                            10_000
-                    ),
+                    uint256(int256(uint256(type(uint104).max)) - val1),
                     uint256(int256(shortAmounts.leftSlot()) / 1_000_000 + 10),
                     "Alice balance 1"
                 );

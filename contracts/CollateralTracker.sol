@@ -955,9 +955,9 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         }
     }
 
-    /// @notice Returns the current interest owed by a specific user
+    /// @notice Returns the current interest owed by a specific user in assets
     /// @param owner Address of the user to check
-    /// @return The amount of interest currently owed by the user
+    /// @return The amount of interest currently owed by the user in assets
     function owedInterest(address owner) external view returns (uint128) {
         return _owedInterest(owner);
     }
@@ -1089,9 +1089,23 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
     /// @notice Increase the share balance of a user by `2^248 - 1` without updating the total supply.
     /// @dev This is controlled by the Panoptic Pool - not individual users.
+    /// @dev When the user owes more interest than their balance, we reduce the delegation amount
+    /// by their entire balance. This accounts for the fact that _accrueInterest will consume
+    /// their real shares for interest payment, preventing the delegated virtual shares from
+    /// being incorrectly used to pay interest obligations.
     /// @param delegatee The account to increase the balance of
     function delegate(address delegatee) external onlyPanopticPool {
-        balanceOf[delegatee] += type(uint248).max;
+        // Round up to match _accrueInterest's share calculation
+        uint256 interestShares = previewWithdraw(_owedInterest(delegatee));
+        uint256 balance = balanceOf[delegatee];
+
+        // If user owes more interest than they have, their entire balance will be consumed
+        // paying interest. Reduce delegation by this amount so virtual shares aren't used
+        // for interest payment.
+        uint256 balanceConsumedByInterest = interestShares > balance ? balance : 0;
+
+        // keep checked to catch overflows
+        balanceOf[delegatee] += type(uint248).max - balanceConsumedByInterest;
     }
 
     /// @notice Decrease the share balance of a user by `2^248 - 1` without updating the total supply.
@@ -1099,6 +1113,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @dev This is controlled by the Panoptic Pool - not individual users.
     /// @param delegatee The account to decrease the balance of
     function revoke(address delegatee) external onlyPanopticPool {
+        // keep checked to catch underflows
         balanceOf[delegatee] -= type(uint248).max;
     }
 

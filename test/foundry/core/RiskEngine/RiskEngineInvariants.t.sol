@@ -477,17 +477,22 @@ contract RiskEngineInvariants is Test {
 
         // Balances side must equal assets + shortPrem + credits(=0 here).
         // balances = assets + short premia + credits(=0 here)
-        (uint256 assets0, ) = ct0.assetsAndInterest(u);
-        (uint256 assets1, ) = ct1.assetsAndInterest(u);
+        (uint256 assets0, uint256 interest0) = ct0.assetsAndInterest(u);
+        (uint256 assets1, uint256 interest1) = ct1.assetsAndInterest(u);
+
+        // In the insolvent-interest case, balance is zeroed since those assets
+        // will be consumed paying interest
+        uint256 effectiveAssets0 = interest0 > assets0 ? 0 : assets0 - interest0;
+        uint256 effectiveAssets1 = interest1 > assets1 ? 0 : assets1 - interest1;
 
         assertEq(
             td0.rightSlot(),
-            assets0 + shortPrem.rightSlot(),
+            effectiveAssets0 + shortPrem.rightSlot(),
             "balance0 = assets0 + shortPrem0"
         );
         assertEq(
             td1.rightSlot(),
-            assets1 + shortPrem.leftSlot(),
+            effectiveAssets1 + shortPrem.leftSlot(),
             "balance1 = assets1 + shortPrem1"
         );
 

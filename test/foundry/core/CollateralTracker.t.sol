@@ -3168,7 +3168,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         console2.log("b-before", bobAssetsBefore);
 
         uint256 expectedBonus = Math.min(
-            bobAssetsBefore / 2,
+            (bobAssetsBefore - previewedInterest) / 2,
             (tokenData0.leftSlot() - tokenData0.rightSlot())
         );
         console.log("expectedBonus", expectedBonus);
@@ -3325,7 +3325,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         console2.log("preview, bobBefore", previewedInterest, bobAssetsBefore);
         uint256 expectedBonus = Math.min(
-            bobAssetsBefore / 2,
+            0,
             (previewedInterest + tokenData0.leftSlot() - bobAssetsBefore)
         );
         console2.log("previewBob-before-liq", collateralToken0.previewOwedInterest(Bob));
@@ -3360,7 +3360,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
         assertApproxEqAbs(
             charlieAssetsAfter - charlieAssetsBefore,
-            bobAssetsBefore - expectedBonus,
+            0,
             1,
             "FAIL: charlie did not get his share of the interests"
         );

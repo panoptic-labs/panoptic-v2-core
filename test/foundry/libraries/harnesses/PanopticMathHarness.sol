@@ -152,7 +152,7 @@ contract PanopticMathHarness is Test {
         uint256 legIndex,
         bool opening
     ) public view returns (LeftRightSigned, LeftRightSigned) {
-        try this.calculateIOAmounts(tokenId, positionSize, legIndex, opening) returns (
+        try this._calculateIOAmounts(tokenId, positionSize, legIndex, opening) returns (
             LeftRightSigned longs,
             LeftRightSigned shorts
         ) {

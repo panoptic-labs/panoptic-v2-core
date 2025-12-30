@@ -5997,8 +5997,10 @@ contract Misctest is Test, PositionUtils {
         ct1.deposit(1_005, Bob);
 
         vm.startPrank(Charlie);
-        token1.mint(Charlie, 1_003_003);
-        token1.approve(address(ct1), 1_003_003);
+        token0.mint(Charlie, 1);
+        token0.approve(address(ct0), 1);
+        token1.mint(Charlie, 1_003_004);
+        token1.approve(address(ct1), 1_003_004);
 
         ct1.deposit(1_003_003, Charlie);
 
