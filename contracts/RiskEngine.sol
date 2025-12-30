@@ -920,6 +920,7 @@ contract RiskEngine {
 
         unchecked {
             for (uint256 index = 0; index < numLegs; ++index) {
+                // bypass the collateral calculation if tokenType doesn't match the requested token (underlyingIsToken0)
                 if (tokenId.tokenType(index) != (underlyingIsToken0 ? 0 : 1)) continue;
 
                 if (tokenId.width(index) == 0 && tokenId.isLong(index) == 1) {
@@ -1217,26 +1218,20 @@ contract RiskEngine {
                                     atTick,
                                     poolUtilization
                                 );
-                        } else if (_isLong != isLongP) {
+                        } else if (
+                            _isLong != isLongP &&
+                            tokenId.strike(index) == tokenId.strike(partnerIndex)
+                        ) {
                             // SYNTHETIC STOCK: different token types, one is long and the other is short
                             return
-                                // return the largest collateral requirement of the two legs
-                                index < partnerIndex
-                                    ? Math.max(
-                                        _getRequiredCollateralSingleLegNoPartner(
-                                            tokenId,
-                                            index,
-                                            positionSize,
-                                            atTick,
-                                            poolUtilization
-                                        ),
-                                        _getRequiredCollateralSingleLegNoPartner(
-                                            tokenId,
-                                            partnerIndex,
-                                            positionSize,
-                                            atTick,
-                                            poolUtilization
-                                        )
+                                // return the collateral requirement of the short leg only (the long leg comes for free™)
+                                _isLong == 0
+                                    ? _getRequiredCollateralSingleLegNoPartner(
+                                        tokenId,
+                                        index,
+                                        positionSize,
+                                        atTick,
+                                        poolUtilization
                                     )
                                     : 0;
                         }
@@ -1552,6 +1547,7 @@ contract RiskEngine {
         int24 atTick,
         int16 poolUtilization
     ) internal view returns (uint256) {
+        // compute both token requirements. Can directly compare them because they have the same tokenType
         uint256 _required = _getRequiredCollateralSingleLegNoPartner(
             tokenId,
             index,
@@ -1585,7 +1581,6 @@ contract RiskEngine {
         // required amount for the option leg
         // Assume 100% utilization, which means
         //  - 100% collateralization for sold options (cash account requirement)
-        //  - more capital efficiency for long options because prepaid (5% vs 10% BPR)
         uint256 _required = _getRequiredCollateralSingleLegNoPartner(
             tokenId,
             index,
