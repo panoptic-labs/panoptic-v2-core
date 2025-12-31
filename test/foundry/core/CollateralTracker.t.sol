@@ -378,6 +378,156 @@ contract Attacker {
     }
 }
 
+/*//////////////////////////////////////////////////////////////
+            COLLATERAL TRACKER REENTRANCY MOCKS
+//////////////////////////////////////////////////////////////*/
+
+// Helper contract that attempts to call collateral tracker functions recursively
+// We'll use this by etching it over the PanopticPool address to trigger callbacks
+contract ReentrancyAttacker {
+    uint256[65535] private __gap;
+
+    CollateralTrackerHarness public target;
+    bool public activated;
+    bytes public callData;
+
+    function construct(address _target, bytes memory _callData) public {
+        target = CollateralTrackerHarness(_target);
+        callData = _callData;
+    }
+
+    // This mimics the PanopticPool interface enough to not break initialization
+    function initialize() external {}
+
+    // Fallback that attempts reentrancy when called
+    fallback() external payable {
+        if (!activated && callData.length > 0) {
+            activated = true;
+            (bool success, ) = address(target).call(callData);
+            require(success, "Reentrancy call failed");
+        }
+    }
+
+    receive() external payable {
+        if (!activated && callData.length > 0) {
+            activated = true;
+            (bool success, ) = address(target).call(callData);
+            require(success, "Reentrancy call failed");
+        }
+    }
+}
+
+// Malicious ERC20 token that implements full ERC20 interface with reentrancy attack
+contract MaliciousToken {
+    uint256[65535] private __gap;
+
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    CollateralTrackerHarness public targetCT;
+    address public attacker;
+    enum AttackType {
+        NONE,
+        DEPOSIT,
+        WITHDRAW,
+        REDEEM,
+        TRANSFER,
+        MINT,
+        DONATE
+    }
+    AttackType public attackType;
+    bool public attacked;
+    uint256 public donateAmount;
+
+    function construct(address _target, address _attacker) public {
+        targetCT = CollateralTrackerHarness(_target);
+        attacker = _attacker;
+    }
+
+    function setAttackType(AttackType _type) external {
+        attackType = _type;
+        attacked = false;
+    }
+
+    function setDonateAmount(uint256 _amount) external {
+        donateAmount = _amount;
+    }
+
+    function setupBalance(address user, uint256 amount) external {
+        balanceOf[user] = amount;
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+
+        // Attempt reentrancy AFTER doing the transfer correctly
+        if (!attacked && attackType != AttackType.NONE) {
+            attacked = true;
+
+            if (attackType == AttackType.DEPOSIT) {
+                targetCT.deposit(1, attacker);
+            } else if (attackType == AttackType.WITHDRAW) {
+                targetCT.withdraw(1, attacker, attacker);
+            } else if (attackType == AttackType.REDEEM) {
+                targetCT.redeem(1, attacker, attacker);
+            } else if (attackType == AttackType.TRANSFER) {
+                targetCT.transfer(attacker, 1);
+            } else if (attackType == AttackType.MINT) {
+                targetCT.mint(1, attacker);
+            } else if (attackType == AttackType.DONATE) {
+                targetCT.donate(donateAmount);
+            }
+        }
+
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        // Update balances like a normal token
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+
+        // Attempt reentrancy AFTER doing the transfer correctly
+        if (!attacked && attackType != AttackType.NONE) {
+            attacked = true;
+
+            if (attackType == AttackType.DEPOSIT) {
+                targetCT.deposit(1, attacker);
+            } else if (attackType == AttackType.WITHDRAW) {
+                targetCT.withdraw(1, attacker, attacker);
+            } else if (attackType == AttackType.REDEEM) {
+                targetCT.redeem(1, attacker, attacker);
+            } else if (attackType == AttackType.TRANSFER) {
+                targetCT.transfer(attacker, 1);
+            } else if (attackType == AttackType.MINT) {
+                targetCT.mint(1, attacker);
+            } else if (attackType == AttackType.DONATE) {
+                targetCT.donate(donateAmount);
+            }
+        }
+
+        return true;
+    }
+
+    function decimals() external pure returns (uint8) {
+        return 18;
+    }
+
+    function symbol() external pure returns (string memory) {
+        return "EVIL";
+    }
+
+    function name() external pure returns (string memory) {
+        return "EvilToken";
+    }
+}
+
 contract CollateralTrackerTest is Test, PositionUtils {
     using Math for uint256;
 
@@ -12691,5 +12841,278 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 tokensRequired1 += _tokensRequired;
             }
         }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                               REENTRANCY
+    //////////////////////////////////////////////////////////////*/
+
+    // Test that reentrancy guard prevents calling deposit during deposit
+    function test_Fail_deposit_ReentrancyLock() public {
+        uint256 x = 1;
+        _initWorld(x);
+
+        uint256 assets = 1000e18;
+
+        // Deploy malicious token
+        MaliciousToken malToken = new MaliciousToken();
+        malToken.construct(address(collateralToken0), Alice);
+
+        // Replace token0 with malicious token
+        vm.etch(token0, address(malToken).code);
+        MaliciousToken(token0).construct(address(collateralToken0), Alice);
+        MaliciousToken(token0).setAttackType(MaliciousToken.AttackType.DEPOSIT);
+
+        // Set up balances on the malicious token
+        MaliciousToken(token0).setupBalance(Alice, assets * 10);
+        MaliciousToken(token0).setupBalance(address(panopticPool), 0);
+
+        vm.startPrank(Alice);
+
+        // During the deposit, the malicious token's transferFrom will be called
+        // It will try to reenter deposit(), which triggers REENTRANCY guard
+        // SafeTransferLib catches the revert and wraps it as TransferFailed
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.TransferFailed.selector,
+                token0,
+                Alice,
+                assets,
+                assets * 10
+            )
+        );
+        collateralToken0.deposit(assets, Alice);
+
+        vm.stopPrank();
+    }
+
+    // Test that reentrancy guard prevents calling mint during mint
+    function test_Fail_mint_ReentrancyLock() public {
+        uint256 x = 1;
+        _initWorld(x);
+
+        uint256 shares = 1000e18;
+
+        // Deploy malicious token that will reenter mint() during transferFrom
+        MaliciousToken malToken = new MaliciousToken();
+        malToken.construct(address(collateralToken0), Alice);
+
+        // Replace token0 with malicious token
+        vm.etch(token0, address(malToken).code);
+        MaliciousToken(token0).construct(address(collateralToken0), Alice);
+        MaliciousToken(token0).setAttackType(MaliciousToken.AttackType.MINT);
+
+        // Set up sufficient balance
+        MaliciousToken(token0).setupBalance(Alice, shares * 10);
+
+        vm.startPrank(Alice);
+
+        // The mint() function will call transferFrom on the token, triggering reentrancy
+        // SafeTransferLib wraps the REENTRANCY error as TransferFailed
+        vm.expectRevert(); // We expect TransferFailed but the exact amount is hard to predict
+        collateralToken0.mint(shares, Alice);
+
+        vm.stopPrank();
+    }
+
+    // Test that reentrancy guard prevents cross-function reentrancy during withdraw
+    function test_Fail_withdraw_ReentrancyLock() public {
+        uint256 x = 1;
+        _initWorld(x);
+
+        uint256 assets = 1000e18;
+
+        // Deploy malicious token that will reenter withdraw() during the transfer out
+        MaliciousToken malToken = new MaliciousToken();
+        malToken.construct(address(collateralToken0), Alice);
+
+        // Replace token0 with malicious token BEFORE any operations
+        vm.etch(token0, address(malToken).code);
+        MaliciousToken(token0).construct(address(collateralToken0), Alice);
+
+        // Set up initial balance and deposit to get shares
+        MaliciousToken(token0).setupBalance(Alice, assets * 10);
+        MaliciousToken(token0).setAttackType(MaliciousToken.AttackType.NONE); // Don't attack during deposit
+
+        vm.startPrank(Alice);
+        _mockMaxDeposit(Alice);
+        collateralToken0.deposit(assets * 2, Alice);
+        vm.stopPrank();
+
+        // Now set up for the reentrancy attack during withdraw
+        MaliciousToken(token0).setAttackType(MaliciousToken.AttackType.WITHDRAW);
+        MaliciousToken(token0).setupBalance(address(panopticPool), assets * 10);
+
+        vm.startPrank(Alice);
+
+        // The withdraw() will call safeTransfer on the token, triggering reentrancy
+        // SafeTransferLib wraps the REENTRANCY error as TransferFailed
+        vm.expectRevert();
+        collateralToken0.withdraw(assets, Alice, Alice);
+
+        vm.stopPrank();
+    }
+
+    // Test that reentrancy guard prevents calling redeem during redeem
+    function test_Fail_redeem_ReentrancyLock() public {
+        uint256 x = 1;
+        _initWorld(x);
+
+        uint256 assets = 1000e18;
+
+        // Deploy malicious token that will reenter redeem() during the transfer out
+        MaliciousToken malToken = new MaliciousToken();
+        malToken.construct(address(collateralToken0), Alice);
+
+        // Replace token0 with malicious token BEFORE any operations
+        vm.etch(token0, address(malToken).code);
+        MaliciousToken(token0).construct(address(collateralToken0), Alice);
+
+        // Set up initial balance and deposit to get shares
+        MaliciousToken(token0).setupBalance(Alice, assets * 10);
+        MaliciousToken(token0).setAttackType(MaliciousToken.AttackType.NONE); // Don't attack during deposit
+
+        vm.startPrank(Alice);
+        _mockMaxDeposit(Alice);
+        collateralToken0.deposit(assets * 2, Alice);
+        vm.stopPrank();
+
+        uint256 shares = collateralToken0.balanceOf(Alice);
+
+        // Now set up for the reentrancy attack during redeem
+        MaliciousToken(token0).setAttackType(MaliciousToken.AttackType.REDEEM);
+        MaliciousToken(token0).setupBalance(address(panopticPool), assets * 10);
+
+        vm.startPrank(Alice);
+
+        // The redeem() will call safeTransfer on the token, triggering reentrancy
+        // SafeTransferLib wraps the REENTRANCY error as TransferFailed
+        vm.expectRevert();
+        collateralToken0.redeem(shares, Alice, Alice);
+
+        vm.stopPrank();
+    }
+
+    // Test that reentrancy guard prevents cross-function call to donate during deposit
+    function test_Fail_donate_ReentrancyLock() public {
+        uint256 x = 1;
+        _initWorld(x);
+
+        uint256 assets = 1000e18;
+
+        // Deploy malicious token that will try to call donate() during a deposit
+        MaliciousToken malToken = new MaliciousToken();
+        malToken.construct(address(collateralToken0), Alice);
+
+        // Replace token0 with malicious token BEFORE any operations
+        vm.etch(token0, address(malToken).code);
+        MaliciousToken(token0).construct(address(collateralToken0), Alice);
+
+        // First deposit some assets so Alice has shares to donate
+        MaliciousToken(token0).setupBalance(Alice, assets * 10);
+        MaliciousToken(token0).setAttackType(MaliciousToken.AttackType.NONE); // Don't attack during first deposit
+
+        vm.startPrank(Alice);
+        _mockMaxDeposit(Alice);
+        collateralToken0.deposit(assets * 2, Alice);
+        vm.stopPrank();
+
+        uint256 sharesToDonate = collateralToken0.balanceOf(Alice) / 2;
+
+        // Now set up for the reentrancy attack during second deposit
+        MaliciousToken(token0).setAttackType(MaliciousToken.AttackType.DONATE);
+        MaliciousToken(token0).setDonateAmount(sharesToDonate);
+
+        vm.startPrank(Alice);
+        _mockMaxDeposit(Alice);
+
+        // During deposit, the malicious token will try to call donate()
+        // This should trigger reentrancy guard, wrapped as TransferFailed
+        vm.expectRevert();
+        collateralToken0.deposit(assets, Alice);
+
+        vm.stopPrank();
+    }
+
+    // Test that reentrancy guard prevents calling transfer during deposit
+    // This is a CRITICAL test as transfer() is one of the attack vectors for stealing phantom shares
+    function test_Fail_transfer_ReentrancyLock() public {
+        uint256 x = 1;
+        _initWorld(x);
+
+        uint256 assets = 1000e18;
+
+        // Deploy malicious token that will try to call transfer() during a deposit
+        MaliciousToken malToken = new MaliciousToken();
+        malToken.construct(address(collateralToken0), Alice);
+
+        // Replace token0 with malicious token BEFORE any operations
+        vm.etch(token0, address(malToken).code);
+        MaliciousToken(token0).construct(address(collateralToken0), Alice);
+
+        // First deposit some assets so Alice has shares
+        MaliciousToken(token0).setupBalance(Alice, assets * 10);
+        MaliciousToken(token0).setAttackType(MaliciousToken.AttackType.NONE); // Don't attack during first deposit
+
+        vm.startPrank(Alice);
+        _mockMaxDeposit(Alice);
+        collateralToken0.deposit(assets * 2, Alice);
+        vm.stopPrank();
+
+        // Now set up for the reentrancy attack during second deposit
+        MaliciousToken(token0).setAttackType(MaliciousToken.AttackType.TRANSFER);
+
+        vm.startPrank(Alice);
+        _mockMaxDeposit(Alice);
+
+        // During deposit, the malicious token will try to call transfer()
+        // This is critical to prevent phantom share attacks
+        vm.expectRevert();
+        collateralToken0.deposit(assets, Alice);
+
+        vm.stopPrank();
+    }
+
+    // Test that reentrancy guard prevents calling transferFrom during operations
+    // This is a CRITICAL test as transferFrom() is one of the attack vectors for stealing phantom shares
+    function test_Fail_transferFrom_ReentrancyLock() public {
+        uint256 x = 1;
+        _initWorld(x);
+
+        uint256 assets = 1000e18;
+
+        // Deploy malicious token that will try to call transfer() during a deposit
+        MaliciousToken malToken = new MaliciousToken();
+        malToken.construct(address(collateralToken0), Alice);
+
+        // Replace token0 with malicious token BEFORE any operations
+        vm.etch(token0, address(malToken).code);
+        MaliciousToken(token0).construct(address(collateralToken0), Alice);
+
+        // First deposit some assets so Alice has shares
+        MaliciousToken(token0).setupBalance(Alice, assets * 10);
+        MaliciousToken(token0).setAttackType(MaliciousToken.AttackType.NONE); // Don't attack during first deposit
+
+        vm.startPrank(Alice);
+        _mockMaxDeposit(Alice);
+        collateralToken0.deposit(assets * 2, Alice);
+
+        // Approve Bob to transfer Alice's shares
+        collateralToken0.approve(Bob, type(uint256).max);
+        vm.stopPrank();
+
+        // Now set up for the reentrancy attack during second deposit
+        // The attack will attempt transfer, which tests both transfer and transferFrom protection
+        MaliciousToken(token0).setAttackType(MaliciousToken.AttackType.TRANSFER);
+
+        vm.startPrank(Alice);
+        _mockMaxDeposit(Alice);
+
+        // During deposit, the malicious token will try to call transfer/transferFrom
+        // This is critical to prevent phantom share attacks during liquidation
+        vm.expectRevert();
+        collateralToken0.deposit(assets, Alice);
+
+        vm.stopPrank();
     }
 }

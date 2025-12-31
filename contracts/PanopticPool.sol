@@ -14,6 +14,7 @@ import {Errors} from "@libraries/Errors.sol";
 import {InteractionHelper} from "@libraries/InteractionHelper.sol";
 import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
+import {TransientReentrancyGuard} from "@libraries/TransientReentrancyGuard.sol";
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
@@ -23,7 +24,7 @@ import {TokenId} from "@types/TokenId.sol";
 /// @title The Panoptic Pool: Create permissionless options on a CLAMM.
 /// @author Axicon Labs Limited
 /// @notice Manages positions, collateral, liquidations and forced exercises.
-contract PanopticPool is Clone, Multicall {
+contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -515,7 +516,7 @@ contract PanopticPool is Clone, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Updates the internal median with the last Uniswap observation if the `MEDIAN_PERIOD` has elapsed.
-    function pokeOracle() external {
+    function pokeOracle() external nonReentrant {
         int24 currentTick = SFPM.getCurrentTick(poolKey());
 
         (, uint256 oraclePack) = riskEngine().computeInternalMedian(s_oraclePack, currentTick);
@@ -542,7 +543,7 @@ contract PanopticPool is Clone, Multicall {
         uint64[] calldata effectiveLiquidityLimitsX32,
         int24[2][] calldata tickLimits,
         bool usePremiaAsCollateral
-    ) external {
+    ) external nonReentrant {
         // if safeMode, enforce covered at mint and exercise at burn
         uint8 safeMode = isSafeMode();
 
@@ -881,7 +882,7 @@ contract PanopticPool is Clone, Multicall {
         TokenId[] calldata positionIdListTo,
         TokenId[] calldata positionIdListToFinal,
         LeftRightUnsigned usePremiaAsCollateral
-    ) external {
+    ) external nonReentrant {
         // Assert the account we are liquidating is actually insolvent
         int24 twapTick = getTWAP();
         int24 currentTick = SFPM.getCurrentTick(poolKey());
