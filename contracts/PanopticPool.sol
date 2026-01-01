@@ -14,6 +14,7 @@ import {Errors} from "@libraries/Errors.sol";
 import {InteractionHelper} from "@libraries/InteractionHelper.sol";
 import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
+import {TransientReentrancyGuard} from "@libraries/TransientReentrancyGuard.sol";
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
@@ -25,7 +26,7 @@ import {OraclePack, OraclePackLibrary} from "@types/OraclePack.sol";
 /// @title The Panoptic Pool: Create permissionless options on a CLAMM.
 /// @author Axicon Labs Limited
 /// @notice Manages positions, collateral, liquidations and forced exercises.
-contract PanopticPool is Clone, Multicall {
+contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -549,7 +550,7 @@ contract PanopticPool is Clone, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Updates the internal oracle.
-    function pokeOracle() external {
+    function pokeOracle() external nonReentrant {
         int24 currentTick = getCurrentTick();
 
         (, OraclePack oraclePack) = riskEngine().computeInternalMedian(s_oraclePack, currentTick);
@@ -576,7 +577,7 @@ contract PanopticPool is Clone, Multicall {
         int24[3][] calldata tickAndSpreadLimits,
         bool usePremiaAsCollateral,
         uint256 builderCode
-    ) external {
+    ) external nonReentrant {
         // if safeMode, enforce covered at mint and exercise at burn
         RiskParameters riskParameters;
 
@@ -1363,7 +1364,7 @@ contract PanopticPool is Clone, Multicall {
         TokenId[] calldata positionIdListTo,
         TokenId[] calldata positionIdListToFinal,
         LeftRightUnsigned usePremiaAsCollateral
-    ) external payable {
+    ) external payable nonReentrant {
         // Assert the account we are liquidating is actually insolvent
         int24 twapTick = getTWAP();
         int24 currentTick = getCurrentTick();
