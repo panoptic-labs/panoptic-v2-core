@@ -4511,7 +4511,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
             new bytes(0),
@@ -4572,7 +4572,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
             new bytes(0),
@@ -4633,7 +4633,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
             new bytes(0),
@@ -4679,7 +4679,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         Reenter1155Initialize(Alice).construct(address(token0), address(token1), fee, poolId);
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
             new bytes(0),
@@ -4748,7 +4748,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.burnTokenizedPosition(
             new bytes(0),

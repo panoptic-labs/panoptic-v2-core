@@ -378,7 +378,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         address user,
         TokenId[] calldata positionIdList,
         bool usePremiaAsCollateral
-    ) external view {
+    ) external view ensureNonReentrantView {
         _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER, usePremiaAsCollateral, 0);
     }
 
@@ -1471,7 +1471,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
     /// @notice Get the current number of legs across all open positions for an account.
     /// @param user The account to query
     /// @return Number of legs across the open positions of `user`
-    function numberOfLegs(address user) external view returns (uint256) {
+    function numberOfLegs(address user) external view ensureNonReentrantView returns (uint256) {
         return s_positionsHash[user] >> 248;
     }
 
