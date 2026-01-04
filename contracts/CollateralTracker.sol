@@ -78,6 +78,13 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         uint256 sharesBurned
     );
 
+    event ProtocolLossRealized(
+        address indexed liquidatee,
+        address indexed liquidator,
+        uint256 protocolLossAssets,
+        uint256 protocolLossShares
+    );
+
     /*//////////////////////////////////////////////////////////////
                                CONSTANTS
     //////////////////////////////////////////////////////////////*/
@@ -1131,6 +1138,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         address liquidatee,
         int256 bonus
     ) external onlyPanopticPool nonReentrant {
+        uint256 protocolLossShares = 0; // Track total protocol loss
         if (bonus < 0) {
             uint256 bonusAbs;
 
@@ -1150,9 +1158,13 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
             uint256 liquidateeBalance = balanceOf[liquidatee];
 
             if (type(uint248).max > liquidateeBalance) {
+                // PROTOCOL LOSS SOURCE 1: Virtual share shortfall
+                uint256 shortfall = type(uint248).max - liquidateeBalance;
+                protocolLossShares += shortfall;
+
                 balanceOf[liquidatee] = 0;
                 unchecked {
-                    _internalSupply += type(uint248).max - liquidateeBalance;
+                    _internalSupply += shortfall;
                 }
             } else {
                 unchecked {
@@ -1163,8 +1175,12 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
             uint256 liquidateeBalance = balanceOf[liquidatee];
 
             if (type(uint248).max > liquidateeBalance) {
+                // PROTOCOL LOSS SOURCE 1: Virtual share shortfall
+                uint256 shortfall = type(uint248).max - liquidateeBalance;
+                protocolLossShares += shortfall;
+
                 unchecked {
-                    _internalSupply += type(uint248).max - liquidateeBalance;
+                    _internalSupply += shortfall;
                 }
                 liquidateeBalance = 0;
             } else {
@@ -1194,22 +1210,32 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
                 // N = Z(Y - T) / (X - Z)
                 // subtract delegatee balance from N since it was already transferred to the delegator
                 uint256 _totalSupply = totalSupply();
+                uint256 mintedShares;
                 unchecked {
-                    _mint(
-                        liquidator,
-                        Math.min(
-                            Math.mulDivCapped(
-                                uint256(bonus),
-                                _totalSupply - liquidateeBalance,
-                                uint256(Math.max(1, int256(totalAssets()) - bonus))
-                            ) - liquidateeBalance,
-                            _totalSupply * DECIMALS
-                        )
+                    mintedShares = Math.min(
+                        Math.mulDivCapped(
+                            uint256(bonus),
+                            _totalSupply - liquidateeBalance,
+                            uint256(Math.max(1, int256(totalAssets()) - bonus))
+                        ) - liquidateeBalance,
+                        _totalSupply * DECIMALS
                     );
                 }
+                _mint(liquidator, mintedShares);
+                protocolLossShares += mintedShares;
             } else {
                 _transferFrom(liquidatee, liquidator, bonusShares);
             }
+        }
+        // Emit protocol loss event if there was any loss
+        if (protocolLossShares > 0) {
+            uint256 protocolLossAssets = convertToAssets(protocolLossShares);
+            emit ProtocolLossRealized(
+                liquidatee,
+                liquidator,
+                protocolLossAssets,
+                protocolLossShares
+            );
         }
     }
 
