@@ -176,7 +176,10 @@ contract RiskEngine {
         unchecked {
             // if the refunder lacks sufficient currency0 to pay back the virtual shares, have the caller cover the difference in exchange for currency1 (and vice versa)
             int128 fees0 = fees.rightSlot();
-            uint256 feeShares0 = ct0.convertToShares(fees0 < 0 ? uint128(-fees0) : uint128(fees0));
+            // round up if amount is positive (negative fees means it is given to the exercisee)
+            uint256 feeShares0 = (fees0 > 0)
+                ? ct0.previewWithdraw(uint128(fees0))
+                : ct0.convertToShares(uint128(-fees0));
 
             // Liability (>0) adds to shortage; Asset (<0) subtracts from shortage
             int256 balanceShortage = int256(uint256(type(uint248).max)) -
@@ -212,7 +215,9 @@ contract RiskEngine {
             }
 
             int128 fees1 = fees.leftSlot();
-            uint256 feeShares1 = ct1.convertToShares(fees1 < 0 ? uint128(-fees1) : uint128(fees1));
+            uint256 feeShares1 = (fees1 > 0)
+                ? ct1.previewWithdraw(uint128(fees1))
+                : ct1.convertToShares(uint128(-fees1));
 
             // Liability (>0) adds to shortage; Asset (<0) subtracts from shortage
             balanceShortage =
