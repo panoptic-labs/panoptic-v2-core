@@ -368,7 +368,7 @@ library Math {
         int24 currentTick,
         LiquidityChunk liquidityChunk
     ) internal pure returns (uint256 amount0, uint256 amount1) {
-        if (currentTick <= liquidityChunk.tickLower()) {
+        if (currentTick < liquidityChunk.tickLower()) {
             amount0 = getAmount0ForLiquidity(liquidityChunk);
         } else if (currentTick >= liquidityChunk.tickUpper()) {
             amount1 = getAmount1ForLiquidity(liquidityChunk);
