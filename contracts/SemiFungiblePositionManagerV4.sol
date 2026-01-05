@@ -6,7 +6,7 @@ import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 // Inherited implementations
 import {ERC1155} from "@tokens/ERC1155Minimal.sol";
 import {Multicall} from "@base/Multicall.sol";
-import {TransientReentrancyGuard} from "solmate/src/utils/TransientReentrancyGuard.sol";
+import {TransientReentrancyGuard} from "@libraries/TransientReentrancyGuard.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {EfficientHash} from "@libraries/EfficientHash.sol";
