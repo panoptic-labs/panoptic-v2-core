@@ -418,7 +418,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
             positionIdList,
             riskParameters.bpDecreaseBuffer(),
             usePremiaAsCollateral,
-            0
+            riskParameters.safeMode()
         );
     }
 
