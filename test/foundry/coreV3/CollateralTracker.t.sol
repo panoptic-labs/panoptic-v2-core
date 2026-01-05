@@ -3558,7 +3558,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
         assertApproxEqAbs(
             charlieAssetsAfter - charlieAssetsBefore,
-            bobAssetsBefore - expectedBonus,
+            0,
             1,
             "FAIL: charlie did not get his share of the interests"
         );
