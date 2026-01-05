@@ -94,6 +94,13 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         uint256 sharesBurned
     );
 
+    event ProtocolLossRealized(
+        address indexed liquidatee,
+        address indexed liquidator,
+        uint256 protocolLossAssets,
+        uint256 protocolLossShares
+    );
+
     /*//////////////////////////////////////////////////////////////
                                CONSTANTS
     //////////////////////////////////////////////////////////////*/
@@ -1245,25 +1252,12 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
     }
 
     /// @notice Decrease the share balance of a user by `2^248 - 1` without updating the total supply.
+    /// @dev Assumes that `delegatee` has `>=(2^248 - 1)` tokens, will revert otherwise.
     /// @dev This is controlled by the Panoptic Pool - not individual users.
-    /// @dev If the user's balance is less than `2^248 - 1` (i.e., some phantom shares were consumed
-    /// during the delegation period, e.g., by interest payments), their balance is zeroed and
-    /// `_internalSupply` is increased to compensate for the phantom shares that were incorrectly
-    /// deducted by `_burn` operations during the delegation period.
     /// @param delegatee The account to decrease the balance of
     function revoke(address delegatee) external onlyPanopticPool nonReentrant {
-        uint256 balance = balanceOf[delegatee];
-        if (type(uint248).max > balance) {
-            // Phantom shares were consumed during delegation (e.g., burned for interest).
-            // This can happen when the user owed more interest than their real balance
-            // at the time delegate() was called. Zero the balance and restore
-            // _internalSupply for the overcounted burn.
-            balanceOf[delegatee] = 0;
-            _internalSupply += type(uint248).max - balance;
-        } else {
-            // Normal case: user still has all phantom shares plus any real shares
-            balanceOf[delegatee] = balance - type(uint248).max;
-        }
+        // keep checked to catch underflows
+        balanceOf[delegatee] -= type(uint248).max;
     }
 
     /// @notice Settles liquidation bonus and returns remaining virtual shares to the protocol.
@@ -1276,6 +1270,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         address liquidatee,
         int256 bonus
     ) external payable onlyPanopticPool nonReentrant {
+        uint256 protocolLossShares = 0; // Track total protocol loss
         if (bonus < 0) {
             uint256 bonusAbs;
 
@@ -1308,9 +1303,14 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
             uint256 liquidateeBalance = balanceOf[liquidatee];
 
             if (type(uint248).max > liquidateeBalance) {
+                // PROTOCOL LOSS SOURCE 1: Virtual share shortfall
+                uint256 shortfall = type(uint248).max - liquidateeBalance;
+                protocolLossShares += shortfall;
+
                 balanceOf[liquidatee] = 0;
-                // keep checked to catch under/overflows
-                _internalSupply += type(uint248).max - liquidateeBalance;
+                unchecked {
+                    _internalSupply += shortfall;
+                }
             } else {
                 // keep checked to catch under/overflows
                 balanceOf[liquidatee] = liquidateeBalance - type(uint248).max;
@@ -1322,8 +1322,13 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
             uint256 liquidateeBalance = balanceOf[liquidatee];
 
             if (type(uint248).max > liquidateeBalance) {
-                // keep checked to catch under/overflows
-                _internalSupply += type(uint248).max - liquidateeBalance;
+                // PROTOCOL LOSS SOURCE 1: Virtual share shortfall
+                uint256 shortfall = type(uint248).max - liquidateeBalance;
+                protocolLossShares += shortfall;
+
+                unchecked {
+                    _internalSupply += shortfall;
+                }
                 liquidateeBalance = 0;
             } else {
                 // keep checked to catch under/overflows
@@ -1351,25 +1356,35 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
                 // N = Z(Y - T) / (X - Z)
                 // subtract delegatee balance from N since it was already transferred to the delegator
                 uint256 _totalSupply = totalSupply();
-
-                // keep checked to catch any casting/math errors
-                _mint(
-                    liquidator,
-                    Math.min(
+                uint256 mintedShares;
+                unchecked {
+                    mintedShares = Math.min(
                         Math.mulDivCapped(
                             uint256(bonus),
                             _totalSupply - liquidateeBalance,
                             uint256(Math.max(1, int256(totalAssets()) - bonus))
                         ) - liquidateeBalance,
                         _totalSupply * DECIMALS
-                    )
-                );
+                    );
+                }
+                _mint(liquidator, mintedShares);
+                protocolLossShares += mintedShares;
             } else {
                 _transferFrom(liquidatee, liquidator, bonusShares);
             }
 
             // refund liquidator if they attached value expecting to settle a negative bonus in the native currency
             if (msg.value > 0) SafeTransferLib.safeTransferETH(liquidator, msg.value);
+        }
+        // Emit protocol loss event if there was any loss
+        if (protocolLossShares > 0) {
+            uint256 protocolLossAssets = convertToAssets(protocolLossShares);
+            emit ProtocolLossRealized(
+                liquidatee,
+                liquidator,
+                protocolLossAssets,
+                protocolLossShares
+            );
         }
     }
 

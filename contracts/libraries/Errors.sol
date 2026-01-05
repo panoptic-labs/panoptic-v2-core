@@ -128,6 +128,9 @@ library Errors {
     /// @notice An operation in a library has failed due to an underflow or overflow
     error UnderOverFlow();
 
+    /// @notice The function has triggered a reentrancy check
+    error Reentrancy();
+
     /// @notice PanopticPool: The supplied poolId does not match the poolId for that Uniswap Pool
     error WrongPoolId();
 
