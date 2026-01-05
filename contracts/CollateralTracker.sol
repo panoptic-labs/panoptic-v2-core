@@ -1106,10 +1106,17 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
     /// being incorrectly used to pay interest obligations.
     /// @param delegatee The account to increase the balance of
     function delegate(address delegatee) external onlyPanopticPool nonReentrant {
-        _accrueInterest(delegatee, IS_NOT_DEPOSIT);
+        // Round up to match _accrueInterest's share calculation
+        uint256 interestShares = previewWithdraw(_owedInterest(delegatee));
+        uint256 balance = balanceOf[delegatee];
+
+        // If user owes more interest than they have, their entire balance will be consumed
+        // paying interest. Reduce delegation by this amount so virtual shares aren't used
+        // for interest payment.
+        uint256 balanceConsumedByInterest = interestShares > balance ? balance : 0;
 
         // keep checked to catch overflows
-        balanceOf[delegatee] += type(uint248).max; // - balanceConsumedByInterest;
+        balanceOf[delegatee] += type(uint248).max - balanceConsumedByInterest;
     }
 
     /// @notice Decrease the share balance of a user by `2^248 - 1` without updating the total supply.
