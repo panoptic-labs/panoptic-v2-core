@@ -1605,9 +1605,12 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
                         optionOwner,
                         address(uint160(riskParameters.feeRecipient())),
                         uint128((commissionFee * riskParameters.protocolSplit()) / DECIMALS),
-                        uint128((commissionFee * riskParameters.protocolSplit()) / DECIMALS)
+                        uint128((commissionFee * riskParameters.builderSplit()) / DECIMALS)
                     );
                 }
+            }
+            unchecked {
+                tokenPaid += int128(uint128(commissionFee));
             }
         }
 
@@ -1684,10 +1687,11 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
                         optionOwner,
                         address(uint160(riskParameters.feeRecipient())),
                         uint128((commissionFee * riskParameters.protocolSplit()) / DECIMALS),
-                        uint128((commissionFee * riskParameters.protocolSplit()) / DECIMALS)
+                        uint128((commissionFee * riskParameters.builderSplit()) / DECIMALS)
                     );
                 }
             }
+            tokenPaid += int128(uint128(commissionFee));
         }
 
         return tokenPaid;
