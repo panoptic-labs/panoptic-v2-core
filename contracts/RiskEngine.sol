@@ -240,7 +240,7 @@ contract RiskEngine {
     /// @dev Restores the pool to using only the automatically computed safe-mode level.
     /// @param pool The PanopticPool to unlock.
     function unlockPool(PanopticPool pool) external onlyGuardian {
-        emit GuardianSafeModeUpdated(true);
+        emit GuardianSafeModeUpdated(false);
         pool.unlockSafeMode();
     }
 
