@@ -1287,7 +1287,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.initialize();
 
         // fails if already initialized
-        vm.expectRevert(Errors.CollateralTokenAlreadyInitialized.selector);
+        vm.expectRevert(Errors.AlreadyInitialized.selector);
         collateralToken0.initialize();
     }
 
@@ -7284,6 +7284,124 @@ contract CollateralTrackerTest is Test, PositionUtils {
         riskEngine.collect(address(collateralToken0), caller, 1);
 
         riskEngine.collect(address(collateralToken0), caller);
+    }
+
+    // Tests for BuilderWallet.init protection (S-16)
+    function test_Fail_builderWallet_init_AlreadyInitialized(uint256 x, address caller) public {
+        _initWorld(x);
+
+        // initalize a custom Panoptic pool
+        _deployCustomPanopticPool(token0, token1, pool, caller);
+        vm.startPrank(caller);
+
+        uint48 builderCode = 12345;
+        address builderAdmin = Bob;
+
+        // Deploy builder wallet (this calls init internally)
+        address wallet = builderFactory.deployBuilder(builderCode, builderAdmin);
+
+        // Verify initial setup worked
+        assertEq(BuilderWallet(wallet).builderAdmin(), builderAdmin);
+
+        // Attempt to reinitialize - should fail
+        vm.expectRevert(Errors.AlreadyInitialized.selector);
+        BuilderWallet(wallet).init(Alice);
+
+        vm.stopPrank();
+    }
+
+    function test_Fail_builderWallet_init_ZeroAddress(uint256 x, address caller) public {
+        _initWorld(x);
+
+        // initalize a custom Panoptic pool
+        _deployCustomPanopticPool(token0, token1, pool, caller);
+        vm.startPrank(caller);
+
+        // We need to create a BuilderWallet directly without calling init
+        // to test the zero address check in init
+        BuilderWallet wallet = new BuilderWallet(address(builderFactory));
+
+        // Attempt to initialize with zero address - should fail
+        vm.expectRevert(Errors.ZeroAddress.selector);
+        wallet.init(address(0));
+
+        vm.stopPrank();
+    }
+
+    function test_Success_builderWallet_setBuilderAdmin(uint256 x, address caller) public {
+        _initWorld(x);
+
+        // initalize a custom Panoptic pool
+        _deployCustomPanopticPool(token0, token1, pool, caller);
+        vm.startPrank(caller);
+
+        uint48 builderCode = 12345;
+        address builderAdmin = Bob;
+        address newAdmin = Alice;
+
+        // Deploy builder wallet
+        address wallet = builderFactory.deployBuilder(builderCode, builderAdmin);
+
+        // Verify initial admin
+        assertEq(BuilderWallet(wallet).builderAdmin(), builderAdmin);
+
+        vm.stopPrank();
+
+        // Change admin as the current builder admin
+        vm.startPrank(builderAdmin);
+        BuilderWallet(wallet).setBuilderAdmin(newAdmin);
+
+        // Verify admin was changed
+        assertEq(BuilderWallet(wallet).builderAdmin(), newAdmin);
+
+        vm.stopPrank();
+    }
+
+    function test_Fail_builderWallet_setBuilderAdmin_NotBuilder(uint256 x, address caller) public {
+        _initWorld(x);
+
+        // initalize a custom Panoptic pool
+        _deployCustomPanopticPool(token0, token1, pool, caller);
+        vm.startPrank(caller);
+
+        uint48 builderCode = 12345;
+        address builderAdmin = Bob;
+        address newAdmin = Alice;
+
+        // Deploy builder wallet
+        address wallet = builderFactory.deployBuilder(builderCode, builderAdmin);
+
+        vm.stopPrank();
+
+        // Attempt to change admin from unauthorized account - should fail
+        vm.startPrank(Swapper); // Random unauthorized account
+        vm.expectRevert(Errors.NotBuilder.selector);
+        BuilderWallet(wallet).setBuilderAdmin(newAdmin);
+
+        vm.stopPrank();
+    }
+
+    function test_Fail_builderWallet_setBuilderAdmin_ZeroAddress(uint256 x, address caller) public {
+        _initWorld(x);
+
+        // initalize a custom Panoptic pool
+        _deployCustomPanopticPool(token0, token1, pool, caller);
+        vm.startPrank(caller);
+
+        uint48 builderCode = 12345;
+        address builderAdmin = Bob;
+
+        // Deploy builder wallet
+        address wallet = builderFactory.deployBuilder(builderCode, builderAdmin);
+
+        vm.stopPrank();
+
+        // Attempt to change admin to zero address - should fail
+        vm.startPrank(builderAdmin);
+        vm.expectRevert(Errors.ZeroAddress.selector);
+        BuilderWallet(wallet).setBuilderAdmin(address(0));
+
+        vm.stopPrank();
     }
 
     /*//////////////////////////////////////////////////////////////

@@ -1608,7 +1608,7 @@ contract PanopticPoolTest is PositionUtils {
     function test_Fail_startPool_PoolAlreadyInitialized(uint256 x) public {
         _initWorld(x);
 
-        vm.expectRevert(Errors.PoolAlreadyInitialized.selector);
+        vm.expectRevert(Errors.AlreadyInitialized.selector);
 
         pp.initialize();
     }

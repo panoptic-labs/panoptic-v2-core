@@ -2318,7 +2318,16 @@ contract BuilderWallet {
     }
 
     function init(address _builderAdmin) external {
+        if (builderAdmin != address(0)) revert Errors.AlreadyInitialized();
+        if (_builderAdmin == address(0)) revert Errors.ZeroAddress();
+
         builderAdmin = _builderAdmin;
+    }
+
+    function setBuilderAdmin(address newAdmin) external {
+        if (msg.sender != builderAdmin) revert Errors.NotBuilder();
+        if (newAdmin == address(0)) revert Errors.ZeroAddress();
+        builderAdmin = newAdmin;
     }
 
     function sweep(address token, address to) external {

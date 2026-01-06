@@ -315,7 +315,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
     /// @dev Must be called first (by the factory contract) before any transaction can occur.
     function initialize() external {
         // reverts if this contract has already been initialized (assuming block.timestamp > 0)
-        if (OraclePack.unwrap(s_oraclePack) != 0) revert Errors.PoolAlreadyInitialized();
+        if (OraclePack.unwrap(s_oraclePack) != 0) revert Errors.AlreadyInitialized();
 
         int24 currentTick = getCurrentTick();
 

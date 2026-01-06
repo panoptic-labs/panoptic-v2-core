@@ -1179,7 +1179,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.initialize();
 
         // fails if already initialized
-        vm.expectRevert(Errors.CollateralTokenAlreadyInitialized.selector);
+        vm.expectRevert(Errors.AlreadyInitialized.selector);
         collateralToken0.initialize();
     }
 

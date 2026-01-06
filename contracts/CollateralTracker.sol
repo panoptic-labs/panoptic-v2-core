@@ -292,7 +292,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
     /// @notice Initializes a new `CollateralTracker` instance with 1 virtual asset and 10^6 virtual shares. Can only be called once; reverts if already initialized.
     function initialize() external {
         // fails if already initialized
-        if (s_initialized) revert Errors.CollateralTokenAlreadyInitialized();
+        if (s_initialized) revert Errors.AlreadyInitialized();
         s_initialized = true;
 
         // these virtual shares function as a multiplier for the capital requirement to manipulate the pool price
