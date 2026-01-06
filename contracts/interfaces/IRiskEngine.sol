@@ -213,7 +213,7 @@ interface IRiskEngine {
     ) external view returns (RiskParameters);
 
     /// @notice computes the fee recipient address based on builder code and salt.
-    function getFeeRecipient(uint256 builderCode) external pure returns (uint128 feeRecipient);
+    function getFeeRecipient(uint256 builderCode) external view returns (address);
 
     /// @notice Checks for significant oracle deviation to determine if Safe Mode should be active.
     /// @param currentTick The current tick
