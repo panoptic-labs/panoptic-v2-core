@@ -1333,7 +1333,7 @@ contract RiskEngine {
                         index,
                         false
                     );
-                    credits = tokenId.tokenType(index) == 0
+                    credits += tokenId.tokenType(index) == 0
                         ? amountsMoved.rightSlot()
                         : amountsMoved.leftSlot();
                 }
