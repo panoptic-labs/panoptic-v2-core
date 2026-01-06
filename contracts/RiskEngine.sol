@@ -210,7 +210,7 @@ contract RiskEngine {
 
     /// @notice Address allowed to override the automatically computed safe mode.
     /// @dev Guardian can only increase the effective safe mode, never relax it.
-    address public immutable GUARDIAN;
+    address internal immutable GUARDIAN;
 
     /// @notice Emitted when the guardian updates the enforced safe mode.
     /// @param lockMode True when safe mode is forcibly locked, false when the lock is lifted.
@@ -246,7 +246,7 @@ contract RiskEngine {
 
     /// @notice Returns the address of the guardian
     /// @return The guardian address that can override safe mode
-    function guardian() external returns (address) {
+    function guardian() external view returns (address) {
         return GUARDIAN;
     }
 
