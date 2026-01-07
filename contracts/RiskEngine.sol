@@ -918,7 +918,7 @@ contract RiskEngine {
         (int24 spotEMA, int24 fastEMA, int24 slowEMA, , int24 medianTick) = oraclePack.getEMAs();
 
         unchecked {
-            // can never miscart because all math is int24 or below
+            // can never miscast because all math is int24 or below
             // Condition 1: Check for a sudden deviation of the spot price from the spot EMA.
             // This is your primary defense against a flash crash or single-block manipulation.
             bool externalShock = Math.abs(currentTick - spotEMA) > MAX_TICKS_DELTA;
@@ -947,11 +947,13 @@ contract RiskEngine {
     /// @notice Determines which ticks to check for solvency based on market volatility
     /// @param currentTick The current tick of the pool
     /// @param _oraclePack The oracle pack containing historical price data
+    /// @param safeMode A number representing whether the protocol is in Safe Mode.
     /// @return atTicks Array of ticks at which to check solvency
     /// @return oraclePack The oracle pack (potentially updated)
     function getSolvencyTicks(
         int24 currentTick,
-        OraclePack _oraclePack
+        OraclePack _oraclePack,
+        uint8 safeMode
     ) external view returns (int24[] memory, OraclePack) {
         (int24 spotTick, int24 medianTick, int24 latestTick, OraclePack oraclePack) = _oraclePack
             .getOracleTicks(currentTick, EMA_PERIODS, MAX_CLAMP_DELTA);
@@ -964,11 +966,12 @@ contract RiskEngine {
         // (spotTick - medianTick, latestTick - medianTick, currentTick - medianTick)
         // This approach is more conservative than checking each tick difference individually,
         // as the Euclidean norm is always greater than or equal to the maximum of the individual differences.
+        // Conversely, check at all 4 ticks when safeMode is larger than 0.
         if (
-            int256(spotTick - medianTick) ** 2 +
+            (int256(spotTick - medianTick) ** 2 +
                 int256(latestTick - medianTick) ** 2 +
                 int256(currentTick - medianTick) ** 2 >
-            MAX_TICKS_DELTA ** 2
+                MAX_TICKS_DELTA ** 2) || (safeMode > 0)
         ) {
             // High deviation detected; check against all four ticks.
             atTicks = new int24[](4);
@@ -977,7 +980,7 @@ contract RiskEngine {
             atTicks[2] = latestTick;
             atTicks[3] = currentTick;
         } else {
-            // Normal operation; check against the spot tick = 10 mins EMA.
+            // Normal operation; check against the spot tick.
             atTicks = new int24[](1);
             atTicks[0] = spotTick;
         }

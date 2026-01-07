@@ -67,7 +67,7 @@ contract RiskEngineSafeModeAndOracle is Test {
         int24 cur = 0;
         // small deltas -> one tick only, spotTick
         {
-            (int24[] memory ticksSmall, ) = E.getSolvencyTicks(cur, _packEMAs(0, 0, 1, 0));
+            (int24[] memory ticksSmall, ) = E.getSolvencyTicks(cur, _packEMAs(0, 0, 1, 0), 0);
             assertEq(ticksSmall.length, 1, "normal mode = 1 tick");
         }
         // large 3D deviation -> 4 ticks
@@ -76,7 +76,18 @@ contract RiskEngineSafeModeAndOracle is Test {
             int24 spot = 4000;
             int24 med = 0;
             int24 latest = -4000;
-            (int24[] memory ticksLarge, ) = E.getSolvencyTicks(cur, _packEMAs(0, 0, spot, med));
+            (int24[] memory ticksLarge, ) = E.getSolvencyTicks(cur, _packEMAs(0, 0, spot, med), 0);
+            // Note: your PanopticMath.getOracleTicks may compute latest internally; force via spot/median/current spread
+            assertEq(ticksLarge.length, 4, "conservative mode = 4 ticks");
+        }
+        {
+            uint8 safeMode = 1;
+            // make vector squared norm exceed MAX_TICKS_DELTA^2 by spreading across components
+            (int24[] memory ticksLarge, ) = E.getSolvencyTicks(
+                cur,
+                _packEMAs(0, 0, 1, 0),
+                safeMode
+            );
             // Note: your PanopticMath.getOracleTicks may compute latest internally; force via spot/median/current spread
             assertEq(ticksLarge.length, 4, "conservative mode = 4 ticks");
         }
