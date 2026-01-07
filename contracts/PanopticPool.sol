@@ -963,7 +963,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         OraclePack oraclePack;
         int24[] memory atTicks;
 
-        (atTicks, oraclePack) = riskEngine().getSolvencyTicks(currentTick, s_oraclePack);
+        (atTicks, oraclePack) = riskEngine().getSolvencyTicks(currentTick, s_oraclePack, safeMode);
 
         if (positionIdList.length != 0) {
             uint256 solvent = _checkSolvencyAtTicks(
