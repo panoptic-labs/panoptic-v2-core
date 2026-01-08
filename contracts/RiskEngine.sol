@@ -2306,15 +2306,21 @@ contract RiskEngine {
                        BUILDER WALLETS
 //////////////////////////////////////////////////////////////*/
 
-interface IERC20 {
-    function balanceOf(address) external view returns (uint256);
-
-    function transfer(address to, uint256 amount) external returns (bool);
-}
-
 contract BuilderWallet {
+    using SafeTransferLib for address;
+
     address public immutable FACTORY;
     address public builderAdmin;
+
+    /// @notice Emitted when the builder wallet is initialized
+    /// @param builderAdmin The address of the builder admin
+    event BuilderWalletInitialized(address indexed builderAdmin);
+
+    /// @notice Emitted when tokens are swept from the wallet
+    /// @param token The address of the token swept
+    /// @param to The address that received the tokens
+    /// @param amount The amount of tokens swept
+    event TokensSwept(address indexed token, address indexed to, uint256 amount);
 
     constructor(address factory) {
         FACTORY = factory;
@@ -2325,25 +2331,20 @@ contract BuilderWallet {
         if (_builderAdmin == address(0)) revert Errors.ZeroAddress();
 
         builderAdmin = _builderAdmin;
-    }
-
-    function setBuilderAdmin(address newAdmin) external {
-        if (msg.sender != builderAdmin) revert Errors.NotBuilder();
-        if (newAdmin == address(0)) revert Errors.ZeroAddress();
-        builderAdmin = newAdmin;
+        emit BuilderWalletInitialized(_builderAdmin);
     }
 
     function sweep(address token, address to) external {
         if (msg.sender != builderAdmin) revert Errors.NotBuilder();
 
-        uint256 bal = IERC20(token).balanceOf(address(this));
-        if (bal == 0) return;
-
-        bool ok = IERC20(token).transfer(to, bal);
-        if (!ok) {
-            // `from` is this wallet, `balance` is pre-transfer token balance
-            revert Errors.TransferFailed(token, address(this), bal, bal);
+        uint256 bal = SafeTransferLib.balanceOfOrZero(token, address(this));
+        if (bal == 0) {
+            emit TokensSwept(token, to, 0);
+            return;
         }
+
+        token.safeTransfer(to, bal);
+        emit TokensSwept(token, to, bal);
     }
 }
 
@@ -2365,6 +2366,16 @@ contract BuilderFactory {
 
     address public immutable OWNER;
 
+    /// @notice Emitted when a new builder wallet is deployed
+    /// @param builderCode The builder code used as salt
+    /// @param wallet The address of the deployed wallet
+    /// @param builderAdmin The admin address for the wallet
+    event BuilderWalletDeployed(
+        uint48 indexed builderCode,
+        address indexed wallet,
+        address indexed builderAdmin
+    );
+
     constructor(address owner) {
         if (owner == address(0)) revert Errors.ZeroAddress();
         OWNER = owner;
@@ -2375,7 +2386,7 @@ contract BuilderFactory {
         _;
     }
 
-    function _onlyOwner() internal {
+    function _onlyOwner() internal view {
         require(msg.sender == OWNER, "NOT_OWNER");
     }
 
@@ -2400,6 +2411,8 @@ contract BuilderFactory {
         wallet = Create2Lib.deploy(0, salt, initCode);
         // now set the admin in storage (not part of init code)
         BuilderWallet(wallet).init(builderAdmin);
+
+        emit BuilderWalletDeployed(builderCode, wallet, builderAdmin);
     }
 
     /**
