@@ -153,7 +153,6 @@ library InteractionHelper {
                 }
             }
 
-            bool SKIP_INTEREST = true;
             if (haircutTotal.rightSlot() != 0)
                 ct0.settleBurn(
                     liquidatee,
@@ -161,8 +160,7 @@ library InteractionHelper {
                     0,
                     0,
                     int128(haircutTotal.rightSlot()),
-                    RiskParameters.wrap(0),
-                    SKIP_INTEREST
+                    RiskParameters.wrap(0)
                 );
             if (haircutTotal.leftSlot() != 0)
                 ct1.settleBurn(
@@ -171,8 +169,7 @@ library InteractionHelper {
                     0,
                     0,
                     int128(haircutTotal.leftSlot()),
-                    RiskParameters.wrap(0),
-                    SKIP_INTEREST
+                    RiskParameters.wrap(0)
                 );
         }
     }
