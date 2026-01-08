@@ -103,13 +103,7 @@ contract PanopticPoolHarness is PanopticPool {
         (
             LeftRightSigned netExchanged,
             LeftRightSigned[4][] memory premiasByLeg
-        ) = _burnAllOptionsFrom(
-                msg.sender,
-                tickLimitLow,
-                tickLimitHigh,
-                COMMIT_LONG_SETTLED,
-                positionIdList
-            );
+        ) = _burnAllOptionsFrom(msg.sender, tickLimitLow, tickLimitHigh, positionIdList);
 
         return (premiasByLeg, netExchanged);
     }

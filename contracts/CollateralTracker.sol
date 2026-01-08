@@ -122,8 +122,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
     uint256 internal constant TARGET_RATE_MASK =
         0xFFFFFFFFFFFFFFFFFFFFFFFFFFC000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
-    bool internal constant IS_NOT_DEPOSIT = false;
-    bool internal constant IS_DEPOSIT = true;
+    bool internal constant DONOT_SKIP_INTEREST = false;
+    bool internal constant SKIP_INTEREST = true;
 
     /// @notice Transient storage slot for the utilization
     bytes32 internal constant UTILIZATION_TRANSIENT_SLOT =
@@ -408,7 +408,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         address recipient,
         uint256 amount
     ) public override(ERC20Minimal) nonReentrant returns (bool) {
-        _accrueInterest(msg.sender, IS_NOT_DEPOSIT);
+        _accrueInterest(msg.sender, DONOT_SKIP_INTEREST);
         // make sure the caller does not have any open option positions
         // if they do: we don't want them sending panoptic pool shares to others
         // as this would reduce their amount of collateral against the opened positions
@@ -428,7 +428,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         address to,
         uint256 amount
     ) public override(ERC20Minimal) nonReentrant returns (bool) {
-        _accrueInterest(from, IS_NOT_DEPOSIT);
+        _accrueInterest(from, DONOT_SKIP_INTEREST);
         // make sure the sender does not have any open option positions
         // if they do: we don't want them sending panoptic pool shares to others
         // as this would reduce their amount of collateral against the opened positions
@@ -566,7 +566,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         uint256 assets,
         address receiver
     ) external payable nonReentrant returns (uint256 shares) {
-        _accrueInterest(msg.sender, IS_DEPOSIT);
+        _accrueInterest(msg.sender, SKIP_INTEREST);
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
         if (assets == 0) revert Errors.BelowMinimumRedemption();
 
@@ -624,7 +624,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         uint256 shares,
         address receiver
     ) external payable nonReentrant returns (uint256 assets) {
-        _accrueInterest(msg.sender, IS_DEPOSIT);
+        _accrueInterest(msg.sender, SKIP_INTEREST);
         assets = previewMint(shares);
 
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
@@ -708,7 +708,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         address receiver,
         address owner
     ) external nonReentrant returns (uint256 shares) {
-        _accrueInterest(owner, IS_NOT_DEPOSIT);
+        _accrueInterest(owner, DONOT_SKIP_INTEREST);
         if (assets > maxWithdraw(owner)) revert Errors.ExceedsMaximumRedemption();
         if (assets == 0) revert Errors.BelowMinimumRedemption();
 
@@ -764,7 +764,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         TokenId[] calldata positionIdList,
         bool usePremiaAsCollateral
     ) external nonReentrant returns (uint256 shares) {
-        _accrueInterest(owner, IS_NOT_DEPOSIT);
+        _accrueInterest(owner, DONOT_SKIP_INTEREST);
         if (assets == 0) revert Errors.BelowMinimumRedemption();
         if (assets > _maxWithdrawWithPositions(owner)) revert Errors.ExceedsMaximumRedemption();
 
@@ -836,7 +836,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         address receiver,
         address owner
     ) external nonReentrant returns (uint256 assets) {
-        _accrueInterest(owner, IS_NOT_DEPOSIT);
+        _accrueInterest(owner, DONOT_SKIP_INTEREST);
         if (shares > maxRedeem(owner)) revert Errors.ExceedsMaximumRedemption();
 
         // check/update allowance for approved redeem
@@ -880,7 +880,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
     /// @dev Can only be used when the user has no open positions
     /// @param shares Amount of shares to be donated
     function donate(uint256 shares) external nonReentrant {
-        _accrueInterest(msg.sender, IS_NOT_DEPOSIT);
+        _accrueInterest(msg.sender, DONOT_SKIP_INTEREST);
 
         if (shares > maxRedeem(msg.sender)) revert Errors.ExceedsMaximumRedemption();
 
@@ -896,13 +896,13 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
     /// @notice Accrues protocol-wide interest for the calling user
     /// @dev Updates global interest state and settles any outstanding interest for msg.sender
     function accrueInterest() external nonReentrant {
-        _accrueInterest(msg.sender, IS_NOT_DEPOSIT);
+        _accrueInterest(msg.sender, DONOT_SKIP_INTEREST);
     }
 
     /// @notice Accrues protocol-wide interest and settles a specific user's interest.
     /// @dev This function should be called before any user action that affects their borrow balance.
     /// @param owner the account which calls accrue interest
-    function _accrueInterest(address owner, bool isDeposit) internal {
+    function _accrueInterest(address owner, bool skipInterest) internal {
         uint128 _assetsInAMM = s_assetsInAMM;
         (
             uint128 currentBorrowIndex,
@@ -932,33 +932,31 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
 
                 address _owner = owner;
                 uint256 userBalance = balanceOf[_owner];
-                if (shares > userBalance) {
-                    if (!isDeposit) {
-                        // update the accrual of interest paid
-                        burntInterestValue = Math
-                            .mulDiv(userBalance, _totalAssets, totalSupply())
-                            .toUint128();
+                if (skipInterest) {
+                    // set interest paid to zero
+                    burntInterestValue = 0;
 
-                        emit InsolvencyPenaltyApplied(
-                            owner,
-                            userInterestOwed,
-                            burntInterestValue,
-                            userBalance
-                        );
+                    // we effectively **did not settle** this user:
+                    // we keep their old baseIndex so future interest is computed correctly.
+                    userBorrowIndex = userState.rightSlot();
+                } else if (shares > userBalance) {
+                    // update the accrual of interest paid
+                    burntInterestValue = Math
+                        .mulDiv(userBalance, _totalAssets, totalSupply())
+                        .toUint128();
 
-                        /// Insolvent case: Pay what you can
-                        _burn(_owner, userBalance);
+                    emit InsolvencyPenaltyApplied(
+                        owner,
+                        userInterestOwed,
+                        burntInterestValue,
+                        userBalance
+                    );
 
-                        /// @dev DO NOT update index. By keeping the user's old baseIndex, their debt continues to compound correctly from the original point in time.
-                        userBorrowIndex = userState.rightSlot();
-                    } else {
-                        // set interest paid to zero
-                        burntInterestValue = 0;
+                    /// Insolvent case: Pay what you can
+                    _burn(_owner, userBalance);
 
-                        // we effectively **did not settle** this user:
-                        // we keep their old baseIndex so future interest is computed correctly.
-                        userBorrowIndex = userState.rightSlot();
-                    }
+                    /// @dev DO NOT update index. By keeping the user's old baseIndex, their debt continues to compound correctly from the original point in time.
+                    userBorrowIndex = userState.rightSlot();
                 } else {
                     // Solvent case: Pay in full.
                     _burn(_owner, shares);
@@ -1238,17 +1236,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
     /// being incorrectly used to pay interest obligations.
     /// @param delegatee The account to increase the balance of
     function delegate(address delegatee) external onlyPanopticPool nonReentrant {
-        // Round up to match _accrueInterest's share calculation
-        uint256 interestShares = previewWithdraw(_owedInterest(delegatee));
-        uint256 balance = balanceOf[delegatee];
-
-        // If user owes more interest than they have, their entire balance will be consumed
-        // paying interest. Reduce delegation by this amount so virtual shares aren't used
-        // for interest payment.
-        uint256 balanceConsumedByInterest = interestShares > balance ? balance : 0;
-
         // keep checked to catch overflows
-        balanceOf[delegatee] += type(uint248).max - balanceConsumedByInterest;
+        balanceOf[delegatee] += type(uint248).max;
     }
 
     /// @notice Decrease the share balance of a user by `2^248 - 1` without updating the total supply.
@@ -1431,7 +1420,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         int128 ammDeltaAmount,
         int128 realizedPremium
     ) internal returns (uint32, int128, uint256, uint256) {
-        _accrueInterest(optionOwner, IS_NOT_DEPOSIT);
         /// Snapshot state variables to compute the price per share
         uint256 _totalAssets = totalAssets();
         uint256 _totalSupply = totalSupply();
@@ -1566,6 +1554,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         int128 ammDeltaAmount,
         RiskParameters riskParameters
     ) external onlyPanopticPool nonReentrant returns (uint32, int128) {
+        _accrueInterest(optionOwner, DONOT_SKIP_INTEREST);
         (
             uint32 utilization,
             int128 tokenPaid,
@@ -1625,6 +1614,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
     /// @param ammDeltaAmount The amount of tokens moved during the option close
     /// @param realizedPremium Premium to settle on the current positions
     /// @param riskParameters The RiskEngine's core risk parameters
+    /// @param skipInterest Whether to skip interest (for forceExercises and settlePremium)
     /// @return The amount of tokens paid when closing that position
     function settleBurn(
         address optionOwner,
@@ -1632,8 +1622,11 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         int128 shortAmount,
         int128 ammDeltaAmount,
         int128 realizedPremium,
-        RiskParameters riskParameters
+        RiskParameters riskParameters,
+        bool skipInterest
     ) external onlyPanopticPool nonReentrant returns (int128) {
+        _accrueInterest(optionOwner, skipInterest);
+
         (, int128 tokenPaid, uint256 _totalAssets, uint256 _totalSupply) = _updateBalancesAndSettle(
             optionOwner,
             false, // isCreation = false
