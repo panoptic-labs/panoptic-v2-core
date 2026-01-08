@@ -3513,7 +3513,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
         assertApproxEqAbs(
             charlieAssetsAfter - charlieAssetsBefore,
-            bobAssetsBefore - expectedBonus,
+            0,
             1,
             "FAIL: charlie did not get his share of the interests"
         );
@@ -6671,8 +6671,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             0,
             0,
             Constants.MAX_POOL_TICK,
-            Constants.MIN_POOL_TICK,
-            false
+            Constants.MIN_POOL_TICK
         );
     }
 

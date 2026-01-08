@@ -106,15 +106,8 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
 
     /// @notice Flag that signals to commit both collected Uniswap fees and settled long premium to `s_settledTokens`.
     bool internal constant COMMIT_LONG_SETTLED = true;
-
     /// @notice Flag that signals to only commit collected Uniswap fees to `s_settledTokens`.
     bool internal constant DONOT_COMMIT_LONG_SETTLED = false;
-
-    /// @notice Flag that signals the current burn operation is part of a force exercise
-    bool internal constant SKIP_INTEREST = true;
-
-    /// @notice Flag that signals the current burn operation is not part of a force exercise
-    bool internal constant DONOT_SKIP_INTEREST = false;
 
     /// @notice Flag for `_checkSolvency` to indicate that an account should be solvent at all input ticks.
     bool internal constant ASSERT_SOLVENCY = true;
@@ -592,8 +585,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
                     tickLimitLow,
                     tickLimitHigh,
                     msg.sender,
-                    COMMIT_LONG_SETTLED,
-                    DONOT_SKIP_INTEREST
+                    COMMIT_LONG_SETTLED
                 );
             }
             unchecked {
@@ -756,8 +748,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
                 tickLimitLow,
                 tickLimitHigh,
                 owner,
-                commitLongSettled,
-                DONOT_SKIP_INTEREST
+                commitLongSettled
             );
             netPaid = netPaid.add(paidAmounts);
             unchecked {
@@ -781,8 +772,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         int24 tickLimitLow,
         int24 tickLimitHigh,
         address owner,
-        bool commitLongSettled,
-        bool isForceExercise
+        bool commitLongSettled
     ) internal returns (LeftRightSigned paidAmounts, LeftRightSigned[4] memory premiaByLeg) {
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned netAmmDelta) = SFPM
             .burnTokenizedPosition(poolKey(), tokenId, positionSize, tickLimitLow, tickLimitHigh);
@@ -805,8 +795,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
                 longAmounts.rightSlot(),
                 shortAmounts.rightSlot(),
                 netAmmDelta.rightSlot(),
-                realizedPremia.rightSlot(),
-                isForceExercise
+                realizedPremia.rightSlot()
             );
             paidAmounts = paidAmounts.addToRightSlot(paid0);
         }
@@ -817,8 +806,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
                 longAmounts.leftSlot(),
                 shortAmounts.leftSlot(),
                 netAmmDelta.leftSlot(),
-                realizedPremia.leftSlot(),
-                isForceExercise
+                realizedPremia.leftSlot()
             );
             paidAmounts = paidAmounts.addToLeftSlot(paid1);
         }
@@ -1147,8 +1135,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
                 MIN_SWAP_TICK,
                 MAX_SWAP_TICK,
                 account,
-                COMMIT_LONG_SETTLED,
-                SKIP_INTEREST
+                COMMIT_LONG_SETTLED
             );
         }
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
@@ -1245,9 +1232,8 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
                 }
                 {
                     // deduct the paid premium tokens from the owner's balance and add them to the cumulative settled token delta
-                    // do not pay interest
-                    ct0.settleBurn(owner, 0, 0, 0, -realizedPremia.rightSlot(), SKIP_INTEREST);
-                    ct1.settleBurn(owner, 0, 0, 0, -realizedPremia.leftSlot(), SKIP_INTEREST);
+                    ct0.settleBurn(owner, 0, 0, 0, -realizedPremia.rightSlot());
+                    ct1.settleBurn(owner, 0, 0, 0, -realizedPremia.leftSlot());
 
                     bytes32 chunkKey;
                     {

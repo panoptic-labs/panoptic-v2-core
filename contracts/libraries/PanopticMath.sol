@@ -1286,25 +1286,10 @@ library PanopticMath {
                 }
             }
 
-            bool SKIP_INTEREST = true;
             if (haircutTotal.rightSlot() != 0)
-                collateral0.settleBurn(
-                    _liquidatee,
-                    0,
-                    0,
-                    0,
-                    int128(haircutTotal.rightSlot()),
-                    SKIP_INTEREST
-                );
+                collateral0.settleBurn(_liquidatee, 0, 0, 0, int128(haircutTotal.rightSlot()));
             if (haircutTotal.leftSlot() != 0)
-                collateral1.settleBurn(
-                    _liquidatee,
-                    0,
-                    0,
-                    0,
-                    int128(haircutTotal.leftSlot()),
-                    SKIP_INTEREST
-                );
+                collateral1.settleBurn(_liquidatee, 0, 0, 0, int128(haircutTotal.leftSlot()));
 
             return
                 LeftRightSigned.wrap(0).addToRightSlot(int128(collateralDelta0)).addToLeftSlot(
