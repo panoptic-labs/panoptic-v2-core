@@ -106,15 +106,8 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
 
     /// @notice Flag that signals to commit both collected Uniswap fees and settled long premium to `s_settledTokens`.
     bool internal constant COMMIT_LONG_SETTLED = true;
-
     /// @notice Flag that signals to only commit collected Uniswap fees to `s_settledTokens`.
     bool internal constant DONOT_COMMIT_LONG_SETTLED = false;
-
-    /// @notice Flag that signals the current burn operation is part of a force exercise
-    bool internal constant SKIP_INTEREST = true;
-
-    /// @notice Flag that signals the current burn operation is not part of a force exercise
-    bool internal constant DONOT_SKIP_INTEREST = false;
 
     /// @notice Flag for `_checkSolvency` to indicate that an account should be solvent at all input ticks.
     bool internal constant ASSERT_SOLVENCY = true;
@@ -656,15 +649,12 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
                     finalTick = getCurrentTick();
                     _settleOptions(msg.sender, tokenId, positionSize, riskParameters, finalTick);
                 } else {
-                    bool[2] memory commitLongSkipInterest;
-                    commitLongSkipInterest[0] = COMMIT_LONG_SETTLED;
-                    commitLongSkipInterest[1] = DONOT_SKIP_INTEREST;
                     (, , finalTick) = _burnOptions(
                         tokenId,
                         positionSize,
                         _tickLimits,
                         msg.sender,
-                        commitLongSkipInterest,
+                        COMMIT_LONG_SETTLED,
                         riskParameters
                     );
                 }
@@ -835,6 +825,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
     /// @param owner The owner of the option position to be closed
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price on each option close
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price on each option close
+    /// @param commitLongSettled Whether to commit the long premium that will be settled to storage (disabled during liquidations)
     /// @param positionIdList The list of option positions to close
     /// @return netPaid The net amount of tokens paid after closing the positions
     /// @return premiasByLeg The amount of premia settled by the user for each leg of the position
@@ -842,6 +833,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         address owner,
         int24 tickLimitLow,
         int24 tickLimitHigh,
+        bool commitLongSettled,
         TokenId[] calldata positionIdList
     ) internal returns (LeftRightSigned netPaid, LeftRightSigned[4][] memory premiasByLeg) {
         premiasByLeg = new LeftRightSigned[4][](positionIdList.length);
@@ -857,20 +849,14 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
             tickLimits[1] = tickLimitHigh;
             LeftRightSigned paidAmounts;
             address _owner = owner;
-
-            {
-                bool[2] memory commitLongSkipInterest;
-                commitLongSkipInterest[0] = DONOT_COMMIT_LONG_SETTLED;
-                commitLongSkipInterest[1] = DONOT_SKIP_INTEREST;
-                (paidAmounts, premiasByLeg[i], ) = _burnOptions(
-                    positionIdList[i],
-                    positionSize,
-                    tickLimits,
-                    _owner,
-                    commitLongSkipInterest,
-                    riskParameters
-                );
-            }
+            (paidAmounts, premiasByLeg[i], ) = _burnOptions(
+                positionIdList[i],
+                positionSize,
+                tickLimits,
+                _owner,
+                commitLongSettled,
+                riskParameters
+            );
             netPaid = netPaid.add(paidAmounts);
             unchecked {
                 ++i;
@@ -883,7 +869,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
     /// @param positionSize The size of the position to burn
     /// @param tickLimits The lower and upper bound of an acceptable open interval for the ending price on each option close
     /// @param owner The owner of the option position to be burned
-    /// @param commitLongSkipInterest Whether to commit the long premium that will be settled to storage (disabled during liquidations) [index=0] or whether to skip interest payment [index=1]
+    /// @param commitLongSettled Whether to commit the long premium that will be settled to storage (disabled during liquidations)
     /// @param riskParameters The RiskEngine's core risk parameters
     /// @return paidAmounts The net amount of tokens paid after closing the position
     /// @return premiaByLeg The amount of premia settled by the user for each leg of the position
@@ -893,7 +879,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         uint128 positionSize,
         int24[2] memory tickLimits,
         address owner,
-        bool[2] memory commitLongSkipInterest,
+        bool commitLongSettled,
         RiskParameters riskParameters
     )
         internal
@@ -920,7 +906,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
             collectedByLeg,
             positionSize,
             riskParameters,
-            LeftRightSigned.wrap(commitLongSkipInterest[0] ? int128(1) : int128(0))
+            LeftRightSigned.wrap(commitLongSettled ? int128(1) : int128(0))
         );
 
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
@@ -929,7 +915,6 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         emit OptionBurnt(owner, positionSize, tokenId, premiaByLeg);
 
         RiskParameters _rp = riskParameters;
-        bool skipInterest = commitLongSkipInterest[1];
         {
             int128 paid0 = collateralToken0().settleBurn(
                 owner,
@@ -937,8 +922,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
                 shortAmounts.rightSlot(),
                 netAmmDelta.rightSlot(),
                 realizedPremia.rightSlot(),
-                _rp,
-                skipInterest
+                _rp
             );
             paidAmounts = paidAmounts.addToRightSlot(paid0);
         }
@@ -950,8 +934,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
                 shortAmounts.leftSlot(),
                 netAmmDelta.leftSlot(),
                 realizedPremia.leftSlot(),
-                _rp,
-                skipInterest
+                _rp
             );
             paidAmounts = paidAmounts.addToLeftSlot(paid1);
         }
@@ -1025,24 +1008,8 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
             );
         }
         // deduct the paid premium tokens from the owner's balance
-        collateralToken0().settleBurn(
-            owner,
-            0,
-            0,
-            0,
-            realizedPremia.rightSlot(),
-            riskParameters,
-            SKIP_INTEREST
-        );
-        collateralToken1().settleBurn(
-            owner,
-            0,
-            0,
-            0,
-            realizedPremia.leftSlot(),
-            riskParameters,
-            SKIP_INTEREST
-        );
+        collateralToken0().settleBurn(owner, 0, 0, 0, realizedPremia.rightSlot(), riskParameters);
+        collateralToken1().settleBurn(owner, 0, 0, 0, realizedPremia.leftSlot(), riskParameters);
     }
 
     /// @notice Adds collected tokens to `s_settledTokens` and adjusts `s_grossPremiumLast` for any liquidity added.
@@ -1564,6 +1531,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
                 liquidatee,
                 MIN_SWAP_TICK,
                 MAX_SWAP_TICK,
+                DONOT_COMMIT_LONG_SETTLED,
                 positionIdList
             );
 
@@ -1668,20 +1636,14 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
 
             // Exercise the option
             // Turn off ITM swapping to prevent swap at potentially unfavorable price
-            {
-                bool[2] memory commitLongSkipInterest;
-                commitLongSkipInterest[0] = COMMIT_LONG_SETTLED;
-                commitLongSkipInterest[1] = SKIP_INTEREST;
-
-                _burnOptions(
-                    tokenId,
-                    positionSize,
-                    tickLimits,
-                    account,
-                    commitLongSkipInterest,
-                    riskParameters
-                );
-            }
+            _burnOptions(
+                tokenId,
+                positionSize,
+                tickLimits,
+                account,
+                COMMIT_LONG_SETTLED,
+                riskParameters
+            );
         }
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
         LeftRightSigned refundAmounts = riskEngine().getRefundAmounts(
