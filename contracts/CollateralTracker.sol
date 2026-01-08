@@ -1285,10 +1285,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
                     bonusAbs
                 );
             }
-            _mint(liquidatee, convertToShares(bonusAbs));
-
-            s_depositedAssets += uint128(bonusAbs);
-
             uint256 liquidateeBalance = balanceOf[liquidatee];
 
             if (type(uint248).max > liquidateeBalance) {
@@ -1307,6 +1303,10 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
             if (_poolManager != address(0)) {
                 _settleCurrencyDelta(liquidator, int256(bonusAbs));
             }
+
+            _mint(liquidatee, convertToShares(bonusAbs));
+
+            s_depositedAssets += uint128(bonusAbs);
         } else {
             uint256 liquidateeBalance = balanceOf[liquidatee];
 
