@@ -6959,7 +6959,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             0,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
-            RiskParameters.wrap(0)
+            RiskParameters.wrap(0),
+            false
         );
     }
 
