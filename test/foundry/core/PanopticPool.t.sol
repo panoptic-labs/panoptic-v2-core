@@ -3540,6 +3540,94 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
+    function test_Success_mintOptions_OTMLongCall_width1(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getOTMSW(
+            1,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            1
+        );
+
+        console2.log("tickSpacing", tickSpacing);
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+
+        mintOptions(
+            pp,
+            posIdList,
+            positionSize,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)), positionSize);
+
+        TokenId tokenId2 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            1,
+            0,
+            0,
+            strike,
+            1
+        );
+
+        TokenId[] memory posIdList2 = new TokenId[](2);
+        posIdList2[0] = tokenId;
+        posIdList2[1] = tokenId2;
+
+        mintOptions(
+            pp,
+            posIdList2,
+            positionSize / 2,
+            type(uint24).max,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        {
+            assertEq(pp.numberOfLegs(Alice), 2);
+
+            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                .optionPositionInfo(pp, Alice, tokenId);
+
+            assertEq(balance, positionSize, "user balance");
+
+            (balance, poolUtilization0, poolUtilization1) = ph.optionPositionInfo(
+                pp,
+                Alice,
+                tokenId2
+            );
+
+            assertEq(balance, positionSize / 2, "user balance");
+        }
+    }
+
     function test_Success_mintOptions_OTMShortPut(
         uint256 x,
         uint256 widthSeed,

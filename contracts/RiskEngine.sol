@@ -1487,7 +1487,7 @@ contract RiskEngine {
                     uint256 positionWidth = uint256(uint24(tickUpper - tickLower));
 
                     uint256 distanceFromStrike = Math.max(
-                        positionWidth / 2,
+                        Math.unsafeDivRoundingUp(positionWidth, 2),
                         atTick > strike
                             ? uint256(uint24(atTick - strike))
                             : uint256(uint24(strike - atTick))
