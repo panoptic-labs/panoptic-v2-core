@@ -16,7 +16,7 @@ using RiskParametersLibrary for RiskParameters global;
 // (3) premiumFee           14 bits : The fee to be charged on the premium at burn
 // (4) protocolSplit        14 bits : The part of the fee that goes to the protocol w/ buildercodes
 // (5) builderSplit         14 bits : The part of the fee that goes to the builder w/ buildercodes
-// (6) tickDeltaLiquidation 13 bits : The MAX_TWAP_DELTA_LIQUIDATION. Tick deviation = 1.0001**(2**13) = +/- 126%
+// (6) tickDeltaDispatch    13 bits : The MAX_TWAP_DELTA_DISPATCH. Max tick deviation = 1.0001**(2**13) = +/- 126%
 // (7) maxSpread            22 bits : The MAX_SPREAD, in bps. Max fraction removed = 2**22/(2**22 + 10_000) = 99.76%
 // (8) bpDecreaseBuffer     26 bits : The BP_DECREASE_BUFFER, in millitick
 // (9) maxLegs              7 bits  : The MAX_OPEN_LEGS (constrained to be <128)
@@ -43,7 +43,7 @@ library RiskParametersLibrary {
     /// @param _premiumFee The commission fee (uint14)
     /// @param _protocolSplit The part of the fee that goes to the protocol w/ buildercodes (uint14)
     /// @param _builderSplit The part of the fee that goes to the builder w/ buildercodes (uint14)
-    /// @param _tickDeltaLiquidation The MAX_TWAP_DELTA_LIQUIDATION (uint16)
+    /// @param _tickDeltaDispatch The MAX_TWAP_DELTA_DISPATCH (uint16)
     /// @param _maxSpread The MAX_SPREAD, in bps (uint24)
     /// @param _bpDecreaseBuffer The BP_DECREASE_BUFFER, in millitick (uint26)
     /// @param _maxLegs The maximum allowed number of legs across all open positions for a user
@@ -55,7 +55,7 @@ library RiskParametersLibrary {
         uint256 _premiumFee,
         uint256 _protocolSplit,
         uint256 _builderSplit,
-        uint256 _tickDeltaLiquidation,
+        uint256 _tickDeltaDispatch,
         uint256 _maxSpread,
         uint256 _bpDecreaseBuffer,
         uint256 _maxLegs,
@@ -68,7 +68,7 @@ library RiskParametersLibrary {
                         add(_safeMode, shl(4, _notionalFee)),
                         add(shl(18, _premiumFee), shl(32, _protocolSplit))
                     ),
-                    add(shl(46, _builderSplit), shl(60, _tickDeltaLiquidation))
+                    add(shl(46, _builderSplit), shl(60, _tickDeltaDispatch))
                 ),
                 add(
                     add(shl(73, _maxSpread), add(shl(95, _bpDecreaseBuffer), shl(121, _maxLegs))),
@@ -127,10 +127,10 @@ library RiskParametersLibrary {
         }
     }
 
-    /// @notice Get the tickDeltaLiquidation of `self`.
-    /// @param self The RiskParameters to retrieve the tickDeltaLiquidation from
-    /// @return result The tickDeltaLiquidation of `self`
-    function tickDeltaLiquidation(RiskParameters self) internal pure returns (uint16 result) {
+    /// @notice Get the tickDeltaDispatch of `self`.
+    /// @param self The RiskParameters to retrieve the tickDeltaDispatch from
+    /// @return result The tickDeltaDispatch of `self`
+    function tickDeltaDispatch(RiskParameters self) internal pure returns (uint16 result) {
         assembly {
             result := and(shr(60, self), 0x1FFF)
         }

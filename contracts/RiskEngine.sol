@@ -71,9 +71,9 @@ contract RiskEngine {
     /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
     int256 internal constant MAX_TICKS_DELTA = 953;
 
-    /// @notice The maximum allowed delta between the currentTick and the Uniswap TWAP tick during a liquidation (~5% down, ~5.26% up).
-    /// @dev Mitigates manipulation of the currentTick that causes positions to be liquidated at a less favorable price.
-    uint16 internal constant MAX_TWAP_DELTA_LIQUIDATION = 513;
+    /// @notice The maximum allowed delta between the currentTick and the Uniswap TWAP tick during a dispatch/dispatchFrom call (~5% down, ~5.26% up).
+    /// @dev Mitigates manipulation of the currentTick that causes positions to be force exercised at a less favorable price.
+    uint16 internal constant MAX_TWAP_DELTA_DISPATCH = 513;
 
     /// @notice The maximum allowed ratio for a single chunk, defined as `removedLiquidity / netLiquidity`.
     /// @dev The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
@@ -855,7 +855,7 @@ contract RiskEngine {
                 PREMIUM_FEE,
                 PROTOCOL_SPLIT,
                 BUILDER_SPLIT,
-                MAX_TWAP_DELTA_LIQUIDATION,
+                MAX_TWAP_DELTA_DISPATCH,
                 MAX_SPREAD,
                 BP_DECREASE_BUFFER,
                 MAX_OPEN_LEGS,
