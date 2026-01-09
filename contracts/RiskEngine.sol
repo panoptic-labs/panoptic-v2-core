@@ -510,40 +510,13 @@ contract RiskEngine {
         {
             // compute bonus as min(collateralBalance/2, required-collateralBalance)
             {
-                // compute the ratio of token0 to total collateral requirements
-                // evaluate at TWAP price to maintain consistency with solvency calculations
-                (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.getCrossBalances(
-                    tokenData0,
-                    tokenData1,
-                    atSqrtPriceX96
-                );
+                uint256 bal0 = tokenData0.rightSlot();
+                uint256 bal1 = tokenData1.rightSlot();
+                uint256 req0 = tokenData0.leftSlot();
+                uint256 req1 = tokenData1.leftSlot();
 
-                uint256 bonusCross = Math.min(balanceCross / 2, thresholdCross - balanceCross);
-
-                // `bonusCross` and `thresholdCross` are returned in terms of the lowest-priced token
-                if (atSqrtPriceX96 < Constants.FP96) {
-                    // required0 / (required0 + token0(required1))
-                    uint256 requiredRatioX128 = Math.mulDiv(
-                        tokenData0.leftSlot(),
-                        2 ** 128,
-                        thresholdCross
-                    );
-                    uint256 bonus0U = Math.mulDiv128(bonusCross, requiredRatioX128);
-                    bonus0 = int256(bonus0U);
-
-                    bonus1 = int256(PanopticMath.convert0to1(bonusCross - bonus0U, atSqrtPriceX96));
-                } else {
-                    // required1 / (token1(required0) + required1)
-                    uint256 requiredRatioX128 = Math.mulDiv(
-                        tokenData1.leftSlot(),
-                        2 ** 128,
-                        thresholdCross
-                    );
-                    uint256 bonus1U = Math.mulDiv128(bonusCross, requiredRatioX128);
-                    bonus1 = int256(bonus1U);
-
-                    bonus0 = int256(PanopticMath.convert1to0(bonusCross - bonus1U, atSqrtPriceX96));
-                }
+                bonus0 = Math.min(bal0 / 2, req0 > bal0 ? req0 - bal0 : 0).toInt256();
+                bonus1 = Math.min(bal1 / 2, req1 > bal1 ? req1 - bal1 : 0).toInt256();
             }
 
             // negative premium (owed to the liquidatee) is credited to the collateral balance
