@@ -287,8 +287,8 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(ct0), type(uint104).max);
         token1.approve(address(ct1), type(uint104).max);
 
-        ct0.deposit(type(uint104).max, Charlie);
-        ct1.deposit(type(uint104).max, Charlie);
+        ct0.deposit(type(uint104).max / 2, Charlie);
+        ct1.deposit(type(uint104).max / 2, Charlie);
 
         vm.startPrank(Seller);
 
@@ -5660,7 +5660,7 @@ contract Misctest is Test, PositionUtils {
         // old with itmSpreadFee = -1244790
         assertEq(
             int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0),
-            -931094
+            -864428
         );
 
         // but she earns all of fees on token 1 since the premium accumulator did not overflow (!)
@@ -5997,8 +5997,10 @@ contract Misctest is Test, PositionUtils {
         ct1.deposit(1_005, Bob);
 
         vm.startPrank(Charlie);
-        token1.mint(Charlie, 1_003_003);
-        token1.approve(address(ct1), 1_003_003);
+        token0.mint(Charlie, 1);
+        token0.approve(address(ct0), 1);
+        token1.mint(Charlie, 1_003_004);
+        token1.approve(address(ct1), 1_003_004);
 
         ct1.deposit(1_003_003, Charlie);
 
@@ -6622,6 +6624,393 @@ contract Misctest is Test, PositionUtils {
         console2.log("maxBonus1", maxBonus1);
         console2.log("twapTick", twapTick);
         console2.log("maxTick", maxTick);
+    }
+
+    function test_success_liquidation_interest_stale_scenarios() public {
+        vm.startPrank(Swapper);
+        // JIT a bunch of liquidity so swaps at mint can happen normally
+        swapperc.mint(uniPool, -1000, 1000, 10 ** 18);
+
+        /// @dev Alice sells a call, Bob buys it. Bob sells a large straddle as well. Bob owes a lot of long premia on that call, enought to trigger the haircut branch, but received none fron that straddle. He also has to pay of lot of interest for that straddle, so the loss will be capped/avoided?
+
+        uint256 asset = 0;
+        uint256 tokenType = 0;
+
+        uint64 poolId;
+        {
+            poolId = PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing());
+        }
+        int24 tickSpacing = uniPool.tickSpacing();
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            asset,
+            0,
+            tokenType,
+            0,
+            (currentTick / tickSpacing) * tickSpacing,
+            2
+        );
+
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+        vm.startPrank(Alice);
+        mintOptions(
+            pp,
+            posIdList,
+            10 ** 12,
+            0,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+        (, currentTick, , , , , ) = uniPool.slot0();
+
+        console2.log("currentTick", currentTick);
+
+        vm.startPrank(Bob);
+
+        TokenId tokenIdLong = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            asset,
+            1,
+            tokenType,
+            0,
+            (currentTick / tickSpacing) * tickSpacing,
+            2
+        );
+
+        $posIdList.push(tokenIdLong);
+
+        console2.log("");
+        console2.log("Bob mint");
+        mintOptions(
+            pp,
+            $posIdList,
+            9 * 10 ** 11,
+            type(uint64).max,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        TokenId tokenIdStraddle;
+        {
+            tokenIdStraddle = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                asset,
+                0,
+                tokenType,
+                0,
+                (currentTick / tickSpacing) * tickSpacing + 100 * tickSpacing,
+                2
+            );
+            tokenIdStraddle = tokenIdStraddle.addLeg(
+                1,
+                1,
+                asset,
+                0,
+                1 - tokenType,
+                1,
+                (currentTick / tickSpacing) * tickSpacing + 100 * tickSpacing,
+                2
+            );
+        }
+        $posIdList.push(tokenIdStraddle);
+
+        mintOptions(
+            pp,
+            $posIdList,
+            10 ** 24,
+            0,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        (, currentTick, , , , , ) = uniPool.slot0();
+
+        editCollateral(ct0, Bob, ct0.convertToShares(421033078520736539448040 / 2));
+        editCollateral(ct1, Bob, ct1.convertToShares(421033078520736539448040 / 2));
+
+        (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable");
+
+        for (uint256 i = 0; i < 50; ++i) {
+            vm.warp(block.timestamp + 1200);
+            vm.roll(block.number + 1);
+            pp.pokeOracle();
+        }
+
+        // Bob is liquidatable!
+        uint256 snapshot = vm.snapshot();
+
+        vm.startPrank(Charlie);
+        console2.log("");
+        console2.log("NORMAL LIQUIUDATION, NO PROTOCOL LOSS");
+        // NORMAL LIQUIDATION, NO PROTOCOL LOSS
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            assertApproxEqAbs(valueBefore0, valueAfter0, 1, "share price 0 stays the same");
+            assertApproxEqAbs(valueBefore1, valueAfter1, 1, "share price 1 stays the same");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
+        vm.revertTo(snapshot);
+
+        console2.log("");
+        console2.log("STREAMIA ACCRUAL BUT NO INTEREST, HAIRCUT SO NO PROTOCOL LOSS");
+        // STREAMIA ACCRUAL BUT NO INTEREST, HAIRCUT SO NO PROTOCOL LOSS
+
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 2 ** 85, 2 ** 85);
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable");
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            assertApproxEqAbs(valueBefore0, valueAfter0, 1, "share price 0 stays the same");
+            assertApproxEqAbs(valueBefore1, valueAfter1, 1, "share price 1 stays the same");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
+
+        vm.revertTo(snapshot);
+
+        console2.log("");
+        console2.log("STREAMIA ACCRUAL BUT NO INTEREST, PROTOCOL LOSS DUE TO INSOLVENT");
+        // STREAMIA ACCRUAL BUT NO INTEREST, HAIRCUT SO NO PROTOCOL LOSS
+
+        editCollateral(ct0, Bob, ct0.convertToShares(0));
+        editCollateral(ct1, Bob, ct1.convertToShares(0));
+
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 2 ** 85, 2 ** 85);
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable");
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            //assertGe(valueBefore0, valueAfter0, "share price 0 decreases");
+            assertGt(valueBefore1, valueAfter1, "share price 1 decreases");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
+
+        vm.revertTo(snapshot);
+        console2.log("");
+        console2.log("NO STREAMIA ACCRUAL BUT INTEREST, BUT NO PROTOCOL LOSS");
+
+        // NO STREAMIA ACCRUAL BUT INTEREST, BUT MINIMAL PROTOCOL LOSS
+
+        // increase interest owed  (100 years)
+        vm.warp(block.timestamp + 100 * 365 * 24 * 3600);
+        vm.roll(block.number + 10);
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            assertLt(valueBefore0, valueAfter0, "share price 0 increases due to interest");
+            assertLt(valueBefore1, valueAfter1, "share price 1 increases due to interest");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
+
+        vm.revertTo(snapshot);
+        console2.log("");
+        console2.log("STREAMIA ACCRUAL AND INTEREST, ");
+
+        // STREAMIA ACCRUAL AND INTEREST,
+
+        // increase interest owed  (100 years)
+        vm.warp(block.timestamp + 100 * 365 * 24 * 3600);
+        vm.roll(block.number + 10);
+
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 2 ** 85, 2 ** 85);
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            assertLt(valueBefore0, valueAfter0, "share price 0 increases due to intertest");
+            assertLt(valueBefore1, valueAfter1, "share price 1 increases due to interest");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
+        vm.revertTo(snapshot);
+        console2.log("");
+        console2.log("STREAMIA ACCRUAL AND INTEREST, NO PROTOCOL LOSS DUE TO HAIRCUT");
+
+        // STREAMIA ACCRUAL AND INTEREST,
+
+        // increase interest owed  (100 years)
+        vm.warp(block.timestamp + 100 * 365 * 24 * 3600);
+        vm.roll(block.number + 10);
+
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 2 ** 127, 2 ** 127);
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            assertLt(valueBefore0, valueAfter0, "share price 0 increases due to intertest");
+            assertLt(valueBefore1, valueAfter1, "share price 1 increases due to interest");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
+
+        vm.revertTo(snapshot);
+        console2.log("");
+        console2.log("STREAMIA ACCRUAL AND INTEREST, PROTOCOL LOSS DUE TO INSOLVENT");
+
+        editCollateral(ct0, Bob, ct0.convertToShares(0));
+        editCollateral(ct1, Bob, ct1.convertToShares(0));
+
+        // STREAMIA ACCRUAL AND INTEREST,
+
+        // increase interest owed  (100 years)
+        vm.warp(block.timestamp + 100 * 365 * 24 * 3600);
+        vm.roll(block.number + 10);
+
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 2 ** 127, 2 ** 127);
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            assertGe(valueBefore0, valueAfter0, "share price 0 increases due to intertest");
+            assertGt(valueBefore1, valueAfter1, "share price 1 increases due to interest");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
     }
 
     function test_success_liquidation_ITM_scenarios() public {

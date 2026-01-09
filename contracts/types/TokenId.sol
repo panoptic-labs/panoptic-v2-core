@@ -504,31 +504,21 @@ library TokenIdLibrary {
         }
     }
 
-    /// @notice Validate that a position `self` and its legs/chunks are exercisable.
-    /// @dev At least one long leg must be far-out-of-the-money (i.e. price is outside its range).
-    /// @dev Reverts if the position is not exercisable.
-    /// @param self The TokenId to validate for exercisability
-    /// @param currentTick The current tick corresponding to the current price in the Uniswap V3 pool
-    function validateIsExercisable(TokenId self, int24 currentTick) internal pure {
+    /// @notice Check whether a position `self` contains at least one exercisable long leg.
+    /// @dev A leg is considered exercisable if it is:
+    ///      - long (isLong == 1), and
+    ///      - not a loan/credit leg (width != 0).
+    /// @dev This function does NOT check moneyness or price ranges.
+    /// @return hasExercisableLong Returns 1 if such a leg exists, 0 otherwise.
+    function validateIsExercisable(TokenId self) internal pure returns (uint256) {
         unchecked {
             uint256 numLegs = self.countLegs();
             for (uint256 i = 0; i < numLegs; ++i) {
-                (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(
-                    self.width(i),
-                    self.tickSpacing()
-                );
-
-                int24 _strike = self.strike(i);
-                // check if the price is outside this chunk
-                if ((currentTick >= _strike + rangeUp) || (currentTick < _strike - rangeDown)) {
-                    // if this leg is long and the price beyond the leg's range:
-                    // this exercised ID, `self`, appears valid
-                    if (self.isLong(i) == 1) return; // validated
-                }
+                if (self.isLong(i) == 1 && self.width(i) != 0) return 1; // validated
             }
         }
 
         // Fail if position has no legs that is far-out-of-the-money
-        revert Errors.NoLegsExercisable();
+        return 0;
     }
 }

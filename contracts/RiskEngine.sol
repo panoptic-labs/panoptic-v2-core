@@ -175,9 +175,17 @@ contract RiskEngine {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         unchecked {
             // if the refunder lacks sufficient currency0 to pay back the virtual shares, have the caller cover the difference in exchange for currency1 (and vice versa)
+            int128 fees0 = fees.rightSlot();
+            // round up if amount is positive (negative fees means it is given to the exercisee)
+            uint256 feeShares0 = (fees0 > 0)
+                ? ct0.previewWithdraw(uint128(fees0))
+                : ct0.convertToShares(uint128(-fees0));
+
+            // Liability (>0) adds to shortage; Asset (<0) subtracts from shortage
             int256 balanceShortage = int256(uint256(type(uint248).max)) -
-                int256(ct0.balanceOf(payor)) -
-                int256(ct0.convertToShares(uint128(-fees.rightSlot())));
+                int256(ct0.balanceOf(payor)) +
+                (fees0 > 0 ? int256(feeShares0) : -int256(feeShares0));
+
             if (balanceShortage > 0) {
                 return
                     LeftRightSigned
@@ -206,10 +214,17 @@ contract RiskEngine {
                         );
             }
 
+            int128 fees1 = fees.leftSlot();
+            uint256 feeShares1 = (fees1 > 0)
+                ? ct1.previewWithdraw(uint128(fees1))
+                : ct1.convertToShares(uint128(-fees1));
+
+            // Liability (>0) adds to shortage; Asset (<0) subtracts from shortage
             balanceShortage =
                 int256(uint256(type(uint248).max)) -
-                int256(ct1.balanceOf(payor)) -
-                int256(ct1.convertToShares(uint128(-fees.leftSlot())));
+                int256(ct1.balanceOf(payor)) +
+                (fees1 > 0 ? int256(feeShares1) : -int256(feeShares1));
+
             if (balanceShortage > 0) {
                 return
                     LeftRightSigned
@@ -264,13 +279,9 @@ contract RiskEngine {
         TokenId tokenId,
         PositionBalance positionBalance
     ) external view returns (LeftRightSigned exerciseFees) {
-        (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
-            tokenId,
-            positionBalance.positionSize(),
-            true
-        );
         unchecked {
             // we find whether the price is within any leg; any in-range leg will have a cost. Otherwise, the force-exercise fee is 1bps
+            LeftRightSigned longAmounts;
             bool hasLegsInRange;
 
             for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
@@ -279,17 +290,25 @@ contract RiskEngine {
 
                 // credit/loans are not counted
                 if (tokenId.width(leg) == 0) continue;
+                // compute notional moved, add to tally.
+                (LeftRightSigned longs, ) = PanopticMath.calculateIOAmounts(
+                    tokenId,
+                    positionBalance.positionSize(),
+                    leg,
+                    true
+                );
+                longAmounts = longAmounts.add(longs);
 
                 {
-                    int24 range = int24(
-                        int256(
-                            Math.unsafeDivRoundingUp(
-                                uint24(tokenId.width(leg) * tokenId.tickSpacing()),
-                                2
-                            )
-                        )
+                    (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(
+                        tokenId.width(leg),
+                        tokenId.tickSpacing()
                     );
-                    if (Math.abs(currentTick - tokenId.strike(leg)) < range) hasLegsInRange = true;
+                    int24 _strike = tokenId.strike(leg);
+
+                    if ((currentTick < _strike + rangeUp) && (currentTick >= _strike - rangeDown)) {
+                        hasLegsInRange = true;
+                    }
                 }
 
                 uint256 currentValue0;
@@ -383,15 +402,9 @@ contract RiskEngine {
                         2 ** 128,
                         thresholdCross
                     );
-
-                    bonus0 = int256(Math.mulDiv128(bonusCross, requiredRatioX128));
-
-                    bonus1 = int256(
-                        PanopticMath.convert0to1(
-                            Math.mulDiv128(bonusCross, 2 ** 128 - requiredRatioX128),
-                            atSqrtPriceX96
-                        )
-                    );
+                    uint256 bonus0U = Math.mulDiv128(bonusCross, requiredRatioX128);
+                    bonus0 = int256(bonus0U);
+                    bonus1 = int256(PanopticMath.convert0to1(bonusCross - bonus0U, atSqrtPriceX96));
                 } else {
                     // required1 / (token1(required0) + required1)
                     uint256 requiredRatioX128 = Math.mulDiv(
@@ -399,15 +412,9 @@ contract RiskEngine {
                         2 ** 128,
                         thresholdCross
                     );
-
-                    bonus1 = int256(Math.mulDiv128(bonusCross, requiredRatioX128));
-
-                    bonus0 = int256(
-                        PanopticMath.convert1to0(
-                            Math.mulDiv128(bonusCross, 2 ** 128 - requiredRatioX128),
-                            atSqrtPriceX96
-                        )
-                    );
+                    uint256 bonus1U = Math.mulDiv128(bonusCross, requiredRatioX128);
+                    bonus1 = int256(bonus1U);
+                    bonus0 = int256(PanopticMath.convert1to0(bonusCross - bonus1U, atSqrtPriceX96));
                 }
             }
 
@@ -440,7 +447,7 @@ contract RiskEngine {
                         PanopticMath.convert0to1(paid0 - balance0, atSqrtPriceX96)
                     );
                     bonus0 -= Math.min(
-                        PanopticMath.convert1to0(balance1 - paid1, atSqrtPriceX96),
+                        PanopticMath.convert1to0RoundingUp(balance1 - paid1, atSqrtPriceX96),
                         paid0 - balance0
                     );
                 }
@@ -458,14 +465,14 @@ contract RiskEngine {
                         PanopticMath.convert1to0(paid1 - balance1, atSqrtPriceX96)
                     );
                     bonus1 -= Math.min(
-                        PanopticMath.convert0to1(balance0 - paid0, atSqrtPriceX96),
+                        PanopticMath.convert0to1RoundingUp(balance0 - paid0, atSqrtPriceX96),
                         paid1 - balance1
                     );
                 }
+                paid0 = bonus0 + int256(netPaid.rightSlot());
+                paid1 = bonus1 + int256(netPaid.leftSlot());
             }
 
-            paid0 = bonus0 + int256(netPaid.rightSlot());
-            paid1 = bonus1 + int256(netPaid.leftSlot());
             return (
                 LeftRightSigned.wrap(0).addToRightSlot(int128(bonus0)).addToLeftSlot(
                     int128(bonus1)
@@ -764,19 +771,51 @@ contract RiskEngine {
             atTick,
             longPremia
         );
-        (uint256 balance0, uint256 interest0) = ct0.assetsAndInterest(user);
-        (uint256 balance1, uint256 interest1) = ct1.assetsAndInterest(user);
 
+        uint256 balance0;
+        uint256 balance1;
         unchecked {
+            uint256 interest0;
+            uint256 interest1;
+            (balance0, interest0) = ct0.assetsAndInterest(user);
+            (balance1, interest1) = ct1.assetsAndInterest(user);
+
+            // Subtract the interest from the balance
+            //
+            // Insolvent-interest case: a user cannot pay more interest than their balance.
+            // Cap interest to available balance and zero the balance so we don't treat the same funds
+            // as both spendable collateral and interest payment.
+            // The capped interest is later added to collateral requirements.
+            // This flow reflects how accrueInterest is called before any settlement
+            if (interest0 > balance0) {
+                interest0 -= balance0; // Cap interest
+                balance0 = 0; // Zero balance
+            } else {
+                balance0 -= interest0; // Subtract interest from balance
+                interest0 = 0; // Zero interest (nothing to add to requirements)
+            }
+            if (interest1 > balance1) {
+                interest1 -= balance1;
+                balance1 = 0; // Zero balance
+            } else {
+                balance1 -= interest1; // Subtract interest from balance
+                interest1 = 0; // Zero interest (nothing to add to requirements)
+            }
+
+            // add owed premia to balance
             balance0 += shortPremia.rightSlot();
             balance1 += shortPremia.leftSlot();
 
+            // add owed premia to balance
             balance0 += creditAmounts.rightSlot();
             balance1 += creditAmounts.leftSlot();
-            tokensRequired = tokensRequired.addToRightSlot(uint128(interest0)).addToLeftSlot(
-                uint128(interest1)
+
+            // Add remaining interest (if any) to the tokens required
+            tokensRequired = tokensRequired.addToRightSlot(interest0.toUint128()).addToLeftSlot(
+                interest1.toUint128()
             );
         }
+
         tokenData0 = LeftRightUnsigned.wrap(balance0.toUint128()).addToLeftSlot(
             tokensRequired.rightSlot()
         );
@@ -912,6 +951,7 @@ contract RiskEngine {
 
         unchecked {
             for (uint256 index = 0; index < numLegs; ++index) {
+                // bypass the collateral calculation if tokenType doesn't match the requested token (underlyingIsToken0)
                 if (tokenId.tokenType(index) != (underlyingIsToken0 ? 0 : 1)) continue;
 
                 if (tokenId.width(index) == 0 && tokenId.isLong(index) == 1) {
@@ -1209,26 +1249,20 @@ contract RiskEngine {
                                     atTick,
                                     poolUtilization
                                 );
-                        } else if (_isLong != isLongP) {
+                        } else if (
+                            _isLong != isLongP &&
+                            tokenId.strike(index) == tokenId.strike(partnerIndex)
+                        ) {
                             // SYNTHETIC STOCK: different token types, one is long and the other is short
                             return
-                                // return the largest collateral requirement of the two legs
-                                index < partnerIndex
-                                    ? Math.max(
-                                        _getRequiredCollateralSingleLegNoPartner(
-                                            tokenId,
-                                            index,
-                                            positionSize,
-                                            atTick,
-                                            poolUtilization
-                                        ),
-                                        _getRequiredCollateralSingleLegNoPartner(
-                                            tokenId,
-                                            partnerIndex,
-                                            positionSize,
-                                            atTick,
-                                            poolUtilization
-                                        )
+                                // return the collateral requirement of the short leg only (the long leg comes for free™)
+                                _isLong == 0
+                                    ? _getRequiredCollateralSingleLegNoPartner(
+                                        tokenId,
+                                        index,
+                                        positionSize,
+                                        atTick,
+                                        poolUtilization
                                     )
                                     : 0;
                         }
@@ -1544,6 +1578,7 @@ contract RiskEngine {
         int24 atTick,
         int16 poolUtilization
     ) internal view returns (uint256) {
+        // compute both token requirements. Can directly compare them because they have the same tokenType
         uint256 _required = _getRequiredCollateralSingleLegNoPartner(
             tokenId,
             index,
@@ -1577,7 +1612,6 @@ contract RiskEngine {
         // required amount for the option leg
         // Assume 100% utilization, which means
         //  - 100% collateralization for sold options (cash account requirement)
-        //  - more capital efficiency for long options because prepaid (5% vs 10% BPR)
         uint256 _required = _getRequiredCollateralSingleLegNoPartner(
             tokenId,
             index,

@@ -14,6 +14,7 @@ import {Errors} from "@libraries/Errors.sol";
 import {InteractionHelper} from "@libraries/InteractionHelper.sol";
 import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
+import {TransientReentrancyGuard} from "@libraries/TransientReentrancyGuard.sol";
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
@@ -23,7 +24,7 @@ import {TokenId} from "@types/TokenId.sol";
 /// @title The Panoptic Pool: Create permissionless options on a CLAMM.
 /// @author Axicon Labs Limited
 /// @notice Manages positions, collateral, liquidations and forced exercises.
-contract PanopticPool is Clone, Multicall {
+contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -377,7 +378,7 @@ contract PanopticPool is Clone, Multicall {
         address user,
         TokenId[] calldata positionIdList,
         bool usePremiaAsCollateral
-    ) external view {
+    ) external view ensureNonReentrantView {
         _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER, usePremiaAsCollateral, 0);
     }
 
@@ -515,7 +516,7 @@ contract PanopticPool is Clone, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Updates the internal median with the last Uniswap observation if the `MEDIAN_PERIOD` has elapsed.
-    function pokeOracle() external {
+    function pokeOracle() external nonReentrant {
         int24 currentTick = SFPM.getCurrentTick(poolKey());
 
         (, uint256 oraclePack) = riskEngine().computeInternalMedian(s_oraclePack, currentTick);
@@ -542,7 +543,7 @@ contract PanopticPool is Clone, Multicall {
         uint64[] calldata effectiveLiquidityLimitsX32,
         int24[2][] calldata tickLimits,
         bool usePremiaAsCollateral
-    ) external {
+    ) external nonReentrant {
         // if safeMode, enforce covered at mint and exercise at burn
         uint8 safeMode = isSafeMode();
 
@@ -881,7 +882,7 @@ contract PanopticPool is Clone, Multicall {
         TokenId[] calldata positionIdListTo,
         TokenId[] calldata positionIdListToFinal,
         LeftRightUnsigned usePremiaAsCollateral
-    ) external {
+    ) external nonReentrant {
         // Assert the account we are liquidating is actually insolvent
         int24 twapTick = getTWAP();
         int24 currentTick = SFPM.getCurrentTick(poolKey());
@@ -945,7 +946,8 @@ contract PanopticPool is Clone, Multicall {
                         _settleLongPremium(account, tokenId, twapTick, currentTick);
                     } else if (toLength == (finalLength + 1)) {
                         // final is one element shorter, that's a force exercise
-                        if (tokenId.countLongs() == 0) revert Errors.NoLegsExercisable();
+                        if (tokenId.countLongs() == 0 || tokenId.validateIsExercisable() == 0)
+                            revert Errors.NoLegsExercisable();
                         _forceExercise(account, tokenId, twapTick, currentTick);
                     } else if (finalLength == 0) {
                         // if final length was zero, this was intended to be liquidation, but revert because not margin called and solvent at some of the tested ticks
@@ -1177,7 +1179,6 @@ contract PanopticPool is Clone, Multicall {
 
         if (positionSize == 0) revert Errors.PositionNotOwned();
 
-        LeftRightSigned refundAmounts;
         for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
             if (tokenId.width(leg) != 0 && tokenId.isLong(leg) != 0) {
                 LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
@@ -1249,15 +1250,20 @@ contract PanopticPool is Clone, Multicall {
                         LeftRightUnsigned.wrap(uint256(LeftRightSigned.unwrap(realizedPremia)))
                     );
                 }
-                refundAmounts = riskEngine()
-                    .getRefundAmounts(owner, LeftRightSigned.wrap(0), twapTick, ct0, ct1)
-                    .add(refundAmounts);
                 emit PremiumSettled(owner, tokenId, leg, realizedPremia);
             }
             unchecked {
                 ++leg;
             }
         }
+        LeftRightSigned refundAmounts = riskEngine().getRefundAmounts(
+            owner,
+            LeftRightSigned.wrap(0),
+            twapTick,
+            ct0,
+            ct1
+        );
+
         // allow the caller to settle tokens owed to the protocol by the settlee in exchange for the surplus token
         ct0.refund(owner, msg.sender, refundAmounts.rightSlot());
         ct1.refund(owner, msg.sender, refundAmounts.leftSlot());
@@ -1465,7 +1471,7 @@ contract PanopticPool is Clone, Multicall {
     /// @notice Get the current number of legs across all open positions for an account.
     /// @param user The account to query
     /// @return Number of legs across the open positions of `user`
-    function numberOfLegs(address user) external view returns (uint256) {
+    function numberOfLegs(address user) external view ensureNonReentrantView returns (uint256) {
         return s_positionsHash[user] >> 248;
     }
 
@@ -1949,7 +1955,7 @@ contract PanopticPool is Clone, Multicall {
                                                     int256(
                                                         _premiumAccumulatorsByLeg[_leg][0] *
                                                             positionLiquidity
-                                                    )) + int256(legPremia.rightSlot() * 2 ** 64),
+                                                    )) + int256(legPremia.rightSlot()) * 2 ** 64,
                                                 0
                                             )
                                         ) / totalLiquidity

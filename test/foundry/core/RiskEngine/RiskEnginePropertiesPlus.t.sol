@@ -76,10 +76,10 @@ contract RiskEnginePropertiesPlus is Test {
 
         // Left = requirement, Right = balance
         // token0: requirement gets longPrem.right + interest0; balance gets assets0 + shortPrem.right + credits0(=0)
-        assertEq(td0.leftSlot(), 3 ether + 11, "req0 = interest0 + longPrem0");
-        assertEq(td0.rightSlot(), 7 ether + 2 ether, "bal0 = assets0 + shortPrem0");
+        assertEq(td0.leftSlot(), 11, "req0 = interest0 + longPrem0");
+        assertEq(td0.rightSlot(), 7 ether - 3 ether + 2 ether, "bal0 = assets0 + shortPrem0");
 
-        // token1: requirement gets longPrem.left + interest1; balance gets assets1 + shortPrem.left
+        // token1: requirement gets longPrem.left + interest1=0 (because balance1=0); balance gets assets1 + shortPrem.left
         assertEq(td1.leftSlot(), 5 ether + 13, "req1 = interest1 + longPrem1");
         assertEq(td1.rightSlot(), 0 + 4 ether, "bal1 = assets1 + shortPrem1");
     }

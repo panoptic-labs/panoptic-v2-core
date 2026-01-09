@@ -5,6 +5,50 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {TokenId} from "@types/TokenId.sol";
 import "../core/SemiFungiblePositionManager.t.sol";
 
+// Interface for CollateralTracker functions needed for reentrancy tests
+interface ICollateralTrackerTest {
+    function deposit(uint256 assets, address receiver) external returns (uint256 shares);
+
+    function mint(uint256 shares, address receiver) external returns (uint256 assets);
+
+    function withdraw(
+        uint256 assets,
+        address receiver,
+        address owner
+    ) external returns (uint256 shares);
+
+    function redeem(
+        uint256 shares,
+        address receiver,
+        address owner
+    ) external returns (uint256 assets);
+
+    function donate(uint256 shares) external;
+
+    function delegate(address delegatee) external;
+
+    function revoke(address delegatee) external;
+
+    function settleLiquidation(address liquidator, address liquidatee, int256 bonus) external;
+
+    function refund(address refunder, address refundee, int256 assets) external;
+
+    function settleMint(
+        address optionOwner,
+        int128 longAmount,
+        int128 shortAmount,
+        int128 ammDeltaAmount
+    ) external returns (uint256, int128);
+
+    function settleBurn(
+        address optionOwner,
+        int128 longAmount,
+        int128 shortAmount,
+        int128 ammDeltaAmount,
+        int128 realizedPremium
+    ) external returns (int128);
+}
+
 contract ReenterBurn {
     // ensure storage conflicts don't occur with etched contract
     uint256[65535] private __gap;
@@ -291,5 +335,307 @@ contract Reenter1155Initialize {
                 0
             );
         return this.onERC1155Received.selector;
+    }
+}
+
+/*//////////////////////////////////////////////////////////////
+                    COLLATERAL TRACKER MOCKS
+//////////////////////////////////////////////////////////////*/
+
+// Malicious ERC20 token that attempts to reenter CollateralTracker.deposit()
+contract ReenterCTDeposit {
+    uint256[65535] private __gap;
+
+    bool activated;
+    address public collateralTracker;
+
+    function construct(address _collateralTracker) public {
+        collateralTracker = _collateralTracker;
+    }
+
+    function balanceOf(address) external pure returns (uint256) {
+        return type(uint256).max;
+    }
+
+    function transferFrom(address, address, uint256 amount) external returns (bool) {
+        bool reenter = !activated;
+        activated = true;
+
+        if (reenter) {
+            ICollateralTrackerTest(collateralTracker).deposit(amount, address(this));
+        }
+        return true;
+    }
+}
+
+// Malicious ERC20 token that attempts to reenter CollateralTracker.mint()
+contract ReenterCTMint {
+    uint256[65535] private __gap;
+
+    bool activated;
+    address public collateralTracker;
+
+    function construct(address _collateralTracker) public {
+        collateralTracker = _collateralTracker;
+    }
+
+    function balanceOf(address) external pure returns (uint256) {
+        return type(uint256).max;
+    }
+
+    function transferFrom(address, address, uint256) external returns (bool) {
+        bool reenter = !activated;
+        activated = true;
+
+        if (reenter) {
+            ICollateralTrackerTest(collateralTracker).mint(1000, address(this));
+        }
+        return true;
+    }
+}
+
+// Malicious ERC20 token that attempts to reenter CollateralTracker.withdraw()
+contract ReenterCTWithdraw {
+    uint256[65535] private __gap;
+
+    bool activated;
+    address public collateralTracker;
+
+    function construct(address _collateralTracker) public {
+        collateralTracker = _collateralTracker;
+    }
+
+    function balanceOf(address) external pure returns (uint256) {
+        return type(uint256).max;
+    }
+
+    function transferFrom(address, address, uint256 amount) external returns (bool) {
+        bool reenter = !activated;
+        activated = true;
+
+        if (reenter) {
+            ICollateralTrackerTest(collateralTracker).withdraw(
+                amount,
+                address(this),
+                address(this)
+            );
+        }
+        return true;
+    }
+}
+
+// Malicious ERC20 token that attempts to reenter CollateralTracker.redeem()
+contract ReenterCTRedeem {
+    uint256[65535] private __gap;
+
+    bool activated;
+    address public collateralTracker;
+
+    function construct(address _collateralTracker) public {
+        collateralTracker = _collateralTracker;
+    }
+
+    function balanceOf(address) external pure returns (uint256) {
+        return type(uint256).max;
+    }
+
+    function transferFrom(address, address, uint256) external returns (bool) {
+        bool reenter = !activated;
+        activated = true;
+
+        if (reenter) {
+            ICollateralTrackerTest(collateralTracker).redeem(1000, address(this), address(this));
+        }
+        return true;
+    }
+}
+
+// Malicious ERC20 token that attempts to reenter CollateralTracker.donate()
+contract ReenterCTDonate {
+    uint256[65535] private __gap;
+
+    bool activated;
+    address public collateralTracker;
+
+    function construct(address _collateralTracker) public {
+        collateralTracker = _collateralTracker;
+    }
+
+    function balanceOf(address) external pure returns (uint256) {
+        return type(uint256).max;
+    }
+
+    function transferFrom(address, address, uint256) external returns (bool) {
+        bool reenter = !activated;
+        activated = true;
+
+        if (reenter) {
+            ICollateralTrackerTest(collateralTracker).donate(1000);
+        }
+        return true;
+    }
+}
+
+// Malicious PanopticPool that attempts to reenter delegate() during deposit
+contract ReenterCTDelegate {
+    uint256[65535] private __gap;
+
+    bool activated;
+    address public collateralTracker;
+    address public targetDelegatee;
+
+    function construct(address _collateralTracker, address _delegatee) public {
+        collateralTracker = _collateralTracker;
+        targetDelegatee = _delegatee;
+    }
+
+    function balanceOf(address) external pure returns (uint256) {
+        return type(uint256).max;
+    }
+
+    function transferFrom(address, address, uint256) external returns (bool) {
+        bool reenter = !activated;
+        activated = true;
+
+        if (reenter) {
+            ICollateralTrackerTest(collateralTracker).delegate(targetDelegatee);
+        }
+        return true;
+    }
+}
+
+// Malicious PanopticPool that attempts to reenter revoke() during withdraw
+contract ReenterCTRevoke {
+    uint256[65535] private __gap;
+
+    bool activated;
+    address public collateralTracker;
+    address public targetDelegatee;
+
+    function construct(address _collateralTracker, address _delegatee) public {
+        collateralTracker = _collateralTracker;
+        targetDelegatee = _delegatee;
+    }
+
+    function balanceOf(address) external pure returns (uint256) {
+        return type(uint256).max;
+    }
+
+    function transferFrom(address, address, uint256) external returns (bool) {
+        bool reenter = !activated;
+        activated = true;
+
+        if (reenter) {
+            ICollateralTrackerTest(collateralTracker).revoke(targetDelegatee);
+        }
+        return true;
+    }
+}
+
+// Malicious token that attempts to reenter settleLiquidation() during deposit
+contract ReenterCTSettleLiquidation {
+    uint256[65535] private __gap;
+
+    bool activated;
+    address public collateralTracker;
+
+    function construct(address _collateralTracker) public {
+        collateralTracker = _collateralTracker;
+    }
+
+    function balanceOf(address) external pure returns (uint256) {
+        return type(uint256).max;
+    }
+
+    function transferFrom(address, address, uint256) external returns (bool) {
+        bool reenter = !activated;
+        activated = true;
+
+        if (reenter) {
+            ICollateralTrackerTest(collateralTracker).settleLiquidation(
+                address(this),
+                address(this),
+                100
+            );
+        }
+        return true;
+    }
+}
+
+// Malicious token that attempts to reenter refund() during deposit
+contract ReenterCTRefund {
+    uint256[65535] private __gap;
+
+    bool activated;
+    address public collateralTracker;
+
+    function construct(address _collateralTracker) public {
+        collateralTracker = _collateralTracker;
+    }
+
+    function balanceOf(address) external pure returns (uint256) {
+        return type(uint256).max;
+    }
+
+    function transferFrom(address, address, uint256) external returns (bool) {
+        bool reenter = !activated;
+        activated = true;
+
+        if (reenter) {
+            ICollateralTrackerTest(collateralTracker).refund(address(this), address(this), 100);
+        }
+        return true;
+    }
+}
+
+// Malicious token that attempts to reenter settleMint() during deposit
+contract ReenterCTSettleMint {
+    uint256[65535] private __gap;
+
+    bool activated;
+    address public collateralTracker;
+
+    function construct(address _collateralTracker) public {
+        collateralTracker = _collateralTracker;
+    }
+
+    function balanceOf(address) external pure returns (uint256) {
+        return type(uint256).max;
+    }
+
+    function transferFrom(address, address, uint256) external returns (bool) {
+        bool reenter = !activated;
+        activated = true;
+
+        if (reenter) {
+            ICollateralTrackerTest(collateralTracker).settleMint(address(this), 0, 0, 0);
+        }
+        return true;
+    }
+}
+
+// Malicious token that attempts to reenter settleBurn() during deposit
+contract ReenterCTSettleBurn {
+    uint256[65535] private __gap;
+
+    bool activated;
+    address public collateralTracker;
+
+    function construct(address _collateralTracker) public {
+        collateralTracker = _collateralTracker;
+    }
+
+    function balanceOf(address) external pure returns (uint256) {
+        return type(uint256).max;
+    }
+
+    function transferFrom(address, address, uint256) external returns (bool) {
+        bool reenter = !activated;
+        activated = true;
+
+        if (reenter) {
+            ICollateralTrackerTest(collateralTracker).settleBurn(address(this), 0, 0, 0, 0);
+        }
+        return true;
     }
 }

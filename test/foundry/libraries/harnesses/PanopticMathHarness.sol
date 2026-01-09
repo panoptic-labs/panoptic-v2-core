@@ -137,7 +137,7 @@ contract PanopticMathHarness is Test {
         uint256 legIndex,
         bool opening
     ) public pure returns (LeftRightSigned, LeftRightSigned) {
-        (LeftRightSigned longs, LeftRightSigned shorts) = PanopticMath._calculateIOAmounts(
+        (LeftRightSigned longs, LeftRightSigned shorts) = PanopticMath.calculateIOAmounts(
             tokenId,
             positionSize,
             legIndex,
