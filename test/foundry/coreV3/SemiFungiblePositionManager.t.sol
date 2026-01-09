@@ -1002,6 +1002,18 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         sfpm.initializeAMMPool(token0, token1, fee, vegoid);
     }
 
+    function test_Fail_initializeAMMPool_vegoid() public {
+        // Loop through all pools and test
+        for (uint256 i = 0; i < pools.length; i++) {
+            console2.log("i", i);
+            console2.log("pools", address(pools[i]));
+            _cacheWorldState(pools[i]);
+
+            vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 0));
+            sfpm.initializeAMMPool(token0, token1, fee, 0);
+        }
+    }
+
     /// NOTE - the definitions of "call" and "put" can vary by Uniswap pair and which token is considered the asset
     /// For the purposes of these tests, we define the asset to be token1
     /// This means that "call" is `tokenType` = 0 and "put" is `tokenType` = 1
