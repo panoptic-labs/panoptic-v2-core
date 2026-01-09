@@ -342,6 +342,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         // reverts if the Uniswap V3 pool has not been initialized
         if (univ3pool == address(0)) revert Errors.PoolNotInitialized();
 
+        if (vegoid == 0) revert Errors.InvalidTokenIdParameter(0);
+
         // return if the pool has already been initialized in SFPM
         // pools can be initialized from the Panoptic Factory or by calling initializeAMMPool directly, so reverting
         // could prevent a PanopticPool from being deployed on a previously initialized but otherwise valid pool
