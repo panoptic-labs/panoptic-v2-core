@@ -675,11 +675,11 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         }
 
         unchecked {
-            // can never overflow as tickDeltaLiquidation is a int24
-            /// @dev revert if the total deviation is more than twice the tickDeltaLiquidation (ie. roundtrips more than the allowed tick liquidation delta per trip)
+            // can never overflow as tickDeltaDispatch is a int24
+            /// @dev revert if the total deviation is more than twice the tickDeltaDispatch (ie. roundtrips more than the allowed dispatchFrom tick delta per trip)
             if (
                 cumulativeTickDeltas.rightSlot() >
-                int256(uint256(2 * riskParameters.tickDeltaLiquidation()))
+                int256(uint256(2 * riskParameters.tickDeltaDispatch()))
             ) revert Errors.PriceImpactTooLarge();
 
             {
@@ -1381,15 +1381,6 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
             int24 latestTick;
             (spotTick, , latestTick, ) = riskEngine().getOracleTicks(currentTick, s_oraclePack);
 
-            unchecked {
-                (RiskParameters riskParameters, ) = getRiskParameters(0);
-                int256 MAX_TWAP_DELTA_LIQUIDATION = int256(
-                    uint256(riskParameters.tickDeltaLiquidation())
-                );
-                if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
-                    revert Errors.StaleOracle();
-            }
-
             // Ensure the account is insolvent at twapTick (in place of medianTick), currentTick, spotTick, and latestTick
             int24[] memory atTicks = new int24[](4);
             atTicks[0] = spotTick;
@@ -1414,6 +1405,15 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
             // if account is solvent at all ticks, this is a force exercise or a settlePremium.
             if (solvent == numberOfTicks) {
                 unchecked {
+                    {
+                        (RiskParameters riskParameters, ) = getRiskParameters(0);
+                        int256 MAX_TWAP_DELTA_DISPATCH = int256(
+                            uint256(riskParameters.tickDeltaDispatch())
+                        );
+                        if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_DISPATCH)
+                            revert Errors.StaleOracle();
+                    }
+
                     tokenId = positionIdListTo[toLength - 1];
                     if (toLength == finalLength) {
                         // same length, that's a settle

@@ -5646,8 +5646,8 @@ contract PanopticPoolTest is PositionUtils {
             (RiskParameters riskParameters, ) = pp.getRiskParameters(0);
             assertGt(
                 int256(deltaTick),
-                int256(uint256(2 * riskParameters.tickDeltaLiquidation())),
-                "delta Tick is larger than riskParameters.tickDeltaLiquidation"
+                int256(uint256(2 * riskParameters.tickDeltaDispatch())),
+                "delta Tick is larger than riskParameters.tickDeltaDispatch"
             );
         }
 
@@ -5673,7 +5673,7 @@ contract PanopticPoolTest is PositionUtils {
 
             // 4. EXECUTE ATTACK
             // Expect Revert: The cumulative delta of Mint(T0) + Mint(T1) + Burn(T1)
-            // will exceed 2 * tickDeltaLiquidation.
+            // will exceed 2 * tickDeltaDispatch.
             vm.expectRevert(Errors.PriceImpactTooLarge.selector);
 
             attacker.triggerTransientPriceImpact(tokenId0, tokenId1, 5 * 10 ** 17);
