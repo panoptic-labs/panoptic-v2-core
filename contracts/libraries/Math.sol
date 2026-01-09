@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.24;
-
 // Libraries
 import {Errors} from "@libraries/Errors.sol";
 import {Constants} from "@libraries/Constants.sol";
@@ -14,6 +13,23 @@ import {LiquidityChunk, LiquidityChunkLibrary} from "@types/LiquidityChunk.sol";
 library Math {
     /// @notice This is equivalent to `type(uint256).max` — used in assembly blocks as a replacement.
     uint256 internal constant MAX_UINT256 = 2 ** 256 - 1;
+
+    uint256 constant WAD = 1e18;
+    int256 constant WAD_INT = int256(1e18);
+
+    /// @dev ln(2).
+    int256 internal constant LN_2_INT = 0.693147180559945309 ether;
+
+    /// @dev ln(1e-18).
+    int256 internal constant LN_WEI_INT = -41.446531673892822312 ether;
+
+    /// @dev Above this bound, `wExp` is clipped to avoid overflowing when multiplied with 1 ether.
+    /// @dev This upper bound corresponds to: ln(type(int256).max / 1e36) (scaled by WAD, floored).
+    int256 internal constant WEXP_UPPER_BOUND = 93.859467695000404319 ether;
+
+    /// @dev The value of wExp(`WEXP_UPPER_BOUND`).
+    int256 internal constant WEXP_UPPER_VALUE =
+        57716089161558943949701069502944508345128.422502756744429568 ether;
 
     /*//////////////////////////////////////////////////////////////
                           GENERAL MATH HELPERS
@@ -159,7 +175,8 @@ library Math {
     /// @return The maximum liquidity that can reference any given tick in the Uniswap V3 pool
     function getMaxLiquidityPerTick(int24 tickSpacing) internal pure returns (uint128) {
         unchecked {
-            return type(uint128).max / uint24((Constants.MAX_V3POOL_TICK / tickSpacing) * 2 + 1);
+            // forge-lint: disable-next-line(divide-before-multiply)
+            return type(uint128).max / uint24((Constants.MAX_POOL_TICK / tickSpacing) * 2 + 1);
         }
     }
 
@@ -170,7 +187,7 @@ library Math {
     function getSqrtRatioAtTick(int24 tick) internal pure returns (uint160) {
         unchecked {
             uint256 absTick = tick < 0 ? uint256(-int256(tick)) : uint256(int256(tick));
-            if (absTick > uint256(int256(Constants.MAX_V3POOL_TICK))) revert Errors.InvalidTick();
+            if (absTick > uint256(int256(Constants.MAX_POOL_TICK))) revert Errors.InvalidTick();
 
             // sqrt(1.0001^(-absTick)) = ∏ sqrt(1.0001^(-bit_i))
             // ex: absTick = 100 = binary 1100100, so sqrt(1.0001^-100) = sqrt(1.0001^-64) * sqrt(1.0001^-32) * sqrt(1.0001^-4)
@@ -281,6 +298,42 @@ library Math {
     /// @notice Calculates the amount of token0 received for a given LiquidityChunk.
     /// @param liquidityChunk A specification for a liquidity chunk in Uniswap containing `liquidity`, `tickLower`, and `tickUpper`
     /// @return The amount of token0 represented by `liquidityChunk` when `currentTick < tickLower`
+    function getAmount0ForLiquidityUp(
+        LiquidityChunk liquidityChunk
+    ) internal pure returns (uint256) {
+        uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
+        uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
+        unchecked {
+            return
+                mulDivRoundingUp(
+                    mulDivRoundingUp(
+                        uint256(liquidityChunk.liquidity()) << 96,
+                        highPriceX96 - lowPriceX96,
+                        highPriceX96
+                    ),
+                    1,
+                    lowPriceX96
+                );
+        }
+    }
+
+    /// @notice Calculates the amount of token1 received for a given LiquidityChunk.
+    /// @param liquidityChunk A specification for a liquidity chunk in Uniswap containing `liquidity`, `tickLower`, and `tickUpper`
+    /// @return The amount of token1 represented by `liquidityChunk` when `currentTick > tickUpper`
+    function getAmount1ForLiquidityUp(
+        LiquidityChunk liquidityChunk
+    ) internal pure returns (uint256) {
+        uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
+        uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
+
+        unchecked {
+            return mulDiv96RoundingUp(liquidityChunk.liquidity(), highPriceX96 - lowPriceX96);
+        }
+    }
+
+    /// @notice Calculates the amount of token0 received for a given LiquidityChunk.
+    /// @param liquidityChunk A specification for a liquidity chunk in Uniswap containing `liquidity`, `tickLower`, and `tickUpper`
+    /// @return The amount of token0 represented by `liquidityChunk` when `currentTick < tickLower`
     function getAmount0ForLiquidity(LiquidityChunk liquidityChunk) internal pure returns (uint256) {
         uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
         uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
@@ -335,22 +388,22 @@ library Math {
         int24 tickUpper,
         uint256 amount0
     ) internal pure returns (LiquidityChunk) {
-        uint160 lowPriceX96 = getSqrtRatioAtTick(tickLower);
-        uint160 highPriceX96 = getSqrtRatioAtTick(tickUpper);
-
         unchecked {
-            return
-                LiquidityChunkLibrary.createChunk(
-                    tickLower,
-                    tickUpper,
-                    toUint128(
-                        mulDiv(
-                            amount0,
-                            mulDiv96(highPriceX96, lowPriceX96),
-                            highPriceX96 - lowPriceX96
-                        )
-                    )
-                );
+            uint160 lowPriceX96 = getSqrtRatioAtTick(tickLower);
+            uint160 highPriceX96 = getSqrtRatioAtTick(tickUpper);
+
+            uint256 liquidity = mulDiv(
+                amount0,
+                mulDiv96(highPriceX96, lowPriceX96),
+                highPriceX96 - lowPriceX96
+            );
+
+            // This check guarantees the following uint128 cast is safe.
+            if (liquidity > type(uint128).max) revert Errors.LiquidityTooHigh();
+
+            // casting to 'uint128' is safe because of the liquidity > type(uint128).max check above
+            // forge-lint: disable-next-line(unsafe-typecast)
+            return LiquidityChunkLibrary.createChunk(tickLower, tickUpper, uint128(liquidity));
         }
     }
 
@@ -364,16 +417,16 @@ library Math {
         int24 tickUpper,
         uint256 amount1
     ) internal pure returns (LiquidityChunk) {
-        uint160 lowPriceX96 = getSqrtRatioAtTick(tickLower);
-        uint160 highPriceX96 = getSqrtRatioAtTick(tickUpper);
-
         unchecked {
-            return
-                LiquidityChunkLibrary.createChunk(
-                    tickLower,
-                    tickUpper,
-                    toUint128(mulDiv(amount1, Constants.FP96, highPriceX96 - lowPriceX96))
-                );
+            uint160 lowPriceX96 = getSqrtRatioAtTick(tickLower);
+            uint160 highPriceX96 = getSqrtRatioAtTick(tickUpper);
+
+            uint256 liquidity = mulDiv(amount1, Constants.FP96, highPriceX96 - lowPriceX96);
+
+            // This check guarantees the following uint128 cast is safe.
+            if (liquidity > type(uint128).max) revert Errors.LiquidityTooHigh();
+
+            return LiquidityChunkLibrary.createChunk(tickLower, tickUpper, uint128(liquidity));
         }
     }
 
@@ -1034,6 +1087,88 @@ library Math {
         }
     }
 
+    /// @notice Calculates `floor(a×b÷10^18)` with full precision. Throws if result overflows a uint256.
+    /// @param a The multiplicand
+    /// @param b The multiplier
+    /// @return The 256-bit result
+    /// @dev Optimized version of mulDiv for WAD (10^18) denominator
+    function mulDivWad(uint256 a, uint256 b) internal pure returns (uint256) {
+        unchecked {
+            // 512-bit multiply [prod1 prod0] = a * b
+            // Compute the product mod 2**256 and mod 2**256 - 1
+            // then use the Chinese Remainder Theorem to reconstruct
+            // the 512 bit result. The result is stored in two 256
+            // variables such that product = prod1 * 2**256 + prod0
+            uint256 prod0; // Least significant 256 bits of the product
+            uint256 prod1; // Most significant 256 bits of the product
+            assembly ("memory-safe") {
+                let mm := mulmod(a, b, not(0))
+                prod0 := mul(a, b)
+                prod1 := sub(sub(mm, prod0), lt(mm, prod0))
+            }
+
+            // Handle non-overflow cases, 256 by 256 division
+            if (prod1 == 0) {
+                uint256 res;
+                assembly ("memory-safe") {
+                    res := div(prod0, 1000000000000000000)
+                }
+                return res;
+            }
+
+            // Make sure the result is less than 2**256.
+            require(1000000000000000000 > prod1);
+
+            ///////////////////////////////////////////////
+            // 512 by 256 division.
+            ///////////////////////////////////////////////
+
+            // Make division exact by subtracting the remainder from [prod1 prod0]
+            // Compute remainder using mulmod
+            uint256 remainder;
+            assembly ("memory-safe") {
+                remainder := mulmod(a, b, 1000000000000000000)
+            }
+            // Subtract 256 bit number from 512 bit number
+            assembly ("memory-safe") {
+                prod1 := sub(prod1, gt(remainder, prod0))
+                prod0 := sub(prod0, remainder)
+            }
+
+            // Since 10^18 = 2^18 * 5^18, we need to handle both factors
+            // First divide by 2^18
+            assembly ("memory-safe") {
+                // Right shift by 18 is equivalent to division by 2^18
+                prod0 := shr(18, prod0)
+            }
+
+            // Shift in bits from prod1 into prod0
+            // We need 2^256 / 2^18 = 2^238
+            prod0 |= prod1 << 238;
+
+            // Now divide by 5^18 using modular inverse
+            // Precomputed modular inverse of 5^18 modulo 2^256
+            // This means: (5^18 * inv) mod 2^256 = 1
+            uint256 inv = 0xaccb18165bd6fe31ae1cf318dc5b51eee0e1ba569b88cd74c1773b91fac10669;
+
+            return prod0 * inv;
+        }
+    }
+
+    /// @notice Calculates `ceil(a×b÷10^18)` with full precision.
+    /// @param a The multiplicand
+    /// @param b The multiplier
+    /// @return result The 256-bit result
+    function mulDivWadRoundingUp(uint256 a, uint256 b) internal pure returns (uint256 result) {
+        unchecked {
+            result = mulDivWad(a, b);
+            if (mulmod(a, b, 10 ** 18) > 0) {
+                require(result < type(uint256).max);
+                result++;
+            }
+        }
+    }
+
     /// @notice Calculates `ceil(a÷b)`, returning 0 if `b == 0`.
     /// @param a The numerator
     /// @param b The denominator
@@ -1081,5 +1216,78 @@ library Math {
             quickSort(data, int256(0), int256(data.length - 1));
         }
         return data;
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                         EXPONENTIAL MATH
+    //////////////////////////////////////////////////////////////*/
+
+    /// @dev Returns the sum of the first three non-zero terms of a Taylor expansion of e^(nx) - 1, to approximate a
+    /// continuous compound interest rate. Source: https://github.com/morpho-org/morpho-blue/blob/main/src/libraries/MathLib.sol
+    function wTaylorCompounded(uint256 x, uint256 n) internal pure returns (uint256) {
+        uint256 firstTerm = x * n;
+        uint256 secondTerm = mulDiv(firstTerm, firstTerm, 2 * WAD);
+        uint256 thirdTerm = mulDiv(secondTerm, firstTerm, 3 * WAD);
+
+        return firstTerm + secondTerm + thirdTerm;
+    }
+
+    /// @dev Returns the sum of the first three non-zero terms of a Taylor expansion of e^(nx), to approximate a
+    /// continuous compound interest rate for a custom scale s. Source: https://github.com/morpho-org/morpho-blue/blob/main/src/libraries/MathLib.sol
+    function sTaylorCompounded(uint256 x, uint256 s) internal pure returns (uint256) {
+        uint256 zerothTerm = s;
+        uint256 firstTerm = x;
+        uint256 secondTerm = mulDiv(firstTerm, firstTerm, 2 * s);
+        uint256 thirdTerm = mulDiv(secondTerm, firstTerm, 3 * s);
+        uint256 fourthTerm = mulDiv(thirdTerm, firstTerm, 4 * s);
+
+        return zerothTerm + firstTerm + secondTerm + thirdTerm + fourthTerm;
+    }
+
+    /// @dev Returns the multiplication of `x` by `y` (in WAD) rounded towards 0.
+    function wMulToZero(int256 x, int256 y) internal pure returns (int256) {
+        return (x * y) / WAD_INT;
+    }
+
+    /// @dev Returns the division of `x` by `y` (in WAD) rounded towards 0.
+    function wDivToZero(int256 x, int256 y) internal pure returns (int256) {
+        return (x * WAD_INT) / y;
+    }
+
+    /// @dev Bounds `x` between `low` and `high`.
+    /// @dev Assumes that `low` <= `high`. If it is not the case it returns `low`.
+    function bound(int256 x, int256 low, int256 high) internal pure returns (int256 z) {
+        assembly {
+            // z = min(x, high).
+            z := xor(x, mul(xor(x, high), slt(high, x)))
+            // z = max(z, low).
+            z := xor(z, mul(xor(z, low), sgt(low, z)))
+        }
+    }
+
+    /// @dev Returns an approximation of exp.
+    function wExp(int256 x) internal pure returns (int256) {
+        unchecked {
+            // If x < ln(1e-18) then exp(x) < 1e-18 so it is rounded to zero.
+            if (x < LN_WEI_INT) return 0;
+            // `wExp` is clipped to avoid overflowing when multiplied with 1 ether.
+            if (x >= WEXP_UPPER_BOUND) return WEXP_UPPER_VALUE;
+
+            // Decompose x as x = q * ln(2) + r with q an integer and -ln(2)/2 <= r <= ln(2)/2.
+            // q = x / ln(2) rounded half toward zero.
+            int256 roundingAdjustment = (x < 0) ? -(LN_2_INT / 2) : (LN_2_INT / 2);
+            // Safe unchecked because x is bounded.
+            int256 q = (x + roundingAdjustment) / LN_2_INT;
+            // Safe unchecked because |q * ln(2) - x| <= ln(2)/2.
+            int256 r = x - q * LN_2_INT;
+
+            // Compute e^r with a 2nd-order Taylor polynomial.
+            // Safe unchecked because |r| < 1e18.
+            int256 expR = WAD_INT + r + (r * r) / WAD_INT / 2;
+
+            // Return e^x = 2^q * e^r.
+            if (q >= 0) return expR << uint256(q);
+            else return expR >> uint256(-q);
+        }
     }
 }

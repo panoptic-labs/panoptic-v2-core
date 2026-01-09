@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
-
+import "forge-std/Test.sol";
 // Interfaces
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
@@ -56,24 +56,23 @@ contract PanopticHelper {
         (
             LeftRightUnsigned shortPremium,
             LeftRightUnsigned longPremium,
-            uint256[2][] memory positionBalanceArray
+            PositionBalance[] memory positionBalanceArray
         ) = pool.getAccumulatedFeesAndPositionsData(account, false, positionIdList);
 
+        PanopticPool _pool = pool;
         // Query the current and required collateral amounts for the two tokens
-        LeftRightUnsigned tokenData0 = pool.collateralToken0().getAccountMarginDetails(
-            account,
-            atTick,
-            positionBalanceArray,
-            shortPremium.rightSlot(),
-            longPremium.rightSlot()
-        );
-        LeftRightUnsigned tokenData1 = pool.collateralToken1().getAccountMarginDetails(
-            account,
-            atTick,
-            positionBalanceArray,
-            shortPremium.leftSlot(),
-            longPremium.leftSlot()
-        );
+        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = pool
+            .riskEngine()
+            .getMargin(
+                positionBalanceArray,
+                atTick,
+                account,
+                positionIdList,
+                shortPremium,
+                longPremium,
+                _pool.collateralToken0(),
+                _pool.collateralToken1()
+            );
 
         // convert (using atTick) and return the total collateral balance and required balance in terms of tokenType
         return
@@ -94,15 +93,12 @@ contract PanopticHelper {
         TokenId[] calldata positionIdList
     ) external view returns (int256 value0, int256 value1) {
         // Compute premia for all options (includes short+long premium)
-        (, , uint256[2][] memory positionBalanceArray) = pool.getAccumulatedFeesAndPositionsData(
-            account,
-            false,
-            positionIdList
-        );
+        (, , PositionBalance[] memory positionBalanceArray) = pool
+            .getAccumulatedFeesAndPositionsData(account, false, positionIdList);
 
         for (uint256 k = 0; k < positionIdList.length; ) {
             TokenId tokenId = positionIdList[k];
-            uint128 positionSize = LeftRightUnsigned.wrap(positionBalanceArray[k][1]).rightSlot();
+            uint128 positionSize = positionBalanceArray[k].positionSize();
             uint256 numLegs = tokenId.countLegs();
             for (uint256 leg = 0; leg < numLegs; ) {
                 LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
@@ -152,13 +148,10 @@ contract PanopticHelper {
         TokenId[] memory tokenIdList = new TokenId[](1);
         tokenIdList[0] = tokenId;
 
-        (, , uint256[2][] memory positionBalanceArray) = pool.getAccumulatedFeesAndPositionsData(
-            account,
-            false,
-            tokenIdList
-        );
+        (, , PositionBalance[] memory positionBalanceArray) = pool
+            .getAccumulatedFeesAndPositionsData(account, false, tokenIdList);
 
-        PositionBalance balanceAndUtilization = PositionBalance.wrap(positionBalanceArray[0][1]);
+        PositionBalance balanceAndUtilization = positionBalanceArray[0];
 
         return (
             balanceAndUtilization.positionSize(),
@@ -201,26 +194,30 @@ contract PanopticHelper {
 
     /// @notice Takes a packed structure representing a sorted 8-slot queue of ticks and returns the median of those values.
     /// @dev Also inserts the latest Uniswap observation into the buffer, resorts, and returns if the last entry is at least `period` seconds old.
-    /// @param period The minimum time in seconds that must have passed since the last observation was inserted into the buffer
-    /// @param medianData The packed structure representing the sorted 8-slot queue of ticks
+    /// @param oraclePack The packed structure representing the sorted 8-slot queue of ticks
     /// @param univ3pool The Uniswap pool to retrieve observations from
-    /// @return The median of the provided 8-slot queue of ticks in `medianData`
+    /// @return The median of the provided 8-slot queue of ticks in `oraclePack`
     /// @return The updated 8-slot queue of ticks with the latest observation inserted if the last entry is at least `period` seconds old (returns 0 otherwise)
     function computeInternalMedian(
-        uint256 period,
-        uint256 medianData,
+        uint256 oraclePack,
         IUniswapV3Pool univ3pool
     ) external view returns (int24, uint256) {
-        (, , uint16 observationIndex, uint16 observationCardinality, , , ) = univ3pool.slot0();
+        (
+            ,
+            int24 currentTick,
+            uint16 observationIndex,
+            uint16 observationCardinality,
+            ,
+            ,
 
-        (int24 _medianTick, uint256 _medianData) = PanopticMath.computeInternalMedian(
-            observationIndex,
-            observationCardinality,
-            period,
-            medianData,
-            univ3pool
+        ) = univ3pool.slot0();
+
+        (int24 _medianTick, uint256 _oraclePack) = PanopticMath.computeInternalMedian(
+            oraclePack,
+            currentTick,
+            0
         );
-        return (_medianTick, _medianData);
+        return (_medianTick, _oraclePack);
     }
 
     /// @notice Computes the twap of a Uniswap V3 pool using data from its oracle.
@@ -297,7 +294,8 @@ contract PanopticHelper {
         TokenId[] calldata positionIdList
     ) public view returns (int24 liquidationTick) {
         // initialize right and left bounds from current tick
-        (, int24 currentTick, , , , , ) = PanopticPool(pool).univ3pool().slot0();
+        int24 currentTick = SFPM.getCurrentTick(PanopticPool(pool).poolKey());
+
         int24 x0 = currentTick - 10000;
         int24 x1 = currentTick;
         int24 tol = 100000;
@@ -321,7 +319,7 @@ contract PanopticHelper {
             );
             // if price is not within a 100000 tick range of current price, return MIN_TICK
             if (x1 > currentTick + tol || x1 < currentTick - tol) {
-                return Constants.MIN_V3POOL_TICK;
+                return Constants.MIN_POOL_TICK;
             }
             // stop if price is within 0.01% (1 tick) of LP
             if (
@@ -345,7 +343,7 @@ contract PanopticHelper {
         TokenId[] calldata positionIdList
     ) public view returns (int24 liquidationTick) {
         // initialize right and left bounds from current tick
-        (, int24 currentTick, , , , , ) = PanopticPool(pool).univ3pool().slot0();
+        int24 currentTick = SFPM.getCurrentTick(PanopticPool(pool).poolKey());
         int24 x0 = currentTick;
         int24 x1 = currentTick + 10000;
         int24 tol = 100000;
@@ -369,7 +367,7 @@ contract PanopticHelper {
             );
             // if price is not within a 100000 tick range of current price, stop + return MAX_TICK
             if (x1 > currentTick + tol || x1 < currentTick - tol) {
-                return Constants.MAX_V3POOL_TICK;
+                return Constants.MAX_POOL_TICK;
             }
             // stop if price is within 0.01% (1 tick) of LP
             if (

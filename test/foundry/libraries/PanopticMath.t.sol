@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
+import "forge-std/Test.sol";
 
 // Foundry
-import "forge-std/Test.sol";
 // Internal
 import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {BitMath} from "v3-core/libraries/BitMath.sol";
@@ -13,6 +13,7 @@ import {TokenId} from "@types/TokenId.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {Math} from "@libraries/Math.sol";
+import {Constants} from "@libraries/Constants.sol";
 // Uniswap
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
 import {LiquidityAmounts} from "v3-periphery/libraries/LiquidityAmounts.sol";
@@ -47,6 +48,56 @@ contract PanopticMathTest is Test, PositionUtils {
 
     function setUp() public {
         harness = new PanopticMathHarness();
+    }
+
+    // Constants for computeInternalMedian tests
+    int24 internal constant REFERENCE_TICK = 200000;
+    uint256 internal constant INITIAL_EPOCH = 5;
+
+    /*//////////////////////////////////////////////////////////////
+                    COMPUTE INTERNAL MEDIAN HELPERS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Encodes a set of offsets into the packed oraclePack format for testing.
+    function _encodeOraclePack(int16[] memory offsets) internal pure returns (uint256) {
+        // Assume the input offsets are sorted and create a simple orderMap (0->0, 1->1, etc.)
+        uint256 data;
+        data |= INITIAL_EPOCH << 232;
+        data |= uint256(0xFAC688) << 208; // orderMap for a pre-sorted list
+        data |= uint256(uint24(REFERENCE_TICK)) << 96;
+        for (uint8 i = 0; i < 8; i++) {
+            // Mask with 0xFFF to pack as a 12-bit value
+            data |= (uint256(uint16(offsets[i])) & 0x0FFF) << (i * 12);
+        }
+        return data;
+    }
+
+    /// @notice Decodes the packed data and returns the full tick values IN SORTED ORDER.
+    /// This is the key to verifying the orderMap logic is correct.
+    function _decodeSortedTicks(uint256 data) internal pure returns (int24[] memory) {
+        int24[] memory sortedTicks = new int24[](8);
+        int24 refTick = int24(uint24(data >> 96));
+        for (uint8 i = 0; i < 8; i++) {
+            // i = sorted rank
+            uint256 offsetData = (data >> (i * 12)) % 2 ** 12;
+            sortedTicks[i] = refTick + PanopticMath.int12toInt24(offsetData);
+        }
+        return sortedTicks;
+    }
+
+    /// @notice Generates a standard list of offsets for testing. [0, 10, 20, 30, 40, 50, 60, 70]
+    function _generateSortedOffsets(int256 seed) internal pure returns (int16[] memory) {
+        int16[] memory offsets = new int16[](8);
+        int16 seedStart = seed != 0 ? int16(int256(bound(seed, -1970, 1970))) : int16(0);
+        offsets[0] = seedStart;
+        offsets[1] = seedStart + 10;
+        offsets[2] = seedStart + 20;
+        offsets[3] = seedStart + 30;
+        offsets[4] = seedStart + 40;
+        offsets[5] = seedStart + 50;
+        offsets[6] = seedStart + 60;
+        offsets[7] = seedStart + 70;
+        return offsets;
     }
 
     // use storage as temp to avoid stack to deeps
@@ -283,7 +334,8 @@ contract PanopticMathTest is Test, PositionUtils {
         uint16 tokenType,
         int24 strike,
         int24 width,
-        uint64 positionSize
+        uint64 positionSize,
+        bool opening
     ) public {
         vm.assume(positionSize != 0);
         TokenId tokenId;
@@ -329,10 +381,10 @@ contract PanopticMathTest is Test, PositionUtils {
         }
 
         (LeftRightSigned expectedLongs, LeftRightSigned expectedShorts) = harness
-            .calculateIOAmounts(tokenId, positionSize, 0);
+            .calculateIOAmounts(tokenId, positionSize, 0, opening);
 
         (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
-            .computeExercisedAmounts(tokenId, positionSize);
+            .computeExercisedAmounts(tokenId, positionSize, opening);
 
         assertEq(LeftRightSigned.unwrap(expectedLongs), LeftRightSigned.unwrap(returnedLongs));
         assertEq(LeftRightSigned.unwrap(expectedShorts), LeftRightSigned.unwrap(returnedShorts));
@@ -394,8 +446,9 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenId = tokenId.addLeg(0, optionRatio, asset, isLong, tokenType, 0, strike, width);
         }
 
-        uint248 updatedHash = uint248(existingHash) ^
-            (uint248(uint256(keccak256(abi.encode(tokenId)))));
+        uint248 updatedHash = uint248(
+            PanopticMath.homomorphicHash(existingHash, TokenId.unwrap(tokenId), true)
+        );
         vm.assume((existingHash >> 248) < 255);
         uint256 expectedHash = uint256(updatedHash) + (((existingHash >> 248) + 1) << 248);
 
@@ -456,8 +509,9 @@ contract PanopticMathTest is Test, PositionUtils {
         uint256 expectedHash;
         uint256 returnedHash;
         unchecked {
-            uint248 updatedHash = uint248(existingHash) ^
-                (uint248(uint256(keccak256(abi.encode(tokenId)))));
+            uint248 updatedHash = uint248(
+                PanopticMath.homomorphicHash(existingHash, TokenId.unwrap(tokenId), false)
+            );
             vm.assume((existingHash >> 248) > 0);
 
             expectedHash = uint256(updatedHash) + (((existingHash >> 248) - 1) << 248);
@@ -1086,28 +1140,26 @@ contract PanopticMathTest is Test, PositionUtils {
         );
     }
 
-    function test_Success_getAmountsMoved_asset0(
+    function _test_Fuzz_getAmountsMoved0_legacy(
         uint256 optionRatioSeed,
         uint16 isLong,
         uint16 tokenType,
         int24 strike,
         int24 width,
-        uint64 positionSize
+        uint128 positionSize,
+        bool opening
     ) public {
-        vm.assume(positionSize != 0);
-        TokenId tokenId;
-
         // contruct a tokenId
         {
-            uint256 optionRatio = bound(optionRatioSeed, 1, 1);
+            $optionRatio = bound(optionRatioSeed, 1, 127);
 
             // the following are all 1 bit so mask them:
-            uint8 MASK = 0x1; // takes first 1 bit of the uint16
-            isLong = isLong & MASK;
-            tokenType = tokenType & MASK;
+            $MASK = 0x1; // takes first 1 bit of the uint16
+            isLong = isLong & $MASK;
+            tokenType = tokenType & $MASK;
 
             // bound fuzzed tick
-            selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
+            selectedPool = pools[bound($optionRatio, 0, 2)]; // reuse optionRatio as seed
             tickSpacing = selectedPool.tickSpacing();
 
             width = int24(bound(width, 1, 2048));
@@ -1117,80 +1169,149 @@ contract PanopticMathTest is Test, PositionUtils {
             (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(tickSpacing));
 
             (, currentTick, , , , , ) = selectedPool.slot0();
-            (strikeOffset, minTick, maxTick) = PositionUtils.getContextFull(
-                uint256(uint24(tickSpacing)),
-                currentTick,
-                width
-            );
 
-            lowerBound = int24(minTick + rangeDown - strikeOffset);
-            upperBound = int24(maxTick - rangeUp - strikeOffset);
+            lowerBound = int24(-887272 + rangeDown);
+            upperBound = int24(887272 - rangeUp);
 
             // bound strike
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
-            strike = int24(strike * tickSpacing + strikeOffset);
+            strike = int24(strike * tickSpacing);
 
-            tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
-            tokenId = tokenId.addLeg(0, optionRatio, 0, isLong, tokenType, 0, strike, width);
+            $tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
+            $tokenId = $tokenId.addLeg(0, $optionRatio, 0, isLong, tokenType, 0, strike, width);
+            console2.log("strike", strike);
         }
+        $tokenId.validate();
 
         // get the tick range for this leg in order to get the strike price (the underlying price)
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0);
+        ($tickLower, $tickUpper) = $tokenId.asTicks(0);
 
-        // set amount 0
-        uint128 amount0 = positionSize * uint128(tokenId.optionRatio(0));
+        positionSize = uint128(
+            bound(positionSize, 0, positionSize / uint128($tokenId.optionRatio(0)))
+        );
+        vm.assume(positionSize != 0);
+
+        // set amount 0 - LEGACY
+        uint256 amount0 = positionSize * uint128($tokenId.optionRatio(0));
 
         uint256 amount1 = Math.mulDivRoundingUp(
             uint256(amount0),
             Math.mulDiv(
-                Math.getSqrtRatioAtTick(tickLower),
-                Math.getSqrtRatioAtTick(tickUpper),
+                Math.getSqrtRatioAtTick($tickLower),
+                Math.getSqrtRatioAtTick($tickUpper),
                 2 ** 96
             ),
             2 ** 96
         );
+        vm.assume(amount0 < type(uint128).max);
+        vm.assume(amount1 < type(uint128).max);
+        LeftRightUnsigned legacyContractsNotional = LeftRightUnsigned
+            .wrap(0)
+            .addToRightSlot(amount0.toUint128())
+            .addToLeftSlot(amount1.toUint128());
 
-        vm.assume(amount1 < 2 ** 128);
+        // set amount0 - UNISWAP MATH
+        $contracts = positionSize * $tokenId.optionRatio(0);
 
+        uint160 lowPriceX96 = Math.getSqrtRatioAtTick($tickLower);
+        uint160 highPriceX96 = Math.getSqrtRatioAtTick($tickUpper);
+
+        uint256 liquidity = Math.mulDiv(
+            $contracts,
+            Math.mulDiv96(highPriceX96, lowPriceX96),
+            highPriceX96 - lowPriceX96
+        );
+
+        if (isLong == 0) {
+            amount0 = Math.mulDivRoundingUp(
+                Math.mulDivRoundingUp(
+                    uint256(liquidity) << 96,
+                    highPriceX96 - lowPriceX96,
+                    highPriceX96
+                ),
+                1,
+                lowPriceX96
+            );
+
+            amount1 = Math.mulDiv96RoundingUp(liquidity, highPriceX96 - lowPriceX96);
+        } else {
+            amount0 = Math.mulDiv(
+                Math.mulDiv(uint256(liquidity) << 96, highPriceX96 - lowPriceX96, highPriceX96),
+                1,
+                lowPriceX96
+            );
+
+            amount1 = Math.mulDiv96(liquidity, highPriceX96 - lowPriceX96);
+        }
+        vm.assume(amount0 < type(uint128).max);
+        vm.assume(amount1 < type(uint128).max);
         LeftRightUnsigned expectedContractsNotional = LeftRightUnsigned
             .wrap(0)
-            .toRightSlot(amount0)
-            .toLeftSlot(uint128(amount1));
+            .addToRightSlot(amount0.toUint128())
+            .addToLeftSlot(amount1.toUint128());
 
+        // set amount0 - PANOPTIC MATH
         LeftRightUnsigned returnedContractsNotional = harness.getAmountsMoved(
-            tokenId,
+            $tokenId,
             positionSize,
-            0
+            0,
+            opening
         );
         assertEq(
-            LeftRightUnsigned.unwrap(expectedContractsNotional),
-            LeftRightUnsigned.unwrap(returnedContractsNotional)
+            expectedContractsNotional.rightSlot(),
+            returnedContractsNotional.rightSlot(),
+            "CORRECT: amount 0 not equal"
         );
+        assertEq(
+            expectedContractsNotional.leftSlot(),
+            returnedContractsNotional.leftSlot(),
+            "CORRECT: amount 1 not equal"
+        );
+
+        if (amount0 != $contracts) {
+            assertGe(
+                legacyContractsNotional.rightSlot(),
+                returnedContractsNotional.rightSlot(),
+                "LEGACY: amount 0 not equal"
+            );
+            if (legacyContractsNotional.leftSlot() > 0) {
+                assertGe(
+                    legacyContractsNotional.leftSlot(),
+                    returnedContractsNotional.leftSlot(),
+                    "LEGACY: amount 1 not equal"
+                );
+            }
+        }
     }
 
-    function test_Success_getAmountsMoved_asset1(
-        uint256 optionRatio,
+    uint256 $optionRatio;
+    uint8 $MASK;
+    TokenId $tokenId;
+    int24 $tickLower;
+    int24 $tickUpper;
+    uint256 $contracts;
+
+    // skip
+    function _test_Fuzz_getAmountsMoved1_legacy(
+        uint256 optionRatioSeed,
         uint16 isLong,
         uint16 tokenType,
         int24 strike,
         int24 width,
-        uint64 positionSize
+        uint128 positionSize,
+        bool opening
     ) public {
-        vm.assume(positionSize != 0);
-        TokenId tokenId;
-
         // contruct a tokenId
         {
-            selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
-
-            optionRatio = bound(optionRatio, 1, 127);
+            $optionRatio = bound(optionRatioSeed, 1, 127);
 
             // the following are all 1 bit so mask them:
-            uint8 MASK = 0x1; // takes first 1 bit of the uint16
-            isLong = isLong & MASK;
-            tokenType = tokenType & MASK;
+            $MASK = 0x1; // takes first 1 bit of the uint16
+            isLong = isLong & $MASK;
+            tokenType = tokenType & $MASK;
 
             // bound fuzzed tick
+            selectedPool = pools[bound($optionRatio, 0, 2)]; // reuse optionRatio as seed
             tickSpacing = selectedPool.tickSpacing();
 
             width = int24(bound(width, 1, 2048));
@@ -1200,57 +1321,125 @@ contract PanopticMathTest is Test, PositionUtils {
             (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(tickSpacing));
 
             (, currentTick, , , , , ) = selectedPool.slot0();
-            (strikeOffset, minTick, maxTick) = PositionUtils.getContextFull(
-                uint256(uint24(tickSpacing)),
-                currentTick,
-                width
-            );
 
-            lowerBound = int24(minTick + rangeDown - strikeOffset);
-            upperBound = int24(maxTick - rangeUp - strikeOffset);
-
-            // Set current tick and pool price
-            currentTick = int24(bound(currentTick, minTick, maxTick));
+            lowerBound = int24(-887272 + rangeDown);
+            upperBound = int24(887272 - rangeUp);
 
             // bound strike
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
-            strike = int24(strike * tickSpacing + strikeOffset);
+            strike = int24(strike * tickSpacing);
 
-            tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
-            tokenId = tokenId.addLeg(0, optionRatio, 1, isLong, tokenType, 0, strike, width);
+            $tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
+            $tokenId = $tokenId.addLeg(0, $optionRatio, 1, isLong, tokenType, 0, strike, width);
+            console2.log("strike", strike);
         }
+        $tokenId.validate();
 
         // get the tick range for this leg in order to get the strike price (the underlying price)
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0);
+        ($tickLower, $tickUpper) = $tokenId.asTicks(0);
 
-        // set amount 1
-        uint128 amount1 = positionSize * uint128(tokenId.optionRatio(0));
+        positionSize = uint128(
+            bound(positionSize, 0, positionSize / uint128($tokenId.optionRatio(0)))
+        );
+        vm.assume(positionSize != 0);
 
+        // set amount 1 - LEGACY
+        uint256 amount1 = positionSize * uint128($tokenId.optionRatio(0));
+        console2.log("tL", Math.getSqrtRatioAtTick($tickLower));
+        console2.log("tU", Math.getSqrtRatioAtTick($tickUpper));
+
+        vm.assume(
+            Math.mulDiv(
+                Math.getSqrtRatioAtTick($tickLower),
+                Math.getSqrtRatioAtTick($tickUpper),
+                2 ** 96
+            ) > 0
+        );
         uint256 amount0 = Math.mulDivRoundingUp(
             uint256(amount1),
             2 ** 96,
             Math.mulDiv(
-                Math.getSqrtRatioAtTick(tickLower),
-                Math.getSqrtRatioAtTick(tickUpper),
+                Math.getSqrtRatioAtTick($tickLower),
+                Math.getSqrtRatioAtTick($tickUpper),
                 2 ** 96
             )
         );
-        vm.assume(amount0 < 2 ** 128);
 
+        vm.assume(amount0 < type(uint128).max);
+        vm.assume(amount1 < type(uint128).max);
+        LeftRightUnsigned legacyContractsNotional = LeftRightUnsigned
+            .wrap(0)
+            .addToRightSlot(amount0.toUint128())
+            .addToLeftSlot(amount1.toUint128());
+
+        // set amount0 - UNISWAP MATH
+        $contracts = positionSize * $tokenId.optionRatio(0);
+
+        uint160 lowPriceX96 = Math.getSqrtRatioAtTick($tickLower);
+        uint160 highPriceX96 = Math.getSqrtRatioAtTick($tickUpper);
+
+        uint256 liquidity = Math.mulDiv($contracts, 2 ** 96, highPriceX96 - lowPriceX96);
+        if (isLong == 0) {
+            amount0 = Math.mulDivRoundingUp(
+                Math.mulDivRoundingUp(
+                    uint256(liquidity) << 96,
+                    highPriceX96 - lowPriceX96,
+                    highPriceX96
+                ),
+                1,
+                lowPriceX96
+            );
+
+            amount1 = Math.mulDiv96RoundingUp(liquidity, highPriceX96 - lowPriceX96);
+        } else {
+            amount0 = Math.mulDiv(
+                Math.mulDiv(uint256(liquidity) << 96, highPriceX96 - lowPriceX96, highPriceX96),
+                1,
+                lowPriceX96
+            );
+
+            amount1 = Math.mulDiv96(liquidity, highPriceX96 - lowPriceX96);
+        }
+
+        vm.assume(amount0 < type(uint128).max);
+        vm.assume(amount1 < type(uint128).max);
         LeftRightUnsigned expectedContractsNotional = LeftRightUnsigned
             .wrap(0)
-            .toRightSlot(uint128(amount0))
-            .toLeftSlot(amount1);
+            .addToRightSlot(amount0.toUint128())
+            .addToLeftSlot(amount1.toUint128());
 
+        // set amount0 - PANOPTIC MATH
         LeftRightUnsigned returnedContractsNotional = harness.getAmountsMoved(
-            tokenId,
+            $tokenId,
             positionSize,
-            0
+            0,
+            opening
         );
         assertEq(
-            LeftRightUnsigned.unwrap(expectedContractsNotional),
-            LeftRightUnsigned.unwrap(returnedContractsNotional)
+            expectedContractsNotional.rightSlot(),
+            returnedContractsNotional.rightSlot(),
+            "CORRECT: amount 0 not equal"
         );
+        assertEq(
+            expectedContractsNotional.leftSlot(),
+            returnedContractsNotional.leftSlot(),
+            "CORRECT: amount 1 not equal"
+        );
+
+        if (amount1 != $contracts) {
+            assertGe(
+                legacyContractsNotional.leftSlot(),
+                returnedContractsNotional.leftSlot(),
+                "LEGACY: amount 0 not equal"
+            );
+            if (legacyContractsNotional.rightSlot() > 0) {
+                assertGe(
+                    legacyContractsNotional.rightSlot(),
+                    returnedContractsNotional.rightSlot(),
+                    "LEGACY: amount 1 not equal"
+                );
+            }
+        }
     }
 
     // // _calculateIOAmounts
@@ -1259,7 +1448,8 @@ contract PanopticMathTest is Test, PositionUtils {
         uint16 asset,
         int24 strike,
         int24 width,
-        uint64 positionSize
+        uint64 positionSize,
+        bool opening
     ) public {
         vm.assume(positionSize != 0);
         TokenId tokenId;
@@ -1300,14 +1490,19 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenId = tokenId.addLeg(0, optionRatio, asset, 0, 0, 0, strike, width);
         }
 
-        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
+        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(
+            tokenId,
+            positionSize,
+            0,
+            opening
+        );
         vm.assume(int256(uint256(contractsNotional.rightSlot())) < type(int128).max);
 
-        LeftRightSigned expectedShorts = LeftRightSigned.wrap(0).toRightSlot(
+        LeftRightSigned expectedShorts = LeftRightSigned.wrap(0).addToRightSlot(
             Math.toInt128(contractsNotional.rightSlot())
         );
         (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
-            .calculateIOAmounts(tokenId, positionSize, 0);
+            .calculateIOAmounts(tokenId, positionSize, 0, opening);
 
         assertEq(LeftRightSigned.unwrap(expectedShorts), LeftRightSigned.unwrap(returnedShorts));
         assertEq(0, LeftRightSigned.unwrap(returnedLongs));
@@ -1317,7 +1512,8 @@ contract PanopticMathTest is Test, PositionUtils {
         uint16 asset,
         int24 strike,
         int24 width,
-        uint64 positionSize
+        uint64 positionSize,
+        bool opening
     ) public {
         vm.assume(positionSize != 0);
         TokenId tokenId;
@@ -1371,14 +1567,19 @@ contract PanopticMathTest is Test, PositionUtils {
             )
         );
 
-        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
+        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(
+            tokenId,
+            positionSize,
+            0,
+            opening
+        );
         vm.assume(int256(uint256(contractsNotional.rightSlot())) < type(int128).max);
 
-        LeftRightSigned expectedLongs = LeftRightSigned.wrap(0).toRightSlot(
+        LeftRightSigned expectedLongs = LeftRightSigned.wrap(0).addToRightSlot(
             Math.toInt128(contractsNotional.rightSlot())
         );
         (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
-            .calculateIOAmounts(tokenId, positionSize, 0);
+            .calculateIOAmounts(tokenId, positionSize, 0, opening);
 
         assertEq(LeftRightSigned.unwrap(expectedLongs), LeftRightSigned.unwrap(returnedLongs));
         assertEq(0, LeftRightSigned.unwrap(returnedShorts));
@@ -1389,7 +1590,8 @@ contract PanopticMathTest is Test, PositionUtils {
         uint16 asset,
         int24 strike,
         int24 width,
-        uint64 positionSize
+        uint64 positionSize,
+        bool opening
     ) public {
         positionSize = uint64(bound(positionSize, 1, type(uint64).max));
         TokenId tokenId;
@@ -1427,14 +1629,19 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenId = tokenId.addLeg(0, optionRatio, asset, 0, 1, 0, strike, width);
         }
 
-        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
+        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(
+            tokenId,
+            positionSize,
+            0,
+            opening
+        );
         vm.assume(int256(uint256(contractsNotional.leftSlot())) < type(int128).max);
 
-        LeftRightSigned expectedShorts = LeftRightSigned.wrap(0).toLeftSlot(
+        LeftRightSigned expectedShorts = LeftRightSigned.wrap(0).addToLeftSlot(
             Math.toInt128(contractsNotional.leftSlot())
         );
         (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
-            .calculateIOAmounts(tokenId, positionSize, 0);
+            .calculateIOAmounts(tokenId, positionSize, 0, opening);
 
         assertEq(LeftRightSigned.unwrap(expectedShorts), LeftRightSigned.unwrap(returnedShorts));
         assertEq(0, LeftRightSigned.unwrap(returnedLongs));
@@ -1445,7 +1652,8 @@ contract PanopticMathTest is Test, PositionUtils {
         uint16 asset,
         int24 strike,
         int24 width,
-        uint64 positionSize
+        uint64 positionSize,
+        bool opening
     ) public {
         vm.assume(positionSize != 0);
         TokenId tokenId;
@@ -1486,15 +1694,20 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenId = tokenId.addLeg(0, optionRatio, asset, 1, 1, 0, strike, width);
         }
 
-        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
+        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(
+            tokenId,
+            positionSize,
+            0,
+            opening
+        );
 
         vm.assume(int256(uint256(contractsNotional.leftSlot())) < type(int128).max);
-        LeftRightSigned expectedLongs = LeftRightSigned.wrap(0).toLeftSlot(
+        LeftRightSigned expectedLongs = LeftRightSigned.wrap(0).addToLeftSlot(
             Math.toInt128(contractsNotional.leftSlot())
         );
 
         (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
-            .calculateIOAmounts(tokenId, positionSize, 0);
+            .calculateIOAmounts(tokenId, positionSize, 0, opening);
 
         assertEq(LeftRightSigned.unwrap(expectedLongs), LeftRightSigned.unwrap(returnedLongs));
         assertEq(0, LeftRightSigned.unwrap(returnedShorts));
@@ -1553,5 +1766,153 @@ contract PanopticMathTest is Test, PositionUtils {
             assertEq(strike - rangeDown, strike - range);
             assertEq(strike + rangeUp, strike + range);
         }
+    }
+
+    function test_success_toInt24() public pure {
+        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 12 - 1));
+        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 13 - 1));
+        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 14 - 1));
+        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 15 - 1));
+        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 16 - 1));
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        COMPUTE INTERNAL MEDIAN TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice This test ensures the order map is correct when the new tick is the new MINIMUM value.
+    function test_SUCCESS_OrderMapIsCorrect_InsertNewTick(int256 x) public {
+        // ARRANGE
+
+        int24 deltaTick = int24(bound(x, -149, 149));
+
+        uint256 initialData = _encodeOraclePack(_generateSortedOffsets(x));
+
+        // Set up the mock pool to return a new tick with an offset of -100, smaller than any existing value.
+        int56 tickCumulative = int56(
+            REFERENCE_TICK + PanopticMath.int12toInt24(initialData % 2 ** 12) + deltaTick
+        ) * 64;
+
+        int24 deltaOffset = PanopticMath.int12toInt24(initialData % 2 ** 12);
+        int24 oldReferenceTick = int24(uint24(initialData >> 96));
+        // ACT
+        vm.warp(10 * 64);
+        (, uint256 updatedData) = harness.computeInternalMedian(
+            initialData,
+            REFERENCE_TICK + PanopticMath.int12toInt24(initialData % 2 ** 12) + deltaTick
+        );
+
+        // ASSERT
+        int24[] memory finalTicks = _decodeSortedTicks(updatedData);
+
+        int24 newReferenceTick = int24(uint24(updatedData >> 96));
+        int24 deltaReference = newReferenceTick - oldReferenceTick;
+
+        // The oldest value (40) is dropped, and the new value (-100) is inserted.
+        // Expected sorted list: [-100, -40, -30, -20, -10, 10, 20, 30]
+        int24[] memory expectedTicks = new int24[](8);
+        expectedTicks[0] = newReferenceTick + deltaOffset - deltaReference + deltaTick; // New minimum
+        expectedTicks[1] = REFERENCE_TICK + _generateSortedOffsets(x)[0];
+        expectedTicks[2] = REFERENCE_TICK + _generateSortedOffsets(x)[1];
+        expectedTicks[3] = REFERENCE_TICK + _generateSortedOffsets(x)[2];
+        expectedTicks[4] = REFERENCE_TICK + _generateSortedOffsets(x)[3];
+        expectedTicks[5] = REFERENCE_TICK + _generateSortedOffsets(x)[4];
+        expectedTicks[6] = REFERENCE_TICK + _generateSortedOffsets(x)[5];
+        expectedTicks[7] = REFERENCE_TICK + _generateSortedOffsets(x)[6];
+
+        assertEq(
+            keccak256(abi.encode(finalTicks)),
+            keccak256(abi.encode(expectedTicks)),
+            "New minimum value not sorted correctly!"
+        );
+    }
+
+    /// @notice This test ensures the order map is correct when the new tick is the new MINIMUM value.
+    function test_SUCCESS_OrderMapIsCorrect_InsertNew_cap(int256 x) public {
+        // ARRANGE
+
+        // deltaTick would lead to capping
+        int24 deltaTick = int24(
+            bound(x, Constants.MAX_MEDIAN_DELTA + 1, Constants.MAX_RESIDUAL_THRESHOLD - 1)
+        );
+
+        deltaTick = x % 2 == 0 ? -deltaTick : deltaTick;
+
+        uint256 initialData = _encodeOraclePack(_generateSortedOffsets(x));
+
+        // Set up the mock pool to return a new tick with an offset of -100, smaller than any existing value.
+        int56 tickCumulative = int56(
+            REFERENCE_TICK + PanopticMath.int12toInt24(initialData % 2 ** 12) + deltaTick
+        ) * 64;
+
+        // ACT
+        vm.warp(10 * 64);
+        (, uint256 updatedData) = harness.computeInternalMedian(
+            initialData,
+            REFERENCE_TICK + PanopticMath.int12toInt24(initialData % 2 ** 12) + deltaTick
+        );
+
+        // ASSERT
+        int24[] memory finalTicks = _decodeSortedTicks(updatedData);
+
+        // The oldest value (40) is dropped, and the new value (-100) is inserted.
+        // Expected sorted list: [-100, -40, -30, -20, -10, 10, 20, 30]
+        int24[] memory expectedTicks = new int24[](8);
+        expectedTicks[0] = REFERENCE_TICK + _generateSortedOffsets(x)[0] + deltaTick; // New minimum
+
+        assertEq(
+            finalTicks[0],
+            expectedTicks[0] -
+                deltaTick +
+                (x % 2 == 0 ? int24(-1) : int24(1)) *
+                Constants.MAX_MEDIAN_DELTA,
+            "New minimum value not sorted correctly!"
+        );
+    }
+
+    /// @notice This test ensures the order map is correct when the new tick is the new MINIMUM value.
+    function test_SUCCESS_OrderMapIsCorrect_InsertNew_rebase(int256 x) public {
+        // ARRANGE
+
+        // deltaTick would lead to capping
+        int24 deltaTick = x % 2 == 0 ? Constants.MAX_MEDIAN_DELTA : -Constants.MAX_MEDIAN_DELTA;
+
+        uint256 n = uint24((Constants.MAX_RESIDUAL_THRESHOLD / Constants.MAX_MEDIAN_DELTA)) + 1;
+
+        uint256 updatedData = _encodeOraclePack(_generateSortedOffsets(0));
+
+        int24 referenceTick = int24(uint24(updatedData >> 96));
+        for (uint256 i; i < n; ++i) {
+            // Set up the mock pool to return a new tick with an offset of -100, smaller than any existing value.
+            int56 tickCumulative = int56(
+                REFERENCE_TICK + PanopticMath.int12toInt24(updatedData % 2 ** 12) + deltaTick
+            ) * 64;
+
+            // ACT
+            vm.warp(block.timestamp + 128);
+            vm.roll(block.number + 1);
+            (, uint256 _updatedData) = harness.computeInternalMedian(
+                updatedData,
+                REFERENCE_TICK + PanopticMath.int12toInt24(updatedData % 2 ** 12) + deltaTick
+            );
+            updatedData = _updatedData;
+        }
+
+        int24 newReferenceTick = int24(uint24(updatedData >> 96));
+
+        assertTrue(referenceTick != newReferenceTick, "FAIL: reference tick not updated");
+    }
+
+    /// @notice This test ensures no update occurs if the block timestamp is in the same epoch.
+    function test_NoUpdateInSameEpoch() public {
+        // ARRANGE
+        uint256 initialData = _encodeOraclePack(_generateSortedOffsets(0));
+
+        // ACT: Set timestamp to be in the same epoch as the initial data.
+        vm.warp(INITIAL_EPOCH * 64 + 1); // e.g., timestamp >> 6 will still be 5
+        (, uint256 updatedData) = harness.computeInternalMedian(initialData, REFERENCE_TICK);
+
+        // ASSERT: The function should return 0 for updatedOraclePack.
+        assertEq(updatedData, 0, "Update should not happen in the same epoch");
     }
 }

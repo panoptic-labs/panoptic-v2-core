@@ -44,6 +44,6 @@ contract FeesCalcHarness {
     }
 
     function addBalance(TokenId tokenId, uint128 balance) public {
-        userBalance[tokenId] = LeftRightUnsigned.wrap(0).toRightSlot(balance);
+        userBalance[tokenId] = LeftRightUnsigned.wrap(0).addToRightSlot(balance);
     }
 }

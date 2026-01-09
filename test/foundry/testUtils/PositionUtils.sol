@@ -576,6 +576,25 @@ contract PositionUtils is Test {
             : LiquidityAmounts.getAmount1ForLiquidity(sqrtRatioAX96, sqrtRatioBX96, liquidity);
     }
 
+    function _boundLog(
+        uint256 x,
+        uint8 min,
+        uint8 max
+    ) internal pure virtual returns (uint256 result) {
+        require(min <= max, "StdUtils boundLog(uint256,uint8,uint8): Max is less than min.");
+
+        // If x is between min and max, DO NOT return x directly. This is to ensure that the sampling remains uniform in log space
+
+        // select an exponent between [min, max]
+        uint256 range = uint256(max) - uint256(min) + 1;
+        uint256 m0 = min + (x % range);
+
+        // randomize the input value, use it to generate a number between 2 ** m0 and 2 **(m0+1)-1
+        x = uint256(keccak256(abi.encode(x)));
+        uint256 m1 = x % 2 ** max;
+        result = 2 ** m0 + (m1 >> (max - m0));
+    }
+
     function simulateSwap(
         ISwapRouter router,
         address token0,
@@ -1429,14 +1448,16 @@ contract PositionUtils is Test {
     function editCollateral(CollateralTracker ct, address owner, uint256 newShares) internal {
         int256 shareDelta = int256(newShares) - int256(ct.balanceOf(owner));
         int256 assetDelta = convertToAssets(ct, shareDelta);
+        uint256 _internalSupply = uint256(vm.load(address(ct), bytes32(uint256(0))));
+        int256 _newInternalSupply = int256(_internalSupply) + shareDelta;
         vm.store(
             address(ct),
-            bytes32(uint256(7)),
+            bytes32(uint256(3)),
             bytes32(
                 uint256(
                     LeftRightSigned.unwrap(
                         LeftRightSigned
-                            .wrap(int256(uint256(vm.load(address(ct), bytes32(uint256(7))))))
+                            .wrap(int256(uint256(vm.load(address(ct), bytes32(uint256(3))))))
                             .add(LeftRightSigned.wrap(int256(uint256(uint128(int128(assetDelta))))))
                     )
                 )
@@ -1449,6 +1470,7 @@ contract PositionUtils is Test {
             uint256(int256(IERC20Partial(ct.asset()).balanceOf(address(ct))) + assetDelta)
         );
 
-        deal(address(ct), owner, newShares, true);
+        vm.store(address(ct), bytes32(uint256(0)), bytes32(uint256(_newInternalSupply)));
+        deal(address(ct), owner, newShares);
     }
 }

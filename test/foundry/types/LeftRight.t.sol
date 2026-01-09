@@ -25,7 +25,7 @@ contract LeftRightTest is Test {
     // RIGHT SLOT
     function test_Success_RightSlot_Uint128_In_Uint256(uint128 y) public view {
         LeftRightUnsigned x = LeftRightUnsigned.wrap(0);
-        x = harness.toRightSlot(x, y);
+        x = harness.addToRightSlot(x, y);
         assertEq(uint128(harness.leftSlot(x)), 0);
         assertEq(uint128(harness.rightSlot(x)), y);
     }
@@ -35,13 +35,13 @@ contract LeftRightTest is Test {
         uint128 y
     ) public view {
         uint128 originalLeft = harness.leftSlot(x);
-        x = harness.toRightSlot(x, y);
+        x = harness.addToRightSlot(x, y);
         assertEq(harness.leftSlot(x), originalLeft, "Right slot input overflowed into left slot");
     }
 
     function test_Success_RightSlot_Int128_In_Int256(int128 y) public view {
         LeftRightSigned x = LeftRightSigned.wrap(0);
-        x = harness.toRightSlot(x, y);
+        x = harness.addToRightSlot(x, y);
         assertEq(int128(harness.leftSlot(x)), 0);
         assertEq(int128(harness.rightSlot(x)), y);
     }
@@ -51,7 +51,7 @@ contract LeftRightTest is Test {
         int128 y
     ) public view {
         int128 originalLeft = harness.leftSlot(x);
-        x = harness.toRightSlot(x, y);
+        x = harness.addToRightSlot(x, y);
         assertEq(
             int128(harness.leftSlot(x)),
             originalLeft,
@@ -62,14 +62,14 @@ contract LeftRightTest is Test {
     // LEFT SLOT
     function test_Success_LeftSlot_Uint128_In_Uint256(uint128 y) public view {
         LeftRightUnsigned x = LeftRightUnsigned.wrap(0);
-        x = harness.toLeftSlot(x, y);
+        x = harness.addToLeftSlot(x, y);
         assertEq(uint128(harness.leftSlot(x)), y);
         assertEq(uint128(harness.rightSlot(x)), 0);
     }
 
     function test_Success_LeftSlot_Int128_In_Int256(int128 y) public view {
         LeftRightSigned x = LeftRightSigned.wrap(0);
-        x = harness.toLeftSlot(x, y);
+        x = harness.addToLeftSlot(x, y);
         assertEq(int128(harness.leftSlot(x)), y);
         assertEq(int128(harness.rightSlot(x)), 0);
     }
@@ -77,8 +77,8 @@ contract LeftRightTest is Test {
     // BOTH
     function test_Success_BothSlots_uint256(uint128 y, uint128 z) public view {
         LeftRightUnsigned x = LeftRightUnsigned.wrap(0);
-        x = harness.toLeftSlot(x, y);
-        x = harness.toRightSlot(x, z);
+        x = harness.addToLeftSlot(x, y);
+        x = harness.addToRightSlot(x, z);
 
         assertEq(uint128(harness.leftSlot(x)), y);
         assertEq(uint128(harness.rightSlot(x)), z);
@@ -86,8 +86,8 @@ contract LeftRightTest is Test {
 
     function test_Success_BothSlots_int256(int128 y, int128 z) public view {
         LeftRightSigned x = LeftRightSigned.wrap(0);
-        x = harness.toLeftSlot(x, y);
-        x = harness.toRightSlot(x, z);
+        x = harness.addToLeftSlot(x, y);
+        x = harness.addToRightSlot(x, z);
 
         assertEq(int128(harness.leftSlot(x)), y);
         assertEq(int128(harness.rightSlot(x)), z);
@@ -96,27 +96,27 @@ contract LeftRightTest is Test {
     // MATH
     function test_Success_AddUints(uint128 y, uint128 z, uint128 u, uint128 v) public {
         LeftRightUnsigned x = LeftRightUnsigned.wrap(0);
-        x = harness.toLeftSlot(x, y);
-        x = harness.toRightSlot(x, z);
+        x = harness.addToLeftSlot(x, y);
+        x = harness.addToRightSlot(x, z);
         assertEq(uint128(harness.leftSlot(x)), y);
         assertEq(uint128(harness.rightSlot(x)), z);
 
         // try swapping order
         x = LeftRightUnsigned.wrap(0);
-        x = harness.toRightSlot(x, y);
-        x = harness.toLeftSlot(x, z);
+        x = harness.addToRightSlot(x, y);
+        x = harness.addToLeftSlot(x, z);
         assertEq(uint128(harness.leftSlot(x)), z);
         assertEq(uint128(harness.rightSlot(x)), y);
 
         x = LeftRightUnsigned.wrap(0);
-        x = harness.toLeftSlot(x, y);
-        x = harness.toRightSlot(x, z);
+        x = harness.addToLeftSlot(x, y);
+        x = harness.addToRightSlot(x, z);
         assertEq(uint128(harness.leftSlot(x)), y);
         assertEq(uint128(harness.rightSlot(x)), z);
 
         LeftRightUnsigned xx = LeftRightUnsigned.wrap(0);
-        xx = harness.toLeftSlot(xx, u);
-        xx = harness.toRightSlot(xx, v);
+        xx = harness.addToLeftSlot(xx, u);
+        xx = harness.addToRightSlot(xx, v);
 
         // now test add
         if (uint128(uint256(y) + uint256(u)) < y) {
@@ -137,14 +137,14 @@ contract LeftRightTest is Test {
 
     function test_Success_AddUintInt(uint128 y, uint128 z, int128 u, int128 v) public {
         LeftRightUnsigned x = LeftRightUnsigned.wrap(0);
-        x = harness.toLeftSlot(x, y);
-        x = harness.toRightSlot(x, z);
+        x = harness.addToLeftSlot(x, y);
+        x = harness.addToRightSlot(x, z);
         assertEq(uint128(harness.leftSlot(x)), y);
         assertEq(uint128(harness.rightSlot(x)), z);
 
         LeftRightSigned xx = LeftRightSigned.wrap(0);
-        xx = harness.toLeftSlot(xx, u);
-        xx = harness.toRightSlot(xx, v);
+        xx = harness.addToLeftSlot(xx, u);
+        xx = harness.addToRightSlot(xx, v);
 
         // now test add
         unchecked {
@@ -180,15 +180,15 @@ contract LeftRightTest is Test {
 
     function test_Success_SubUints(uint128 y, uint128 z, uint128 u, uint128 v) public {
         LeftRightUnsigned x = LeftRightUnsigned.wrap(0);
-        x = harness.toLeftSlot(x, y);
-        x = harness.toRightSlot(x, z);
+        x = harness.addToLeftSlot(x, y);
+        x = harness.addToRightSlot(x, z);
 
         assertEq(uint128(harness.leftSlot(x)), y);
         assertEq(uint128(harness.rightSlot(x)), z);
 
         LeftRightUnsigned xx = LeftRightUnsigned.wrap(0);
-        xx = harness.toRightSlot(xx, v);
-        xx = harness.toLeftSlot(xx, u);
+        xx = harness.addToRightSlot(xx, v);
+        xx = harness.addToLeftSlot(xx, u);
 
         assertEq(uint128(harness.leftSlot(xx)), u);
         assertEq(uint128(harness.rightSlot(xx)), v);
@@ -216,27 +216,27 @@ contract LeftRightTest is Test {
     // MATH for ints
     function test_Success_AddInts(int128 y, int128 z, int128 u, int128 v) public {
         LeftRightSigned x = LeftRightSigned.wrap(0);
-        x = harness.toLeftSlot(x, y);
-        x = harness.toRightSlot(x, z);
+        x = harness.addToLeftSlot(x, y);
+        x = harness.addToRightSlot(x, z);
         assertEq(int128(harness.leftSlot(x)), y);
         assertEq(int128(harness.rightSlot(x)), z);
 
         // try swapping order
         x = LeftRightSigned.wrap(0);
-        x = harness.toRightSlot(x, y);
-        x = harness.toLeftSlot(x, z);
+        x = harness.addToRightSlot(x, y);
+        x = harness.addToLeftSlot(x, z);
         assertEq(int128(harness.leftSlot(x)), z);
         assertEq(int128(harness.rightSlot(x)), y);
 
         x = LeftRightSigned.wrap(0);
-        x = harness.toLeftSlot(x, y);
-        x = harness.toRightSlot(x, z);
+        x = harness.addToLeftSlot(x, y);
+        x = harness.addToRightSlot(x, z);
         assertEq(int128(harness.leftSlot(x)), y);
         assertEq(int128(harness.rightSlot(x)), z);
 
         LeftRightSigned xx = LeftRightSigned.wrap(0);
-        xx = harness.toLeftSlot(xx, u);
-        xx = harness.toRightSlot(xx, v);
+        xx = harness.addToLeftSlot(xx, u);
+        xx = harness.addToRightSlot(xx, v);
 
         // now test add
         unchecked {
@@ -259,27 +259,27 @@ contract LeftRightTest is Test {
 
     function test_Success_SubInts(int128 y, int128 z, int128 u, int128 v) public {
         LeftRightSigned x = LeftRightSigned.wrap(0);
-        x = harness.toLeftSlot(x, y);
-        x = harness.toRightSlot(x, z);
+        x = harness.addToLeftSlot(x, y);
+        x = harness.addToRightSlot(x, z);
         assertEq(int128(harness.leftSlot(x)), y);
         assertEq(int128(harness.rightSlot(x)), z);
 
         // try swapping order
         x = LeftRightSigned.wrap(0);
-        x = harness.toRightSlot(x, y);
-        x = harness.toLeftSlot(x, z);
+        x = harness.addToRightSlot(x, y);
+        x = harness.addToLeftSlot(x, z);
         assertEq(int128(harness.leftSlot(x)), z);
         assertEq(int128(harness.rightSlot(x)), y);
 
         x = LeftRightSigned.wrap(0);
-        x = harness.toLeftSlot(x, y);
-        x = harness.toRightSlot(x, z);
+        x = harness.addToLeftSlot(x, y);
+        x = harness.addToRightSlot(x, z);
         assertEq(int128(harness.leftSlot(x)), y);
         assertEq(int128(harness.rightSlot(x)), z);
 
         LeftRightSigned xx = LeftRightSigned.wrap(0);
-        xx = harness.toLeftSlot(xx, u);
-        xx = harness.toRightSlot(xx, v);
+        xx = harness.addToLeftSlot(xx, u);
+        xx = harness.addToRightSlot(xx, v);
 
         // now test add
         unchecked {
@@ -303,12 +303,12 @@ contract LeftRightTest is Test {
     function test_Success_SubRectInts(int128 y, int128 z, int128 u, int128 v) public {
         LeftRightSigned x = LeftRightSigned.wrap(0);
 
-        x = harness.toLeftSlot(x, y);
-        x = harness.toRightSlot(x, z);
+        x = harness.addToLeftSlot(x, y);
+        x = harness.addToRightSlot(x, z);
 
         LeftRightSigned xx = LeftRightSigned.wrap(0);
-        xx = harness.toLeftSlot(xx, u);
-        xx = harness.toRightSlot(xx, v);
+        xx = harness.addToLeftSlot(xx, u);
+        xx = harness.addToRightSlot(xx, v);
 
         // now test add
         unchecked {

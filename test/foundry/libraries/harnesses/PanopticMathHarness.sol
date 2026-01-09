@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
-
 // Internal
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 // Uniswap
@@ -56,10 +55,11 @@ contract PanopticMathHarness is Test {
 
     function computeExercisedAmounts(
         TokenId tokenId,
-        uint128 positionSize
+        uint128 positionSize,
+        bool opening
     ) public pure returns (LeftRightSigned, LeftRightSigned) {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            .computeExercisedAmounts(tokenId, positionSize);
+            .computeExercisedAmounts(tokenId, positionSize, opening);
         return (longAmounts, shortAmounts);
     }
 
@@ -102,12 +102,14 @@ contract PanopticMathHarness is Test {
     function _getAmountsMoved(
         TokenId tokenId,
         uint128 positionSize,
-        uint256 legIndex
+        uint256 legIndex,
+        bool opening
     ) public pure returns (LeftRightUnsigned) {
         LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
             tokenId,
             positionSize,
-            legIndex
+            legIndex,
+            opening
         );
         return amountsMoved;
     }
@@ -116,9 +118,10 @@ contract PanopticMathHarness is Test {
     function getAmountsMoved(
         TokenId tokenId,
         uint128 positionSize,
-        uint256 legIndex
+        uint256 legIndex,
+        bool opening
     ) public view returns (LeftRightUnsigned) {
-        try this._getAmountsMoved(tokenId, positionSize, legIndex) returns (
+        try this._getAmountsMoved(tokenId, positionSize, legIndex, opening) returns (
             LeftRightUnsigned contractsNotional
         ) {
             return contractsNotional;
@@ -131,12 +134,14 @@ contract PanopticMathHarness is Test {
     function _calculateIOAmounts(
         TokenId tokenId,
         uint128 positionSize,
-        uint256 legIndex
+        uint256 legIndex,
+        bool opening
     ) public pure returns (LeftRightSigned, LeftRightSigned) {
-        (LeftRightSigned longs, LeftRightSigned shorts) = PanopticMath._calculateIOAmounts(
+        (LeftRightSigned longs, LeftRightSigned shorts) = PanopticMath.calculateIOAmounts(
             tokenId,
             positionSize,
-            legIndex
+            legIndex,
+            opening
         );
         return (longs, shorts);
     }
@@ -144,9 +149,10 @@ contract PanopticMathHarness is Test {
     function calculateIOAmounts(
         TokenId tokenId,
         uint128 positionSize,
-        uint256 legIndex
+        uint256 legIndex,
+        bool opening
     ) public view returns (LeftRightSigned, LeftRightSigned) {
-        try this._calculateIOAmounts(tokenId, positionSize, legIndex) returns (
+        try this._calculateIOAmounts(tokenId, positionSize, legIndex, opening) returns (
             LeftRightSigned longs,
             LeftRightSigned shorts
         ) {
@@ -199,5 +205,21 @@ contract PanopticMathHarness is Test {
     ) public pure returns (int24 rangeDown, int24 rangeUp) {
         (int24 result0, int24 result1) = PanopticMath.getRangesFromStrike(width, tickSpacing);
         return (result0, result1);
+    }
+
+    function int12toInt24(uint256 x) public pure returns (int24) {
+        return PanopticMath.int12toInt24(x);
+    }
+
+    function computeInternalMedian(
+        uint256 oraclePack,
+        int24 currentTick
+    ) public view returns (int24, uint256) {
+        return
+            PanopticMath.computeInternalMedian(
+                oraclePack,
+                currentTick,
+                uint96(180 + (600 << 24) + (3600 << 48) + (21600 << 72))
+            );
     }
 }

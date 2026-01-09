@@ -6,7 +6,7 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Libraries
 import {Math} from "@libraries/Math.sol";
 // Custom types
-import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
+import {LeftRightSigned} from "@types/LeftRight.sol";
 
 /// @title Library for Fee Calculations.
 /// @author Axicon Labs Limited
@@ -48,7 +48,7 @@ library FeesCalc {
         int24 tickLower,
         int24 tickUpper,
         uint128 liquidity
-    ) public view returns (LeftRightSigned) {
+    ) external view returns (LeftRightSigned) {
         // extract the amount of AMM fees collected within the liquidity chunk
         // NOTE: the fee variables are *per unit of liquidity*; so more "rate" variables
         (
@@ -62,8 +62,8 @@ library FeesCalc {
         return
             LeftRightSigned
                 .wrap(0)
-                .toRightSlot(int128(int256(Math.mulDiv128(ammFeesPerLiqToken0X128, liquidity))))
-                .toLeftSlot(int128(int256(Math.mulDiv128(ammFeesPerLiqToken1X128, liquidity))));
+                .addToRightSlot(int128(int256(Math.mulDiv128(ammFeesPerLiqToken0X128, liquidity))))
+                .addToLeftSlot(int128(int256(Math.mulDiv128(ammFeesPerLiqToken1X128, liquidity))));
     }
 
     /// @notice Calculates the fee growth that has occurred (per unit of liquidity) in the AMM/Uniswap for an

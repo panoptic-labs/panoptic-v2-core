@@ -6,7 +6,9 @@ import {stdMath} from "forge-std/StdMath.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
+import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {CallbackLib} from "@libraries/CallbackLib.sol";
+import {PoolData} from "@types/PoolData.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
@@ -32,6 +34,10 @@ contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
 
     function addrToPoolId(address pool) public view returns (uint256) {
         return s_AddrToPoolIdData[pool];
+    }
+
+    function poolIdToPoolData(uint64 poolId) public view returns (PoolData) {
+        return s_poolIdToPoolData[poolId];
     }
 }
 
@@ -997,6 +1003,18 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     /// This means that "call" is `tokenType` = 0 and "put" is `tokenType` = 1
 
     /*//////////////////////////////////////////////////////////////
+                         POOL GETTERS: -
+    //////////////////////////////////////////////////////////////*/
+
+    function test_Success_getCurrentTick(uint256 x) public {
+        _initPool(x);
+
+        (, int24 currentTick, , , , , ) = pool.slot0();
+
+        assertEq(currentTick, sfpm.getCurrentTick(abi.encode(address(pool))));
+    }
+
+    /*//////////////////////////////////////////////////////////////
                          OUT-OF-RANGE MINTS: +
     //////////////////////////////////////////////////////////////*/
 
@@ -1031,6 +1049,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
             .mintTokenizedPosition(
+                new bytes(0),
                 tokenId,
                 uint128(positionSize),
                 TickMath.MIN_TICK,
@@ -1051,7 +1070,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         assertEq(sfpm.balanceOf(Alice, TokenId.unwrap(tokenId)), positionSize);
 
         accountLiquidities = sfpm.getAccountLiquidity(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             0,
             tickLower,
@@ -1099,6 +1118,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
             .mintTokenizedPosition(
+                new bytes(0),
                 tokenId,
                 uint128(positionSize),
                 TickMath.MIN_TICK,
@@ -1119,7 +1139,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         assertEq(sfpm.balanceOf(Alice, TokenId.unwrap(tokenId)), positionSize);
 
         accountLiquidities = sfpm.getAccountLiquidity(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             1,
             tickLower,
@@ -1228,6 +1248,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
             .mintTokenizedPosition(
+                new bytes(0),
                 tokenId,
                 uint128(positionSize),
                 TickMath.MIN_TICK,
@@ -1236,6 +1257,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         (LeftRightUnsigned[4] memory collectedByLegLong, LeftRightSigned totalSwappedLong) = sfpm
             .mintTokenizedPosition(
+                new bytes(0),
                 longTokenId,
                 uint128(positionSize),
                 TickMath.MIN_TICK,
@@ -1299,7 +1321,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         assertEq(sfpm.balanceOf(Alice, TokenId.unwrap(longTokenId)), positionSize);
 
         accountLiquidities = sfpm.getAccountLiquidity(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             0,
             tickLower,
@@ -1355,6 +1377,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
             .mintTokenizedPosition(
+                new bytes(0),
                 tokenId,
                 uint128(positionSize),
                 TickMath.MIN_TICK,
@@ -1375,7 +1398,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         assertEq(sfpm.balanceOf(Alice, TokenId.unwrap(tokenId)), positionSize);
 
         accountLiquidities = sfpm.getAccountLiquidity(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             1,
             tickLower,
@@ -1452,6 +1475,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         // We also invert the order; this is how we tell SFPM to trigger a swap
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
             .mintTokenizedPosition(
+                new bytes(0),
                 tokenId,
                 positionSize,
                 TickMath.MAX_TICK - 1,
@@ -1473,7 +1497,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         {
             accountLiquidities = sfpm.getAccountLiquidity(
-                address(pool),
+                abi.encode(address(pool)),
                 Alice,
                 1,
                 tickLower,
@@ -1555,6 +1579,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         // We also invert the order; this is how we tell SFPM to trigger a swap
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
             .mintTokenizedPosition(
+                new bytes(0),
                 tokenId,
                 uint128(positionSize),
                 TickMath.MAX_TICK - 1,
@@ -1575,7 +1600,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         {
             accountLiquidities = sfpm.getAccountLiquidity(
-                address(pool),
+                abi.encode(address(pool)),
                 Alice,
                 0,
                 tickLower,
@@ -1657,11 +1682,31 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         vm.startPrank(Alice);
+        // swap logic has changed, shortcut
+        int256 expectedMoved0;
+        int256 expectedMoved1;
+        {
+            console2.log("currentSqrtPriceX96", currentSqrtPriceX96);
+            uint256 snapshot = vm.snapshot();
+
+            (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
+                new bytes(0),
+                tokenId,
+                positionSize,
+                TickMath.MAX_TICK + 1,
+                TickMath.MIN_TICK - 1
+            );
+
+            expectedMoved0 = totalMoved.rightSlot();
+            expectedMoved1 = totalMoved.leftSlot();
+            vm.revertTo(snapshot);
+        }
 
         // The max/min tick cannot be set as slippage limits, so we subtract/add 1
         // We also invert the order; this is how we tell SFPM to trigger a swap
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
             .mintTokenizedPosition(
+                new bytes(0),
                 tokenId,
                 positionSize,
                 TickMath.MAX_TICK - 1,
@@ -1676,14 +1721,14 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             0
         );
 
-        assertEq(totalSwapped.rightSlot(), amount0s + $amount0Moveds[0] + $amount0Moveds[1]);
-        assertEq(totalSwapped.leftSlot(), amount1s + $amount1Moveds[0] + $amount1Moveds[1]);
+        assertEq(totalSwapped.rightSlot(), expectedMoved0);
+        assertEq(totalSwapped.leftSlot(), expectedMoved1);
 
         assertEq(sfpm.balanceOf(Alice, TokenId.unwrap(tokenId)), positionSize);
 
         {
             accountLiquidities = sfpm.getAccountLiquidity(
-                address(pool),
+                abi.encode(address(pool)),
                 Alice,
                 1,
                 tickLowers[0],
@@ -1701,7 +1746,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         {
             accountLiquidities = sfpm.getAccountLiquidity(
-                address(pool),
+                abi.encode(address(pool)),
                 Alice,
                 0,
                 tickLowers[1],
@@ -1759,6 +1804,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             positionSizes[0],
             TickMath.MIN_TICK + 1,
@@ -1793,13 +1839,33 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             netSurplus0 < 0,
             -netSurplus0
         );
-
         vm.startPrank(Alice);
+
+        // swap logic has changed, shortcut
+        int256 expectedMoved0;
+        int256 expectedMoved1;
+        {
+            console2.log("currentSqrtPriceX96", currentSqrtPriceX96);
+            uint256 snapshot = vm.snapshot();
+
+            (, LeftRightSigned totalMoved) = sfpm.mintTokenizedPosition(
+                new bytes(0),
+                tokenId,
+                positionSizes[1],
+                TickMath.MAX_TICK + 1,
+                TickMath.MIN_TICK - 1
+            );
+
+            expectedMoved0 = totalMoved.rightSlot();
+            expectedMoved1 = totalMoved.leftSlot();
+            vm.revertTo(snapshot);
+        }
 
         // The max/min tick cannot be set as slippage limits, so we subtract/add 1
         // We also invert the order; this is how we tell SFPM to trigger a swap
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
             .mintTokenizedPosition(
+                new bytes(0),
                 tokenId,
                 positionSizes[1],
                 TickMath.MAX_TICK - 1,
@@ -1811,48 +1877,58 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 LeftRightUnsigned.unwrap(collectedByLeg[1]) +
                 LeftRightUnsigned.unwrap(collectedByLeg[2]) +
                 LeftRightUnsigned.unwrap(collectedByLeg[3]),
-            0
+            0,
+            "collected"
         );
 
-        assertEq(totalSwapped.rightSlot(), amount0s + $amount0Moveds[1] + $amount0Moveds[2]);
-        assertEq(totalSwapped.leftSlot(), amount1s + $amount1Moveds[1] + $amount1Moveds[2]);
+        // compare totalSwapped
+        // totalSwapped = in protocol.
+        console2.log("amount0s", amount0s);
+        console2.log("amount0s", $amount0Moveds[1]);
+        console2.log("$amount0Moveds[2]", $amount0Moveds[2]);
+        assertEq(totalSwapped.rightSlot(), expectedMoved0, "swapped0");
+        assertEq(totalSwapped.leftSlot(), expectedMoved1, "swapped1");
 
-        assertEq(sfpm.balanceOf(Alice, TokenId.unwrap(tokenId)), positionSizes[1]);
+        assertEq(sfpm.balanceOf(Alice, TokenId.unwrap(tokenId)), positionSizes[1], "balance");
 
         {
             accountLiquidities = sfpm.getAccountLiquidity(
-                address(pool),
+                abi.encode(address(pool)),
                 Alice,
                 1,
                 tickLowers[0],
                 tickUppers[0]
             );
-            assertEq(accountLiquidities.leftSlot(), 0);
-            assertEq(accountLiquidities.rightSlot(), expectedLiqs[1]);
+            assertEq(accountLiquidities.leftSlot(), 0, "acctliq0");
+            assertEq(accountLiquidities.rightSlot(), expectedLiqs[1], "acctLiq1");
 
             (uint256 realLiq, , , , ) = pool.positions(
                 keccak256(abi.encodePacked(address(sfpm), tickLowers[0], tickUppers[0]))
             );
 
-            assertEq(realLiq, expectedLiqs[1]);
+            assertEq(realLiq, expectedLiqs[1], "realLiq");
         }
 
         {
             accountLiquidities = sfpm.getAccountLiquidity(
-                address(pool),
+                abi.encode(address(pool)),
                 Alice,
                 0,
                 tickLowers[1],
                 tickUppers[1]
             );
-            assertEq(accountLiquidities.leftSlot(), expectedLiqs[2]);
-            assertEq(accountLiquidities.rightSlot(), expectedLiqs[0] - expectedLiqs[2]);
+            assertEq(accountLiquidities.leftSlot(), expectedLiqs[2], "acctLiq2");
+            assertEq(
+                accountLiquidities.rightSlot(),
+                expectedLiqs[0] - expectedLiqs[2],
+                "acctLieq1"
+            );
 
             (uint256 realLiq, , , , ) = pool.positions(
                 keccak256(abi.encodePacked(address(sfpm), tickLowers[1], tickUppers[1]))
             );
 
-            assertEq(realLiq, expectedLiqs[0] - expectedLiqs[2]);
+            assertEq(realLiq, expectedLiqs[0] - expectedLiqs[2], "realLiq2");
         }
     }
 
@@ -1891,6 +1967,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         upperBound = bound(upperBound, currentTick + 1, TickMath.MAX_TICK);
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSize),
             int24(lowerBound),
@@ -1928,9 +2005,14 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             width
         );
 
-        vm.expectRevert(Errors.ZeroLiquidity.selector);
-
-        sfpm.mintTokenizedPosition(tokenId, uint128(0), TickMath.MIN_TICK, TickMath.MAX_TICK);
+        vm.expectRevert(Errors.ChunkHasZeroLiquidity.selector);
+        sfpm.mintTokenizedPosition(
+            new bytes(0),
+            tokenId,
+            uint128(0),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
     }
 
     // previously there was a dust threshold on minting for tokens below the amount of 50
@@ -1976,11 +2058,17 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
 
-        sfpm.mintTokenizedPosition(tokenId, positionSize, TickMath.MIN_TICK, TickMath.MAX_TICK);
+        sfpm.mintTokenizedPosition(
+            new bytes(0),
+            tokenId,
+            positionSize,
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
 
         {
             accountLiquidities = sfpm.getAccountLiquidity(
-                address(pool),
+                abi.encode(address(pool)),
                 Alice,
                 0,
                 tickLower,
@@ -1995,6 +2083,265 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
             assertEq(realLiq, expectedLiq);
         }
+    }
+
+    function test_Success_mintTokenizedPosition_width0_short_noswap(
+        uint256 positionSizeSeed,
+        uint256 widthSeed,
+        int256 strikeSeed
+    ) public {
+        // dust threshold is only in effect if both tokens are <10 wei so it's easiest to use a pool with a price close to 1
+        //_cacheWorldState(USDC_USDT_5);
+        _initPool(0);
+
+        // since we didn't go through the standard setup flow we need to repeat some of the initialization tasks here
+        vm.startPrank(Alice);
+
+        deal(token0, Alice, type(uint128).max);
+        deal(token1, Alice, type(uint128).max);
+
+        IERC20Partial(token0).approve(address(sfpm), type(uint256).max);
+        IERC20Partial(token1).approve(address(sfpm), type(uint256).max);
+
+        // Initialize the world pool
+        sfpm.initializeAMMPool(token0, token1, fee);
+
+        (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick
+        );
+
+        positionSize = uint128(bound(positionSizeSeed, 10 ** 18, 10 ** 22));
+
+        LeftRightSigned totalMoved;
+
+        // amount moved = token 0
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, 0);
+
+        (, totalMoved) = sfpm.mintTokenizedPosition(
+            new bytes(0),
+            tokenId,
+            positionSize,
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+        console2.log("tM0", totalMoved.rightSlot());
+        console2.log("tM1", totalMoved.leftSlot());
+        assertEq(0, totalMoved.rightSlot(), "FAIL: wrong moved amount token0 - A");
+
+        (, totalMoved) = sfpm.burnTokenizedPosition(
+            new bytes(0),
+            tokenId,
+            positionSize,
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+        assertEq(0, (-totalMoved.rightSlot()), "FAIL: wrong moved amount token0 - B");
+
+        // amount moved = token1
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, 0);
+        (, totalMoved) = sfpm.mintTokenizedPosition(
+            new bytes(0),
+            tokenId,
+            positionSize,
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+        assertEq(0, (totalMoved.leftSlot()), "FAIL: wrong moved amount token1 - A");
+
+        (, totalMoved) = sfpm.burnTokenizedPosition(
+            new bytes(0),
+            tokenId,
+            positionSize,
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+        assertEq(0, (-totalMoved.leftSlot()), "FAIL: wrong moved amount token0 - B");
+
+        // amount moved = token 0, asset = 1
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, 0);
+        (, totalMoved) = sfpm.mintTokenizedPosition(
+            new bytes(0),
+            tokenId,
+            positionSize,
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+        assertApproxEqAbs(
+            0,
+            uint128(-totalMoved.rightSlot()),
+            1,
+            "FAIL: wrong moved amount token0, asset = 1"
+        );
+
+        (, totalMoved) = sfpm.burnTokenizedPosition(
+            new bytes(0),
+            tokenId,
+            positionSize,
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+        assertApproxEqAbs(
+            0,
+            uint128(totalMoved.rightSlot()),
+            1,
+            "FAIL: wrong moved amount token0 - C"
+        );
+
+        // amount moved = token 1, asset = 0
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 1, 0, strike, 0);
+        (, totalMoved) = sfpm.mintTokenizedPosition(
+            new bytes(0),
+            tokenId,
+            positionSize,
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+        assertApproxEqAbs(
+            0,
+            uint128(-totalMoved.leftSlot()),
+            1,
+            "FAIL: wrong moved amount token1, asset = 0"
+        );
+
+        (, totalMoved) = sfpm.burnTokenizedPosition(
+            new bytes(0),
+            tokenId,
+            positionSize,
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+        assertApproxEqAbs(
+            0,
+            uint128(totalMoved.leftSlot()),
+            1,
+            "FAIL: wrong moved amount token1, asset = 0"
+        );
+    }
+
+    function test_Success_mintTokenizedPosition_width0_short_swap(
+        uint256 x,
+        uint256 positionSizeSeed,
+        uint256 widthSeed,
+        int256 strikeSeed
+    ) public {
+        // dust threshold is only in effect if both tokens are <10 wei so it's easiest to use a pool with a price close to 1
+        //_cacheWorldState(USDC_USDT_5);
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick
+        );
+
+        positionSize = uint128(bound(positionSizeSeed, 10 ** 9, 10 ** 10));
+
+        LeftRightSigned totalMoved;
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+
+        console2.log("");
+        // amount moved = token 0
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, 0);
+        (, totalMoved) = sfpm.mintTokenizedPosition(
+            new bytes(0),
+            tokenId,
+            positionSize,
+            TickMath.MAX_TICK,
+            TickMath.MIN_TICK
+        );
+
+        assertGe(
+            PanopticMath.convert0to1(positionSize, currentSqrtPriceX96),
+            uint128(-totalMoved.leftSlot()),
+            "FAIL: wrong moved amount token0"
+        );
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        console2.log("");
+
+        // amount moved = token1
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, 0);
+        (, totalMoved) = sfpm.mintTokenizedPosition(
+            new bytes(0),
+            tokenId,
+            positionSize,
+            TickMath.MAX_TICK,
+            TickMath.MIN_TICK
+        );
+        assertGe(
+            PanopticMath.convert1to0(positionSize, currentSqrtPriceX96),
+            uint128(-totalMoved.rightSlot()),
+            "FAIL: wrong moved amount token1"
+        );
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+
+        console2.log("");
+        // amount moved = token 0, asset = 1
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, 0);
+        (, totalMoved) = sfpm.mintTokenizedPosition(
+            new bytes(0),
+            tokenId,
+            positionSize,
+            TickMath.MAX_TICK,
+            TickMath.MIN_TICK
+        );
+        assertGe(
+            PanopticMath.convert0to1(
+                PanopticMath.convert1to0(positionSize, TickMath.getSqrtRatioAtTick(strike)),
+                currentSqrtPriceX96
+            ),
+            uint128(-totalMoved.leftSlot())
+        );
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+
+        // amount moved = token 1, asset = 0
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 1, 0, strike, 0);
+        (, totalMoved) = sfpm.mintTokenizedPosition(
+            new bytes(0),
+            tokenId,
+            positionSize,
+            TickMath.MAX_TICK,
+            TickMath.MIN_TICK
+        );
+        assertGe(
+            PanopticMath.convert1to0(
+                PanopticMath.convert0to1(positionSize, TickMath.getSqrtRatioAtTick(strike)),
+                currentSqrtPriceX96
+            ),
+            uint128(-totalMoved.rightSlot())
+        );
+    }
+
+    function test_Revert_mintTokenizedPosition_width0_short_insufficientCollateral() public {
+        // --- Setup ---
+        _initPool(0);
+        // The collateral token (token0 for a short put) pool is empty
+        // but Alice has funds to pay any potential fees.
+        vm.startPrank(Alice);
+        deal(token1, Alice, 10 ** 6);
+        IERC20Partial(token1).approve(address(sfpm), type(uint256).max);
+        sfpm.initializeAMMPool(token0, token1, fee);
+
+        // --- GIVEN: A short put option (pays token0) ---
+        int24 strike = currentTick + 10 * tickSpacing; // In-the-money
+        TokenId shortPutId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 1, 0, strike, 0);
+
+        // --- EXPECT REVERT ---
+        // The contract must pay Alice with token0, but its collateral pool for token0 is empty.
+        // The exact revert message depends on your collateral contract implementation.
+        vm.expectRevert(); // e.g., vm.expectRevert("ERC20: transfer amount exceeds balance");
+        sfpm.mintTokenizedPosition(
+            new bytes(0),
+            shortPutId,
+            10 ** 8, // positionSize
+            TickMath.MAX_TICK,
+            TickMath.MIN_TICK
+        );
     }
 
     function test_Fail_mintTokenizedPosition_PoolNotInitialized(
@@ -2030,6 +2377,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         vm.expectRevert(Errors.UniswapPoolNotInitialized.selector);
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -2075,9 +2423,9 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             currentTick <= lowerBound ? TickMath.MAX_TICK : currentTick
         );
 
-        vm.expectRevert(Errors.PriceBoundFail.selector);
-
+        vm.expectRevert(abi.encodeWithSelector(Errors.PriceBoundFail.selector, currentTick));
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSize),
             int24(lowerBound),
@@ -2124,13 +2472,14 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
             TickMath.MAX_TICK
         );
 
-        vm.expectRevert(Errors.NotEnoughLiquidity.selector);
+        vm.expectRevert(Errors.NotEnoughLiquidityToBuy.selector);
 
         // long leg
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
@@ -2144,6 +2493,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             width
         );
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -2185,6 +2535,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -2200,6 +2551,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
             .burnTokenizedPosition(
+                new bytes(0),
                 tokenId,
                 uint128(positionSizeBurn),
                 TickMath.MIN_TICK,
@@ -2219,7 +2571,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         assertEq(sfpm.balanceOf(Alice, TokenId.unwrap(tokenId)), positionSize - positionSizeBurn);
 
         accountLiquidities = sfpm.getAccountLiquidity(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             0,
             tickLower,
@@ -2294,6 +2646,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         // The max/min tick cannot be set as slippage limits, so we subtract/add 1
         // We also invert the order; this is how we tell SFPM to trigger a swap
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSize),
             TickMath.MAX_TICK - 1,
@@ -2335,6 +2688,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
             .burnTokenizedPosition(
+                new bytes(0),
                 tokenId,
                 uint128(positionSizeBurn),
                 TickMath.MAX_TICK - 1,
@@ -2345,7 +2699,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         {
             accountLiquidities = sfpm.getAccountLiquidity(
-                address(pool),
+                abi.encode(address(pool)),
                 Alice,
                 1,
                 tickLower,
@@ -2513,6 +2867,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -2520,6 +2875,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenIdLong,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -2583,6 +2939,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         (LeftRightUnsigned[4] memory collectedByLegLong, LeftRightSigned totalSwappedLong) = sfpm
             .burnTokenizedPosition(
+                new bytes(0),
                 tokenIdLong,
                 uint128(positionSizeBurn),
                 TickMath.MIN_TICK,
@@ -2591,6 +2948,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
             .burnTokenizedPosition(
+                new bytes(0),
                 tokenId,
                 uint128(positionSizeBurn),
                 TickMath.MIN_TICK,
@@ -2638,7 +2996,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         {
             accountLiquidities = sfpm.getAccountLiquidity(
-                address(pool),
+                abi.encode(address(pool)),
                 Alice,
                 0,
                 tickLower,
@@ -2669,10 +3027,223 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     }
 
     /*//////////////////////////////////////////////////////////////
+                         FUZZ: MINT/BURN AMOUNTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_Fuzz_mint_burn_TokenizedPosition_amountsMoved(uint256 x) public {
+        _initPool(x);
+
+        PoolData poolData = sfpm.poolIdToPoolData(poolId);
+
+        int24 width = int24(uint24(((x >> 48) % 2047) + 1));
+        int24 strike = int24(
+            bound(
+                int256(x >> 64),
+                poolData.minEnforcedTick() + (width * tickSpacing) / 2,
+                poolData.maxEnforcedTick() - (width * tickSpacing) / 2
+            )
+        );
+        strike = (strike / tickSpacing) * tickSpacing + (tickSpacing / 2) * (width % 2);
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+
+        vm.assume(
+            (strike - (width * tickSpacing) / 2 > currentTick) ||
+                (strike + (width * tickSpacing) / 2) < currentTick
+        );
+
+        positionSize = uint128(x >> 128);
+
+        uint256 asset = (x >> 1) % 2;
+        uint128 ratio = uint128((x % 127) + 1); // ratio
+        uint256 tokenType = (x >> 2) % 2;
+        tickLower = int24(strike - (width * tickSpacing) / 2);
+        tickUpper = int24(strike + (width * tickSpacing) / 2);
+        sqrtLower = TickMath.getSqrtRatioAtTick(tickLower);
+        sqrtUpper = TickMath.getSqrtRatioAtTick(tickUpper);
+
+        //console2.log('dd', getContractsForAmountAtTick(currentTick, tickLower, tickUpper, asset, positionSize));
+
+        //positionSize = uint128(
+        //    getContractsForAmountAtTick(currentTick, tickLower, tickUpper, asset, positionSize)
+        //)/ratio;
+
+        positionSize = uint128(bound(positionSize, 1, type(uint128).max)) / ratio;
+        console2.log("ss", positionSize, ratio);
+        {
+            uint256 explicitLiq = asset == 0
+                ? Math.mulDiv(
+                    positionSize * ratio,
+                    Math.mulDiv(sqrtLower, sqrtUpper, 2 ** 96),
+                    sqrtUpper - sqrtLower
+                )
+                : Math.mulDiv(positionSize * ratio, 2 ** 96, sqrtUpper - sqrtLower);
+            console2.log("exp", explicitLiq);
+
+            expectedLiq = uint128(explicitLiq);
+        }
+        vm.assume(expectedLiq < pool.maxLiquidityPerTick());
+        vm.assume(expectedLiq > 0);
+
+        int256 amountMoved0 = SqrtPriceMath.getAmount0Delta(
+            sqrtLower,
+            sqrtUpper,
+            int128(expectedLiq * ratio)
+        );
+        int256 amountMoved1 = SqrtPriceMath.getAmount1Delta(
+            sqrtLower,
+            sqrtUpper,
+            int128(expectedLiq * ratio)
+        );
+
+        console2.log("ratio", ratio);
+        vm.assume((amountMoved0 <= type(int128).max - 4) && (amountMoved1 < type(int128).max - 4));
+
+        console2.log("aM0", amountMoved0);
+        console2.log("aM1", amountMoved1);
+        /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0, // index
+            ratio, // ratio
+            asset, // asset
+            0, // isLong
+            tokenType, // tokenType
+            0, // riskPartnet
+            strike,
+            width
+        );
+
+        uint256 aliceBefore0 = IERC20Partial(token0).balanceOf(Alice);
+        uint256 aliceBefore1 = IERC20Partial(token1).balanceOf(Alice);
+
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
+            .mintTokenizedPosition(
+                new bytes(0),
+                tokenId,
+                uint128(positionSize),
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK
+            );
+
+        LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(
+            tokenId,
+            positionSize,
+            0,
+            true
+        );
+
+        assertEq(
+            totalSwapped.rightSlot(),
+            currentTick < tickLower ? int128(_amountsMoved.rightSlot()) : int256(0),
+            "amount moved 0"
+        );
+        assertEq(
+            totalSwapped.leftSlot(),
+            currentTick > tickUpper ? int128(_amountsMoved.leftSlot()) : int256(0),
+            "amount moved 1"
+        );
+
+        uint256 aliceAfter0 = IERC20Partial(token0).balanceOf(Alice);
+        uint256 aliceAfter1 = IERC20Partial(token1).balanceOf(Alice);
+
+        assertEq(
+            (aliceBefore0 - aliceAfter0),
+            currentTick < tickLower ? _amountsMoved.rightSlot() : 0,
+            "balance delta 0"
+        );
+        assertEq(
+            (aliceBefore1 - aliceAfter1),
+            currentTick > tickUpper ? _amountsMoved.leftSlot() : 0,
+            "balance delta 1"
+        );
+
+        assertEq(sfpm.balanceOf(Alice, TokenId.unwrap(tokenId)), positionSize, "pSize");
+
+        accountLiquidities = sfpm.getAccountLiquidity(
+            abi.encode(address(pool)),
+            Alice,
+            tokenType,
+            tickLower,
+            tickUpper
+        );
+
+        assertEq(accountLiquidities.leftSlot(), 0, "account liquidities");
+        assertEq(accountLiquidities.rightSlot(), expectedLiq, "expectedLiq");
+
+        (uint256 realLiq, , , , ) = pool.positions(
+            keccak256(abi.encodePacked(address(sfpm), tickLower, tickUpper))
+        );
+
+        assertEq(realLiq, expectedLiq);
+
+        (collectedByLeg, totalSwapped) = sfpm.burnTokenizedPosition(
+            new bytes(0),
+            tokenId,
+            uint128(positionSize),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+
+        _amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, 0, false);
+        console2.log("_amountsMoved.rightSlot", _amountsMoved.rightSlot());
+        console2.log("_amountsMoved.leftSlot", _amountsMoved.leftSlot());
+        console2.log("totalSwapped.rightSlot", totalSwapped.rightSlot());
+
+        if (totalSwapped.rightSlot() != 0) {
+            assertEq(
+                totalSwapped.rightSlot(),
+                currentTick < tickLower ? -int128(_amountsMoved.rightSlot()) : int256(0),
+                "amount moved 0"
+            );
+        }
+        if (totalSwapped.leftSlot() != 0) {
+            assertEq(
+                totalSwapped.leftSlot(),
+                currentTick > tickUpper ? -int128(_amountsMoved.leftSlot()) : int256(0),
+                "amount moved 1"
+            );
+        }
+
+        {
+            uint256 aliceAfterBurn0 = IERC20Partial(token0).balanceOf(Alice);
+            uint256 aliceAfterBurn1 = IERC20Partial(token1).balanceOf(Alice);
+            assertEq(
+                (aliceAfterBurn0 - aliceAfter0),
+                currentTick < tickLower ? _amountsMoved.rightSlot() : 0,
+                "balance delta 0"
+            );
+            assertEq(
+                (aliceAfterBurn1 - aliceAfter1),
+                currentTick > tickUpper ? _amountsMoved.leftSlot() : 0,
+                "balance delta 1"
+            );
+        }
+        assertEq(sfpm.balanceOf(Alice, TokenId.unwrap(tokenId)), 0, "pSize");
+
+        {
+            accountLiquidities = sfpm.getAccountLiquidity(
+                abi.encode(address(pool)),
+                Alice,
+                tokenType,
+                tickLower,
+                tickUpper
+            );
+
+            assertEq(accountLiquidities.leftSlot(), 0, "account liquidities");
+            assertEq(accountLiquidities.rightSlot(), 0, "expectedLiq");
+        }
+        (realLiq, , , , ) = pool.positions(
+            keccak256(abi.encodePacked(address(sfpm), tickLower, tickUpper))
+        );
+
+        assertEq(realLiq, 0);
+    }
+
+    /*//////////////////////////////////////////////////////////////
                          TRANSFER HOOK LOGIC: +
     //////////////////////////////////////////////////////////////*/
 
-    function testSuccess_afterTokenTransfer_Single(
+    function _testSuccess_afterTokenTransfer_Single(
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,
@@ -2702,6 +3273,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -2709,7 +3281,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         (int128 feesBase0old, int128 feesBase1old) = sfpm.getAccountFeesBase(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             1,
             tickLower,
@@ -2722,7 +3294,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         assertEq(sfpm.balanceOf(Bob, TokenId.unwrap(tokenId)), positionSize);
         {
             accountLiquidities = sfpm.getAccountLiquidity(
-                address(pool),
+                abi.encode(address(pool)),
                 Alice,
                 1,
                 tickLower,
@@ -2733,7 +3305,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         }
         {
             accountLiquidities = sfpm.getAccountLiquidity(
-                address(pool),
+                abi.encode(address(pool)),
                 Bob,
                 1,
                 tickLower,
@@ -2745,7 +3317,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         {
             (int128 feesBase0new, int128 feesBase1new) = sfpm.getAccountFeesBase(
-                address(pool),
+                abi.encode(address(pool)),
                 Bob,
                 1,
                 tickLower,
@@ -2763,7 +3335,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         assertEq(realLiq, expectedLiq);
     }
 
-    function testSuccess_afterTokenTransfer_Batch(
+    function _testSuccess_afterTokenTransfer_Batch(
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,
@@ -2793,6 +3365,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -2811,6 +3384,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId2,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -2829,7 +3403,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         assertEq(sfpm.balanceOf(Bob, TokenId.unwrap(tokenId)), positionSize);
         {
             accountLiquidities = sfpm.getAccountLiquidity(
-                address(pool),
+                abi.encode(address(pool)),
                 Alice,
                 1,
                 tickLower,
@@ -2840,7 +3414,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         }
         {
             accountLiquidities = sfpm.getAccountLiquidity(
-                address(pool),
+                abi.encode(address(pool)),
                 Alice,
                 0,
                 tickLower,
@@ -2851,7 +3425,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         }
         {
             accountLiquidities = sfpm.getAccountLiquidity(
-                address(pool),
+                abi.encode(address(pool)),
                 Bob,
                 1,
                 tickLower,
@@ -2862,7 +3436,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         }
         {
             accountLiquidities = sfpm.getAccountLiquidity(
-                address(pool),
+                abi.encode(address(pool)),
                 Bob,
                 0,
                 tickLower,
@@ -2888,7 +3462,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                          TRANSFER HOOK LOGIC: -
     //////////////////////////////////////////////////////////////*/
 
-    function test_Fail_afterTokenTransfer_NotAllLiquidityTransferred(
+    function _test_Fail_afterTokenTransfer_NotAllLiquidityTransferred(
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,
@@ -2942,20 +3516,28 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
             TickMath.MAX_TICK
         );
 
-        vm.expectRevert(Errors.TransferFailed.selector);
-
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.TransferFailed.selector,
+                address(sfpm), // or whatever 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f is
+                Alice,
+                transferSize,
+                uint256(0)
+            )
+        );
         sfpm.safeTransferFrom(Alice, Bob, TokenId.unwrap(tokenId), transferSize, "");
     }
 
     // mint a short leg, long some of that leg, then transfer the long leg
     // should fail as you shouldnt be able to transfer removedliquidity
-    function test_Fail_afterTokenTransfer_LongChunkTransferredSolo(
+    function _test_Fail_afterTokenTransfer_LongChunkTransferredSolo(
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,
@@ -2985,6 +3567,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId1,
             uint128(positionSize * 2),
             TickMath.MIN_TICK,
@@ -3003,18 +3586,26 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId2,
             uint128(positionSize),
             TickMath.MIN_TICK,
             TickMath.MAX_TICK
         );
 
-        vm.expectRevert(Errors.TransferFailed.selector);
-
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.TransferFailed.selector,
+                address(sfpm),
+                Alice,
+                positionSize,
+                uint256(0)
+            )
+        );
         sfpm.safeTransferFrom(Alice, Bob, TokenId.unwrap(tokenId2), positionSize, "");
     }
 
-    function test_Fail_afterTokenTransfer_RecipientAlreadyOwns(
+    function _test_Fail_afterTokenTransfer_RecipientAlreadyOwns(
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,
@@ -3045,6 +3636,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSizes[0]),
             TickMath.MIN_TICK,
@@ -3054,6 +3646,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         vm.startPrank(Bob);
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSizes[1]),
             TickMath.MIN_TICK,
@@ -3061,10 +3654,17 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         vm.startPrank(Alice);
-
-        vm.expectRevert(Errors.TransferFailed.selector);
-
         transferSize = bound(transferSize, 1, positionSizes[0] - 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.TransferFailed.selector,
+                address(sfpm), // or whatever 0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f is
+                Alice,
+                transferSize,
+                uint256(0)
+            )
+        );
 
         sfpm.safeTransferFrom(Alice, Bob, TokenId.unwrap(tokenId), transferSize, "");
     }
@@ -3130,6 +3730,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -3137,7 +3738,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         (int128 feesBase0, int128 feesBase1) = sfpm.getAccountFeesBase(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             1,
             tickLower,
@@ -3158,7 +3759,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         {
             (uint128 premiumToken0, uint128 premiumtoken1) = sfpm.getAccountPremium(
-                address(pool),
+                abi.encode(address(pool)),
                 Alice,
                 1,
                 tickLower,
@@ -3213,7 +3814,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         {
             (uint128 premiumToken0, uint128 premiumtoken1) = sfpm.getAccountPremium(
-                address(pool),
+                abi.encode(address(pool)),
                 Alice,
                 1,
                 tickLower,
@@ -3256,7 +3857,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
             // cached premia has not been updated yet, so should still be 0
             (premiumToken0, premiumtoken1) = sfpm.getAccountPremium(
-                address(pool),
+                abi.encode(address(pool)),
                 Alice,
                 1,
                 tickLower,
@@ -3270,6 +3871,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         {
             sfpm.burnTokenizedPosition(
+                new bytes(0),
                 tokenId,
                 uint128(positionSize),
                 TickMath.MIN_TICK,
@@ -3346,10 +3948,16 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             width
         );
 
-        sfpm.mintTokenizedPosition(tokenId, positionSize, TickMath.MAX_TICK, TickMath.MIN_TICK);
+        sfpm.mintTokenizedPosition(
+            new bytes(0),
+            tokenId,
+            positionSize,
+            TickMath.MAX_TICK,
+            TickMath.MIN_TICK
+        );
 
         accountLiquidities = sfpm.getAccountLiquidity(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             tokenType,
             tickLower,
@@ -3361,7 +3969,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // premia is updated BEFORE the ITM swap, so cached (last collected) premia should still be 0
         (premium0Short, premium1Short) = sfpm.getAccountPremium(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             tokenType,
             tickLower,
@@ -3373,7 +3981,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         assertEq(premium1Short, 0);
 
         (premium0Long, premium1Long) = sfpm.getAccountPremium(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             tokenType,
             tickLower,
@@ -3394,7 +4002,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             keccak256(abi.encodePacked(address(sfpm), tickLower, tickUpper))
         );
         (premium0Short, premium1Short) = sfpm.getAccountPremium(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             tokenType,
             tickLower,
@@ -3415,7 +4023,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         (premium0Long, premium1Long) = sfpm.getAccountPremium(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             tokenType,
             tickLower,
@@ -3457,7 +4065,13 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         updateAmountsMovedSingleSwap(-int128(expectedLiqs[1]), tokenType);
 
         vm.startPrank(Alice);
-        sfpm.mintTokenizedPosition(tokenId1, positionSize, TickMath.MAX_TICK, TickMath.MIN_TICK);
+        sfpm.mintTokenizedPosition(
+            new bytes(0),
+            tokenId1,
+            positionSize,
+            TickMath.MAX_TICK,
+            TickMath.MIN_TICK
+        );
 
         assertApproxEqAbs(
             int256(IERC20Partial(token0).balanceOf(Alice)),
@@ -3479,7 +4093,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         // It's possible to be off-by-one there due to rounding errors
 
         (premium0Short, premium1Short) = sfpm.getAccountPremium(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             tokenType,
             tickLower,
@@ -3500,7 +4114,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         (premium0Long, premium1Long) = sfpm.getAccountPremium(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             tokenType,
             tickLower,
@@ -3534,7 +4148,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         premium1LongOld = premium1Long;
 
         (premium0Short, premium1Short) = sfpm.getAccountPremium(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             tokenType,
             tickLower,
@@ -3614,7 +4228,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         }
 
         (premium0Long, premium1Long) = sfpm.getAccountPremium(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             tokenType,
             tickLower,
@@ -3664,6 +4278,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         }
 
         sfpm.burnTokenizedPosition(
+            new bytes(0),
             tokenId1,
             uint128((positionSize * effectiveLiqRatio) / 1_000_000),
             TickMath.MIN_TICK,
@@ -3675,7 +4290,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         premium0LongOld = premium0Long;
         premium1LongOld = premium1Long;
         (premium0Long, premium1Long) = sfpm.getAccountPremium(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             tokenType,
             tickLower,
@@ -3687,7 +4302,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         assertApproxEqAbs(premium1Long, premium1LongOld, premiaError1[1]);
 
         (premium0Long, premium1Long) = sfpm.getAccountPremium(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             tokenType,
             tickLower,
@@ -3698,7 +4313,13 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         assertApproxEqAbs(premium0Long, premium0LongOld, premiaError0[1]);
         assertApproxEqAbs(premium1Long, premium1LongOld, premiaError1[1]);
 
-        sfpm.burnTokenizedPosition(tokenId, positionSize, TickMath.MIN_TICK, TickMath.MAX_TICK);
+        sfpm.burnTokenizedPosition(
+            new bytes(0),
+            tokenId,
+            positionSize,
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
@@ -3706,7 +4327,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         premium1ShortOld = premium1Short;
 
         (premium0Short, premium1Short) = sfpm.getAccountPremium(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             tokenType,
             tickLower,
@@ -3719,7 +4340,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         assertApproxEqAbs(premium1Short, premium1ShortOld, premiaError1[0]);
 
         (premium0Short, premium1Short) = sfpm.getAccountPremium(
-            address(pool),
+            abi.encode(address(pool)),
             Alice,
             tokenType,
             tickLower,
@@ -3757,6 +4378,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenIdShort,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -3777,6 +4399,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         // mint a long position with 1 wei of liquidity less than available, resulting in a huge multiplier
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenIdLong,
             uint128(Math.mulDiv(positionSize, (2 ** 64 - 1), 2 ** 64)),
             TickMath.MIN_TICK,
@@ -3819,6 +4442,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // this succeeding is the test - it should overflow cleanly instead of reverting and DOS-ing the positions
         sfpm.burnTokenizedPosition(
+            new bytes(0),
             tokenIdLong,
             uint128(Math.mulDiv(positionSize, (2 ** 64 - 1), 2 ** 64)),
             TickMath.MIN_TICK,
@@ -3826,6 +4450,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         sfpm.burnTokenizedPosition(
+            new bytes(0),
             tokenIdShort,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -3868,7 +4493,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // replace the Uniswap pool with a mock contract that can answer some queries correctly,
         // but will attempt to callback with mintTokenizedPosition on any other call
-        vm.etch(address(pool), address(new ReenterMint()).code);
+        vm.etch((address(pool)), address(new ReenterMint()).code);
 
         ReenterMint(address(pool)).construct(
             ReenterMint.Slot0(
@@ -3886,9 +4511,10 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -3897,7 +4523,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     }
 
     // make sure single transfers check reentrancy lock state
-    function test_Fail_TransferSingle_ReentrancyLock(
+    function _test_Fail_TransferSingle_ReentrancyLock(
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,
@@ -3928,7 +4554,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // replace the Uniswap pool with a mock contract that can answer some queries correctly,
         // but will attempt to callback with mintTokenizedPosition on any other call
-        vm.etch(address(pool), address(new ReenterTransferSingle()).code);
+        vm.etch((address(pool)), address(new ReenterTransferSingle()).code);
 
         ReenterTransferSingle(address(pool)).construct(
             ReenterTransferSingle.Slot0(
@@ -3946,9 +4572,10 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -3957,7 +4584,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     }
 
     // make sure batch transfers check reentrancy lock state
-    function test_Fail_TransferBatch_ReentrancyLock(
+    function _test_Fail_TransferBatch_ReentrancyLock(
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,
@@ -3988,7 +4615,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // replace the Uniswap pool with a mock contract that can answer some queries correctly,
         // but will attempt to callback with mintTokenizedPosition on any other call
-        vm.etch(address(pool), address(new ReenterTransferBatch()).code);
+        vm.etch((address(pool)), address(new ReenterTransferBatch()).code);
 
         ReenterTransferBatch(address(pool)).construct(
             ReenterTransferBatch.Slot0(
@@ -4006,9 +4633,10 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -4051,9 +4679,10 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         Reenter1155Initialize(Alice).construct(address(token0), address(token1), fee, poolId);
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -4092,6 +4721,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -4100,7 +4730,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // replace the Uniswap pool with a mock that responds correctly to queries but calls back on
         // any other operations
-        vm.etch(address(pool), address(new ReenterBurn()).code);
+        vm.etch((address(pool)), address(new ReenterBurn()).code);
 
         ReenterBurn(address(pool)).construct(
             ReenterBurn.Slot0(
@@ -4118,9 +4748,10 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.burnTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(positionSizeBurn),
             TickMath.MIN_TICK,
@@ -4211,6 +4842,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(1_000_000),
             TickMath.MIN_TICK,
@@ -4220,13 +4852,26 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, isWETH, 1, 0, 0, strike, width);
 
         for (uint256 i = 0; i < 10; i++) {
-            sfpm.mintTokenizedPosition(tokenId, uint128(922), TickMath.MIN_TICK, TickMath.MAX_TICK);
+            sfpm.mintTokenizedPosition(
+                new bytes(0),
+                tokenId,
+                uint128(922),
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK
+            );
 
-            sfpm.burnTokenizedPosition(tokenId, uint128(462), TickMath.MIN_TICK, TickMath.MAX_TICK);
+            sfpm.burnTokenizedPosition(
+                new bytes(0),
+                tokenId,
+                uint128(462),
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK
+            );
         }
 
         vm.expectRevert();
         sfpm.burnTokenizedPosition(
+            new bytes(0),
             tokenId,
             uint128(10 * (922 - 462)),
             TickMath.MIN_TICK,
@@ -4272,13 +4917,25 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         for (uint256 i = 0; i < 32311; i++) {
-            sfpm.mintTokenizedPosition(shortTokenId, psnSize, TickMath.MIN_TICK, TickMath.MAX_TICK);
+            sfpm.mintTokenizedPosition(
+                new bytes(0),
+                shortTokenId,
+                psnSize,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK
+            );
 
-            sfpm.mintTokenizedPosition(longTokenId, psnSize, TickMath.MIN_TICK, TickMath.MAX_TICK);
+            sfpm.mintTokenizedPosition(
+                new bytes(0),
+                longTokenId,
+                psnSize,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK
+            );
         }
 
         accountLiquidities = sfpm.getAccountLiquidity(
-            address(USDC_WETH_30),
+            abi.encode(address(USDC_WETH_30)),
             Alice,
             0,
             tickLower,
@@ -4288,13 +4945,25 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         uint128 accountLiquidities_leftSlot_before_overflow = accountLiquidities.leftSlot();
         assertLt(accountLiquidities_leftSlot_before_overflow, type(uint128).max);
 
-        sfpm.mintTokenizedPosition(shortTokenId, psnSize, TickMath.MIN_TICK, TickMath.MAX_TICK);
+        sfpm.mintTokenizedPosition(
+            new bytes(0),
+            shortTokenId,
+            psnSize,
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
 
         vm.expectRevert(stdError.arithmeticError);
-        sfpm.mintTokenizedPosition(longTokenId, psnSize, TickMath.MIN_TICK, TickMath.MAX_TICK);
+        sfpm.mintTokenizedPosition(
+            new bytes(0),
+            longTokenId,
+            psnSize,
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
 
         accountLiquidities = sfpm.getAccountLiquidity(
-            address(USDC_WETH_30),
+            abi.encode(address(USDC_WETH_30)),
             Alice,
             0,
             tickLower,

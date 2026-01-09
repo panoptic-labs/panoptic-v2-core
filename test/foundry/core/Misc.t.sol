@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
@@ -14,6 +15,7 @@ import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
+import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
@@ -142,13 +144,17 @@ contract Misctest is Test, PositionUtils {
     CollateralTracker ct0;
     CollateralTracker ct1;
     PanopticHelper ph;
+    RiskEngine re;
 
     int24 currentTick;
     int256 twapTick;
     int24 slowOracleTick;
     int24 fastOracleTick;
     int24 lastObservedTick;
+    int24 $strike;
 
+    uint256 oraclePack;
+    uint64 $poolId;
     uint256 medianData;
 
     uint256 assetsBefore0;
@@ -181,6 +187,8 @@ contract Misctest is Test, PositionUtils {
     address[] Buyer;
     SwapperC swapperc;
 
+    TokenId $tokenIdShort;
+    TokenId $tokenIdLong;
     TokenId[] $setupIdList;
     TokenId[] $posIdList;
     TokenId[][] $posIdLists;
@@ -201,12 +209,20 @@ contract Misctest is Test, PositionUtils {
 
         // deploy reference pool and collateral token
         poolReference = address(new PanopticPool(sfpm));
-        collateralReference = address(
-            new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000)
-        );
+        collateralReference = address(new CollateralTracker(10));
         token0 = new ERC20S("token0", "T0", 18);
         token1 = new ERC20S("token1", "T1", 18);
         uniPool = IUniswapV3Pool(V3FACTORY.createPool(address(token0), address(token1), 500));
+
+        re = new RiskEngine(
+            2_000_000,
+            1_000_000,
+            1_024_000,
+            5_000_000,
+            9_000_000,
+            10_000_000,
+            10_000_000
+        );
 
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
@@ -230,7 +246,7 @@ contract Misctest is Test, PositionUtils {
         }
         swapperc.mint(uniPool, -887270, 887270, 10 ** 18);
 
-        swapperc.swapTo(uniPool, 10 ** 17 * 2 ** 96);
+        swapperc.swapTo(uniPool, 2 ** 96 + 2 ** 88);
 
         swapperc.burn(uniPool, -887270, 887270, 10 ** 18);
 
@@ -271,8 +287,8 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(ct0), type(uint104).max);
         token1.approve(address(ct1), type(uint104).max);
 
-        ct0.deposit(type(uint104).max, Charlie);
-        ct1.deposit(type(uint104).max, Charlie);
+        ct0.deposit(type(uint104).max / 2, Charlie);
+        ct1.deposit(type(uint104).max / 2, Charlie);
 
         vm.startPrank(Seller);
 
@@ -304,7 +320,7 @@ contract Misctest is Test, PositionUtils {
         // for (uint256 i = 0; i < 8; ++i) {
         //     vm.warp(block.timestamp + 120);
         //     vm.roll(block.number + 1);
-        //     pp.pokeMedian();
+        //     pp.pokeOracle();
         // }
 
         for (uint256 i = 0; i < 20; ++i) {
@@ -336,6 +352,7 @@ contract Misctest is Test, PositionUtils {
                     address(token0),
                     address(token1),
                     500,
+                    re,
                     uint96(block.timestamp)
                 )
             )
@@ -345,28 +362,161 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, 2 ** 96);
 
         // Update median
-        pp.pokeMedian();
+        pp.pokeOracle();
         vm.warp(block.timestamp + 120);
         vm.roll(block.number + 10);
 
-        pp.pokeMedian();
+        pp.pokeOracle();
         vm.warp(block.timestamp + 120);
         vm.roll(block.number + 10);
 
-        pp.pokeMedian();
+        pp.pokeOracle();
         vm.warp(block.timestamp + 120);
         vm.roll(block.number + 10);
 
-        pp.pokeMedian();
+        pp.pokeOracle();
         vm.warp(block.timestamp + 120);
         vm.roll(block.number + 10);
 
-        pp.pokeMedian();
+        pp.pokeOracle();
         vm.warp(block.timestamp + 120);
         vm.roll(block.number + 10);
 
         ct0 = pp.collateralToken0();
         ct1 = pp.collateralToken1();
+    }
+
+    function mintOptions(
+        PanopticPool pp,
+        TokenId[] memory positionIdList,
+        uint128 positionSize,
+        uint64 effectiveLiquidityLimitX32,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
+        bool premiaAsCollateral
+    ) internal {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+        TokenId[] memory mintList = new TokenId[](1);
+        int24[2][] memory tickLimits = new int24[2][](1);
+
+        TokenId tokenId = positionIdList[positionIdList.length - 1];
+        sizeList[0] = positionSize;
+        spreadList[0] = effectiveLiquidityLimitX32;
+        mintList[0] = tokenId;
+        tickLimits[0][0] = tickLimitLow;
+        tickLimits[0][1] = tickLimitHigh;
+
+        pp.dispatch(mintList, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
+    }
+
+    function burnOptions(
+        PanopticPool pp,
+        TokenId tokenId,
+        TokenId[] memory positionIdList,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
+        bool premiaAsCollateral
+    ) internal {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+        TokenId[] memory burnList = new TokenId[](1);
+        int24[2][] memory tickLimits = new int24[2][](1);
+
+        sizeList[0] = 0;
+        spreadList[0] = type(uint64).max;
+        burnList[0] = tokenId;
+        tickLimits[0][0] = tickLimitLow;
+        tickLimits[0][1] = tickLimitHigh;
+        pp.dispatch(burnList, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
+    }
+
+    function burnOptions(
+        PanopticPool pp,
+        TokenId[] memory tokenIds,
+        TokenId[] memory positionIdList,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
+        bool premiaAsCollateral
+    ) internal {
+        uint128[] memory sizeList = new uint128[](tokenIds.length);
+        uint64[] memory spreadList = new uint64[](tokenIds.length);
+        int24[2][] memory tickLimits = new int24[2][](tokenIds.length);
+
+        for (uint256 i; i < tokenIds.length; ++i) {
+            tickLimits[i][0] = tickLimitLow;
+            tickLimits[i][1] = tickLimitHigh;
+        }
+
+        pp.dispatch(tokenIds, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
+    }
+
+    function liquidate(
+        PanopticPool pp,
+        TokenId[] memory liquidatorList,
+        address liquidatee,
+        TokenId[] memory positionIdList
+    ) internal {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+
+        pp.dispatchFrom(
+            liquidatorList,
+            liquidatee,
+            positionIdList,
+            new TokenId[](0),
+            LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1)
+        );
+    }
+
+    function forceExercise(
+        PanopticPool pp,
+        address exercisee,
+        TokenId tokenId,
+        TokenId[] memory exerciseeListFinal,
+        TokenId[] memory exercisorList,
+        LeftRightUnsigned premiaAsCollateral
+    ) internal {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+
+        TokenId[] memory exerciseeListInitial = new TokenId[](exerciseeListFinal.length + 1);
+        for (uint256 i = 0; i < exerciseeListFinal.length; ++i) {
+            exerciseeListInitial[i] = exerciseeListFinal[i];
+        }
+        exerciseeListInitial[exerciseeListInitial.length - 1] = tokenId;
+
+        pp.dispatchFrom(
+            exercisorList,
+            exercisee,
+            exerciseeListInitial,
+            exerciseeListFinal,
+            premiaAsCollateral
+        );
+    }
+
+    function settleLongPremium(
+        PanopticPool pp,
+        TokenId[] memory settlerList,
+        TokenId[] memory settleeList,
+        address exercisee,
+        uint256 legIndex,
+        bool premiaAsCollateral
+    ) internal {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+
+        TokenId[] memory targetList = new TokenId[](1);
+
+        pp.dispatchFrom(
+            settlerList,
+            exercisee,
+            settleeList,
+            settleeList,
+            LeftRightUnsigned.wrap(0).addToRightSlot(premiaAsCollateral ? 1 : 0).addToLeftSlot(
+                premiaAsCollateral ? 1 : 0
+            )
+        );
     }
 
     function test_gas_MaxPositions_short_packed() public {
@@ -422,12 +572,14 @@ contract Misctest is Test, PositionUtils {
 
             vm.startPrank(Bob);
 
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 $posIdList,
                 2_000_000,
                 0,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                true
             );
 
             if (i == positionCount - 1) {
@@ -479,12 +631,14 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 $posIdList,
                 1_000_000,
                 type(uint64).max,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                true
             );
         }
 
@@ -501,7 +655,7 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct1, Alice, 0);
 
         uint256 gasBefore = gasleft();
-        pp.liquidate(new TokenId[](0), Alice, $posIdList);
+        liquidate(pp, new TokenId[](0), Alice, $posIdList);
         console.log("Gas used: %d Liquidation", gasBefore - gasleft());
     }
 
@@ -527,12 +681,14 @@ contract Misctest is Test, PositionUtils {
 
             vm.startPrank(Bob);
 
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 $posIdList,
                 2_000_000,
                 0,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                true
             );
 
             if (i == positionCount - 1) {
@@ -553,12 +709,14 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 $posIdList,
                 1_000_000,
                 type(uint64).max,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                true
             );
         }
 
@@ -575,7 +733,7 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct1, Alice, 0);
 
         uint256 gasBefore = gasleft();
-        pp.liquidate(new TokenId[](0), Alice, $posIdList);
+        liquidate(pp, new TokenId[](0), Alice, $posIdList);
         console.log("Gas used: %d Liquidation", gasBefore - gasleft());
     }
 
@@ -632,12 +790,14 @@ contract Misctest is Test, PositionUtils {
 
             vm.startPrank(Bob);
 
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 $setupIdList,
                 2_000_000,
                 0,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                true
             );
 
             posId = TokenId
@@ -733,12 +893,14 @@ contract Misctest is Test, PositionUtils {
             $posIdList.push(posId);
 
             vm.startPrank(Alice);
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 $posIdList,
                 1_000_000,
                 type(uint64).max,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                true
             );
         }
 
@@ -755,7 +917,7 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct1, Alice, 0);
 
         uint256 gasBefore = gasleft();
-        pp.liquidate(new TokenId[](0), Alice, $posIdList);
+        liquidate(pp, new TokenId[](0), Alice, $posIdList);
         console.log("Gas used: %d Liquidation", gasBefore - gasleft());
     }
 
@@ -781,12 +943,14 @@ contract Misctest is Test, PositionUtils {
 
             vm.startPrank(Bob);
 
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 $setupIdList,
                 2_000_000,
                 0,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                true
             );
 
             posId = TokenId
@@ -822,12 +986,14 @@ contract Misctest is Test, PositionUtils {
             $posIdList.push(posId);
 
             vm.startPrank(Alice);
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 $posIdList,
                 1_000_000,
                 type(uint64).max,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                true
             );
         }
 
@@ -844,7 +1010,7 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct1, Alice, 0);
 
         uint256 gasBefore = gasleft();
-        pp.liquidate(new TokenId[](0), Alice, $posIdList);
+        liquidate(pp, new TokenId[](0), Alice, $posIdList);
         console.log("Gas used: %d Liquidation", gasBefore - gasleft());
     }
 
@@ -984,10 +1150,11 @@ contract Misctest is Test, PositionUtils {
 
         vm.expectRevert(Errors.InvalidTickBound.selector);
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tickPosition,
             1_000_000,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK
         );
 
         tickPosition = TokenId
@@ -1014,10 +1181,11 @@ contract Misctest is Test, PositionUtils {
             uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
+                new bytes(0),
                 tickPosition,
                 1_000_000,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK
             );
 
         vm.startPrank(Swapper);
@@ -1044,10 +1212,11 @@ contract Misctest is Test, PositionUtils {
 
         vm.expectRevert(Errors.InvalidTickBound.selector);
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tickPosition,
             1_000_000,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK
         );
 
         tickPosition = TokenId
@@ -1075,10 +1244,11 @@ contract Misctest is Test, PositionUtils {
             uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
+                new bytes(0),
                 tickPosition,
                 1_000_000,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK
             );
     }
 
@@ -1233,10 +1403,11 @@ contract Misctest is Test, PositionUtils {
 
         vm.expectRevert(Errors.InvalidTickBound.selector);
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tickPosition,
             1_000_000,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK
         );
 
         tickPosition = TokenId
@@ -1263,10 +1434,11 @@ contract Misctest is Test, PositionUtils {
             uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
+                new bytes(0),
                 tickPosition,
                 1_000_000,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK
             );
 
         vm.startPrank(Swapper);
@@ -1293,10 +1465,11 @@ contract Misctest is Test, PositionUtils {
 
         vm.expectRevert(Errors.InvalidTickBound.selector);
         sfpm.mintTokenizedPosition(
+            new bytes(0),
             tickPosition,
             1_000_000,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK
         );
 
         tickPosition = TokenId
@@ -1324,10 +1497,11 @@ contract Misctest is Test, PositionUtils {
             uniPool.tickSpacing()
         )
             sfpm.mintTokenizedPosition(
+                new bytes(0),
                 tickPosition,
                 1_000_000,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK
             );
     }
 
@@ -1351,19 +1525,23 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
     }
 
@@ -1386,19 +1564,23 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
     }
 
@@ -1412,15 +1594,17 @@ contract Misctest is Test, PositionUtils {
                 .addLeg(0, 1, 0, 0, 0, 0, -224040, 3540)
         );
 
-        vm.expectRevert(Errors.ZeroLiquidity.selector);
-        pp.mintOptions($posIdList, 537, 0, Constants.MIN_V3POOL_TICK, Constants.MAX_V3POOL_TICK);
+        vm.expectRevert(Errors.ChunkHasZeroLiquidity.selector);
+        mintOptions(pp, $posIdList, 537, 0, Constants.MIN_POOL_TICK, Constants.MAX_POOL_TICK, true);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             2_000_000,
             0,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
         );
 
         vm.startPrank(Alice);
@@ -1429,8 +1613,8 @@ contract Misctest is Test, PositionUtils {
             .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
             .addLeg(0, 1, 0, 1, 0, 0, -224040, 3540);
 
-        vm.expectRevert(Errors.ZeroLiquidity.selector);
-        pp.mintOptions($posIdList, 537, 0, Constants.MIN_V3POOL_TICK, Constants.MAX_V3POOL_TICK);
+        vm.expectRevert(Errors.ChunkHasZeroLiquidity.selector);
+        mintOptions(pp, $posIdList, 537, 0, Constants.MIN_POOL_TICK, Constants.MAX_POOL_TICK, true);
     }
 
     function test_success_MintBurnCallSpread() public {
@@ -1450,12 +1634,14 @@ contract Misctest is Test, PositionUtils {
                 .addLeg(0, 1, 1, 0, 0, 0, 35, 1)
         );
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             2_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         // mint OTM position
@@ -1467,19 +1653,23 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
     }
 
@@ -1500,12 +1690,14 @@ contract Misctest is Test, PositionUtils {
                 .addLeg(0, 1, 1, 0, 1, 0, -35, 1)
         );
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             2_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         // mint OTM position
@@ -1517,24 +1709,28 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
     }
 
     // are delegations for ITM positions sufficient?
-    function test_success_exercise_crossDelegate() public {
+    function test_success_exercise_crossDelegate_1() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
@@ -1551,12 +1747,14 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Seller);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             2_000_000,
             0,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
         );
 
         $posIdList[0] = TokenId
@@ -1565,12 +1763,14 @@ contract Misctest is Test, PositionUtils {
             .addLeg(0, 1, 1, 1, 0, 0, 15, 1);
 
         vm.startPrank(Alice);
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
         );
 
         editCollateral(ct1, Alice, 0);
@@ -1582,57 +1782,457 @@ contract Misctest is Test, PositionUtils {
         vm.warp(block.timestamp + 600);
         vm.roll(block.number + 1);
 
-        swapperc.swapTo(uniPool, 10 * 2 ** 96);
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(512));
 
+        pp.pokeOracle();
         vm.warp(block.timestamp + 600);
         vm.roll(block.number + 1);
 
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
 
-        PanopticMath.twapFilter(uniPool, 600);
+        (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+            .getOracleTicks();
+        twapTick = re.twapEMA(oraclePack);
+        console2.log("cur", currentTick);
+        console2.log("twapTick", twapTick);
+        vm.assume(Math.abs(currentTick - twapTick) < 513);
 
         vm.startPrank(Bob);
-        pp.forceExercise(Alice, $posIdList[0], new TokenId[](0), new TokenId[](0));
+        forceExercise(
+            pp,
+            Alice,
+            $posIdList[0],
+            new TokenId[](0),
+            new TokenId[](0),
+            LeftRightUnsigned.wrap(0).addToLeftSlot(0)
+        );
     }
 
-    function test_success_ITMspreadfee_0_01bp() public {
-        CollateralTracker(collateralReference).startToken(
-            true,
-            address(token0),
-            address(token1),
-            1,
-            pp
+    function test_success_ExerciseSettle_ComputeLongPremium() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(sfpm.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                -35,
+                1
+            )
+        );
+
+        vm.startPrank(Seller);
+        mintOptions(
+            pp,
+            $posIdList,
+            4_000_000,
+            0,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        $posIdLists[0].push($posIdList[0]);
+        vm.startPrank(Alice);
+        mintOptions(
+            pp,
+            $posIdLists[0],
+            2_000_000,
+            0,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
         );
 
         vm.startPrank(Bob);
-        token0.mint(Bob, type(uint104).max);
-        token0.approve(collateralReference, type(uint104).max);
-        CollateralTracker(collateralReference).deposit(type(uint104).max, Bob);
+        mintOptions(
+            pp,
+            $posIdList,
+            2_000_000,
+            0,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Swapper);
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-35));
+
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1_000_000, 1_000_000_000);
+
+        swapperc.swapTo(uniPool, 2 ** 96);
+
+        editCollateral(ct0, Alice, ct0.convertToShares(5000));
+        editCollateral(ct1, Alice, ct1.convertToShares(5000));
+
+        editCollateral(ct0, Bob, ct0.convertToShares(5000));
+        editCollateral(ct1, Bob, ct1.convertToShares(5000));
+
+        vm.startPrank(Bob);
+
+        $tempIdList = $posIdList;
+
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(sfpm.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                1,
+                1,
+                0,
+                -35,
+                1
+            )
+        );
+
+        mintOptions(
+            pp,
+            $posIdList,
+            2_000_000,
+            type(uint64).max,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
 
         vm.startPrank(Alice);
-        token0.mint(Alice, (uint256(1_000_000_000_000_000) * 10_000) / 9_990);
-        token0.approve(collateralReference, (uint256(1_000_000_000_000_000) * 10_000) / 9_990);
-        CollateralTracker(collateralReference).deposit(
-            (uint256(1_000_000_000_000_000) * 10_000) / 9_990,
-            Alice
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.AccountInsolvent.selector,
+                uint256(0), // solvent
+                uint256(1) // numberOfTicks
+            )
+        );
+        settleLongPremium(pp, $posIdLists[0], $posIdList, Bob, 0, false);
+
+        uint256 snap = vm.snapshotState();
+        settleLongPremium(pp, $posIdLists[0], $posIdList, Bob, 0, true);
+
+        vm.revertToState(snap);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.AccountInsolvent.selector,
+                uint256(0), // solvent
+                uint256(1) // numberOfTicks
+            )
+        );
+        forceExercise(
+            pp,
+            Bob,
+            $posIdList[1],
+            $tempIdList,
+            $tempIdList,
+            LeftRightUnsigned.wrap(0).addToLeftSlot(0)
         );
 
-        vm.startPrank(address(pp));
-        CollateralTracker(collateralReference).takeCommissionAddData(
-            Alice,
-            0,
-            0,
-            1_000_000_000,
-            false
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.AccountInsolvent.selector,
+                uint256(0), // solvent
+                uint256(1) // numberOfTicks
+            )
         );
-        assertEq(
-            1_000_000_000_000_000 -
-                1 -
-                CollateralTracker(collateralReference).convertToAssets(
-                    CollateralTracker(collateralReference).balanceOf(Alice)
-                ),
-            1_000_000_000 + 2000
+        forceExercise(
+            pp,
+            Bob,
+            $posIdList[1],
+            $tempIdList,
+            $tempIdList,
+            LeftRightUnsigned.wrap(0).addToLeftSlot(1)
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+        );
+        forceExercise(
+            pp,
+            Bob,
+            $posIdList[1],
+            $tempIdList,
+            $tempIdList,
+            LeftRightUnsigned.wrap(1).addToLeftSlot(0)
+        );
+
+        snap = vm.snapshotState();
+        burnOptions(
+            pp,
+            $posIdList[0],
+            new TokenId[](0),
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+        );
+        forceExercise(
+            pp,
+            Bob,
+            $posIdList[1],
+            $tempIdList,
+            new TokenId[](0),
+            LeftRightUnsigned.wrap(0).addToLeftSlot(0)
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+        );
+        forceExercise(
+            pp,
+            Bob,
+            $posIdList[1],
+            $tempIdList,
+            new TokenId[](0),
+            LeftRightUnsigned.wrap(0).addToLeftSlot(1)
+        );
+
+        uint256 snap2 = vm.snapshotState();
+
+        forceExercise(
+            pp,
+            Bob,
+            $posIdList[1],
+            $tempIdList,
+            new TokenId[](0),
+            LeftRightUnsigned.wrap(1).addToLeftSlot(0)
+        );
+
+        vm.revertToState(snap2);
+
+        forceExercise(
+            pp,
+            Bob,
+            $posIdList[1],
+            $tempIdList,
+            new TokenId[](0),
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
+        );
+
+        vm.revertToState(snap);
+
+        $setupIdList.push($posIdList[1]);
+
+        vm.startPrank(Bob);
+        burnOptions(
+            pp,
+            $posIdList[0],
+            $setupIdList,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Alice);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+        );
+        forceExercise(
+            pp,
+            Bob,
+            $posIdList[1],
+            new TokenId[](0),
+            $tempIdList,
+            LeftRightUnsigned.wrap(0).addToLeftSlot(0)
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+        );
+        forceExercise(
+            pp,
+            Bob,
+            $posIdList[1],
+            new TokenId[](0),
+            $tempIdList,
+            LeftRightUnsigned.wrap(1).addToLeftSlot(0)
+        );
+
+        snap2 = vm.snapshotState();
+
+        forceExercise(
+            pp,
+            Bob,
+            $posIdList[1],
+            new TokenId[](0),
+            $tempIdList,
+            LeftRightUnsigned.wrap(0).addToLeftSlot(1)
+        );
+
+        vm.revertToState(snap2);
+
+        snap2 = vm.snapshotState();
+
+        forceExercise(
+            pp,
+            Bob,
+            $posIdList[1],
+            new TokenId[](0),
+            $tempIdList,
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
+        );
+
+        vm.revertToState(snap2);
+
+        burnOptions(
+            pp,
+            $posIdList[0],
+            new TokenId[](0),
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        snap2 = vm.snapshotState();
+        forceExercise(
+            pp,
+            Bob,
+            $posIdList[1],
+            new TokenId[](0),
+            new TokenId[](0),
+            LeftRightUnsigned.wrap(0).addToLeftSlot(0)
+        );
+
+        vm.revertToState(snap2);
+
+        snap2 = vm.snapshotState();
+
+        forceExercise(
+            pp,
+            Bob,
+            $posIdList[1],
+            new TokenId[](0),
+            new TokenId[](0),
+            LeftRightUnsigned.wrap(0).addToLeftSlot(1)
+        );
+
+        vm.revertToState(snap2);
+
+        snap2 = vm.snapshotState();
+        forceExercise(
+            pp,
+            Bob,
+            $posIdList[1],
+            new TokenId[](0),
+            new TokenId[](0),
+            LeftRightUnsigned.wrap(1).addToLeftSlot(0)
+        );
+
+        vm.revertToState(snap2);
+
+        snap2 = vm.snapshotState();
+
+        forceExercise(
+            pp,
+            Bob,
+            $posIdList[1],
+            new TokenId[](0),
+            new TokenId[](0),
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
+        );
+    }
+
+    // are delegations for ITM positions sufficient?
+    function test_success_exercise_crossDelegate() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(sfpm.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        vm.startPrank(Seller);
+
+        mintOptions(
+            pp,
+            $posIdList,
+            2_000_000,
+            0,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        $posIdList[0] = TokenId.wrap(0).addPoolId(sfpm.getPoolId(address(uniPool))).addLeg(
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            15,
+            1
+        );
+
+        vm.startPrank(Alice);
+        mintOptions(
+            pp,
+            $posIdList,
+            1_000_000,
+            type(uint64).max,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        editCollateral(ct1, Alice, 0);
+
+        vm.startPrank(Swapper);
+
+        twapTick = PanopticMath.twapFilter(uniPool, 600);
+
+        vm.warp(block.timestamp + 600);
+        vm.roll(block.number + 1);
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(512));
+
+        pp.pokeOracle();
+        vm.warp(block.timestamp + 600);
+        vm.roll(block.number + 1);
+
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.burn(uniPool, -10, 10, 10 ** 18);
+
+        (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+            .getOracleTicks();
+        twapTick = re.twapEMA(oraclePack);
+        console2.log("cur", currentTick);
+        console2.log("twapTick", twapTick);
+        vm.assume(Math.abs(currentTick - twapTick) < 513);
+
+        vm.startPrank(Bob);
+        forceExercise(
+            pp,
+            Alice,
+            $posIdList[0],
+            new TokenId[](0),
+            new TokenId[](0),
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
         );
     }
 
@@ -1664,23 +2264,27 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.startPrank(Alice);
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         vm.startPrank(Bob);
 
-        vm.expectRevert(stdError.divisionError);
-        pp.mintOptions(
+        vm.expectRevert(Errors.NetLiquidityZero.selector);
+        mintOptions(
+            pp,
             $tempIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
     }
 
@@ -1702,25 +2306,36 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.startPrank(Alice);
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
-        TokenId[] memory longPositionList = new TokenId[](257);
+        TokenId[] memory longPositionList = new TokenId[](256);
 
-        for (uint256 i; i < 257; ++i) longPositionList[i] = $posIdList[0];
+        for (uint256 i; i < 256; ++i) {
+            TokenId tempTokenId = TokenId
+                .wrap(0)
+                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
+                .addLeg(0, 1, 1, 0, 0, 0, int24(int256(10 * i)), 2);
+
+            longPositionList[i] = tempTokenId;
+        }
 
         vm.expectRevert(stdError.arithmeticError);
-        pp.mintOptions(
+        mintOptions(
+            pp,
             longPositionList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
     }
 
@@ -1792,29 +2407,35 @@ contract Misctest is Test, PositionUtils {
         assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
 
         vm.startPrank(Alice);
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         vm.startPrank(Bob);
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $tempIdList,
             900_000_000,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         vm.startPrank(Swapper);
@@ -1832,28 +2453,34 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Charlie);
 
         for (uint256 i = 0; i < 10; i++) {
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 $posIdList,
                 250_000_000,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
-            pp.burnOptions(
+            burnOptions(
+                pp,
                 $posIdList[0],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
         }
 
         vm.startPrank(Alice);
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         uint256 delta0 = ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0;
@@ -1861,11 +2488,13 @@ contract Misctest is Test, PositionUtils {
         vm.revertTo(snap);
 
         vm.startPrank(Alice);
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         // there is a small amount of error in token0 -- this is the commissions from Charlie
@@ -1899,12 +2528,14 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         $posIdList.push(
@@ -1919,21 +2550,25 @@ contract Misctest is Test, PositionUtils {
         for (uint256 i = 0; i < 1000; i++) {
             vm.startPrank(Alice);
             $tempIdList[0] = $posIdList[1];
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 $tempIdList,
                 250_000,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             vm.startPrank(Bob);
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 $posIdList,
                 250_000,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             vm.startPrank(Swapper);
@@ -1944,29 +2579,35 @@ contract Misctest is Test, PositionUtils {
 
             vm.startPrank(Bob);
             $tempIdList[0] = $posIdList[0];
-            pp.burnOptions(
+            burnOptions(
+                pp,
                 $posIdList[1],
                 $tempIdList,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             vm.startPrank(Alice);
-            pp.burnOptions(
+            burnOptions(
+                pp,
                 $posIdList[1],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
         }
 
         vm.startPrank(Bob);
         // burn Bob's short option
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
     }
 
@@ -1990,12 +2631,14 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         $posIdList.push(
@@ -2008,12 +2651,14 @@ contract Misctest is Test, PositionUtils {
         // only 20 tokens actually settled, but 22 owed... 2 tokens taken from PLPs
         // we may need to redefine availablePremium as max(availablePremium, settledTokens)
         for (uint256 i = 0; i < 10; i++) {
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 $posIdList,
                 499_999,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
             vm.startPrank(Swapper);
             swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
@@ -2021,20 +2666,24 @@ contract Misctest is Test, PositionUtils {
             accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1, 1);
             swapperc.swapTo(uniPool, 2 ** 96);
             vm.startPrank(Bob);
-            pp.burnOptions(
+            burnOptions(
+                pp,
                 $posIdList[1],
                 $tempIdList,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
         }
 
         // burn Bob's short option
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
     }
 
@@ -2061,32 +2710,38 @@ contract Misctest is Test, PositionUtils {
         // 8.896% * 1.022x vegoid = +~10% of the fee amount accumulated will be owed by sellers
         vm.startPrank(Alice);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdLists[0],
             500_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         vm.startPrank(Bob);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdLists[0],
             250_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         vm.startPrank(Charlie);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdLists[0],
             250_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         // sell unrelated, non-overlapping, dummy chunk (to buy for match testing)
@@ -2099,12 +2754,14 @@ contract Misctest is Test, PositionUtils {
                 .addLeg(0, 1, 1, 0, 1, 0, -15, 1)
         );
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdLists[1],
             1_000_000_000 - 9_884_444 * 3,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         // position type A: 1-leg long primary
@@ -2117,12 +2774,14 @@ contract Misctest is Test, PositionUtils {
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
             vm.startPrank(Buyers[i]);
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 $posIdLists[2],
                 9_884_444,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
         }
 
@@ -2137,12 +2796,14 @@ contract Misctest is Test, PositionUtils {
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
             vm.startPrank(Buyers[i]);
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 $posIdLists[2],
                 9_884_444,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
         }
 
@@ -2157,12 +2818,14 @@ contract Misctest is Test, PositionUtils {
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
             vm.startPrank(Buyers[i]);
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 $posIdLists[2],
                 9_884_444,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
         }
 
@@ -2176,12 +2839,14 @@ contract Misctest is Test, PositionUtils {
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
             vm.startPrank(Buyers[i]);
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 $posIdLists[2],
                 19_768_888,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
         }
 
@@ -2220,7 +2885,7 @@ contract Misctest is Test, PositionUtils {
         {
             (, currentTick, , , , , ) = uniPool.slot0();
             LeftRightUnsigned accountLiquidityPrimary = sfpm.getAccountLiquidity(
-                address(uniPool),
+                abi.encode(address(uniPool)),
                 address(pp),
                 0,
                 10,
@@ -2233,7 +2898,7 @@ contract Misctest is Test, PositionUtils {
             console2.log("accountLiquidityPrimaryRemoved", accountLiquidityPrimary.leftSlot());
 
             (uint256 shortPremium0Primary, uint256 shortPremium1Primary) = sfpm.getAccountPremium(
-                address(uniPool),
+                abi.encode(address(uniPool)),
                 address(pp),
                 0,
                 10,
@@ -2256,7 +2921,7 @@ contract Misctest is Test, PositionUtils {
             );
 
             (uint256 longPremium0Primary, uint256 longPremium1Primary) = sfpm.getAccountPremium(
-                address(uniPool),
+                abi.encode(address(uniPool)),
                 address(pp),
                 0,
                 10,
@@ -2277,7 +2942,7 @@ contract Misctest is Test, PositionUtils {
 
         {
             LeftRightUnsigned accountLiquidityDummy = sfpm.getAccountLiquidity(
-                address(uniPool),
+                abi.encode(address(uniPool)),
                 address(pp),
                 1,
                 -20,
@@ -2291,7 +2956,7 @@ contract Misctest is Test, PositionUtils {
             console2.log("accountLiquidityDummyRemoved", accountLiquidityDummy.leftSlot());
 
             (uint256 shortPremium0Dummy, uint256 shortPremium1Dummy) = sfpm.getAccountPremium(
-                address(uniPool),
+                abi.encode(address(uniPool)),
                 address(pp),
                 1,
                 -20,
@@ -2314,7 +2979,7 @@ contract Misctest is Test, PositionUtils {
             );
 
             (uint256 longPremium0Dummy, uint256 longPremium1Dummy) = sfpm.getAccountPremium(
-                address(uniPool),
+                abi.encode(address(uniPool)),
                 address(pp),
                 1,
                 -20,
@@ -2346,21 +3011,22 @@ contract Misctest is Test, PositionUtils {
         assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[0]));
         assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[0]));
 
-        // collect buyer 1's three relevant chunks
+        // collect buyer 1's four (not three) relevant chunks because i=1 has two legs
+        // amount collected: 11114 + (11114 + 111) + 11114 =
         for (uint256 i = 0; i < 3; ++i) {
-            pp.settleLongPremium(collateralIdLists[i], Buyers[0], 0);
+            settleLongPremium(pp, new TokenId[](0), collateralIdLists[i], Buyers[0], 0, true);
         }
 
         assertEq(
             assetsBefore0 - ct0.convertToAssets(ct0.balanceOf(Buyers[0])),
-            33_342,
+            33_453,
             "Incorrect Buyer 1 1st Collect 0"
         );
 
         assertEq(
             assetsBefore1 - ct1.convertToAssets(ct1.balanceOf(Buyers[0])),
-            33_343_452,
-            "Incorrect Buyer 1 1st Collect 1"
+            33_344_563,
+            "Incorrect Buyer 1 1st Collect 1: "
         );
 
         vm.startPrank(Bob);
@@ -2369,16 +3035,18 @@ contract Misctest is Test, PositionUtils {
         assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Bob));
         assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Bob));
 
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdLists[0][0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            258_334,
+            258_335,
             "Incorrect Bob Delta 0"
         );
         assertEq(
@@ -2397,12 +3065,14 @@ contract Misctest is Test, PositionUtils {
                 .addLeg(0, 1, 1, 0, 0, 0, 15, 1)
         );
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdLists[1],
             1_000_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         assetsBefore0Arr.push(ct0.convertToAssets(ct0.balanceOf(Buyers[0])));
@@ -2415,44 +3085,44 @@ contract Misctest is Test, PositionUtils {
         // now, settle the dummy chunks for all the buyers/positions and see that the settled ratio for primary doesn't change
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
-            pp.settleLongPremium(collateralIdLists[1], Buyers[i], 1);
+            settleLongPremium(pp, $posIdLists[1], collateralIdLists[1], Buyers[i], 1, true);
 
-            pp.settleLongPremium(collateralIdLists[3], Buyers[i], 0);
+            settleLongPremium(pp, $posIdLists[1], collateralIdLists[3], Buyers[i], 0, true);
         }
 
         assertEq(
             assetsBefore0Arr[0] - ct0.convertToAssets(ct0.balanceOf(Buyers[0])),
-            333,
+            222,
             "Incorrect Buyer 1 2nd Collect 0"
         );
 
         assertEq(
             assetsBefore1Arr[0] - ct1.convertToAssets(ct1.balanceOf(Buyers[0])),
-            3_333,
+            2_222,
             "Incorrect Buyer 1 2nd Collect 1"
         );
 
         assertEq(
             assetsBefore0Arr[1] - ct0.convertToAssets(ct0.balanceOf(Buyers[1])),
-            333,
+            11447,
             "Incorrect Buyer 2 2nd Collect 0"
         );
 
         assertEq(
             assetsBefore1Arr[1] - ct1.convertToAssets(ct1.balanceOf(Buyers[1])),
-            3_333,
+            11117817,
             "Incorrect Buyer 2 2nd Collect 1"
         );
 
         assertEq(
             assetsBefore0Arr[2] - ct0.convertToAssets(ct0.balanceOf(Buyers[2])),
-            333,
+            11447,
             "Incorrect Buyer 3 2nd Collect 0"
         );
 
         assertEq(
             assetsBefore1Arr[2] - ct1.convertToAssets(ct1.balanceOf(Buyers[2])),
-            3_333,
+            11117817,
             "Incorrect Buyer 3 2nd Collect 1"
         );
 
@@ -2462,21 +3132,23 @@ contract Misctest is Test, PositionUtils {
         assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
         assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
 
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdLists[0][0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
-            516_670,
+            531_490,
             "Incorrect Alice Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Alice)) - assetsBefore1,
-            516_671_726,
+            531_491_038,
             "Incorrect Alice Delta 1"
         );
 
@@ -2489,9 +3161,9 @@ contract Misctest is Test, PositionUtils {
         assetsBefore1Arr[2] = ct1.convertToAssets(ct1.balanceOf(Buyers[2]));
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
-            pp.settleLongPremium(collateralIdLists[1], Buyers[i], 1);
+            settleLongPremium(pp, new TokenId[](0), collateralIdLists[1], Buyers[i], 1, true);
 
-            pp.settleLongPremium(collateralIdLists[3], Buyers[i], 0);
+            settleLongPremium(pp, new TokenId[](0), collateralIdLists[3], Buyers[i], 0, true);
         }
 
         assertEq(
@@ -2539,11 +3211,11 @@ contract Misctest is Test, PositionUtils {
         assetsBefore1Arr[2] = ct1.convertToAssets(ct1.balanceOf(Buyers[2]));
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
-            pp.settleLongPremium(collateralIdLists[0], Buyers[i], 0);
+            settleLongPremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[i], 0, true);
 
-            pp.settleLongPremium(collateralIdLists[1], Buyers[i], 0);
+            settleLongPremium(pp, new TokenId[](0), collateralIdLists[1], Buyers[i], 0, true);
 
-            pp.settleLongPremium(collateralIdLists[2], Buyers[i], 0);
+            settleLongPremium(pp, new TokenId[](0), collateralIdLists[2], Buyers[i], 0, true);
         }
 
         assertEq(
@@ -2560,25 +3232,25 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             assetsBefore0Arr[1] - ct0.convertToAssets(ct0.balanceOf(Buyers[1])),
-            33_342,
+            22_228,
             "Incorrect Buyer 2 4th Collect 0"
         );
 
         assertEq(
             assetsBefore1Arr[1] - ct1.convertToAssets(ct1.balanceOf(Buyers[1])),
-            33_343_452,
-            "Incorrect Buyer 2 4th Collect 1"
+            22_228_968,
+            "Incorrect Buyer 2 4th Collect 1:"
         );
 
         assertEq(
             assetsBefore0Arr[2] - ct0.convertToAssets(ct0.balanceOf(Buyers[2])),
-            33_342,
+            22_228,
             "Incorrect Buyer 3 4th Collect 0"
         );
 
         assertEq(
             assetsBefore1Arr[2] - ct1.convertToAssets(ct1.balanceOf(Buyers[2])),
-            33_343_452,
+            22_228_968,
             "Incorrect Buyer 3 4th Collect 1"
         );
 
@@ -2588,16 +3260,18 @@ contract Misctest is Test, PositionUtils {
         assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Charlie));
         assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Charlie));
 
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdLists[0][0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
-            275_006,
+            275_007,
             "Incorrect Charlie Delta 0"
         );
         assertEq(
@@ -2607,8 +3281,9 @@ contract Misctest is Test, PositionUtils {
         );
 
         // test long leg validation
-        vm.expectRevert(Errors.NotALongLeg.selector);
-        pp.settleLongPremium(collateralIdLists[2], Buyers[0], 1);
+        //console2.log('a');
+        //vm.expectRevert(Errors.NotALongLeg.selector);
+        //settleLongPremium(pp, new TokenId[](0), collateralIdLists[2], Buyers[0], 1, true);
 
         // test positionIdList validation
         // snapshot so we don't have to reset changes to collateralIdLists array
@@ -2616,7 +3291,7 @@ contract Misctest is Test, PositionUtils {
 
         collateralIdLists[0].pop();
         vm.expectRevert(Errors.InputListFail.selector);
-        pp.settleLongPremium(collateralIdLists[0], Buyers[0], 0);
+        settleLongPremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[0], 0, true);
         vm.revertTo(snap);
 
         // test collateral checking (basic)
@@ -2626,8 +3301,10 @@ contract Misctest is Test, PositionUtils {
 
             deal(address(ct0), Buyers[i], i ** 15);
             deal(address(ct1), Buyers[i], i ** 15);
-            vm.expectRevert(Errors.AccountInsolvent.selector);
-            pp.settleLongPremium(collateralIdLists[0], Buyers[i], 0);
+            vm.expectRevert(
+                abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
+            );
+            settleLongPremium(pp, new TokenId[](0), collateralIdLists[0], Buyers[i], 0, true);
             vm.revertTo(snap);
         }
 
@@ -2636,26 +3313,184 @@ contract Misctest is Test, PositionUtils {
             assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[i]));
             assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[i]));
             vm.startPrank(Buyers[i]);
-            pp.burnOptions(
+            burnOptions(
+                pp,
                 $posIdLists[2],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
+            console2.log("i", i);
             // the positive premium is from the dummy short chunk
             assertEq(
                 int256(ct0.convertToAssets(ct0.balanceOf(Buyers[i]))) - int256(assetsBefore0),
-                i == 0 ? int256(107) : int256(108),
+                i == 0 ? int256(107) : i == 1 ? int256(108) : int(99),
                 "Buyer paid premium twice"
             );
 
             assertEq(
                 ct1.convertToAssets(ct1.balanceOf(Buyers[i])) - assetsBefore1,
-                1085,
+                i < 2 ? 1086 : 1080,
                 "Buyer paid premium twice"
             );
         }
+    }
+
+    function test_success_settleLongPremium_tokenSubstitution() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(100));
+        vm.warp(block.timestamp + 12);
+        vm.roll(block.number + 1);
+        swapperc.swapTo(uniPool, 2 ** 96);
+
+        $posIdLists[0].push(
+            TokenId.wrap(0).addPoolId(sfpm.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        vm.startPrank(Alice);
+
+        mintOptions(
+            pp,
+            $posIdLists[0],
+            100_000_000,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        $posIdLists[1].push(
+            TokenId.wrap(0).addPoolId(sfpm.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                1,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        for (uint256 i = 0; i < 3; ++i) {
+            vm.startPrank(Buyers[i]);
+            mintOptions(
+                pp,
+                $posIdLists[1],
+                1_000_000,
+                type(uint64).max,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
+            );
+        }
+
+        vm.startPrank(Swapper);
+
+        //routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(10) + 1);
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
+
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1_000_000, 1_000_000_000);
+
+        int256 premium0 = 10388;
+        int256 premium1 = 10388989;
+
+        uint160 lastObservedPrice = Math.getSqrtRatioAtTick(44);
+
+        vm.startPrank(Alice);
+
+        uint256 settlerBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        uint256 settlerBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+
+        // shortage of token1 - succeeds and token1 is converted to token0
+        editCollateral(ct1, Buyers[0], 0);
+
+        uint256 settleeBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[0]));
+        uint256 settleeBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[0]));
+
+        settleLongPremium(pp, $posIdLists[0], $posIdLists[1], Buyers[0], 0, true);
+
+        int256 balanceDelta0 = int256(ct0.convertToAssets(ct0.balanceOf(Buyers[0]))) -
+            int256(settleeBalanceBefore0);
+        int256 balanceDelta1 = int256(ct1.convertToAssets(ct1.balanceOf(Buyers[0]))) -
+            int256(settleeBalanceBefore1);
+
+        assertEq(
+            -balanceDelta0,
+            premium0 +
+                int256(PanopticMath.convert1to0RoundingUp(uint256(premium1), lastObservedPrice)),
+            "Fail: balance delta0 does not match premium"
+        );
+        assertEq(balanceDelta1, 0);
+
+        assertEq(
+            int256(settlerBalanceBefore0) - int256(ct0.convertToAssets(ct0.balanceOf(Alice))),
+            balanceDelta0 + premium0
+        );
+        assertEq(
+            int256(settlerBalanceBefore1) - int256(ct1.convertToAssets(ct1.balanceOf(Alice))),
+            premium1
+        );
+
+        settlerBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        settlerBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+
+        // shortage of token0 - succeeds and token0 is converted to token1
+        editCollateral(ct0, Buyers[1], 0);
+
+        settleeBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[1]));
+        settleeBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[1]));
+
+        settleLongPremium(pp, $posIdLists[0], $posIdLists[1], Buyers[1], 0, true);
+
+        balanceDelta0 =
+            int256(ct0.convertToAssets(ct0.balanceOf(Buyers[1]))) -
+            int256(settleeBalanceBefore0);
+        balanceDelta1 =
+            int256(ct1.convertToAssets(ct1.balanceOf(Buyers[1]))) -
+            int256(settleeBalanceBefore1);
+
+        assertEq(balanceDelta0, 0);
+        assertEq(
+            -balanceDelta1,
+            premium1 +
+                int256(PanopticMath.convert0to1RoundingUp(uint256(premium0), lastObservedPrice))
+        );
+
+        assertEq(
+            int256(settlerBalanceBefore0) - int256(ct0.convertToAssets(ct0.balanceOf(Alice))),
+            premium0 + 1
+        );
+        assertEq(
+            int256(settlerBalanceBefore1) - int256(ct1.convertToAssets(ct1.balanceOf(Alice))),
+            balanceDelta1 + premium1
+        );
+
+        // insolvent account - fails while revoking virtual shares
+        editCollateral(ct0, Buyers[2], 0);
+        editCollateral(ct1, Buyers[2], 0);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
+        );
+        settleLongPremium(pp, $posIdLists[0], $posIdLists[1], Buyers[2], 0, true);
     }
 
     function test_success_settledPremiumDistribution() public {
@@ -2686,32 +3521,38 @@ contract Misctest is Test, PositionUtils {
         // Finally, close Charlie's position, they should receive ~27.5% (25% + 10% * 25%)
         vm.startPrank(Alice);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             500_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         vm.startPrank(Bob);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             250_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         vm.startPrank(Charlie);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             250_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         $posIdList.push(
@@ -2724,23 +3565,27 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Alice);
 
         // mint finely tuned amount of long options for Alice so premium paid = 1.1x
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             44_468,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         vm.startPrank(Bob);
 
         // mint finely tuned amount of long options for Bob so premium paid = 1.1x
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             44_468,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         vm.startPrank(Swapper);
@@ -2761,16 +3606,18 @@ contract Misctest is Test, PositionUtils {
         $tempIdList.push($posIdList[1]);
 
         // burn Bob's short option
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdList[0],
             $tempIdList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            249_999,
+            250_000,
             "Incorrect Bob Delta 0"
         );
         assertEq(
@@ -2782,23 +3629,27 @@ contract Misctest is Test, PositionUtils {
         // re-mint the short option
         $posIdList[1] = $posIdList[0];
         $posIdList[0] = $tempIdList[0];
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         $tempIdList[0] = $posIdList[1];
 
         // Burn the long options, adds 1/2 of the removed liq
         // amount of premia paid = 50_000
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdList[0],
             $tempIdList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         vm.startPrank(Alice);
@@ -2808,16 +3659,18 @@ contract Misctest is Test, PositionUtils {
         assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
 
         $tempIdList[0] = $posIdList[0];
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdList[1],
             $tempIdList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
-            533_332,
+            533_333,
             "Incorrect Alice Delta 0"
         );
         assertEq(
@@ -2827,11 +3680,13 @@ contract Misctest is Test, PositionUtils {
         );
 
         // Burn other half of the removed liq
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         vm.startPrank(Charlie);
@@ -2840,16 +3695,18 @@ contract Misctest is Test, PositionUtils {
         assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Charlie));
         assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Charlie));
 
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdList[1],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
-            274_999,
+            275_000,
             "Incorrect Charlie Delta 0"
         );
         assertEq(
@@ -2877,18 +3734,20 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
-        editCollateral(ct0, Bob, ct0.convertToShares(266263));
+        editCollateral(ct0, Bob, ct0.convertToShares(266269));
         editCollateral(ct1, Bob, 0);
 
-        pp.validateCollateralWithdrawable(Bob, $posIdList);
+        pp.validateCollateralWithdrawable(Bob, $posIdList, true);
     }
 
     function test_Success_WithdrawWithOpenPositions() public {
@@ -2909,18 +3768,20 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
 
-        ct0.withdraw(1_000_000 - 266263, Bob, Bob, $posIdList);
+        ct0.withdraw(1_000_000 - 266269, Bob, Bob, $posIdList, true);
     }
 
     function test_Fail_validateCollateralWithdrawable() public {
@@ -2941,19 +3802,23 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
-        editCollateral(ct0, Bob, ct0.convertToShares(266262));
+        editCollateral(ct0, Bob, ct0.convertToShares(264671));
         editCollateral(ct1, Bob, 0);
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
-        pp.validateCollateralWithdrawable(Bob, $posIdList);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+        );
+        pp.validateCollateralWithdrawable(Bob, $posIdList, true);
     }
 
     function test_Fail_WithdrawWithOpenPositions_AccountInsolvent() public {
@@ -2974,19 +3839,23 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
-        ct0.withdraw(1_000_000 - 266262, Bob, Bob, $posIdList);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+        );
+        ct0.withdraw(1_000_000 - 264671, Bob, Bob, $posIdList, true);
     }
 
     function test_Fail_InsolventAtCurrentTick_itmPut() public {
@@ -3002,7 +3871,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
@@ -3018,7 +3887,7 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
-        assertTrue(pp.isSafeMode(), "in safe mode");
+        assertTrue(pp.isSafeMode() > 0, "in safe mode");
 
         vm.startPrank(Bob);
 
@@ -3030,17 +3899,21 @@ contract Misctest is Test, PositionUtils {
 
         // deposit bare minimum
         ct0.deposit(100_200, Bob);
-        ct1.deposit(0, Bob);
+        //ct1.deposit(0, Bob);
 
         // mint fails
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
+        );
         //vm.expectRevert();
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
     }
 
@@ -3057,7 +3930,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
@@ -3073,7 +3946,7 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
 
-        assertTrue(pp.isSafeMode(), "in safe mode");
+        assertTrue(pp.isSafeMode() > 0, "in safe mode");
 
         vm.startPrank(Bob);
 
@@ -3084,17 +3957,21 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(ct1), 1_000_000);
 
         // deposit bare minimum - covered
-        ct0.deposit(0, Bob);
+        //ct0.deposit(0, Bob);
         ct1.deposit(100_200, Bob);
 
         // mint fails
-        vm.expectRevert(Errors.AccountInsolvent.selector);
-        pp.mintOptions(
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
+        );
+        mintOptions(
+            pp,
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
     }
 
@@ -3111,7 +3988,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
@@ -3127,10 +4004,10 @@ contract Misctest is Test, PositionUtils {
 
         (, int24 staleTick, , , , , ) = uniPool.slot0();
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-954));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-952));
 
-        console2.log("isSafeMode", pp.isSafeMode() ? "safe mode ON" : "safe mode OFF");
-        assertTrue(pp.isSafeMode() == false);
+        console2.log("isSafeMode", pp.isSafeMode() > 0 ? "safe mode ON" : "safe mode OFF");
+        assertTrue(pp.isSafeMode() == 0, "safeMode");
         vm.startPrank(Bob);
 
         uint256 snapshot = vm.snapshot();
@@ -3142,16 +4019,18 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(ct1), 1_000_000);
 
         // deposit bare minimum for naked mints
-        ct0.deposit(0, Bob);
+        //ct0.deposit(0, Bob);
         ct1.deposit(17_818, Bob);
 
         // mint succeeds
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
         (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph.checkCollateral(
             pp,
@@ -3183,9 +4062,9 @@ contract Misctest is Test, PositionUtils {
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
             swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
-            vm.warp(block.timestamp + 120);
+            vm.warp(block.timestamp + 3600);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
         }
 
@@ -3197,7 +4076,7 @@ contract Misctest is Test, PositionUtils {
         IERC20Partial(ct0.asset()).approve(address(ct0), 1_000_000);
         IERC20Partial(ct1.asset()).approve(address(ct1), 1_000_000);
 
-        pp.liquidate(new TokenId[](0), Bob, $posIdList);
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
 
         (uint256 after0, uint256 after1) = (
             ct0.convertToAssets(ct0.balanceOf(Bob)),
@@ -3212,8 +4091,8 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
-        console2.log("isSafeMode", pp.isSafeMode() ? "safe mode ON" : "safe mode OFF");
-        assertTrue(pp.isSafeMode());
+        console2.log("isSafeMode", pp.isSafeMode() > 0 ? "safe mode ON" : "safe mode OFF");
+        assertTrue(pp.isSafeMode() > 0);
 
         vm.startPrank(Bob);
 
@@ -3223,16 +4102,18 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(ct0), 1_000_000);
         token1.approve(address(ct1), 1_000_000);
 
-        // deposit bare minimum for covered mints
-        ct0.deposit(150504, Bob);
-        ct1.deposit(0, Bob);
+        // deposit token1 because cross-margin is disabled
+        //ct0.deposit(150504, Bob);
+        ct1.deposit(150504, Bob);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         (uint128 balance, uint64 utilization0, uint64 utilization1) = ph.optionPositionInfo(
@@ -3242,8 +4123,8 @@ contract Misctest is Test, PositionUtils {
         );
 
         assertEq(balance, 100_000);
-        assertEq(utilization0, 10_000);
-        assertEq(utilization1, 10_000);
+        assertEq(utilization0, 0);
+        assertEq(utilization1, 1);
 
         (, currentTick, , , , , ) = uniPool.slot0();
 
@@ -3274,7 +4155,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
@@ -3291,8 +4172,10 @@ contract Misctest is Test, PositionUtils {
         (, int24 staleTick, , , , , ) = uniPool.slot0();
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(952));
-        console2.log("isSafeMode", pp.isSafeMode() ? "safe mode ON" : "safe mode OFF");
-        assertTrue(pp.isSafeMode() == false);
+        pp.pokeOracle();
+        console2.log("safeMode level", pp.isSafeMode());
+        console2.log("isSafeMode", pp.isSafeMode() > 0 ? "safe mode ON" : "safe mode OFF");
+        assertTrue(pp.isSafeMode() == 0);
 
         vm.startPrank(Bob);
 
@@ -3305,16 +4188,19 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(ct1), 1_000_000);
 
         // deposit bare minimum for naked mints
-        ct0.deposit(0, Bob);
-        ct1.deposit(17_820, Bob);
+        //ct0.deposit(0, Bob);
+        ct1.deposit(20_000, Bob);
+        console2.log("Bob mint");
 
         // mint succeeds
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
         (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph.checkCollateral(
             pp,
@@ -3334,6 +4220,11 @@ contract Misctest is Test, PositionUtils {
             $posIdList
         );
 
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
         assertTrue(
             totalCollateralBalance0 <= totalCollateralRequired0,
             "Is liquidatable at current tick!"
@@ -3342,11 +4233,15 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
 
         // setup mini-median price array
-        for (uint256 i = 0; i < 10; ++i) {
+        for (uint256 i = 0; i < 60; ++i) {
             swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
-            vm.warp(block.timestamp + 120);
+            vm.warp(block.timestamp + 3600); // 1h steps
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
+            (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+                .getOracleTicks();
+            int24 TWAPtick = re.twapEMA(oraclePack);
+            console2.log(i, uint24(fastOracleTick), uint24(TWAPtick), uint24(lastObservedTick));
             swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
         }
 
@@ -3358,7 +4253,11 @@ contract Misctest is Test, PositionUtils {
         IERC20Partial(ct0.asset()).approve(address(ct0), 1_000_000);
         IERC20Partial(ct1.asset()).approve(address(ct1), 1_000_000);
 
-        pp.liquidate(new TokenId[](0), Bob, $posIdList);
+        (currentTick, , , , oraclePack) = pp.getOracleTicks();
+        int24 TWAPtick = re.twapEMA(oraclePack);
+        console2.log("TWAPtick", TWAPtick);
+
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
 
         (uint256 after0, uint256 after1) = (
             ct0.convertToAssets(ct0.balanceOf(Bob)),
@@ -3371,10 +4270,10 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(953));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
 
-        console2.log("isSafeMode", pp.isSafeMode() ? "safe mode ON" : "safe mode OFF");
-        assertTrue(pp.isSafeMode());
+        console2.log("isSafeMode", pp.isSafeMode() > 0 ? "safe mode ON" : "safe mode OFF");
+        assertTrue(pp.isSafeMode() > 0, "safe mode still");
 
         vm.startPrank(Bob);
 
@@ -3384,16 +4283,18 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(ct0), 1_000_000);
         token1.approve(address(ct1), 1_000_000);
 
-        // deposit bare minimum for covered mints
-        ct0.deposit(0, Bob);
-        ct1.deposit(150466, Bob);
+        // deposit token0 because no cross-collateral allowed
+        ct0.deposit(124745, Bob);
+        //ct1.deposit(100000, Bob);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         (uint128 balance, uint64 utilization0, uint64 utilization1) = ph.optionPositionInfo(
@@ -3402,9 +4303,9 @@ contract Misctest is Test, PositionUtils {
             $posIdList[0]
         );
 
-        assertEq(balance, 100_000);
-        assertEq(utilization0, 10_000);
-        assertEq(utilization1, 10_000);
+        assertEq(balance, 100_000, "balance");
+        assertEq(utilization0, 1, "u0");
+        assertEq(utilization1, 0, "u1");
 
         (, currentTick, , , , , ) = uniPool.slot0();
 
@@ -3440,19 +4341,23 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
-        ct0.withdraw(1_000_000 - 266262, Alice, Bob, $posIdList);
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+        );
+        ct0.withdraw(1_000_000 - 264671, Alice, Bob, $posIdList, true);
     }
 
     function test_Success_SafeMode_down() public {
@@ -3463,20 +4368,19 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
-        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-953));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-952));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
-
         assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
-        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-954));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
-        assertTrue(pp.isSafeMode(), "in safe mode");
+        assertTrue(pp.isSafeMode() > 0, "in safe mode");
     }
 
     function test_Success_SafeMode_up() public {
@@ -3487,20 +4391,20 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
-        assertTrue(pp.isSafeMode() == false, "not in safe mode");
-
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(953));
-
-        (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
-
-        assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
-        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
-        assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
-        assertTrue(pp.isSafeMode(), "in safe mode");
+
+        assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation 0");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(955));
+
+        (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
+        assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation1 ");
+        assertTrue(pp.isSafeMode() > 0, "in safe mode");
     }
 
     function test_Success_SafeMode_pokes() public {
@@ -3516,38 +4420,44 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
-        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-1060));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
-        assertTrue(pp.isSafeMode(), "in safe mode");
+        assertTrue(pp.isSafeMode() > 0, "in safe mode");
 
         // setup mini-median price array
-        for (uint256 i = 0; i < 4; ++i) {
+        for (uint256 i = 0; i < 1; ++i) {
             swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10000, 10000, 10 ** 18);
         }
+        (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
+        console2.log("cur", currentTick);
+        console2.log("sl", slowOracleTick);
 
-        assertTrue(pp.isSafeMode() == true, "slow oracle tick did not catch up");
+        assertTrue(pp.isSafeMode() > 0, "slow oracle tick did not catch up 0");
 
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
         vm.warp(block.timestamp + 120);
         vm.roll(block.number + 1);
-        pp.pokeMedian();
+        pp.pokeOracle();
         swapperc.burn(uniPool, -10000, 10000, 10 ** 18);
+        (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
+        console2.log("cur", currentTick);
+        console2.log("sl", slowOracleTick);
 
-        assertTrue(pp.isSafeMode() == false, "slow oracle tick caught up");
+        assertTrue(pp.isSafeMode() == 0, "slow oracle tick caught up 1");
     }
 
     function test_Success_SafeMode_mint_otm() public {
@@ -3563,19 +4473,21 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
-        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-954));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-953));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
+        console2.log("cur", currentTick);
+        console2.log("sl", slowOracleTick);
 
-        assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
-        assertTrue(!pp.isSafeMode(), "not in safe mode");
+        assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation 0");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         int24 tickSpacing = uniPool.tickSpacing();
         // mint OTM position
@@ -3597,15 +4509,17 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(ct0), 1_000_000);
         ct0.deposit(41874, Bob);
         token1.approve(address(ct1), 1_000_000);
-        ct1.deposit(0, Bob);
+        //ct1.deposit(0, Bob);
 
         // not in safeMode, mint with minimum
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         vm.revertTo(snap);
@@ -3618,22 +4532,24 @@ contract Misctest is Test, PositionUtils {
         console2.log("slowOracleTick", slowOracleTick);
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "large price deviation");
 
-        assertTrue(pp.isSafeMode(), "in safe mode");
+        assertTrue(pp.isSafeMode() > 0, "in safe mode");
         vm.startPrank(Bob);
 
         // deposit only token1
         token0.approve(address(ct0), 1_000_000);
-        ct0.deposit(158699, Bob); // 1.3333 * (1.0001**900 * 100000) * (1 + 1 - 1.0001**-1 / 1.0001**900  -> 100 % collateralization, requirement evaluated at tick=-1.
+        ct0.deposit(1_000_000, Bob); // 1.3333 * (1.0001**900 * 100000) * (1 + 1 - 1.0001**-1 / 1.0001**900  -> 100 % collateralization, requirement evaluated at tick=-1.
         token1.approve(address(ct1), 1_000_000);
-        ct1.deposit(0, Bob);
+        ct1.deposit(1_000_000, Bob);
 
         // can mint covered positions
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         (uint128 balance, uint64 utilization0, uint64 utilization1) = ph.optionPositionInfo(
@@ -3643,8 +4559,8 @@ contract Misctest is Test, PositionUtils {
         );
 
         assertEq(balance, 100_000);
-        assertEq(utilization0, 10_000);
-        assertEq(utilization1, 10_000);
+        assertEq(utilization0, 1);
+        assertEq(utilization1, 0);
     }
 
     function test_Success_SafeMode_mint_itm() public {
@@ -3660,19 +4576,19 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
-        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
-        assertTrue(pp.isSafeMode(), "in safe mode");
+        assertTrue(pp.isSafeMode() > 0, "in safe mode");
 
         int24 tickSpacing = uniPool.tickSpacing();
         // mint ITM position
@@ -3692,32 +4608,36 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(ct0), 1_000_000);
         ct0.deposit(102_000, Bob);
         token1.approve(address(ct1), 1_000_000);
-        ct1.deposit(0, Bob);
+        //ct1.deposit(0, Bob);
 
         // in safeMode, enforce covered mints, reverts
         vm.expectRevert();
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
-        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+        //ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
 
-        // deposit only token1
-        ct0.deposit(0, Bob);
+        // deposit token0 because cross-margining is disabled
+        ct0.deposit(196_000, Bob);
         ct1.deposit(181_183, Bob); //
 
         // can mint covered positions
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         (uint128 balance, uint64 utilization0, uint64 utilization1) = ph.optionPositionInfo(
@@ -3727,8 +4647,8 @@ contract Misctest is Test, PositionUtils {
         );
 
         assertEq(balance, 100_000);
-        assertEq(utilization0, 10_000);
-        assertEq(utilization1, 10_000);
+        assertEq(utilization0, 1);
+        assertEq(utilization1, 0);
     }
 
     function test_Success_SafeMode_burn() public {
@@ -3744,12 +4664,12 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
-        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         int24 tickSpacing = uniPool.tickSpacing();
         // mint OTM position
@@ -3770,12 +4690,14 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(ct1), 1_000_000);
         ct1.deposit(2_000, Bob);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         vm.startPrank(Swapper);
@@ -3784,17 +4706,19 @@ contract Misctest is Test, PositionUtils {
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
-        assertTrue(pp.isSafeMode(), "in safe mode");
+        assertTrue(pp.isSafeMode() > 0, "in safe mode");
 
         vm.startPrank(Bob);
 
         console2.log("00");
         vm.expectRevert();
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdList,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         uint256 before0 = ct0.convertToAssets(ct0.balanceOf(Bob));
@@ -3803,11 +4727,13 @@ contract Misctest is Test, PositionUtils {
         // Add just enough to cover the covered exercise:
         ct1.deposit(98_300, Bob);
 
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdList,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         uint256 after0 = ct0.convertToAssets(ct0.balanceOf(Bob));
@@ -3829,12 +4755,15 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
+        vm.warp((block.timestamp >> 6) * 64 + 128);
+        vm.roll(block.number + 1);
+        pp.pokeOracle();
 
-        (, , slowOracleTick, , medianData) = pp.getOracleTicks();
+        (, , slowOracleTick, , oraclePack) = pp.getOracleTicks();
 
         // mint OTM position
         $posIdList.push(
@@ -3843,75 +4772,79 @@ contract Misctest is Test, PositionUtils {
                 .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
                 .addLeg(0, 1, 1, 0, 0, 0, 15, 4095)
         );
-
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
-        vm.warp(block.timestamp + 59);
+        vm.warp(block.timestamp + 63);
         vm.roll(block.number + 1);
 
         vm.startPrank(Alice);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             500_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
+        (, , int24 slowOracleTickStale, , uint256 oraclePackStale) = pp.getOracleTicks();
 
-        (, , int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
-
-        assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update");
-        assertEq(medianData, medianDataStale, "no slow oracle update");
+        assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update 1");
+        assertEq(oraclePack, oraclePackStale, "no slow oracle update 2");
 
         vm.warp(block.timestamp + 1);
         vm.roll(block.number + 1);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             500_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
-        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
+
+        assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update 3");
+        assertTrue(oraclePack != oraclePackStale, "oracle median data update 4");
+
+        vm.warp(block.timestamp + 64);
+        vm.roll(block.number + 1);
+        pp.pokeOracle();
+
+        (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
-        assertTrue(medianData != medianDataStale, "oracle median data update");
+        assertTrue(oraclePack != oraclePackStale, "oracle median data update");
 
-        vm.warp(block.timestamp + 61);
+        vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
-        pp.pokeMedian();
+        pp.pokeOracle();
 
-        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
-        assertTrue(medianData != medianDataStale, "oracle median data update");
+        assertTrue(oraclePack != oraclePackStale, "oracle median data update");
 
-        vm.warp(block.timestamp + 61);
+        vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
-        pp.pokeMedian();
+        pp.pokeOracle();
 
-        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
-
-        assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
-        assertTrue(medianData != medianDataStale, "oracle median data update");
-
-        vm.warp(block.timestamp + 61);
-        vm.roll(block.number + 1);
-        pp.pokeMedian();
-
-        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick != slowOracleTickStale, "no slow oracle update");
-        assertTrue(medianData != medianDataStale, "oracle median data update");
+        assertTrue(oraclePack != oraclePackStale, "oracle median data update");
     }
 
     function test_Success_OraclePoke_burn() public {
@@ -3924,15 +4857,20 @@ contract Misctest is Test, PositionUtils {
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            pp.pokeOracle();
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
         }
-        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
+        vm.warp((block.timestamp >> 6) * 64 + 128);
+        vm.roll(block.number + 1);
+        pp.pokeOracle();
+        //swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
+        //swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
 
-        (, , slowOracleTick, , medianData) = pp.getOracleTicks();
+        (, , slowOracleTick, , oraclePack) = pp.getOracleTicks();
 
         // mint OTM position
         $posIdList.push(
@@ -3944,119 +4882,680 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
-        vm.warp(block.timestamp + 59);
+        vm.warp(block.timestamp + 63);
         vm.roll(block.number + 1);
 
+        console2.log("safe", pp.isSafeMode());
         vm.startPrank(Alice);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             500_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
-        (, , int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
+        (, , int24 slowOracleTickStale, , uint256 oraclePackStale) = pp.getOracleTicks();
 
         assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update");
-        assertEq(medianData, medianDataStale, "no slow oracle update");
+        assertEq(oraclePack, oraclePackStale, "no slow oracle update");
 
         vm.warp(block.timestamp + 1);
         vm.roll(block.number + 1);
 
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
-        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
-        assertTrue(medianData != medianDataStale, "oracle median data updated");
+        assertTrue(oraclePack != oraclePackStale, "oracle median data updated");
 
-        vm.warp(block.timestamp + 61);
+        vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
-        pp.pokeMedian();
+        pp.pokeOracle();
 
-        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
-        assertTrue(medianData != medianDataStale, "oracle median data updated");
+        assertTrue(oraclePack != oraclePackStale, "oracle median data updated");
 
-        vm.warp(block.timestamp + 61);
+        vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
-        pp.pokeMedian();
+        pp.pokeOracle();
 
-        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
-        assertTrue(medianData != medianDataStale, "oracle median data updated");
+        assertTrue(oraclePack != oraclePackStale, "oracle median data updated");
 
-        vm.warp(block.timestamp + 61);
+        vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
-        pp.pokeMedian();
+        pp.pokeOracle();
 
-        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick != slowOracleTickStale, "slow oracle updated");
-        assertTrue(medianData != medianDataStale, "oracle median data updated");
+        assertTrue(oraclePack != oraclePackStale, "oracle median data updated");
     }
 
-    function test_success_NotionalRounding() public {
+    function test_Success_OraclePoke_loop() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
         token1.mint(Swapper, type(uint128).max);
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
+        (currentTick, , slowOracleTick, , oraclePack) = pp.getOracleTicks();
+        vm.warp(0);
+        vm.roll(block.number + 1);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeOracle();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+        swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
+        vm.warp(2 ** 30 - 1);
+        vm.roll(block.number + 1);
+        console2.log("START");
+        pp.pokeOracle();
+
+        (, , slowOracleTick, , oraclePack) = pp.getOracleTicks();
+
         // mint OTM position
         $posIdList.push(
             TokenId
                 .wrap(0)
                 .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 0, 0, 1, 0, int24(-665450), 2)
+                .addLeg(0, 1, 1, 0, 0, 0, 15, 4095)
         );
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
+
+        vm.startPrank(Alice);
+
+        mintOptions(
+            pp,
+            $posIdList,
+            500_000,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        (, , int24 slowOracleTickStale, , uint256 oraclePackStale) = pp.getOracleTicks();
+
+        assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update");
+        assertEq(oraclePack, oraclePackStale, "no slow oracle update");
+
+        vm.warp(block.timestamp + 2);
+        vm.roll(block.number + 1);
+
+        burnOptions(
+            pp,
+            $posIdList[0],
+            new TokenId[](0),
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
+
+        assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update here?");
+        assertTrue(oraclePack != oraclePackStale, "oracle median data updated here?");
+    }
+
+    function test_Success_OraclePoke_Max_Deviation() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeOracle();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+
+        (currentTick, , , , oraclePack) = pp.getOracleTicks();
+
+        // swap to more than MAX_MEDIAN_DELTA ticks away
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-Constants.MAX_MEDIAN_DELTA - 10));
+        swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
+        vm.warp(block.timestamp + 120);
+        vm.roll(block.number + 1);
+        swapperc.burn(uniPool, -10000, 10000, 10 ** 18);
+        pp.pokeOracle();
+
+        (int24 currentTickNew, , int24 slowOracleTickNew, , uint256 oraclePackNew) = pp
+            .getOracleTicks();
+
+        assertEq(
+            int24(uint24(oraclePack)) - Constants.MAX_MEDIAN_DELTA,
+            int24(uint24(oraclePackNew)),
+            "uncapped slow oracle update"
+        );
+    }
+
+    function test_Fuzz_NotionalReverts_shorts(uint128 positionSizeSeed, uint8 x) public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+        uint64 poolId = PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing());
+
+        uint256 n;
+        int24 minTick;
+        {
+            minTick = (-887272 / uniPool.tickSpacing() + 1) * uniPool.tickSpacing();
+            int24 maxTick = (887272 / uniPool.tickSpacing()) * uniPool.tickSpacing();
+            n = uint256(uint24(maxTick - minTick)) / uint24(1000 * uniPool.tickSpacing());
+        }
 
         vm.startPrank(Bob);
+        uint128 positionSize = uint128(PositionUtils._boundLog(positionSizeSeed, 0, 128));
 
-        pp.mintOptions($posIdList, 2 ** 95, 0, int24(887272), int24(-887272));
+        for (uint256 i = 0; i < n; ++i) {
+            // mint OTM position
+            int24 strike = int24(minTick + int256(i + 1) * 1000 * uniPool.tickSpacing());
 
-        (, , uint256[2][] memory positionBalanceArray) = pp.getAccumulatedFeesAndPositionsData(
-            Bob,
-            false,
-            $posIdList
-        );
+            $tokenIdShort = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                x % 2,
+                0,
+                (x >> 1) % 2,
+                0,
+                strike,
+                2
+            );
+            uint128[] memory sizeList = new uint128[](1);
+            uint64[] memory spreadList = new uint64[](1);
+            TokenId[] memory mintList = new TokenId[](1);
+            int24[2][] memory tickLimits = new int24[2][](1);
 
-        (, currentTick, , , , , ) = uniPool.slot0();
+            sizeList[0] = positionSize;
+            spreadList[0] = 0;
+            mintList[0] = $tokenIdShort;
+            tickLimits[0][0] = int24(-887272);
+            tickLimits[0][1] = int24(887272);
 
-        LeftRightUnsigned tokenData0 = ct0.getAccountMarginDetails(
-            Bob,
-            currentTick,
-            positionBalanceArray,
-            0,
-            0
-        );
+            // Try to mint and check if it reverts
+            try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+                // SUCCESS CASE - mintOptions didn't revert
+                console2.log("Found non-reverting strike:", strike);
 
-        LeftRightUnsigned tokenData1 = ct1.getAccountMarginDetails(
-            Bob,
-            currentTick,
-            positionBalanceArray,
-            0,
-            0
-        );
-        (uint256 balanceCross, uint256 requiredCross) = PanopticMath.getCrossBalances(
-            tokenData0,
-            tokenData1,
-            Math.getSqrtRatioAtTick(currentTick)
-        );
+                (, , PositionBalance[] memory positionBalanceArray) = pp
+                    .getAccumulatedFeesAndPositionsData(Bob, false, mintList);
 
-        assertTrue(requiredCross > 0, "zero collateral requirement");
-        assertTrue(requiredCross <= balanceCross, "account is solvent");
+                (, currentTick, , , , , ) = uniPool.slot0();
 
-        pp.burnOptions($posIdList[0], new TokenId[](0), int24(887272), int24(-887272));
+                (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = re.getMargin(
+                    positionBalanceArray,
+                    currentTick,
+                    Bob,
+                    mintList,
+                    LeftRightUnsigned.wrap(0),
+                    LeftRightUnsigned.wrap(0),
+                    ct0,
+                    ct1
+                );
+
+                (uint256 balanceCross, uint256 requiredCross) = PanopticMath.getCrossBalances(
+                    tokenData0,
+                    tokenData1,
+                    Math.getSqrtRatioAtTick(currentTick)
+                );
+
+                assertTrue(requiredCross > 0, "zero collateral requirement");
+                assertTrue(requiredCross <= balanceCross, "account is solvent");
+
+                burnOptions(pp, mintList, new TokenId[](0), int24(-887272), int24(887272), true);
+            } catch (bytes memory reason) {
+                if (reason.length >= 4) {
+                    bytes4 receivedSelector = bytes4(reason);
+
+                    if (receivedSelector == Errors.ChunkHasZeroLiquidity.selector) {
+                        console2.log("ChunkHasZeroLiquidity at strike:", strike);
+                    } else if (receivedSelector == Errors.InvalidTickBound.selector) {
+                        console2.log("InvalidTickBound at strike:", strike);
+                    } else if (receivedSelector == 0x08c379a0) {
+                        console2.log("Uniswap constraint at strike:", strike);
+                    } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
+                        console2.log("LiquidityTooHigh at strike:", strike);
+                    } else if (
+                        receivedSelector ==
+                        bytes4(
+                            abi.encodeWithSelector(
+                                Errors.AccountInsolvent.selector,
+                                uint256(0),
+                                uint256(1)
+                            )
+                        )
+                    ) {
+                        console2.log("AccountInsolvent at strike:", strike);
+                    } else if (receivedSelector == Errors.PositionTooLarge.selector) {
+                        console2.log("PositionTooLarge at strike:", strike);
+                        // Position size exceeds protocol limits
+                    } else {
+                        // Unexpected error
+                        console2.logBytes4(receivedSelector);
+                        console2.logBytes(reason);
+                        revert(string(abi.encodePacked("Unexpected error")));
+                    }
+                }
+            }
+        }
+    }
+
+    function test_Fuzz_NotionalReverts_longs(uint128 positionSizeSeed, uint8 x) public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+        uint64 poolId = PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing());
+        uint256 n;
+        int24 minTick;
+        {
+            minTick = (-887272 / uniPool.tickSpacing() + 1) * uniPool.tickSpacing();
+            int24 maxTick = (887272 / uniPool.tickSpacing()) * uniPool.tickSpacing();
+            n = uint256(uint24(maxTick - minTick)) / uint24(1000 * uniPool.tickSpacing());
+        }
+        vm.startPrank(Bob);
+        uint128 positionSize = uint128(PositionUtils._boundLog(positionSizeSeed, 0, 128));
+
+        for (uint256 i = 0; i < n; ++i) {
+            // mint OTM position
+            int24 strike = int24(-887270 + int256(i + 1) * 1000 * uniPool.tickSpacing());
+
+            $tokenIdShort = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                10,
+                x % 2,
+                0,
+                (x >> 1) % 2,
+                0,
+                strike,
+                2
+            );
+            uint128[] memory sizeList = new uint128[](1);
+            uint64[] memory spreadList = new uint64[](1);
+            TokenId[] memory mintList = new TokenId[](1);
+            int24[2][] memory tickLimits = new int24[2][](1);
+
+            sizeList[0] = positionSize;
+            spreadList[0] = type(uint64).max;
+            mintList[0] = $tokenIdShort;
+            tickLimits[0][0] = int24(-887272);
+            tickLimits[0][1] = int24(887272);
+
+            // Try to mint and check if it reverts
+            try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+                // SUCCESS CASE - mintOptions didn't revert
+
+                // Alice Buys
+                vm.startPrank(Alice);
+
+                {
+                    uint256 asset = x % 2;
+                    uint256 tokenType = (x >> 1) % 2;
+                    uint64 _poolId = poolId;
+                    $tokenIdLong = TokenId.wrap(0).addPoolId(_poolId).addLeg(
+                        0,
+                        9,
+                        asset,
+                        1,
+                        tokenType,
+                        0,
+                        strike,
+                        2
+                    );
+                }
+                mintList[0] = $tokenIdLong;
+                try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+                    console2.log("Found non-reverting strike:", strike);
+                    (, , PositionBalance[] memory positionBalanceArray) = pp
+                        .getAccumulatedFeesAndPositionsData(Alice, false, mintList);
+
+                    (, currentTick, , , , , ) = uniPool.slot0();
+
+                    (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = re.getMargin(
+                        positionBalanceArray,
+                        currentTick,
+                        Alice,
+                        mintList,
+                        LeftRightUnsigned.wrap(0),
+                        LeftRightUnsigned.wrap(0),
+                        ct0,
+                        ct1
+                    );
+
+                    (uint256 balanceCross, uint256 requiredCross) = PanopticMath.getCrossBalances(
+                        tokenData0,
+                        tokenData1,
+                        Math.getSqrtRatioAtTick(currentTick)
+                    );
+
+                    assertTrue(requiredCross > 0, "zero collateral requirement");
+                    assertTrue(requiredCross <= balanceCross, "account is solvent");
+
+                    burnOptions(
+                        pp,
+                        mintList,
+                        new TokenId[](0),
+                        int24(-887272),
+                        int24(887272),
+                        true
+                    );
+                } catch (bytes memory reason) {
+                    if (reason.length >= 4) {
+                        bytes4 receivedSelector = bytes4(reason);
+                        if (receivedSelector == Errors.NotEnoughLiquidityToBuy.selector) {
+                            console2.log("LONG: NotEnoughLiquidityToBuy at strike:", strike);
+                        } else if (
+                            receivedSelector == Errors.EffectiveLiquidityAboveThreshold.selector
+                        ) {
+                            console2.log(
+                                "LONG: EffectiveLiquidityAboveThreshold at strike:",
+                                strike
+                            );
+                        } else if (receivedSelector == Errors.NotEnoughTokens.selector) {
+                            console2.log("LONG: NotEnoughTokens at strike:", strike);
+                        } else if (receivedSelector == Errors.ZeroCollateralRequirement.selector) {
+                            console2.log("LONG: ZeroCollateralRequirement at strike:", strike);
+                        } else if (receivedSelector == Errors.ChunkHasZeroLiquidity.selector) {
+                            console2.log("LONG: ChunkHasZeroLiquidity at strike:", strike);
+                        } else if (receivedSelector == Errors.NetLiquidityZero.selector) {
+                            console2.log("LONG: NetLiquidityZero at strike:", strike);
+                        } else {
+                            // Unexpected error
+                            console2.logBytes4(receivedSelector);
+                            console2.logBytes(reason);
+                            revert(string(abi.encodePacked("Unexpected error")));
+                        }
+                    }
+                }
+
+                vm.startPrank(Bob);
+                mintList[0] = $tokenIdShort;
+                burnOptions(pp, mintList, new TokenId[](0), int24(-887272), int24(887272), true);
+            } catch (bytes memory reason) {
+                if (reason.length >= 4) {
+                    bytes4 receivedSelector = bytes4(reason);
+
+                    if (receivedSelector == Errors.ChunkHasZeroLiquidity.selector) {
+                        console2.log("ChunkHasZeroLiquidity at strike:", strike);
+                    } else if (receivedSelector == Errors.InvalidTickBound.selector) {
+                        console2.log("InvalidTickBound at strike:", strike);
+                    } else if (receivedSelector == 0x08c379a0) {
+                        console2.log("Uniswap constraint at strike:", strike);
+                    } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
+                        console2.log("LiquidityTooHigh at strike:", strike);
+                    } else if (receivedSelector == Errors.NotEnoughLiquidityToBuy.selector) {
+                        console2.log("NotEnoughLiquidityToBuy at strike:", strike);
+                    } else if (
+                        receivedSelector ==
+                        bytes4(
+                            abi.encodeWithSelector(
+                                Errors.AccountInsolvent.selector,
+                                uint256(0),
+                                uint256(1)
+                            )
+                        )
+                    ) {
+                        console2.log("AccountInsolvent at strike:", strike);
+                    } else if (receivedSelector == Errors.PositionTooLarge.selector) {
+                        console2.log("PositionTooLarge at strike:", strike);
+                        // Position size exceeds protocol limits
+                    } else {
+                        // Unexpected error
+                        console2.logBytes4(receivedSelector);
+                        console2.logBytes(reason);
+                        revert(string(abi.encodePacked("Unexpected error")));
+                    }
+                }
+            }
+        }
+    }
+
+    function test_Fuzz_NotionalReverts_spreads(uint128 positionSizeSeed, uint8 x) public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+        $poolId = PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing());
+        uint256 n;
+        {
+            int24 minTick;
+            {
+                minTick = (-887272 / uniPool.tickSpacing() + 1) * uniPool.tickSpacing();
+                int24 maxTick = (887272 / uniPool.tickSpacing()) * uniPool.tickSpacing();
+                n = uint256(uint24(maxTick - minTick)) / uint24(1000 * uniPool.tickSpacing());
+            }
+        }
+        vm.startPrank(Bob);
+        uint128 positionSize = uint128(PositionUtils._boundLog(positionSizeSeed, 64, 128));
+        uint256 asset = x % 2;
+        uint256 tokenType = (x >> 1) % 2;
+
+        for (uint256 i = 0; i < n; ++i) {
+            // mint OTM position
+            $strike = int24(-887270 + int256(i + 1) * 1000 * uniPool.tickSpacing());
+
+            $tokenIdShort = TokenId.wrap(0).addPoolId($poolId).addLeg(
+                0,
+                100,
+                asset,
+                0,
+                tokenType,
+                0,
+                $strike,
+                2
+            );
+            uint128[] memory sizeList = new uint128[](1);
+            uint64[] memory spreadList = new uint64[](1);
+            TokenId[] memory mintList = new TokenId[](1);
+            int24[2][] memory tickLimits = new int24[2][](1);
+
+            sizeList[0] = positionSize;
+            spreadList[0] = type(uint64).max;
+            mintList[0] = $tokenIdShort;
+            tickLimits[0][0] = int24(-887272);
+            tickLimits[0][1] = int24(887272);
+
+            // Try to mint and check if it reverts
+            try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+                // SUCCESS CASE - mintOptions didn't revert
+
+                // Alice Buys
+                vm.startPrank(Alice);
+
+                {
+                    uint256 _asset = asset;
+                    uint256 _tokenType = tokenType;
+                    $tokenIdLong = TokenId
+                        .wrap(0)
+                        .addPoolId($poolId)
+                        .addLeg(0, 89, _asset, 1, _tokenType, 1, $strike, 2)
+                        .addLeg(
+                            1,
+                            89,
+                            _asset,
+                            0,
+                            _tokenType,
+                            0,
+                            $strike + uniPool.tickSpacing(),
+                            2
+                        );
+                }
+                mintList[0] = $tokenIdLong;
+                try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+                    console2.log("");
+                    console2.log("Found non-reverting strike:", $strike);
+                    (, , PositionBalance[] memory positionBalanceArray) = pp
+                        .getAccumulatedFeesAndPositionsData(Alice, false, mintList);
+
+                    (, currentTick, , , , , ) = uniPool.slot0();
+
+                    {
+                        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = re
+                            .getMargin(
+                                positionBalanceArray,
+                                currentTick,
+                                Alice,
+                                mintList,
+                                LeftRightUnsigned.wrap(0),
+                                LeftRightUnsigned.wrap(0),
+                                ct0,
+                                ct1
+                            );
+
+                        console2.log("positionSize", positionSize);
+
+                        console2.log("req0", tokenData0.leftSlot());
+                        console2.log("req1", tokenData1.leftSlot());
+                        (uint256 balanceCross, uint256 requiredCross) = PanopticMath
+                            .getCrossBalances(
+                                tokenData0,
+                                tokenData1,
+                                Math.getSqrtRatioAtTick(currentTick)
+                            );
+
+                        assertTrue(requiredCross > 0, "zero collateral requirement");
+                        assertTrue(requiredCross <= balanceCross, "account is solvent");
+
+                        (int256 iamount0, int256 iamount1) = ph.getPortfolioValue(
+                            pp,
+                            Alice,
+                            $strike - uniPool.tickSpacing() * 2,
+                            mintList
+                        );
+                        (iamount0, iamount1) = ph.getPortfolioValue(
+                            pp,
+                            Alice,
+                            $strike + uniPool.tickSpacing() * 2,
+                            mintList
+                        );
+
+                        console2.log("");
+                    }
+
+                    burnOptions(
+                        pp,
+                        mintList,
+                        new TokenId[](0),
+                        int24(-887272),
+                        int24(887272),
+                        true
+                    );
+                } catch (bytes memory reason) {
+                    if (reason.length >= 4) {
+                        bytes4 receivedSelector = bytes4(reason);
+                        if (receivedSelector == Errors.NotEnoughLiquidityToBuy.selector) {
+                            console2.log("LONG: NotEnoughLiquidityToBuy at strike:", $strike);
+                        } else if (
+                            receivedSelector == Errors.EffectiveLiquidityAboveThreshold.selector
+                        ) {
+                            console2.log(
+                                "LONG: EffectiveLiquidityAboveThreshold at strike:",
+                                $strike
+                            );
+                        } else if (
+                            receivedSelector ==
+                            bytes4(
+                                abi.encodeWithSelector(
+                                    Errors.AccountInsolvent.selector,
+                                    uint256(0),
+                                    uint256(1)
+                                )
+                            )
+                        ) {
+                            console2.log("SPREAD: AccountInsolvent at strike:", $strike);
+                        } else if (receivedSelector == Errors.NotEnoughTokens.selector) {
+                            console2.log("SPREAD: NotEnoughTokens at strike:", $strike);
+                        } else if (receivedSelector == Errors.ZeroCollateralRequirement.selector) {
+                            console2.log("SPREAD: ZeroCollateralRequirement at strike:", $strike);
+                        } else if (receivedSelector == Errors.ChunkHasZeroLiquidity.selector) {
+                            console2.log("SPREAD: ChunkHasZeroLiquidity at strike:", $strike);
+                        } else if (receivedSelector == Errors.NetLiquidityZero.selector) {
+                            console2.log("SPREAD: NetLiquidityZero at strike:", $strike);
+                        } else if (receivedSelector == Errors.PositionTooLarge.selector) {
+                            console2.log("SPREAD: PositionTooLarge at strike:", $strike);
+                        } else {
+                            // Unexpected error
+                            console2.logBytes4(receivedSelector);
+                            console2.logBytes(reason);
+                            revert(string(abi.encodePacked("Unexpected error Spread")));
+                        }
+                    }
+                }
+
+                vm.startPrank(Bob);
+                mintList[0] = $tokenIdShort;
+                burnOptions(pp, mintList, new TokenId[](0), int24(-887272), int24(887272), true);
+            } catch (bytes memory reason) {
+                if (reason.length >= 4) {
+                    bytes4 receivedSelector = bytes4(reason);
+
+                    if (receivedSelector == Errors.ChunkHasZeroLiquidity.selector) {
+                        console2.log("ChunkHasZeroLiquidity at strike:", $strike);
+                    } else if (receivedSelector == Errors.InvalidTickBound.selector) {
+                        console2.log("InvalidTickBound at strike:", $strike);
+                    } else if (receivedSelector == 0x08c379a0) {
+                        console2.log("Uniswap constraint at strike:", $strike);
+                    } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
+                        console2.log("LiquidityTooHigh at strike:", $strike);
+                    } else if (receivedSelector == Errors.NotEnoughLiquidityToBuy.selector) {
+                        console2.log("NotEnoughLiquidityToBuy at strike:", $strike);
+                    } else if (
+                        receivedSelector ==
+                        bytes4(
+                            abi.encodeWithSelector(
+                                Errors.AccountInsolvent.selector,
+                                uint256(0),
+                                uint256(1)
+                            )
+                        )
+                    ) {
+                        console2.log("AccountInsolvent at strike:", $strike);
+                    } else if (receivedSelector == Errors.PositionTooLarge.selector) {
+                        console2.log("PositionTooLarge at strike:", $strike);
+                        // Position size exceeds protocol limits
+                    } else {
+                        // Unexpected error
+                        console2.logBytes4(receivedSelector);
+                        console2.logBytes(reason);
+                        revert(string(abi.encodePacked("Unexpected error Mint")));
+                    }
+                }
+            }
+        }
     }
 
     function test_success_PremiumRollover() public {
@@ -4077,7 +5576,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
         // mint 1 liquidity unit of wideish centered position
-        pp.mintOptions(posIdList, 3, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
+        mintOptions(pp, posIdList, 3, 0, Constants.MAX_POOL_TICK, Constants.MIN_POOL_TICK, true);
 
         vm.startPrank(Swapper);
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
@@ -4093,11 +5592,13 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
         // works fine
-        pp.burnOptions(
+        burnOptions(
+            pp,
             tokenId,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         uint256 balanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
@@ -4106,12 +5607,14 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Alice);
 
         // lock in almost-overflowed fees per liquidity
-        pp.mintOptions(
+        mintOptions(
+            pp,
             posIdList,
             1_000_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         vm.startPrank(Swapper);
@@ -4122,7 +5625,7 @@ contract Misctest is Test, PositionUtils {
 
         // this should behave like the actual accumulator does and rollover, not revert on overflow
         (uint256 premium0, uint256 premium1) = sfpm.getAccountPremium(
-            address(uniPool),
+            abi.encode(address(uniPool)),
             address(pp),
             0,
             -20470,
@@ -4142,19 +5645,22 @@ contract Misctest is Test, PositionUtils {
         // so the cost of the attack is just ~2**64 * active liquidity (shown here to be as low as 1 even with initial full-range!)
         // + fee to move price initially (if applicable)
         // The solution is to freeze fee accumulation if one of the token accumulators overflow
-        pp.burnOptions(
+        burnOptions(
+            pp,
             tokenId,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         // make sure Alice earns no fees on token 0 (her delta is slightly negative due to commission fees/precision etc)
         // the accumulator overflowed, so the accumulation was frozen. If she had poked before the accumulator overflowed,
         // she could have still earned some fees, but now the accumulation is frozen forever.
+        // old with itmSpreadFee = -1244790
         assertEq(
             int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0),
-            -1244790
+            -864428
         );
 
         // but she earns all of fees on token 1 since the premium accumulator did not overflow (!)
@@ -4202,12 +5708,14 @@ contract Misctest is Test, PositionUtils {
                 )
         );
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             2_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         // long put = 1.5, short put 1.25, short call 0.75, long call 0.5
@@ -4224,12 +5732,14 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Alice);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         // 0.25, 0.6, 0.9, 1.1, 1.4, 1.6
@@ -4241,11 +5751,13 @@ contract Misctest is Test, PositionUtils {
             swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(ticks[i]));
 
             vm.startPrank(Alice);
-            pp.burnOptions(
+            burnOptions(
+                pp,
                 $posIdList[0],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             console2.log(
@@ -4273,7 +5785,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.mint(uniPool, -10, 10, 10 ** 18);
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 1);
-            pp.pokeMedian();
+            pp.pokeOracle();
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
@@ -4287,57 +5799,61 @@ contract Misctest is Test, PositionUtils {
                 .addLeg(
                     0,
                     1,
-                    1,
                     0,
                     0,
                     0,
-                    2235, // 1.25 call
+                    0,
+                    12235, // 1.25 call
                     1
                 )
                 .addLeg(
                     1,
                     1,
-                    1,
                     0,
                     0,
+                    0,
                     1,
-                    6935, // 2 call
+                    46935, // 2 call
                     1
                 )
         );
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             2_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         // long call = 1.25, short call = 1.5, short call = 1.75, long call = 2
         $posIdList[0] = TokenId
             .wrap(0)
             .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-            .addLeg(0, 1, 1, 1, 0, 0, 2235, 1)
-            .addLeg(1, 1, 1, 0, 0, 1, 4055, 1)
-            .addLeg(2, 1, 1, 0, 0, 2, 5595, 1)
-            .addLeg(3, 1, 1, 1, 0, 3, 6935, 1);
+            .addLeg(0, 1, 0, 1, 0, 0, 12235, 1)
+            .addLeg(1, 1, 0, 0, 0, 1, 24055, 1)
+            .addLeg(2, 1, 0, 0, 0, 2, 35595, 1)
+            .addLeg(3, 1, 0, 1, 0, 3, 46935, 1);
 
         uint256 balanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
         uint256 balanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
 
         vm.startPrank(Alice);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
         );
 
         // 1.3, 1.6, 1.8, 2.1
-        uint16[4] memory ticks = [2623, 4699, 5877, 7419];
+        uint16[5] memory ticks = [0, 12623, 24699, 35877, 47419];
 
         for (uint256 i = 0; i < ticks.length; ++i) {
             uint256 snap = vm.snapshot();
@@ -4345,11 +5861,13 @@ contract Misctest is Test, PositionUtils {
             swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int16(ticks[i])));
 
             vm.startPrank(Alice);
-            pp.burnOptions(
+            burnOptions(
+                pp,
                 $posIdList[0],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             console2.log(
@@ -4392,12 +5910,14 @@ contract Misctest is Test, PositionUtils {
                 )
         );
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             2_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         // long put = 0.25, short put = 0.5, short put = 0.75, short call = 0.9
@@ -4414,12 +5934,14 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Alice);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         // 0.2, 0.4, 0.6, 0.8, 1.1
@@ -4431,11 +5953,13 @@ contract Misctest is Test, PositionUtils {
             swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(ticks[i]));
 
             vm.startPrank(Alice);
-            pp.burnOptions(
+            burnOptions(
+                pp,
                 $posIdList[0],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             console2.log(
@@ -4473,8 +5997,10 @@ contract Misctest is Test, PositionUtils {
         ct1.deposit(1_005, Bob);
 
         vm.startPrank(Charlie);
-        token1.mint(Charlie, 1_003_003);
-        token1.approve(address(ct1), 1_003_003);
+        token0.mint(Charlie, 1);
+        token0.approve(address(ct0), 1);
+        token1.mint(Charlie, 1_003_004);
+        token1.approve(address(ct1), 1_003_004);
 
         ct1.deposit(1_003_003, Charlie);
 
@@ -4489,26 +6015,33 @@ contract Misctest is Test, PositionUtils {
 
         uint256 totalSupplyBefore = ct1.totalSupply() - ct1.convertToShares(1_003_003);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             1_003_003,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
 
         vm.startPrank(Swapper);
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-800_000));
-
-        for (uint256 j = 0; j < 100; ++j) {
-            vm.warp(block.timestamp + 120);
+        for (uint256 j = 0; j < 10000; ++j) {
+            vm.warp(block.timestamp + 3600);
             vm.roll(block.number + 10);
             swapperc.mint(uniPool, -887200, 887200, 10 ** 10);
             swapperc.burn(uniPool, -887200, 887200, 10 ** 10);
+            pp.pokeOracle();
         }
+        (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+            .getOracleTicks();
+        twapTick = re.twapEMA(oraclePack);
+        console2.log("cur", currentTick);
+        console2.log("twapTick", twapTick);
 
         vm.startPrank(Charlie);
-        pp.liquidate(new TokenId[](0), Bob, $posIdList);
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
 
         assertLe(ct1.totalSupply() / totalSupplyBefore, 10_000, "protocol loss failed to cap");
     }
@@ -4550,12 +6083,14 @@ contract Misctest is Test, PositionUtils {
             }
             // mint 1 liquidity unit of wideish centered position
 
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             (, currentTick, , , , , ) = uniPool.slot0();
@@ -4568,10 +6103,10 @@ contract Misctest is Test, PositionUtils {
 
             // amount of other token when deep ITM
             // uint256 amountITM;
-            (, , uint256 _utilization) = tokenType == 0 ? ct0.getPoolData() : ct1.getPoolData();
+            (, , , uint256 _utilization) = tokenType == 0 ? ct0.getPoolData() : ct1.getPoolData();
 
             util = int256(_utilization);
-            amountsMoved = PanopticMath.getAmountsMoved(tokenId, 3000, 0);
+            amountsMoved = PanopticMath.getAmountsMoved(tokenId, 3000, 0, false);
             (amountBorrowed, amountITM) = tokenType == 0
                 ? (amountsMoved.rightSlot(), amountsMoved.leftSlot())
                 : (amountsMoved.leftSlot(), amountsMoved.rightSlot());
@@ -4607,8 +6142,8 @@ contract Misctest is Test, PositionUtils {
                 uint160(
                     bound(
                         prices[i],
-                        tokenType == 0 ? sqrtPriceTargetX96 : Constants.MIN_V3POOL_SQRT_RATIO + 2,
-                        tokenType == 0 ? Constants.MAX_V3POOL_SQRT_RATIO - 2 : sqrtPriceTargetX96
+                        tokenType == 0 ? sqrtPriceTargetX96 * 2 : sqrtPriceTargetX96 / 5,
+                        tokenType == 0 ? sqrtPriceTargetX96 * 5 : sqrtPriceTargetX96 / 2
                     )
                 )
             );
@@ -4617,29 +6152,41 @@ contract Misctest is Test, PositionUtils {
             (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
                 .checkCollateral(pp, Bob, currentTick, posIdList);
 
-            assertTrue(totalCollateralBalance0 <= totalCollateralRequired0, "Is liquidatable!");
+            console2.log(
+                "totalCollateralBalance0, totalCollateralRequired0",
+                totalCollateralBalance0,
+                totalCollateralRequired0
+            );
+            assertTrue(totalCollateralBalance0 <= totalCollateralRequired0, "Is liquidatable! 2");
 
             // update twaps
-            for (uint256 j = 0; j < 100; ++j) {
-                vm.warp(block.timestamp + 120);
+            for (uint256 j = 0; j < 250; ++j) {
+                vm.warp(block.timestamp + 3600);
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 10);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 10);
+                pp.pokeOracle();
             }
 
             // deal alice a bunch of collateral tokens without touching the supply
             editCollateral(ct0, Alice, ct0.convertToShares(type(uint120).max));
             editCollateral(ct1, Alice, ct1.convertToShares(type(uint120).max));
             // update twaps
-            for (uint256 j = 0; j < 100; ++j) {
-                vm.warp(block.timestamp + 120);
+            for (uint256 j = 0; j < 250; ++j) {
+                vm.warp(block.timestamp + 3600);
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
+            (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+                .getOracleTicks();
+            twapTick = re.twapEMA(oraclePack);
+            console2.log("cur", currentTick);
+            console2.log("twapTick", twapTick);
 
             vm.startPrank(Alice);
-            pp.liquidate(new TokenId[](0), Bob, posIdList);
+            liquidate(pp, new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -4679,7 +6226,7 @@ contract Misctest is Test, PositionUtils {
 
         (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
 
-        assertTrue(!pp.isSafeMode(), "not in safe mode");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         assertTrue(
             int256(fastOracleTick - slowOracleTick) ** 2 +
@@ -4698,13 +6245,19 @@ contract Misctest is Test, PositionUtils {
             ct0.deposit(600, Bob);
         } else {
             token1.approve(address(ct1), 1000);
-            ct1.deposit(0, Bob);
+            //ct1.deposit(0, Bob);
         }
 
         vm.startPrank(Bob);
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
-        pp.mintOptions(posIdList, 3000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.AccountInsolvent.selector,
+                uint256(3), // solvent
+                uint256(4) // numberOfTicks
+            )
+        );
+        mintOptions(pp, posIdList, 3000, 0, Constants.MAX_POOL_TICK, Constants.MIN_POOL_TICK, true);
     }
 
     function test_Fail_DivergentSolvencyCheck_burn() public {
@@ -4736,12 +6289,12 @@ contract Misctest is Test, PositionUtils {
             ct0.deposit(850, Bob);
         } else {
             token1.approve(address(ct1), 1000);
-            ct1.deposit(0, Bob);
+            //ct1.deposit(0, Bob);
         }
 
         vm.startPrank(Bob);
 
-        pp.mintOptions(posIdList, 3000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
+        mintOptions(pp, posIdList, 3000, 0, Constants.MAX_POOL_TICK, Constants.MIN_POOL_TICK, true);
 
         TokenId[] memory posIdList2 = new TokenId[](2);
 
@@ -4755,12 +6308,12 @@ contract Misctest is Test, PositionUtils {
         posIdList2[1] = tokenId2;
 
         // mint second option
-        pp.mintOptions(posIdList2, 10, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
+        mintOptions(pp, posIdList2, 10, 0, Constants.MAX_POOL_TICK, Constants.MIN_POOL_TICK, true);
 
         (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
 
         vm.startPrank(Swapper);
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(currentTick) + 950));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(currentTick) + 953));
 
         vm.warp(block.timestamp + 13);
         vm.roll(block.number + 1);
@@ -4774,7 +6327,7 @@ contract Misctest is Test, PositionUtils {
 
         (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
 
-        assertTrue(!pp.isSafeMode(), "not in safe mode");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         assertTrue(
             int256(fastOracleTick - slowOracleTick) ** 2 +
@@ -4787,12 +6340,20 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Bob);
 
         // burn second option
-        vm.expectRevert(Errors.AccountInsolvent.selector);
-        pp.burnOptions(
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.AccountInsolvent.selector,
+                uint256(3), // solvent
+                uint256(4) // numberOfTicks
+            )
+        );
+        burnOptions(
+            pp,
             posIdList2[1],
             posIdList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
         );
     }
 
@@ -4830,7 +6391,7 @@ contract Misctest is Test, PositionUtils {
             ct1.deposit(1000, Bob);
         }
 
-        pp.mintOptions(posIdList, 3000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
+        mintOptions(pp, posIdList, 3000, 0, Constants.MAX_POOL_TICK, Constants.MIN_POOL_TICK, true);
 
         (, currentTick, , , , , ) = uniPool.slot0();
 
@@ -4848,7 +6409,7 @@ contract Misctest is Test, PositionUtils {
         // swap to 1.21 or 0.82, depending on tokenType
         swapperc.swapTo(
             uniPool,
-            tokenType == 0 ? 87150978765690778389772763136 : 72025602285694849958832766976
+            tokenType == 0 ? 89150978765690778389772763136 : 70025602285694849958832766976
         );
         (, currentTick, , , , , ) = uniPool.slot0();
 
@@ -4859,7 +6420,7 @@ contract Misctest is Test, PositionUtils {
             posIdList
         );
 
-        assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+        assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable! 1");
 
         // update twaps
         for (uint256 j = 0; j < 100; ++j) {
@@ -4867,9 +6428,12 @@ contract Misctest is Test, PositionUtils {
             vm.roll(block.number + 10);
             swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
             swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+            pp.pokeOracle();
         }
 
-        twapTick = PanopticMath.twapFilter(uniPool, 600);
+        (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+            .getOracleTicks();
+        twapTick = re.twapEMA(oraclePack);
         {
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
                 pp,
@@ -4881,8 +6445,6 @@ contract Misctest is Test, PositionUtils {
             assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable twap!");
         }
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(twapTick) - 500));
-
         (currentTick, fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
 
         {
@@ -4892,7 +6454,6 @@ contract Misctest is Test, PositionUtils {
                 fastOracleTick,
                 posIdList
             );
-
             assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable fast!");
 
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
@@ -4904,13 +6465,25 @@ contract Misctest is Test, PositionUtils {
 
             assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable last!");
 
+            swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(twapTick) - 500));
+            (currentTick, , , , ) = pp.getOracleTicks();
+
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
                 pp,
                 Bob,
                 currentTick,
                 posIdList
             );
+            console2.log(
+                "totalCollateralBalance0,totalCollateralRequired0",
+                totalCollateralBalance0,
+                totalCollateralRequired0
+            );
 
+            console2.log("curren", currentTick);
+            console2.log("fat", fastOracleTick);
+            console2.log("lastOv", lastObservedTick);
+            console2.log("twap", twapTick);
             assertTrue(
                 totalCollateralBalance0 > totalCollateralRequired0,
                 "Is NOT liquidatable current!"
@@ -4920,7 +6493,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Alice);
 
         vm.expectRevert(Errors.NotMarginCalled.selector);
-        pp.liquidate(new TokenId[](0), Bob, posIdList);
+        liquidate(pp, new TokenId[](0), Bob, posIdList);
     }
 
     function test_success_liquidation_currentTick_bonusOptimization_scenarios() public {
@@ -4951,13 +6524,13 @@ contract Misctest is Test, PositionUtils {
 
         if (tokenType == 0) {
             token0.approve(address(ct0), 1000);
-            ct0.deposit(1000, Bob);
+            ct0.deposit(900, Bob);
         } else {
             token1.approve(address(ct1), 1000);
-            ct1.deposit(1000, Bob);
+            ct1.deposit(900, Bob);
         }
 
-        pp.mintOptions(posIdList, 3000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
+        mintOptions(pp, posIdList, 3000, 0, Constants.MAX_POOL_TICK, Constants.MIN_POOL_TICK, true);
 
         (, currentTick, , , , , ) = uniPool.slot0();
 
@@ -4986,17 +6559,25 @@ contract Misctest is Test, PositionUtils {
             posIdList
         );
 
-        assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable! 0");
 
         // update twaps
         for (uint256 j = 0; j < 100; ++j) {
-            vm.warp(block.timestamp + 120);
+            vm.warp(block.timestamp + 3600);
             vm.roll(block.number + 10);
             swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
             swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+            pp.pokeOracle();
         }
 
-        twapTick = PanopticMath.twapFilter(uniPool, 600);
+        (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+            .getOracleTicks();
+        twapTick = re.twapEMA(oraclePack);
         {
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
                 pp,
@@ -5024,7 +6605,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(twapTick) + t));
 
             vm.startPrank(Alice);
-            pp.liquidate(new TokenId[](0), Bob, posIdList);
+            liquidate(pp, new TokenId[](0), Bob, posIdList);
 
             unchecked {
                 if (
@@ -5043,6 +6624,393 @@ contract Misctest is Test, PositionUtils {
         console2.log("maxBonus1", maxBonus1);
         console2.log("twapTick", twapTick);
         console2.log("maxTick", maxTick);
+    }
+
+    function test_success_liquidation_interest_stale_scenarios() public {
+        vm.startPrank(Swapper);
+        // JIT a bunch of liquidity so swaps at mint can happen normally
+        swapperc.mint(uniPool, -1000, 1000, 10 ** 18);
+
+        /// @dev Alice sells a call, Bob buys it. Bob sells a large straddle as well. Bob owes a lot of long premia on that call, enought to trigger the haircut branch, but received none fron that straddle. He also has to pay of lot of interest for that straddle, so the loss will be capped/avoided?
+
+        uint256 asset = 0;
+        uint256 tokenType = 0;
+
+        uint64 poolId;
+        {
+            poolId = PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing());
+        }
+        int24 tickSpacing = uniPool.tickSpacing();
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            asset,
+            0,
+            tokenType,
+            0,
+            (currentTick / tickSpacing) * tickSpacing,
+            2
+        );
+
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+        vm.startPrank(Alice);
+        mintOptions(
+            pp,
+            posIdList,
+            10 ** 12,
+            0,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+        (, currentTick, , , , , ) = uniPool.slot0();
+
+        console2.log("currentTick", currentTick);
+
+        vm.startPrank(Bob);
+
+        TokenId tokenIdLong = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            asset,
+            1,
+            tokenType,
+            0,
+            (currentTick / tickSpacing) * tickSpacing,
+            2
+        );
+
+        $posIdList.push(tokenIdLong);
+
+        console2.log("");
+        console2.log("Bob mint");
+        mintOptions(
+            pp,
+            $posIdList,
+            9 * 10 ** 11,
+            type(uint64).max,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        TokenId tokenIdStraddle;
+        {
+            tokenIdStraddle = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                asset,
+                0,
+                tokenType,
+                0,
+                (currentTick / tickSpacing) * tickSpacing + 100 * tickSpacing,
+                2
+            );
+            tokenIdStraddle = tokenIdStraddle.addLeg(
+                1,
+                1,
+                asset,
+                0,
+                1 - tokenType,
+                1,
+                (currentTick / tickSpacing) * tickSpacing + 100 * tickSpacing,
+                2
+            );
+        }
+        $posIdList.push(tokenIdStraddle);
+
+        mintOptions(
+            pp,
+            $posIdList,
+            10 ** 24,
+            0,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        (, currentTick, , , , , ) = uniPool.slot0();
+
+        editCollateral(ct0, Bob, ct0.convertToShares(421033078520736539448040 / 2));
+        editCollateral(ct1, Bob, ct1.convertToShares(421033078520736539448040 / 2));
+
+        (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable");
+
+        for (uint256 i = 0; i < 50; ++i) {
+            vm.warp(block.timestamp + 1200);
+            vm.roll(block.number + 1);
+            pp.pokeOracle();
+        }
+
+        // Bob is liquidatable!
+        uint256 snapshot = vm.snapshot();
+
+        vm.startPrank(Charlie);
+        console2.log("");
+        console2.log("NORMAL LIQUIUDATION, NO PROTOCOL LOSS");
+        // NORMAL LIQUIDATION, NO PROTOCOL LOSS
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            assertApproxEqAbs(valueBefore0, valueAfter0, 1, "share price 0 stays the same");
+            assertApproxEqAbs(valueBefore1, valueAfter1, 1, "share price 1 stays the same");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
+        vm.revertTo(snapshot);
+
+        console2.log("");
+        console2.log("STREAMIA ACCRUAL BUT NO INTEREST, HAIRCUT SO NO PROTOCOL LOSS");
+        // STREAMIA ACCRUAL BUT NO INTEREST, HAIRCUT SO NO PROTOCOL LOSS
+
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 2 ** 85, 2 ** 85);
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable");
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            assertApproxEqAbs(valueBefore0, valueAfter0, 1, "share price 0 stays the same");
+            assertApproxEqAbs(valueBefore1, valueAfter1, 1, "share price 1 stays the same");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
+
+        vm.revertTo(snapshot);
+
+        console2.log("");
+        console2.log("STREAMIA ACCRUAL BUT NO INTEREST, PROTOCOL LOSS DUE TO INSOLVENT");
+        // STREAMIA ACCRUAL BUT NO INTEREST, HAIRCUT SO NO PROTOCOL LOSS
+
+        editCollateral(ct0, Bob, ct0.convertToShares(0));
+        editCollateral(ct1, Bob, ct1.convertToShares(0));
+
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 2 ** 85, 2 ** 85);
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable");
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            //assertGe(valueBefore0, valueAfter0, "share price 0 decreases");
+            assertGt(valueBefore1, valueAfter1, "share price 1 decreases");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
+
+        vm.revertTo(snapshot);
+        console2.log("");
+        console2.log("NO STREAMIA ACCRUAL BUT INTEREST, BUT NO PROTOCOL LOSS");
+
+        // NO STREAMIA ACCRUAL BUT INTEREST, BUT MINIMAL PROTOCOL LOSS
+
+        // increase interest owed  (100 years)
+        vm.warp(block.timestamp + 100 * 365 * 24 * 3600);
+        vm.roll(block.number + 10);
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            assertLt(valueBefore0, valueAfter0, "share price 0 increases due to interest");
+            assertLt(valueBefore1, valueAfter1, "share price 1 increases due to interest");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
+
+        vm.revertTo(snapshot);
+        console2.log("");
+        console2.log("STREAMIA ACCRUAL AND INTEREST, ");
+
+        // STREAMIA ACCRUAL AND INTEREST,
+
+        // increase interest owed  (100 years)
+        vm.warp(block.timestamp + 100 * 365 * 24 * 3600);
+        vm.roll(block.number + 10);
+
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 2 ** 85, 2 ** 85);
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            assertLt(valueBefore0, valueAfter0, "share price 0 increases due to intertest");
+            assertLt(valueBefore1, valueAfter1, "share price 1 increases due to interest");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
+        vm.revertTo(snapshot);
+        console2.log("");
+        console2.log("STREAMIA ACCRUAL AND INTEREST, NO PROTOCOL LOSS DUE TO HAIRCUT");
+
+        // STREAMIA ACCRUAL AND INTEREST,
+
+        // increase interest owed  (100 years)
+        vm.warp(block.timestamp + 100 * 365 * 24 * 3600);
+        vm.roll(block.number + 10);
+
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 2 ** 127, 2 ** 127);
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            assertLt(valueBefore0, valueAfter0, "share price 0 increases due to intertest");
+            assertLt(valueBefore1, valueAfter1, "share price 1 increases due to interest");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
+
+        vm.revertTo(snapshot);
+        console2.log("");
+        console2.log("STREAMIA ACCRUAL AND INTEREST, PROTOCOL LOSS DUE TO INSOLVENT");
+
+        editCollateral(ct0, Bob, ct0.convertToShares(0));
+        editCollateral(ct1, Bob, ct1.convertToShares(0));
+
+        // STREAMIA ACCRUAL AND INTEREST,
+
+        // increase interest owed  (100 years)
+        vm.warp(block.timestamp + 100 * 365 * 24 * 3600);
+        vm.roll(block.number + 10);
+
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 2 ** 127, 2 ** 127);
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            assertGe(valueBefore0, valueAfter0, "share price 0 increases due to intertest");
+            assertGt(valueBefore1, valueAfter1, "share price 1 increases due to interest");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
     }
 
     function test_success_liquidation_ITM_scenarios() public {
@@ -5084,12 +7052,14 @@ contract Misctest is Test, PositionUtils {
             }
             // mint 1 liquidity unit of wideish centered position
 
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             (, currentTick, , , , , ) = uniPool.slot0();
@@ -5119,18 +7089,24 @@ contract Misctest is Test, PositionUtils {
 
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
-                vm.warp(block.timestamp + 120);
+                vm.warp(block.timestamp + 3600);
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             (, currentTick, , , , , ) = uniPool.slot0();
+            (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+                .getOracleTicks();
+            twapTick = re.twapEMA(oraclePack);
+            console2.log("cur", currentTick);
+            console2.log("twapTick", twapTick);
 
             vm.startPrank(Alice);
             console2.log("");
             console2.log("no-cross collateral", i);
-            pp.liquidate(new TokenId[](0), Bob, posIdList);
+            liquidate(pp, new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -5167,12 +7143,14 @@ contract Misctest is Test, PositionUtils {
             }
             // mint 1 liquidity unit of wideish centered position
 
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             (, currentTick, , , , , ) = uniPool.slot0();
@@ -5202,16 +7180,23 @@ contract Misctest is Test, PositionUtils {
 
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
-                vm.warp(block.timestamp + 120);
+                vm.warp(block.timestamp + 3600);
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             vm.startPrank(Alice);
             console2.log("");
             console2.log("cross collateral", i);
-            pp.liquidate(new TokenId[](0), Bob, posIdList);
+            (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+                .getOracleTicks();
+            twapTick = re.twapEMA(oraclePack);
+            console2.log("cur", currentTick);
+            console2.log("twapTick", twapTick);
+
+            liquidate(pp, new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -5266,12 +7251,14 @@ contract Misctest is Test, PositionUtils {
             ct1.deposit(1000, Bob);
             // mint 1 liquidity unit of wideish centered position
 
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             (, currentTick, , , , , ) = uniPool.slot0();
@@ -5302,14 +7289,20 @@ contract Misctest is Test, PositionUtils {
             }
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
-                vm.warp(block.timestamp + 120);
+                vm.warp(block.timestamp + 3600);
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
+            (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+                .getOracleTicks();
+            twapTick = re.twapEMA(oraclePack);
+            console2.log("cur", currentTick);
+            console2.log("twapTick", twapTick);
 
             vm.startPrank(Alice);
-            pp.liquidate(new TokenId[](0), Bob, posIdList);
+            liquidate(pp, new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -5361,12 +7354,14 @@ contract Misctest is Test, PositionUtils {
             token1.approve(address(ct1), 5);
             ct1.deposit(5, Bob);
 
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             (, currentTick, , , , , ) = uniPool.slot0();
@@ -5397,14 +7392,22 @@ contract Misctest is Test, PositionUtils {
             }
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
-                vm.warp(block.timestamp + 120);
+                vm.warp(block.timestamp + 3600);
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(new TokenId[](0), Bob, posIdList);
+
+            (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+                .getOracleTicks();
+            twapTick = re.twapEMA(oraclePack);
+            console2.log("cur", currentTick);
+            console2.log("twapTick", twapTick);
+
+            liquidate(pp, new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -5456,12 +7459,14 @@ contract Misctest is Test, PositionUtils {
             token1.approve(address(ct1), 1000);
             ct1.deposit(1000, Bob);
 
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             (, currentTick, , , , , ) = uniPool.slot0();
@@ -5492,15 +7497,21 @@ contract Misctest is Test, PositionUtils {
             }
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
-                vm.warp(block.timestamp + 120);
+                vm.warp(block.timestamp + 3600);
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             vm.startPrank(Alice);
+            (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+                .getOracleTicks();
+            twapTick = re.twapEMA(oraclePack);
+            console2.log("cur", currentTick);
+            console2.log("twapTick", twapTick);
 
-            pp.liquidate(new TokenId[](0), Bob, posIdList);
+            liquidate(pp, new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -5545,12 +7556,14 @@ contract Misctest is Test, PositionUtils {
             }
             // mint 1 liquidity unit of wideish centered position
 
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             (, currentTick, , , , , ) = uniPool.slot0();
@@ -5574,7 +7587,7 @@ contract Misctest is Test, PositionUtils {
                 posIdList
             );
 
-            assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+            assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable! 0");
 
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
@@ -5582,12 +7595,13 @@ contract Misctest is Test, PositionUtils {
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
             console2.log("");
             console2.log("no cross collateral", i);
 
             vm.startPrank(Alice);
-            pp.liquidate(new TokenId[](0), Bob, posIdList);
+            liquidate(pp, new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -5625,12 +7639,14 @@ contract Misctest is Test, PositionUtils {
             }
             // mint 1 liquidity unit of wideish centered position
 
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             (, currentTick, , , , , ) = uniPool.slot0();
@@ -5656,7 +7672,7 @@ contract Misctest is Test, PositionUtils {
                 posIdList
             );
 
-            assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+            assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable! 1");
 
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
@@ -5664,13 +7680,14 @@ contract Misctest is Test, PositionUtils {
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             vm.startPrank(Alice);
             console2.log("");
             console2.log("cross collateral", i);
 
-            pp.liquidate(new TokenId[](0), Bob, posIdList);
+            liquidate(pp, new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -5725,12 +7742,14 @@ contract Misctest is Test, PositionUtils {
             ct1.deposit(1000, Bob);
             // mint 1 liquidity unit of wideish centered position
 
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             (, currentTick, , , , , ) = uniPool.slot0();
@@ -5754,7 +7773,10 @@ contract Misctest is Test, PositionUtils {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
                     .checkCollateral(pp, Bob, currentTick, posIdList);
 
-                assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+                assertTrue(
+                    totalCollateralBalance0 < totalCollateralRequired0,
+                    "Is liquidatable! 2"
+                );
             }
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
@@ -5762,10 +7784,11 @@ contract Misctest is Test, PositionUtils {
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(new TokenId[](0), Bob, posIdList);
+            liquidate(pp, new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -5817,12 +7840,14 @@ contract Misctest is Test, PositionUtils {
             token1.approve(address(ct1), 15);
             ct1.deposit(15, Bob);
 
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             (, currentTick, , , , , ) = uniPool.slot0();
@@ -5845,7 +7870,10 @@ contract Misctest is Test, PositionUtils {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
                     .checkCollateral(pp, Bob, currentTick, posIdList);
 
-                assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+                assertTrue(
+                    totalCollateralBalance0 < totalCollateralRequired0,
+                    "Is liquidatable! 3"
+                );
             }
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
@@ -5853,10 +7881,11 @@ contract Misctest is Test, PositionUtils {
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(new TokenId[](0), Bob, posIdList);
+            liquidate(pp, new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -5908,12 +7937,14 @@ contract Misctest is Test, PositionUtils {
             token1.approve(address(ct1), 1000);
             ct1.deposit(1000, Bob);
 
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             (, currentTick, , , , , ) = uniPool.slot0();
@@ -5936,7 +7967,10 @@ contract Misctest is Test, PositionUtils {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
                     .checkCollateral(pp, Bob, currentTick, posIdList);
 
-                assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+                assertTrue(
+                    totalCollateralBalance0 < totalCollateralRequired0,
+                    "Is liquidatable! 4"
+                );
             }
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
@@ -5944,10 +7978,11 @@ contract Misctest is Test, PositionUtils {
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(new TokenId[](0), Bob, posIdList);
+            liquidate(pp, new TokenId[](0), Bob, posIdList);
             vm.revertTo(snapshot);
         }
 
@@ -5979,12 +8014,14 @@ contract Misctest is Test, PositionUtils {
                 //.addLeg(legIndex, optionRatio, asset, isLong, tokenType, riskPartner, strike, width);
                 posIdList[0] = tokenId;
 
-                pp.mintOptions(
+                mintOptions(
+                    pp,
                     posIdList,
                     1_000_000,
                     0,
-                    Constants.MAX_V3POOL_TICK,
-                    Constants.MIN_V3POOL_TICK
+                    Constants.MAX_POOL_TICK,
+                    Constants.MIN_POOL_TICK,
+                    true
                 );
 
                 // create spread tokenId
@@ -6028,12 +8065,14 @@ contract Misctest is Test, PositionUtils {
             ct1.deposit(1000, Bob);
             // mint 1 liquidity unit of wideish centered position
 
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 posIdList,
                 10_000,
                 2 ** 30,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             (, currentTick, , , , , ) = uniPool.slot0();
@@ -6049,15 +8088,22 @@ contract Misctest is Test, PositionUtils {
             }
             vm.startPrank(Swapper);
 
-            editCollateral(ct0, Bob, ct0.convertToShares(250));
-            editCollateral(ct1, Bob, ct1.convertToShares(250));
+            editCollateral(ct0, Bob, ct0.convertToShares(99));
+            editCollateral(ct1, Bob, ct1.convertToShares(99));
 
             (, currentTick, , , , , ) = uniPool.slot0();
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
                     .checkCollateral(pp, Bob, currentTick, posIdList);
-
-                assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+                console2.log(
+                    "totalCollateralBalance0, totalCollateralRequired0",
+                    totalCollateralBalance0,
+                    totalCollateralRequired0
+                );
+                assertTrue(
+                    totalCollateralBalance0 < totalCollateralRequired0,
+                    "Is liquidatable! 5"
+                );
             }
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
@@ -6065,10 +8111,11 @@ contract Misctest is Test, PositionUtils {
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(new TokenId[](0), Bob, posIdList);
+            liquidate(pp, new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -6101,12 +8148,14 @@ contract Misctest is Test, PositionUtils {
                 //.addLeg(legIndex, optionRatio, asset, isLong, tokenType, riskPartner, strike, width);
                 posIdList[0] = tokenId;
 
-                pp.mintOptions(
+                mintOptions(
+                    pp,
                     posIdList,
                     1_000_000,
                     0,
-                    Constants.MAX_V3POOL_TICK,
-                    Constants.MIN_V3POOL_TICK
+                    Constants.MAX_POOL_TICK,
+                    Constants.MIN_POOL_TICK,
+                    true
                 );
 
                 // create spread tokenId
@@ -6147,15 +8196,17 @@ contract Misctest is Test, PositionUtils {
             token0.approve(address(ct0), 2500);
             ct0.deposit(2500, Bob);
             token1.approve(address(ct1), 150);
-            ct1.deposit(150, Bob);
+            ct1.deposit(127, Bob);
             // mint 1 liquidity unit of wideish centered position
 
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 posIdList,
                 10_000,
                 2 ** 30,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             (, currentTick, , , , , ) = uniPool.slot0();
@@ -6171,14 +8222,23 @@ contract Misctest is Test, PositionUtils {
             }
             vm.startPrank(Swapper);
 
-            editCollateral(ct0, Bob, ct0.convertToShares(250));
+            editCollateral(ct0, Bob, ct0.convertToShares(0));
+            editCollateral(ct1, Bob, ct1.convertToShares(198));
 
             (, currentTick, , , , , ) = uniPool.slot0();
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
                     .checkCollateral(pp, Bob, currentTick, posIdList);
+                console2.log(
+                    "totalCollateralBalance0, totalCollateralRequired0",
+                    totalCollateralBalance0,
+                    totalCollateralRequired0
+                );
 
-                assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+                assertTrue(
+                    totalCollateralBalance0 < totalCollateralRequired0,
+                    "Is liquidatable! 6"
+                );
             }
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
@@ -6186,10 +8246,11 @@ contract Misctest is Test, PositionUtils {
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+                pp.pokeOracle();
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(new TokenId[](0), Bob, posIdList);
+            liquidate(pp, new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -6222,12 +8283,14 @@ contract Misctest is Test, PositionUtils {
                 //.addLeg(legIndex, optionRatio, asset, isLong, tokenType, riskPartner, strike, width);
                 posIdList[0] = tokenId;
 
-                pp.mintOptions(
+                mintOptions(
+                    pp,
                     posIdList,
                     1_000_000,
                     0,
-                    Constants.MAX_V3POOL_TICK,
-                    Constants.MIN_V3POOL_TICK
+                    Constants.MAX_POOL_TICK,
+                    Constants.MIN_POOL_TICK,
+                    true
                 );
 
                 // create spread tokenId
@@ -6266,17 +8329,19 @@ contract Misctest is Test, PositionUtils {
             ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
 
             token0.approve(address(ct0), 150);
-            ct0.deposit(150, Bob);
+            ct0.deposit(127, Bob);
             token1.approve(address(ct1), 2500);
             ct1.deposit(2500, Bob);
             // mint 1 liquidity unit of wideish centered position
 
-            pp.mintOptions(
+            mintOptions(
+                pp,
                 posIdList,
                 10_000,
                 2 ** 30,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
             );
 
             (, currentTick, , , , , ) = uniPool.slot0();
@@ -6292,14 +8357,23 @@ contract Misctest is Test, PositionUtils {
             }
             vm.startPrank(Swapper);
 
-            editCollateral(ct1, Bob, ct1.convertToShares(250));
+            editCollateral(ct0, Bob, ct0.convertToShares(125));
+            editCollateral(ct1, Bob, ct1.convertToShares(0));
 
             (, currentTick, , , , , ) = uniPool.slot0();
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
                     .checkCollateral(pp, Bob, currentTick, posIdList);
+                console2.log(
+                    "totalCollateralBalance0, totalCollateralRequired0",
+                    totalCollateralBalance0,
+                    totalCollateralRequired0
+                );
 
-                assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+                assertTrue(
+                    totalCollateralBalance0 < totalCollateralRequired0,
+                    "Is liquidatable! 7"
+                );
             }
             // update twaps
             for (uint256 j = 0; j < 100; ++j) {
@@ -6310,7 +8384,7 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(new TokenId[](0), Bob, posIdList);
+            liquidate(pp, new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }

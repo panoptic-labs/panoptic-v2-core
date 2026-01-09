@@ -68,6 +68,8 @@ library PositionBalanceLibrary {
     ) internal pure returns (uint96) {
         unchecked {
             return
+                // casting to 'uint24' is safe because ticks are always < 2**24
+                // forge-lint: disable-next-line(unsafe-typecast)
                 uint96(uint24(_currentTick)) +
                 (uint96(uint24(_fastOracleTick)) << 24) +
                 (uint96(uint24(_slowOracleTick)) << 48) +
@@ -133,10 +135,10 @@ library PositionBalanceLibrary {
     function unpackTickData(uint96 _tickData) internal pure returns (int24, int24, int24, int24) {
         PositionBalance self = PositionBalance.wrap(uint256(_tickData) << 160);
         return (
-            self.currentTick(),
-            self.fastOracleTick(),
-            self.slowOracleTick(),
-            self.lastObservedTick()
+            int24(int256(PositionBalance.unwrap(self) >> 160)),
+            int24(int256(PositionBalance.unwrap(self) >> 184)),
+            int24(int256(PositionBalance.unwrap(self) >> 208)),
+            int24(int256(PositionBalance.unwrap(self) >> 232))
         );
     }
 

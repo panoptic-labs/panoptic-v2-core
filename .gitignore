@@ -18,6 +18,7 @@ artifacts
 tenderly.yaml
 .vs/*
 .DS_Store
+*.swp
 
 .vscode
 
@@ -26,3 +27,4 @@ broadcast
 out
 docs
 safe-txns
+scratch
