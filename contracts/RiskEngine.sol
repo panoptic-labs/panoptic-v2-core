@@ -61,12 +61,12 @@ contract RiskEngine {
     uint256 internal constant ONE_BPS = 1000;
     uint256 internal constant TEN_BPS = 10000;
 
-    //int256 constant EMA_PERIOD_SPOT = 120; // 2 minutes
-    //int256 constant EMA_PERIOD_FAST = 240; // 4 minutes
-    //int256 constant EMA_PERIOD_SLOW = 600; // 10 minutes
-    //int256 constant EMA_PERIOD_EONS = 1800; // 30 minutes
+    //int256 constant EMA_PERIOD_SPOT = 60; // 1 minutes
+    //int256 constant EMA_PERIOD_FAST = 120; // 2 minutes
+    //int256 constant EMA_PERIOD_SLOW = 240; // 4 minutes
+    //int256 constant EMA_PERIOD_EONS = 960; // 16 minutes
 
-    uint96 constant EMA_PERIODS = uint96(120 + (240 << 24) + (600 << 48) + (1800 << 72));
+    uint96 constant EMA_PERIODS = uint96(60 + (120 << 24) + (240 << 48) + (960 << 72));
     /// @notice The maximum allowed cumulative delta between the fast & slow oracle tick, the current & slow oracle tick, and the last-observed & slow oracle tick.
     /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
     int256 internal constant MAX_TICKS_DELTA = 953;
@@ -813,7 +813,7 @@ contract RiskEngine {
     /// @return The blended time-weighted average price, represented as an int24 tick.
     function twapEMA(OraclePack oraclePack) external pure returns (int24) {
         // Extract current EMAs from oraclePack
-        (int256 eonsEMA, int256 slowEMA, int256 fastEMA, , ) = oraclePack.getEMAs();
+        (, int256 fastEMA, int256 slowEMA, int256 eonsEMA, ) = oraclePack.getEMAs();
         return int24((6 * fastEMA + 3 * slowEMA + eonsEMA) / 10);
     }
 

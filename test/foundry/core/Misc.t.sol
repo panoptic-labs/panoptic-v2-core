@@ -5394,13 +5394,14 @@ contract Misctest is Test, PositionUtils {
         // setup mini-median price array
         for (uint256 i = 0; i < 60; ++i) {
             swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
-            vm.warp(block.timestamp + 3600); // 1h steps
+            vm.warp(block.timestamp + 65); // 1m steps
             vm.roll(block.number + 1);
             pp.pokeOracle();
             (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
                 .getOracleTicks();
             int24 TWAPtick = re.twapEMA(oraclePack);
-            console2.log(i, uint24(fastOracleTick), uint24(TWAPtick), uint24(lastObservedTick));
+
+            console2.log(i, uint24(fastOracleTick), uint24(TWAPtick), uint24(oraclePack.eonsEMA()));
             swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
         }
 
