@@ -1631,24 +1631,24 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         if (realizedPremium != 0) {
             uint128 commissionFee;
             // compute the minimum of the notionalFee and the premiumFee
-            {
-                uint128 commissionP;
-                unchecked {
-                    commissionP = realizedPremium > 0
-                        ? uint128(realizedPremium)
-                        : uint128(-realizedPremium);
-                }
+            unchecked {
+                uint128 commissionP = realizedPremium > 0
+                    ? uint128(realizedPremium)
+                    : uint128(-realizedPremium);
                 uint128 commissionFeeP = Math
                     .mulDivRoundingUp(commissionP, riskParameters.premiumFee(), DECIMALS)
                     .toUint128();
                 uint128 commissionN = uint256(int256(shortAmount) + int256(longAmount)).toUint128();
-                uint128 commissionFeeN;
-                unchecked {
-                    commissionFeeN = Math
-                        .mulDivRoundingUp(commissionN, 10 * riskParameters.notionalFee(), DECIMALS)
-                        .toUint128();
+                uint128 commissionFeeN = Math
+                    .mulDivRoundingUp(commissionN, 10 * riskParameters.notionalFee(), DECIMALS)
+                    .toUint128();
+
+                // handle the short/long amount being 0, which happens during settlePremium calls
+                if (shortAmount == 0 && longAmount == 0) {
+                    commissionFee = commissionFeeP;
+                } else {
+                    commissionFee = Math.min(commissionFeeP, commissionFeeN).toUint128();
                 }
-                commissionFee = Math.min(commissionFeeP, commissionFeeN).toUint128();
             }
 
             uint256 sharesToBurn = Math.mulDivRoundingUp(commissionFee, _totalSupply, _totalAssets);
@@ -1676,7 +1676,9 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
                     );
                 }
             }
-            tokenPaid += int128(uint128(commissionFee));
+            unchecked {
+                tokenPaid += int128(uint128(commissionFee));
+            }
         }
 
         return tokenPaid;
