@@ -5599,6 +5599,95 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.withdraw(8999000000, Bob, Bob, positionIdList, true);
     }
 
+    /// @notice It should revert if a user tries to withdraw using a tokenId with no legs.
+    function test_Fail_withdraw_credited_shares(address caller) public {
+        _initWorld(0);
+
+        // initalize a custom Panoptic pool
+        _deployCustomPanopticPool(token0, token1, pool, caller);
+
+        // --- Alice setup (not used in these specific tests, but good practice) ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e18, Alice);
+
+        vm.stopPrank();
+
+        vm.startPrank(Charlie);
+        _grantTokens(Charlie);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e10, Charlie);
+
+        vm.stopPrank();
+
+        // --- Bob setup (the primary actor in these tests) ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e10, Bob);
+
+        // Define and mint Bob's initial, legitimate position
+        (width, strike) = PositionUtils.getOTMSW(
+            12345, // Using a fixed seed for determinism
+            67890,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            uint128(3e10),
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+        vm.stopPrank();
+
+        vm.startPrank(Charlie);
+
+        //credit tokenId
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, strike, 0);
+        positionIdList.pop();
+        positionIdList.push(tokenId);
+
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            uint128(1e10 * 99) / 100,
+            0,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+        // put in safeMode
+        vm.startPrank(Alice);
+
+        (
+            uint256 depositedAssets,
+            uint256 insideAMM,
+            uint256 creditedShares,
+            uint256 currentPoolUtilization
+        ) = collateralToken0.getPoolData();
+
+        vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
+        collateralToken0.withdraw(depositedAssets - 1, Alice, Alice);
+
+        collateralToken0.withdraw(
+            depositedAssets - collateralToken0.convertToAssets(creditedShares) - 1,
+            Alice,
+            Alice
+        );
+    }
+
     /// @notice It should revert if a user tries to mint options with a list containing duplicate tokenIds.
     function test_Fail_spoof_mintOptionsWithDuplicateTokenId() public {
         // Initialize world state

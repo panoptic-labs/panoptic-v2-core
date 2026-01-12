@@ -10616,4 +10616,160 @@ contract PanopticPoolTest is PositionUtils {
             LeftRightUnsigned.wrap(1).addToLeftSlot(1)
         );
     }
+
+    function test_PoC2_S1215() public {
+        _initPool(1);
+
+        // Empty vaults first
+        vm.startPrank(Seller);
+        ct0.withdraw(ct0.maxWithdraw(address(Seller)), address(Seller), address(Seller));
+        ct1.withdraw(ct1.maxWithdraw(address(Seller)), address(Seller), address(Seller));
+        vm.stopPrank();
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(address(Bob)), address(Bob), address(Bob));
+        ct1.withdraw(ct1.maxWithdraw(address(Bob)), address(Bob), address(Bob));
+        vm.stopPrank();
+        vm.startPrank(Alice);
+        ct0.withdraw(ct0.maxWithdraw(address(Alice)), address(Alice), address(Alice));
+        ct1.withdraw(ct1.maxWithdraw(address(Alice)), address(Alice), address(Alice));
+        vm.stopPrank();
+
+        //Make sure collateral vaults and user balances are empty
+        console2.log("vault 0", ct0.totalAssets());
+        console2.log("vault 1", ct1.totalAssets());
+        console2.log("Seller balance - vault 0", ct0.balanceOf(address(Seller)));
+        console2.log("Seller balance - vault 1", ct1.balanceOf(address(Seller)));
+        console2.log("Bob balance - vault 0", ct0.balanceOf(address(Bob)));
+        console2.log("Bob balance - vault 1", ct1.balanceOf(address(Bob)));
+        console2.log("Alice balance - vault 0", ct0.balanceOf(address(Alice)));
+        console2.log("Alice balance - vault 1", ct1.balanceOf(address(Alice)));
+        console2.log("max Bob can withdraw", ct0.maxWithdraw(address(Bob)));
+
+        // Bob (LP) deposits 100 ETH in vault 0
+        vm.startPrank(Bob);
+        ct0.deposit(100 ether, address(Bob));
+        vm.stopPrank();
+        console2.log(
+            "Bob balance - vault 0 - after deposit",
+            ct0.convertToAssets((ct0.balanceOf(address(Bob))))
+        );
+
+        // Seller and Alice deposit collateral
+        vm.startPrank(Seller);
+        ct0.deposit(5 ether, address(Seller));
+        vm.stopPrank();
+        vm.startPrank(Alice);
+        ct0.deposit(1 ether, address(Alice));
+        vm.stopPrank();
+        console2.log(
+            "Seller balance - vault 0 - after deposit",
+            ct0.convertToAssets(ct0.balanceOf(address(Seller)))
+        );
+        console2.log(
+            "Alice balance - vault 0 - after deposit",
+            ct0.convertToAssets((ct0.balanceOf(address(Alice))))
+        );
+        console2.log("vault 0", ct0.totalAssets());
+
+        //Seller mints a short call of size 10 ether
+        vm.startPrank(Seller);
+        (int24 width, int24 strike) = PositionUtils.getOTMSW(
+            1,
+            1,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        populatePositionData(width, strike, 1);
+
+        positionSize = 10 ether;
+        console2.log("currentTick", currentTick);
+        console2.log("tickLower", tickLower);
+        console2.log("tickUpper", tickUpper);
+
+        console2.log("Seller short positionSize", positionSize);
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0, //legIndex
+            1, // optionRatio
+            0, // asset
+            0, // isLong
+            0, //tokenType
+            0, //riskPartner
+            strike,
+            width
+        );
+
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+
+        mintOptions(
+            pp,
+            posIdList,
+            positionSize,
+            type(uint24).max,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+        vm.stopPrank();
+
+        // Alice mints a long call of size 1
+        vm.startPrank(Alice);
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0, //legIndex
+            1, // optionRatio
+            0, // asset
+            1, // isLong
+            0, //tokenType
+            0, //riskPartner
+            strike,
+            width
+        );
+
+        posIdList[0] = tokenId;
+
+        positionSize = 1 ether;
+
+        mintOptions(
+            pp,
+            posIdList,
+            positionSize,
+            type(uint24).max,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        console2.log("Alice long positionSize", positionSize);
+        vm.stopPrank();
+
+        // Bob withdraws all available
+        console2.log("max Bob can withdraw", ct0.maxWithdraw(address(Bob)));
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(address(Bob)), address(Bob), address(Bob));
+        vm.stopPrank();
+
+        uint256 snapshot = vm.snapshot();
+
+        // Alice tries to close her long - reverts
+        vm.startPrank(Alice);
+        burnOptions(pp, tokenId, emptyList, Constants.MAX_POOL_TICK, Constants.MIN_POOL_TICK, true);
+        vm.stopPrank();
+        vm.revertTo(snapshot);
+
+        // Alice tries to force exercise her long - reverts
+        vm.startPrank(Bob);
+        //vm.expectRevert();
+        forceExercise(
+            pp,
+            Alice,
+            tokenId,
+            new TokenId[](0),
+            new TokenId[](0),
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
+        );
+        vm.stopPrank();
+    }
 }

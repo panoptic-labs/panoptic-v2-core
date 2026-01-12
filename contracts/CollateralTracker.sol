@@ -668,6 +668,11 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         uint256 depositedAssets = s_depositedAssets;
         unchecked {
             uint256 available = depositedAssets > 0 ? depositedAssets - 1 : 0;
+
+            // prevent credited assets to be withdrawn, round down
+            uint256 creditedAssets = convertToAssets(s_creditedShares);
+            available = available > creditedAssets ? available - creditedAssets : 0;
+
             uint256 balance = convertToAssets(balanceOf[owner]);
             return panopticPool().numberOfLegs(owner) == 0 ? Math.min(available, balance) : 0;
         }
@@ -682,6 +687,11 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         uint256 depositedAssets = s_depositedAssets;
         unchecked {
             uint256 available = depositedAssets > 0 ? depositedAssets - 1 : 0;
+
+            // prevent credited assets to be withdrawn, round down
+            uint256 creditedAssets = convertToAssets(s_creditedShares);
+            available = available > creditedAssets ? available - creditedAssets : 0;
+
             uint256 balance = convertToAssets(balanceOf[owner]);
             return Math.min(available, balance);
         }
@@ -813,6 +823,11 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         uint256 depositedAssets = s_depositedAssets;
         unchecked {
             uint256 available = convertToShares(depositedAssets > 0 ? depositedAssets - 1 : 0);
+
+            // prevent credited assets to be withdrawn, round down
+            uint256 creditedAssets = convertToAssets(s_creditedShares);
+            available = available > creditedAssets ? available - creditedAssets : 0;
+
             uint256 balance = balanceOf[owner];
             return panopticPool().numberOfLegs(owner) == 0 ? Math.min(available, balance) : 0;
         }
