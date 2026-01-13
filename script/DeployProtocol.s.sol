@@ -68,8 +68,11 @@ contract DeployProtocol is Script {
         for (uint256 i = 0; i < propsStr.length; i++) {
             props[i] = bytes32(bytes(propsStr[i]));
         }
-
-        string[][] memory indicesStr = abi.decode(vm.parseJson(metadata, ".indices"), (string[][]));
+        string[][] memory indicesStr = new string[][](propsStr.length);
+        for (uint256 i = 0; i < propsStr.length; i++) {
+            string memory path = string.concat(".indices[", vm.toString(i), "]");
+            indicesStr[i] = vm.parseJsonStringArray(metadata, path);
+        }
         uint256[][] memory indices = new uint256[][](indicesStr.length);
         for (uint256 i = 0; i < indicesStr.length; i++) {
             indices[i] = new uint256[](indicesStr[i].length);
