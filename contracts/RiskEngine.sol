@@ -2014,9 +2014,9 @@ contract RiskEngine {
                 : PanopticMath.convert1to0RoundingUp(creditAmount, Math.getSqrtRatioAtTick(atTick));
 
             if (required > convertedCredit) {
-                return required;
+                return required - convertedCredit; // ✓ Net the credit
             } else {
-                return convertedCredit;
+                return 1; // ✓ Floor at 1
             }
         }
     }
