@@ -116,6 +116,23 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         uint128 positionSize
     );
 
+    /// @notice Emitted when liquidity is modified in a chunk during position mint/burn.
+    /// @dev This event provides detailed information about liquidity changes per chunk, simplifying indexing.
+    /// @param poolId The Uniswap V4 pool ID
+    /// @param owner The owner of the position
+    /// @param tokenType The type of token for this leg (token0 or token1)
+    /// @param tickLower The lower tick of the liquidity chunk
+    /// @param tickUpper The upper tick of the liquidity chunk
+    /// @param liquidityDelta The signed change in liquidity (positive for additions, negative for removals)
+    event LiquidityChunkUpdated(
+        PoolId indexed poolId,
+        address indexed owner,
+        uint256 indexed tokenType,
+        int24 tickLower,
+        int24 tickUpper,
+        int128 liquidityDelta
+    );
+
     /*//////////////////////////////////////////////////////////////
                                  TYPES
     //////////////////////////////////////////////////////////////*/
@@ -927,28 +944,32 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         uint256 vegoid
     ) internal returns (LeftRightSigned moved, LeftRightUnsigned collectedSingleLeg) {
         // unique key to identify the liquidity chunk in this Uniswap pool
-        bytes32 positionKey = EfficientHash.efficientKeccak256(
-            abi.encodePacked(
-                key.toId(),
-                account,
-                tokenId.tokenType(leg),
-                liquidityChunk.tickLower(),
-                liquidityChunk.tickUpper()
-            )
-        );
+        bytes32 positionKey;
+        {
+            positionKey = EfficientHash.efficientKeccak256(
+                abi.encodePacked(
+                    key.toId(),
+                    account,
+                    tokenId.tokenType(leg),
+                    liquidityChunk.tickLower(),
+                    liquidityChunk.tickUpper()
+                )
+            );
+        }
 
         // update our internal bookkeeping of how much liquidity we have deployed in the AMM
         // for example: if this leg is short, we add liquidity to the amm, make sure to add that to our tracking
-        uint128 updatedLiquidity;
         uint256 isLong = tokenId.isLong(leg);
+        uint128 chunkLiquidity;
         LeftRightUnsigned currentLiquidity = s_accountLiquidity[positionKey];
         {
+            uint128 updatedLiquidity;
             // s_accountLiquidity is a LeftRight. The right slot represents the liquidity currently sold (added) in the AMM owned by the user
             // the left slot represents the amount of liquidity currently bought (removed) that has been removed from the AMM - the user owes it to a seller
             // the reason why it is called "removedLiquidity" is because long options are created by removing - ie. short selling LP positions
             uint128 startingLiquidity = currentLiquidity.rightSlot();
             uint128 removedLiquidity = currentLiquidity.leftSlot();
-            uint128 chunkLiquidity = liquidityChunk.liquidity();
+            chunkLiquidity = liquidityChunk.liquidity();
 
             // 0-liquidity interactions are asymmetrical in Uniswap (burning 0 liquidity is permitted and functions as a poke, but minting is prohibited)
             // thus, we prohibit all 0-liquidity chunks to prevent users from creating positions that cannot be closed
@@ -1017,19 +1038,38 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             └──┴───────┴──►      └──────┘
                 Uniswap V4       account
         */
+        PoolKey memory _key = key;
+        unchecked {
+            // emit event with liquidity delta information for indexing
+            address _account = account;
+            uint256 tokenType = tokenId.tokenType(leg);
+            int24 tickLower = liquidityChunk.tickLower();
+            int24 tickUpper = liquidityChunk.tickUpper();
+            int128 liquidityDelta;
+            if (isLong == 0) {
+                liquidityDelta = isBurn ? -int128(chunkLiquidity) : int128(chunkLiquidity);
+            } else {
+                liquidityDelta = isBurn ? int128(chunkLiquidity) : -int128(chunkLiquidity);
+            }
+
+            emit LiquidityChunkUpdated(
+                _key.toId(),
+                _account,
+                tokenType,
+                tickLower,
+                tickUpper,
+                liquidityDelta
+            );
+        }
 
         LiquidityChunk _liquidityChunk = liquidityChunk;
-
-        PoolKey memory _key = key;
 
         (BalanceDelta delta, BalanceDelta feesAccrued) = POOL_MANAGER_V4.modifyLiquidity(
             _key,
             IPoolManager.ModifyLiquidityParams(
                 _liquidityChunk.tickLower(),
                 _liquidityChunk.tickUpper(),
-                isLong == 0
-                    ? int256(uint256(_liquidityChunk.liquidity()))
-                    : -int256(uint256(_liquidityChunk.liquidity())),
+                isLong == 0 ? int256(uint256(chunkLiquidity)) : -int256(uint256(chunkLiquidity)),
                 positionKey
             ),
             ""
