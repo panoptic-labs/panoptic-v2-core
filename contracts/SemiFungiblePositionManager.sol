@@ -120,6 +120,23 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         uint128 positionSize
     );
 
+    /// @notice Emitted when liquidity is modified in a chunk during position mint/burn.
+    /// @dev This event provides detailed information about liquidity changes per chunk, simplifying indexing.
+    /// @param univ3pool The Uniswap V3 pool address
+    /// @param owner The owner of the position
+    /// @param tokenType The type of token for this leg (token0 or token1)
+    /// @param tickLower The lower tick of the liquidity chunk
+    /// @param tickUpper The upper tick of the liquidity chunk
+    /// @param liquidityDelta The signed change in liquidity (positive for additions, negative for removals)
+    event LiquidityChunkUpdated(
+        address indexed univ3pool,
+        address indexed owner,
+        uint256 indexed tokenType,
+        int24 tickLower,
+        int24 tickUpper,
+        int128 liquidityDelta
+    );
+
     /*//////////////////////////////////////////////////////////////
                                  TYPES
     //////////////////////////////////////////////////////////////*/
@@ -993,6 +1010,29 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             s_accountLiquidity[positionKey] = LeftRightUnsigned
                 .wrap(updatedLiquidity)
                 .addToLeftSlot(removedLiquidity);
+
+            // emit event with liquidity delta information for indexing
+            {
+                uint256 tokenType = tokenId.tokenType(leg);
+                address _univ3pool = address(univ3pool);
+                int24 tickLower = liquidityChunk.tickLower();
+                int24 tickUpper = liquidityChunk.tickUpper();
+                int128 liquidityDelta;
+                if (isLong == 0) {
+                    liquidityDelta = isBurn ? -int128(chunkLiquidity) : int128(chunkLiquidity);
+                } else {
+                    liquidityDelta = isBurn ? int128(chunkLiquidity) : -int128(chunkLiquidity);
+                }
+
+                emit LiquidityChunkUpdated(
+                    _univ3pool,
+                    msg.sender,
+                    tokenType,
+                    tickLower,
+                    tickUpper,
+                    liquidityDelta
+                );
+            }
         }
 
         // track how much liquidity we need to collect from uniswap
