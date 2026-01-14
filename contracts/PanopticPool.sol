@@ -753,13 +753,16 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
             riskParameters
         );
 
-        {
+        unchecked {
             // update the users options balance of position `tokenId`
             // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
             PositionBalance balanceData = PositionBalanceLibrary.storeBalanceData(
                 positionSize,
                 poolUtilizations,
-                0
+                finalTick,
+                uint32(block.timestamp),
+                uint40(block.number),
+                tickLimits[0] > tickLimits[1]
             );
             s_positionBalance[owner][tokenId] = balanceData;
 
@@ -1746,7 +1749,10 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
                 positionBalanceArray[0] = PositionBalanceLibrary.storeBalanceData(
                     positionBalanceArray[0].positionSize(),
                     maxUtilizations,
-                    0
+                    0,
+                    0,
+                    0,
+                    false
                 );
             }
         }
@@ -1926,17 +1932,17 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
     /// @notice Get the `tokenId` position data for `user`.
     /// @param user The account that owns `tokenId`
     /// @param tokenId The position to query
+    /// @return whether a swap happened at mint
+    /// @return `block.number` at mint
+    /// @return `block.timestamp` at mint
     /// @return `currentTick` at mint
-    /// @return Fast oracle tick at mint
-    /// @return Slow oracle tick at mint
-    /// @return Last observed tick at mint
     /// @return Utilization of token0 at mint
     /// @return Utilization of token1 at mint
     /// @return Size of the position
     function positionData(
         address user,
         TokenId tokenId
-    ) external view returns (int24, int24, int24, int24, int256, int256, uint128) {
+    ) external view returns (bool, uint256, uint256, int24, int256, int256, uint128) {
         return s_positionBalance[user][tokenId].unpackAll();
     }
 

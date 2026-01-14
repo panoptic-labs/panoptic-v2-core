@@ -12285,7 +12285,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                PositionBalanceLibrary.storeBalanceData((positionSize0 / 4), 0, 0)
+                PositionBalanceLibrary.storeBalanceData((positionSize0 / 4), 0, 0, 0, 0, false)
             );
 
             assertEq(exerciseFees.rightSlot(), exerciseFee0);
@@ -12426,7 +12426,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0)
+                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0, 0, 0, false)
             );
 
             assertEq(exerciseFees.rightSlot(), exerciseFee0);
@@ -12568,7 +12568,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0)
+                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0, 0, 0, false)
             );
 
             assertEq(exerciseFees.rightSlot(), exerciseFee0);
@@ -12710,7 +12710,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0)
+                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0, 0, 0, false)
             );
 
             assertEq(exerciseFees.rightSlot(), exerciseFee0);
