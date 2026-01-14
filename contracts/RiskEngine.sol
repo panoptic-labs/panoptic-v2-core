@@ -1202,6 +1202,8 @@ contract RiskEngine {
             globalUtilizations = PositionBalanceLibrary.storeBalanceData(
                 0,
                 uint32(uint256(utilization0) + (uint256(utilization1) << 16)),
+                0,
+                0,
                 0
             );
         }

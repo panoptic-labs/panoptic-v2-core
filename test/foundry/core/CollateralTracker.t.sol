@@ -386,7 +386,7 @@ contract Attacker {
 
         panopticPool.dispatch(posIdList, posIdList, sizeList, tickAndSpreadLimits, true, 0);
 
-        (, , , , int256 u0, int256 u1, uint128 positionSize) = panopticPool.positionData(
+        (, , , int256 u0, int256 u1, uint128 positionSize) = panopticPool.positionData(
             address(this),
             tokenId
         );
@@ -1648,7 +1648,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             collateralToken0.wipeUtilizationSlot();
 
             console2.log("get u");
-            (, , , , int256 u0, int256 u1, uint128 positionSize) = panopticPool.positionData(
+            (, , , int256 u0, int256 u1, uint128 positionSize) = panopticPool.positionData(
                 Alice,
                 tokenId
             );
@@ -1688,7 +1688,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         vm.prank(address(attacker));
         uint128 _assets = assets;
         attacker.attackUtilizationRate(attackDepositAmount, tokenId, _assets / 2);
-        (, , , , int256 u0, int256 u1, uint128 positionSize) = panopticPool.positionData(
+        (, , , int256 u0, int256 u1, uint128 positionSize) = panopticPool.positionData(
             address(attacker),
             tokenId
         );
@@ -11652,10 +11652,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             vm.assume(uint128(longAmounts.leftSlot()) < type(uint104).max);
 
             {
-                (, , , , int256 u0, int256 u1, uint128 ps) = panopticPool.positionData(
-                    Bob,
-                    tokenId
-                );
+                (, , , int256 u0, int256 u1, uint128 ps) = panopticPool.positionData(Bob, tokenId);
                 console2.log("u0", u0);
                 console2.log("u1", u1);
                 (
@@ -11711,10 +11708,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             {
-                (, , , , int256 u0, int256 u1, uint128 ps) = panopticPool.positionData(
-                    Bob,
-                    tokenId
-                );
+                (, , , int256 u0, int256 u1, uint128 ps) = panopticPool.positionData(Bob, tokenId);
                 console2.log("u0", u0);
                 console2.log("u1", u1);
                 (
@@ -12285,7 +12279,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                PositionBalanceLibrary.storeBalanceData((positionSize0 / 4), 0, 0)
+                PositionBalanceLibrary.storeBalanceData((positionSize0 / 4), 0, 0, 0, 0)
             );
 
             assertEq(exerciseFees.rightSlot(), exerciseFee0);
@@ -12426,7 +12420,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0)
+                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0, 0, 0)
             );
 
             assertEq(exerciseFees.rightSlot(), exerciseFee0);
@@ -12568,7 +12562,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0)
+                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0, 0, 0)
             );
 
             assertEq(exerciseFees.rightSlot(), exerciseFee0);
@@ -12710,7 +12704,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0)
+                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0, 0, 0)
             );
 
             assertEq(exerciseFees.rightSlot(), exerciseFee0);

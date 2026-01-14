@@ -122,6 +122,6 @@ library PositionFactory {
         uint16 util1
     ) internal pure returns (PositionBalance) {
         uint32 utilPacked = uint32(util0) | (uint32(util1) << 16);
-        return PositionBalanceLibrary.storeBalanceData(positionSize, utilPacked, 0);
+        return PositionBalanceLibrary.storeBalanceData(positionSize, utilPacked, 0, 0, 0);
     }
 }

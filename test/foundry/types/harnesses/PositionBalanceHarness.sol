@@ -10,28 +10,23 @@ contract PositionBalanceHarness {
     /// @notice Create a new `PositionBalance` given by positionSize, utilizations, and its tickData.
     /// @param _positionSize The amount of option minted
     /// @param _utilizations packing of two uint16 utilizations into a 32 bit word
-    /// @param _tickData packing of 4 int25s into a single uint96
+    /// @param _tickAtMint packing of 4 int25s into a single uint96
+    /// @param
     /// @return The new PositionBalance with the given positionSize, utilization, and tickData
     function storeBalanceData(
         uint128 _positionSize,
         uint32 _utilizations,
-        uint96 _tickData
+        int24 _tickAtMint,
+        uint32 _timestampAtMint,
+        uint40 _blockAtMint
     ) public pure returns (PositionBalance) {
-        return PositionBalanceLibrary.storeBalanceData(_positionSize, _utilizations, _tickData);
-    }
-
-    function packTickData(
-        int24 _currentTick,
-        int24 _fastOracleTick,
-        int24 _slowOracleTick,
-        int24 _lastObservedTick
-    ) public pure returns (uint96) {
         return
-            PositionBalanceLibrary.packTickData(
-                _currentTick,
-                _fastOracleTick,
-                _slowOracleTick,
-                _lastObservedTick
+            PositionBalanceLibrary.storeBalanceData(
+                _positionSize,
+                _utilizations,
+                _tickAtMint,
+                _timestampAtMint,
+                _blockAtMint
             );
     }
 
@@ -63,38 +58,24 @@ contract PositionBalanceHarness {
         return PositionBalanceLibrary.utilization1(self);
     }
 
-    /// @notice Get the tickData of `self`.
-    /// @param self The PositionBalance to get utilization
-    /// @return The packed tickData
-    function tickData(PositionBalance self) public pure returns (uint96) {
-        return PositionBalanceLibrary.tickData(self);
-    }
-
     /// @notice Get the last observed tick of `self`.
     /// @param self The PositionBalance to get the requested tick
     /// @return The last observed tick of self
-    function lastObservedTick(PositionBalance self) public pure returns (int24) {
-        return PositionBalanceLibrary.lastObservedTick(self);
+    function tickAtMint(PositionBalance self) public pure returns (int24) {
+        return PositionBalanceLibrary.tickAtMint(self);
     }
 
     /// @notice Get the slow oracle tick of `self`.
     /// @param self The PositionBalance to get the requested tick
     /// @return The slow oracle tick of self
-    function slowOracleTick(PositionBalance self) public pure returns (int24) {
-        return PositionBalanceLibrary.slowOracleTick(self);
+    function timestampAtMint(PositionBalance self) public pure returns (uint32) {
+        return PositionBalanceLibrary.timestampAtMint(self);
     }
 
     /// @notice Get the last observed tick of `self`.
     /// @param self The PositionBalance to get the last observed tick
     /// @return The fast oracle tick of self
-    function fastOracleTick(PositionBalance self) public pure returns (int24) {
-        return PositionBalanceLibrary.fastOracleTick(self);
-    }
-
-    /// @notice Get the current tick of `self`.
-    /// @param self The PositionBalance to get the requested tick
-    /// @return The current tick of self
-    function currentTick(PositionBalance self) public pure returns (int24) {
-        return PositionBalanceLibrary.currentTick(self);
+    function blockAtMint(PositionBalance self) public pure returns (uint40) {
+        return PositionBalanceLibrary.blockAtMint(self);
     }
 }
