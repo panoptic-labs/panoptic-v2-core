@@ -5594,7 +5594,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         vm.startPrank(Bob);
         // Bob cannot withdraw
         vm.expectRevert(
-            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
         );
         collateralToken0.withdraw(8999000000, Bob, Bob, positionIdList, true);
     }

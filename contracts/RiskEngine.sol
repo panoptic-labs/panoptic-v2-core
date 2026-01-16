@@ -250,6 +250,10 @@ contract RiskEngine {
         return GUARDIAN;
     }
 
+    /// @notice Computes the deterministic address of a builder wallet using CREATE2
+    /// @dev Returns zero address if builderCode is zero. Uses keccak256 hash of factory, salt, and init code hash
+    /// @param builderCode The builder code used as the CREATE2 salt
+    /// @return wallet The computed address of the builder wallet
     function _computeBuilderWallet(uint256 builderCode) internal view returns (address wallet) {
         if (builderCode == 0) return address(0);
 
@@ -1920,6 +1924,15 @@ contract RiskEngine {
         }
     }
 
+    /// @notice Computes the required collateral for a composite position with a loan option strategy
+    /// @dev Calculates requirements for both the loan leg and its partner, returning the maximum of the two
+    /// @param tokenId The token ID representing the position
+    /// @param positionSize The size of the position in contracts
+    /// @param index The leg index of the loan option
+    /// @param partnerIndex The leg index of the partner to the loan option
+    /// @param atTick The tick at which to evaluate the collateral requirement
+    /// @param poolUtilization The current pool utilization percentage
+    /// @return The required collateral amount for the composite position
     function _computeLoanOptionComposite(
         TokenId tokenId,
         uint128 positionSize,
@@ -1954,6 +1967,13 @@ contract RiskEngine {
         }
     }
 
+    /// @notice Computes the required collateral for a composite position with a credit option strategy
+    /// @dev Assumes 100% utilization (cash account requirement) for sold options. Only called when partnerIndex is the credit
+    /// @param tokenId The token ID representing the position
+    /// @param positionSize The size of the position in contracts
+    /// @param index The leg index of the option
+    /// @param atTick The tick at which to evaluate the collateral requirement
+    /// @return The required collateral amount for the credit option
     function _computeCreditOptionComposite(
         TokenId tokenId,
         uint128 positionSize,
@@ -1975,6 +1995,14 @@ contract RiskEngine {
         return _required;
     }
 
+    /// @notice Computes the required collateral for a delayed swap strategy by netting the credit against the loan
+    /// @dev Calculates loan amount with seller collateral ratio, converts credit to same token type, and nets them. Floors result at 1
+    /// @param tokenId The token ID representing the position
+    /// @param positionSize The size of the position in contracts
+    /// @param index The leg index of the loan
+    /// @param partnerIndex The leg index of the credit partner
+    /// @param atTick The tick at which to evaluate the collateral requirement and perform conversions
+    /// @return The net required collateral after crediting, floored at 1
     function _computeDelayedSwap(
         TokenId tokenId,
         uint128 positionSize,
@@ -2237,10 +2265,11 @@ contract RiskEngine {
         }
     }
 
-    /// @dev Returns the rate for a given `_rateAtTarget` and an `err`.
-    /// The formula of the curve is the following:
-    /// r = ((1-1/C)*err + 1) * rateAtTarget if err < 0
-    ///     ((C-1)*err + 1) * rateAtTarget else.
+    /// @notice Applies a piecewise linear curve to compute the interest rate based on error from target
+    /// @dev Formula: r = ((1-1/C)*err + 1) * rateAtTarget if err < 0, else ((C-1)*err + 1) * rateAtTarget, where C is curve steepness
+    /// @param _rateAtTarget The base rate at target utilization
+    /// @param err The error/deviation from target utilization
+    /// @return The adjusted interest rate after applying the curve
     function _curve(int256 _rateAtTarget, int256 err) private pure returns (int256) {
         // Non negative because 1 - 1/C >= 0, C - 1 >= 0.
         unchecked {
@@ -2252,8 +2281,11 @@ contract RiskEngine {
         }
     }
 
-    /// @dev Returns the new rate at target, for a given `startRateAtTarget` and a given `linearAdaptation`.
-    /// The formula is: max(min(startRateAtTarget * exp(linearAdaptation), maxRateAtTarget), minRateAtTarget).
+    /// @notice Computes a new rate at target by applying exponential adaptation and bounding the result
+    /// @dev Formula: max(min(startRateAtTarget * exp(linearAdaptation), maxRateAtTarget), minRateAtTarget)
+    /// @param startRateAtTarget The starting rate at target utilization
+    /// @param linearAdaptation The linear adaptation factor to apply exponentially
+    /// @return newRateAtTarget The new bounded rate at target utilization
     function _newRateAtTarget(
         int256 startRateAtTarget,
         int256 linearAdaptation
@@ -2297,10 +2329,15 @@ contract BuilderWallet {
     /// @param amount The amount of tokens swept
     event TokensSwept(address indexed token, address indexed to, uint256 amount);
 
+    /// @notice Constructs a new BuilderWallet instance
+    /// @param factory The address of the BuilderFactory contract that deployed this wallet
     constructor(address factory) {
         FACTORY = factory;
     }
 
+    /// @notice Initializes the builder wallet with a builder admin address
+    /// @dev Can only be called once. Reverts if already initialized or if _builderAdmin is the zero address
+    /// @param _builderAdmin The address that will be set as the builder admin with permission to sweep tokens
     function init(address _builderAdmin) external {
         if (builderAdmin != address(0)) revert Errors.AlreadyInitialized();
         if (_builderAdmin == address(0)) revert Errors.ZeroAddress();
@@ -2309,6 +2346,10 @@ contract BuilderWallet {
         emit BuilderWalletInitialized(_builderAdmin);
     }
 
+    /// @notice Transfers all tokens of a given type from this wallet to a specified address
+    /// @dev Only callable by the builder admin. Emits TokensSwept event even if balance is zero
+    /// @param token The address of the token to sweep from the wallet
+    /// @param to The destination address to receive the swept tokens
     function sweep(address token, address to) external {
         if (msg.sender != builderAdmin) revert Errors.NotBuilder();
 
@@ -2324,6 +2365,12 @@ contract BuilderWallet {
 }
 
 library Create2Lib {
+    /// @notice Deploys a contract using CREATE2 opcode for deterministic addresses
+    /// @dev Reverts with "CREATE2 failed" if deployment returns zero address
+    /// @param value The amount of wei to send to the new contract
+    /// @param salt The CREATE2 salt for deterministic address generation
+    /// @param code The initialization bytecode of the contract to deploy
+    /// @return addr The address of the deployed contract
     function deploy(
         uint256 value,
         bytes32 salt,
@@ -2351,26 +2398,30 @@ contract BuilderFactory {
         address indexed builderAdmin
     );
 
+    /// @notice Constructs a new BuilderFactory instance
+    /// @dev Reverts if owner is the zero address
+    /// @param owner The address that will have permission to deploy new builder wallets
     constructor(address owner) {
         if (owner == address(0)) revert Errors.ZeroAddress();
         OWNER = owner;
     }
 
+    /// @notice Modifier function to check if caller is the factory owner
     modifier onlyOwner() {
         _onlyOwner();
         _;
     }
 
+    /// @notice Internal function to check if caller is the factory owner
+    /// @dev Reverts with "NOT_OWNER" if msg.sender is not the OWNER
     function _onlyOwner() internal view {
         require(msg.sender == OWNER, "NOT_OWNER");
     }
 
-    /**
-     * @notice Deploys a BuilderWallet contract using CREATE2.
-     * @param builderCode The uint256 used as the CREATE2 salt (must match caller's referral code).
-     * @param builderAdmin The EOA/multisig allowed to sweep tokens from the wallet.
-     * @return wallet The deployed wallet address (deterministic).
-     */
+    /// @notice Deploys a BuilderWallet contract using CREATE2.
+    /// @param builderCode The uint256 used as the CREATE2 salt (must match caller's referral code).
+    /// @param builderAdmin The EOA/multisig allowed to sweep tokens from the wallet.
+    /// @return wallet The deployed wallet address (deterministic).
     function deployBuilder(
         uint48 builderCode,
         address builderAdmin
@@ -2390,10 +2441,8 @@ contract BuilderFactory {
         emit BuilderWalletDeployed(builderCode, wallet, builderAdmin);
     }
 
-    /**
-     * @notice Computes the CREATE2 address for (builderCode, builderAdmin).
-     * @dev Must match the formula used in the RiskEngine.
-     */
+    /// @notice Computes the CREATE2 address for (builderCode, builderAdmin).
+    /// @dev Must match the formula used in the RiskEngine.
     function predictBuilderWallet(uint48 builderCode) external view returns (address) {
         bytes32 salt = bytes32(uint256(builderCode));
 

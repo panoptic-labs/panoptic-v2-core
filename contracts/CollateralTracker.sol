@@ -275,6 +275,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         _;
     }
 
+    /// @notice Internal function to verify that the caller is the PanopticPool
+    /// @dev Reverts with NotPanopticPool error if msg.sender is not the panoptic pool
     function _onlyPanopticPool() internal view {
         if (msg.sender != address(panopticPool())) revert Errors.NotPanopticPool();
     }
@@ -1062,6 +1064,9 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
                   ADAPTIVE INTEREST RATE MODEL
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Returns the current interest rate per second based on pool utilization
+    /// @param utilization The pool utilization to view the interest rate at
+    /// @return The current interest rate per second in WAD (18 decimal precision)
     function _interestRateView(uint256 utilization) internal view returns (uint128) {
         uint128 avgRate = riskEngine().interestRate(utilization, s_marketState);
         return avgRate;
@@ -1422,7 +1427,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
     /// @param longAmount The amount of longs
     /// @param shortAmount The amount of shorts
     /// @param ammDeltaAmount The amount of tokens moved during creation of the option position
-    ///
     function _updateBalancesAndSettle(
         address optionOwner,
         bool isCreation,
