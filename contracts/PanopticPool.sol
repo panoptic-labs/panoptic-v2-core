@@ -287,6 +287,8 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         _;
     }
 
+    /// @notice Internal function to verify that the caller is the risk engine
+    /// @dev Reverts with NotGuardian error if msg.sender is not the risk engine
     function _onlyRiskEngine() internal view {
         if (msg.sender != address(riskEngine())) revert Errors.NotGuardian();
     }
@@ -549,7 +551,9 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
                           ONBOARD MEDIAN TWAP
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Updates the internal oracle.
+    /// @notice Updates the internal oracle by recording the new exponential moving averages based on the current tick and computing a new median.
+    /// @dev This function allows anyone to update the oracle state, which is used for risk calculations and collateral requirements.
+    /// The oracle values can only be updated once every 64s
     function pokeOracle() external nonReentrant {
         int24 currentTick = getCurrentTick();
 
@@ -989,6 +993,13 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
                           SETTLEMENTS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Settles an option position by updating settlement data and burning premium from the owner's collateral
+    /// @dev Calls _updateSettlementPostBurn to calculate realized premia, then settles the burn in both collateral trackers
+    /// @param owner The address of the position owner whose options are being settled
+    /// @param tokenId The token ID representing the option position to settle
+    /// @param positionSize The size of the position in contracts
+    /// @param riskParameters The risk parameters for this pool
+    /// @param currentTick The current tick at which to settle the position
     function _settleOptions(
         address owner,
         TokenId tokenId,

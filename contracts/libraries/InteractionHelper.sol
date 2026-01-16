@@ -109,6 +109,16 @@ library InteractionHelper {
         }
     }
 
+    /// @notice Settles haircut premia and burns collateral shares during liquidation when protocol loss occurs.
+    /// @dev Updates settled token accumulators for haircut long legs and burns collateral shares equal to the total haircut amount via settleBurn().
+    /// @param liquidatee The address of the user being liquidated whose premia is being haircut
+    /// @param positionIdList The list of all positions held by the liquidatee being closed
+    /// @param haircutTotal The total premium clawed back from the liquidatee across all positions (rightSlot: token0, leftSlot: token1)
+    /// @param haircutPerLeg The haircut amount for each leg of each position in the positionIdList
+    /// @param premiasByLeg The original premium owed to (positive) or paid by (negative) the liquidatee for each leg before haircut
+    /// @param ct0 The CollateralTracker for token0, used to burn shares corresponding to token0 haircut
+    /// @param ct1 The CollateralTracker for token1, used to burn shares corresponding to token1 haircut
+    /// @param settledTokens Storage mapping tracking accumulated premia for each liquidity chunk (indexed by chunk key)
     function settleAmounts(
         address liquidatee,
         TokenId[] memory positionIdList,
