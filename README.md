@@ -178,15 +178,16 @@ Panoptic can be deployed on any chain with a Uniswap V3 instance. To go through 
 
 - `DEPLOYER_PRIVATE_KEY` The private key of the EOA deploying the contracts
 - `UNISWAP_V3_FACTORY` The address of the Uniswap V3 Factory Panoptic is being deployed on
-- `WETH9` The canonical Wrapped Ether deployment on the chain
+- `ETHERSCAN_API_KEY`
+- `ALCHEMY_API_KEY`
 
 To deploy Panoptic for testing purposes, run:
 
 ```bash
-forge script script/DeployProtocol.s.sol:DeployProtocol --rpc-url sepolia -vvvv --broadcast
+source .env && forge script script/DeployProtocol.s.sol --rpc-url https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY} -vvvv --optimize true --optimizer-runs 200 --broadcast --slow --verify
 ```
 
-Include the `--verify` flag, after exporting your ETHERSCAN_API_KEY into the environment, to ensure deployed contracts are verified on Etherscan.
+The `--verify` flag is included to ensure deployed contracts are verified on Etherscan.
 
 The preconfigured RPC URL aliases are: `sepolia`. To deploy on another chain a custom RPC URL can be passed.
 
