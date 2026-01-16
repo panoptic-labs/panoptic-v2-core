@@ -2346,6 +2346,8 @@ library Create2Lib {
 contract BuilderFactory {
     using Create2Lib for uint256;
 
+    event BuilderDeployed(uint48 indexed builderCode, address indexed wallet, address builderAdmin);
+
     address public immutable OWNER;
 
     constructor(address owner) {
@@ -2383,6 +2385,8 @@ contract BuilderFactory {
         wallet = Create2Lib.deploy(0, salt, initCode);
         // now set the admin in storage (not part of init code)
         BuilderWallet(wallet).init(builderAdmin);
+
+        emit BuilderDeployed(builderCode, wallet, builderAdmin);
     }
 
     /**
