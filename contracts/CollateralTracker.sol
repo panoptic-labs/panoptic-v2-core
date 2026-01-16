@@ -64,11 +64,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         uint256 shares
     );
 
-    /// @notice Emitted when shares are donated to the protocol.
-    /// @param sender The address of the caller
-    /// @param shares The amount of shares burned by the sender
-    event Donate(address indexed sender, uint256 shares);
-
     /// @notice Emitted when a commission is paid.
     /// @param owner The address of the owner of the shares being used to pay for the commission
     /// @param builder The address of the account that received the commission if a builderCode is provided
@@ -94,6 +89,13 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         uint256 sharesBurned
     );
 
+    /// @notice Emitted when protocol loss is realized during liquidation settlement
+    /// @dev Protocol loss occurs when the liquidatee's balance is insufficient to cover the required virtual shares (type(uint248).max)
+    /// or when additional shares must be minted to pay the liquidator beyond what the liquidatee owns.
+    /// @param liquidatee The account being liquidated whose insufficient balance resulted in protocol loss
+    /// @param liquidator The account performing the liquidation and receiving the liquidation bonus
+    /// @param protocolLossAssets The total protocol loss denominated in underlying assets
+    /// @param protocolLossShares The total protocol loss denominated in shares (virtual shares + minted bonus shares)
     event ProtocolLossRealized(
         address indexed liquidatee,
         address indexed liquidator,
@@ -891,23 +893,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         }
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
-    }
-
-    /// @notice Donate exact shares to all shareholders.
-    /// @dev Can only be used when the user has no open positions
-    /// @param shares Amount of shares to be donated
-    function donate(uint256 shares) external nonReentrant {
-        _accrueInterest(msg.sender, DONOT_SKIP_INTEREST);
-
-        if (shares > maxRedeem(msg.sender)) revert Errors.ExceedsMaximumRedemption();
-
-        uint256 assets = previewRedeem(shares);
-        if (assets == 0) revert Errors.BelowMinimumRedemption();
-
-        // burn collateral shares of the Panoptic Pool funds (this ERC20 token)
-        _burn(msg.sender, shares);
-
-        emit Donate(msg.sender, shares);
     }
 
     /// @notice Accrues protocol-wide interest for the calling user
