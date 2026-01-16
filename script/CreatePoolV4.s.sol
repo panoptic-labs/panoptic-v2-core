@@ -13,7 +13,7 @@ contract CreatePoolV4 is Script {
     function run() public {
         uint256 DEPLOYER_PRIVATE_KEY = vm.envUint("DEPLOYER_PRIVATE_KEY");
 
-        PanopticFactory factory = PanopticFactory(vm.envAddress("PANOPTIC_FACTORY"));
+        PanopticFactory factory = PanopticFactory(vm.envAddress("PANOPTIC_FACTORY_V4"));
         IRiskEngine riskEngine = IRiskEngine(vm.envAddress("RISK_ENGINE"));
 
         address currency0 = vm.envAddress("CURRENCY0");
