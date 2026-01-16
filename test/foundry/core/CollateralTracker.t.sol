@@ -8010,6 +8010,31 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick
             );
 
+            // ensure the leg order has no impact
+
+            {
+                TokenId tokenId1_flipped = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                    0,
+                    1,
+                    1,
+                    0,
+                    1,
+                    1,
+                    strike1,
+                    width1
+                );
+                tokenId1_flipped = tokenId1_flipped.addLeg(1, 1, 1, 1, 1, 0, strike, width);
+
+                uint128 required_flipped = _spreadTokensRequired(
+                    tokenId1_flipped,
+                    positionSize0 / 2,
+                    poolUtilizations,
+                    atTick
+                );
+
+                assertEq(required, required_flipped, "FAIL: leg order matters");
+            }
+
             // only add premium requirement if there is net premia owed
             int128 premium0 = int256(uint256($shortPremia.rightSlot())) -
                 int256(uint256($longPremia.rightSlot())) <

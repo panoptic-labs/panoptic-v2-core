@@ -1625,8 +1625,8 @@ contract RiskEngine {
                         if (_isLong != isLongP) {
                             // SPREADS: same token type, one is long and the other is short
                             return
-                                // only return the requirement once for the first leg it encounters
-                                index < partnerIndex
+                                // only return the requirement once when long leg == index
+                                _isLong == 1
                                     ? _computeSpread(
                                         tokenId,
                                         positionSize,
