@@ -2123,10 +2123,10 @@ contract RiskEngine {
         int256 utilization,
         uint256 crossBuffer
     ) internal view returns (uint256 crossBufferRatio) {
-        // linear from crossBuffer to 0 between 50% and 90%
-        // the buy ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
-        //   (x0,y0) = (targetPoolUtilization, crossBuffer) and
-        //   (x1,y1) = (saturatedPoolUtilization, 0)
+        // linear from crossBuffer to 0 between 90% and 95%
+        // the buffer ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
+        //   (x0,y0) = (saturatedPoolUtilization, crossBuffer) and
+        //   (x1,y1) = ((saturatedPoolUtilization + 100%)/2, 0)
         // note that y1<y0 so the slope is negative:
         // aka the cross buffer starts high and drops to zero with increased utilization
         // the line's formula: y = a * (x - x0) + y0, where a = (y1 - y0) / (x1 - x0)
@@ -2138,27 +2138,28 @@ contract RiskEngine {
           BUFFER
           RATIO
                  ^
-                 |   cross_buffer = 80%
-           80% - |----------_
+                 |   cross_buffer = 100%
+           100% - |----------_
                  |         . ¯-_
                  |         .    ¯-_
            0% -  +---------+-------∓---+--->   POOL_
-                          50%     90% 100%      UTILIZATION
+                          90%     95% 100%      UTILIZATION
          */
         unchecked {
             uint256 utilizationScaled = uint256(utilization * 1_000);
             // return the basal cross buffer ratio if pool utilization is lower than target
-            if (utilizationScaled < TARGET_POOL_UTIL) {
+            if (utilizationScaled < SATURATED_POOL_UTIL) {
                 return crossBuffer;
             }
 
-            // return 0 if pool utilization is above saturated pool utilization
-            if (utilizationScaled > SATURATED_POOL_UTIL) {
+            uint256 cutoffPoolUtilization = (SATURATED_POOL_UTIL + DECIMALS) / 2;
+            // return 0 if pool utilization is above halfway between the saturated pool utilization and 100%
+            if (utilizationScaled > cutoffPoolUtilization) {
                 return 0;
             }
 
-            return ((crossBuffer * (SATURATED_POOL_UTIL - utilizationScaled)) /
-                (SATURATED_POOL_UTIL - TARGET_POOL_UTIL));
+            return ((crossBuffer * (cutoffPoolUtilization - utilizationScaled)) /
+                (cutoffPoolUtilization - SATURATED_POOL_UTIL));
         }
     }
 
