@@ -130,9 +130,9 @@ library InteractionHelper {
         mapping(bytes32 chunkKey => LeftRightUnsigned settledTokens) storage settledTokens
     ) external {
         unchecked {
-            for (uint256 i = 0; i < positionIdList.length; i++) {
+            for (uint256 i = 0; i != positionIdList.length; i++) {
                 TokenId tokenId = positionIdList[i];
-                for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
+                for (uint256 leg = 0; leg != tokenId.countLegs(); ++leg) {
                     if (
                         tokenId.isLong(leg) == 1 &&
                         LeftRightSigned.unwrap(premiasByLeg[i][leg]) != 0

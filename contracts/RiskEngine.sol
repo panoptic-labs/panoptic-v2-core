@@ -53,7 +53,7 @@ contract RiskEngine {
 
     /// @notice Decimals for computation (1 millitick (1/1000th of a basis point) precision: 1e-7 = 0.00001%).
     /// @dev uint type for composability with unsigned integer based mathematical operations.
-    uint256 internal constant DECIMALS = 10_000_000;
+    uint256 public constant DECIMALS = 10_000_000;
 
     int16 internal constant MAX_UTILIZATION = 10_000;
     uint256 internal constant LN2_SCALED = 6931472;
@@ -66,23 +66,23 @@ contract RiskEngine {
     //int256 constant EMA_PERIOD_SLOW = 240; // 4 minutes
     //int256 constant EMA_PERIOD_EONS = 960; // 16 minutes
 
-    uint96 constant EMA_PERIODS = uint96(60 + (120 << 24) + (240 << 48) + (960 << 72));
+    uint96 public constant EMA_PERIODS = uint96(60 + (120 << 24) + (240 << 48) + (960 << 72));
     /// @notice The maximum allowed cumulative delta between the fast & slow oracle tick, the current & slow oracle tick, and the last-observed & slow oracle tick.
     /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
-    int256 internal constant MAX_TICKS_DELTA = 953;
+    int256 public constant MAX_TICKS_DELTA = 953;
 
     /// @notice The maximum allowed delta between the currentTick and the Uniswap TWAP tick during a dispatch/dispatchFrom call (~5% down, ~5.26% up).
     /// @dev Mitigates manipulation of the currentTick that causes positions to be force exercised at a less favorable price.
-    uint16 internal constant MAX_TWAP_DELTA_DISPATCH = 513;
+    uint16 public constant MAX_TWAP_DELTA_DISPATCH = 513;
 
     /// @notice The maximum allowed ratio for a single chunk, defined as `removedLiquidity / netLiquidity`.
     /// @dev The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
     /// which can be explored in this calculator: [https://www.desmos.com/calculator/mdeqob2m04](https://www.desmos.com/calculator/mdeqob2m04).
-    uint24 internal constant MAX_SPREAD = 90_000;
+    uint24 public constant MAX_SPREAD = 90_000;
 
     /// @notice Multiplier in basis points for the collateral requirement in the event of a buying power decrease, such as minting or force exercising another user.
     /// @dev must fit inside a uint26
-    uint32 internal constant BP_DECREASE_BUFFER = 13_333_333;
+    uint32 public constant BP_DECREASE_BUFFER = 13_333_333;
 
     /// @notice Decimals for WAD calculations.
     int256 internal constant WAD = 1e18;
@@ -91,10 +91,8 @@ contract RiskEngine {
     /// @dev the time elapsed will be capped at IRM_MAX_ELAPSED_TIME
     int256 public constant IRM_MAX_ELAPSED_TIME = 4096;
 
-    bytes32 internal constant BUILDER_SALT = keccak256("panoptic.builder");
-
     /// @notice The maximum amount of change, in ticks, permitted between internal median updates.
-    int24 internal constant MAX_CLAMP_DELTA = 149;
+    int24 public constant MAX_CLAMP_DELTA = 149;
 
     /// @notice Parameter used to modify the [equation](https://www.desmos.com/calculator/mdeqob2m04) of the utilization-based multiplier for long premium.
     // ν = 1/VEGOID = multiplicative factor for long premium (Eqns 1-5)
@@ -102,57 +100,57 @@ contract RiskEngine {
     // and vegoid modifies the sensitivity of the streamia to changes in that utilization,
     // much like vega measures the sensitivity of traditional option prices to IV.
     // The effect of vegoid on the long premium multiplier can be explored here: https://www.desmos.com/calculator/mdeqob2m04
-    uint8 internal constant VEGOID = 4;
+    uint8 public constant VEGOID = 4;
 
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS
     //////////////////////////////////////////////////////////////*/
     /// @notice The notional fee, in basis points, collected from PLPs at option mint.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 constant NOTIONAL_FEE = 10;
+    uint16 public constant NOTIONAL_FEE = 10;
 
     /// @notice The premium fee, in basis points, collected from the premium paid/received.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 constant PREMIUM_FEE = 0;
+    uint16 public constant PREMIUM_FEE = 0;
 
     /// @notice The protocol split, in basis points, when a builder code is present.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 constant PROTOCOL_SPLIT = 6_500;
+    uint16 public constant PROTOCOL_SPLIT = 6_500;
 
     /// @notice The builder split, in basis points, when a builder code is present
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 constant BUILDER_SPLIT = 2_500;
+    uint16 public constant BUILDER_SPLIT = 2_500;
 
     /// @notice Required collateral ratios for selling options, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 20% -> 0.2 * 10_000_000 = 2_000_000.
-    uint256 constant SELLER_COLLATERAL_RATIO = 2_000_000;
+    uint256 public constant SELLER_COLLATERAL_RATIO = 2_000_000;
 
     /// @notice Required collateral ratios for buying options, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 10% -> 0.1 * 10_000_000 = 1_000_000.
-    uint256 constant BUYER_COLLATERAL_RATIO = 1_000_000;
+    uint256 public constant BUYER_COLLATERAL_RATIO = 1_000_000;
 
     /// @notice Required collateral margin for loans in excess of notional, fraction of 1, scaled by 10_000_000.
-    uint256 constant MAINT_MARGIN_RATE = 2_000_000;
+    uint256 public constant MAINT_MARGIN_RATE = 2_000_000;
 
     /// @notice Basal cost (in bps of notional) to force exercise an out-of-range position.
-    uint256 constant FORCE_EXERCISE_COST = 102_400;
+    uint256 public constant FORCE_EXERCISE_COST = 102_400;
 
     // Targets a pool utilization (balance between buying and selling)
     /// @notice Target pool utilization below which buying+selling is optimal, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 50% -> 0.5 * 10_000_000 = 5_000_000.
-    uint256 constant TARGET_POOL_UTIL = 5_000_000;
+    uint256 public constant TARGET_POOL_UTIL = 5_000_000;
 
     /// @notice Pool utilization above which selling is 100% collateral backed, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 90% -> 0.9 * 10_000_000 = 9_000_000.
-    uint256 constant SATURATED_POOL_UTIL = 9_000_000;
+    uint256 public constant SATURATED_POOL_UTIL = 9_000_000;
 
-    uint256 immutable CROSS_BUFFER_0;
-    uint256 immutable CROSS_BUFFER_1;
+    uint256 public immutable CROSS_BUFFER_0;
+    uint256 public immutable CROSS_BUFFER_1;
 
     address immutable BUILDER_FACTORY;
     bytes32 immutable BUILDER_INIT_CODE_HASH;
 
-    uint256 constant MAX_OPEN_LEGS = 33;
+    uint256 public constant MAX_OPEN_LEGS = 33;
 
     /*//////////////////////////////////////////////////////////////
                             IRM PARAMETERS
@@ -415,7 +413,7 @@ contract RiskEngine {
         LeftRightSigned longAmounts;
         // we find whether the price is within any leg; any in-range leg will have a cost. Otherwise, the force-exercise fee is 1bps
         bool hasLegsInRange;
-        for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
+        for (uint256 leg = 0; leg != tokenId.countLegs(); ++leg) {
             // short legs are not counted - exercise is intended to be based on long legs
             if (tokenId.isLong(leg) == 0) continue;
 
@@ -625,10 +623,10 @@ contract RiskEngine {
                 int256 collateralDelta1 = -Math.min(collateralRemaining.leftSlot(), 0);
                 // get the amount of premium paid by the liquidatee
 
-                for (uint256 i = 0; i < positionIdList.length; ++i) {
+                for (uint256 i = 0; i != positionIdList.length; ++i) {
                     TokenId tokenId = positionIdList[i];
                     uint256 numLegs = tokenId.countLegs();
-                    for (uint256 leg = 0; leg < numLegs; ++leg) {
+                    for (uint256 leg = 0; leg != numLegs; ++leg) {
                         if (tokenId.isLong(leg) == 1) {
                             longPremium = longPremium.sub(premiasByLeg[i][leg]);
                         }
@@ -717,10 +715,10 @@ contract RiskEngine {
                 haircutPerLeg = new LeftRightSigned[4][](positionIdList.length);
                 // total haircut after rounding up prorated haircut amounts for each leg
                 address _liquidatee = liquidatee;
-                for (uint256 i = 0; i < positionIdList.length; i++) {
+                for (uint256 i = 0; i != positionIdList.length; i++) {
                     TokenId tokenId = positionIdList[i];
                     LeftRightSigned[4][] memory _premiasByLeg = premiasByLeg;
-                    for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
+                    for (uint256 leg = 0; leg != tokenId.countLegs(); ++leg) {
                         if (
                             tokenId.isLong(leg) == 1 &&
                             LeftRightSigned.unwrap(_premiasByLeg[i][leg]) != 0
@@ -1187,7 +1185,7 @@ contract RiskEngine {
         int256 utilization1;
         uint256 pLength = positionBalanceArray.length;
 
-        for (uint256 i; i < pLength; ) {
+        for (uint256 i; i != pLength; ) {
             PositionBalance positionBalance = positionBalanceArray[i];
 
             int256 _utilization0 = positionBalance.utilization0();
@@ -1240,7 +1238,7 @@ contract RiskEngine {
         // add long premia to tokens required
         tokensRequired = tokensRequired.add(longPremia);
 
-        for (uint256 i; i < positionBalanceArray.length; ) {
+        for (uint256 i; i != positionBalanceArray.length; ) {
             uint256 _tokenRequired0;
             uint256 _credits0;
             uint256 _tokenRequired1;
@@ -1305,7 +1303,7 @@ contract RiskEngine {
         uint256 numLegs = tokenId.countLegs();
 
         unchecked {
-            for (uint256 index = 0; index < numLegs; ++index) {
+            for (uint256 index = 0; index != numLegs; ++index) {
                 // bypass the collateral calculation if tokenType doesn't match the requested token (underlyingIsToken0)
                 if (tokenId.tokenType(index) != (underlyingIsToken0 ? 0 : 1)) continue;
 

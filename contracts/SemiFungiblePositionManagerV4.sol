@@ -788,7 +788,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             if (poolData.poolId() != tokenId.poolId() || !poolData.initialized())
                 revert Errors.WrongUniswapPool();
 
-            for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
+            for (uint256 leg = 0; leg != tokenId.countLegs(); ) {
                 if (tokenId.width(leg) == 0) {
                     uint256 isLong = tokenId.isLong(leg);
                     LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(

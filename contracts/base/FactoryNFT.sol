@@ -266,7 +266,7 @@ contract FactoryNFT is MetadataStore, ERC721 {
         // the sum of all character widths in `chars`
         uint256 offset;
 
-        for (uint256 i = 0; i < bytes(chars).length; ++i) {
+        for (uint256 i = 0; i != bytes(chars).length; ++i) {
             // character widths are hardcoded in the metadata
             uint256 charOffset = uint256(
                 bytes32(metadata[bytes32("charOffsets")][uint256(bytes32(bytes(chars)[i]))].data())

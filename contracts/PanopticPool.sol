@@ -118,9 +118,6 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
     /// @notice Flag that signals to add a new position to the user's positions hash (as opposed to removing an existing position).
     bool internal constant ADD = true;
 
-    /// @notice The maximum allowed number of legs across all open positions for a user.
-    uint64 internal constant MAX_OPEN_LEGS = 25;
-
     /// @notice Multiplier for the collateral requirement in the general case.
     uint24 internal constant NO_BUFFER = 10_000_000;
 
@@ -132,7 +129,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
     bytes32 internal constant PRICE_TRANSIENT_SLOT = keccak256("panoptic.price.snapshot");
 
     /// @notice The "engine" of Panoptic - manages AMM liquidity and executes all mints/burns/exercises.
-    ISemiFungiblePositionManager internal immutable SFPM;
+    ISemiFungiblePositionManager public immutable SFPM;
 
     /*//////////////////////////////////////////////////////////////
                                 STORAGE
@@ -478,7 +475,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
 
         address c_user = user;
         // loop through each option position/tokenId
-        for (uint256 k = 0; k < pLength; ) {
+        for (uint256 k = 0; k != pLength; ) {
             TokenId tokenId = positionIdList[k];
 
             {
@@ -499,7 +496,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
                 );
 
             uint256 numLegs = tokenId.countLegs();
-            for (uint256 leg = 0; leg < numLegs; ) {
+            for (uint256 leg = 0; leg != numLegs; ) {
                 if (tokenId.width(leg) != 0) {
                     if (tokenId.isLong(leg) == 0) {
                         if (!includePendingPremium) {
@@ -597,22 +594,24 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
             int24 startTick;
             (riskParameters, startTick) = getRiskParameters(builderCode);
 
-            if (cumulativeTickDeltas.rightSlot() == 0) {
-                // initializes +1 sentinel
-                cumulativeTickDeltas = LeftRightSigned.wrap(0).addToRightSlot(1).addToLeftSlot(
-                    startTick
-                );
-            } else {
-                cumulativeTickDeltas = LeftRightSigned
-                    .wrap(0)
-                    .addToRightSlot(
-                        cumulativeTickDeltas.rightSlot() +
-                            int128(Math.abs(int24(cumulativeTickDeltas.leftSlot()) - startTick))
-                    )
-                    .addToLeftSlot(startTick);
+            unchecked {
+                if (cumulativeTickDeltas.rightSlot() == 0) {
+                    // initializes +1 sentinel
+                    cumulativeTickDeltas = LeftRightSigned.wrap(0).addToRightSlot(1).addToLeftSlot(
+                        startTick
+                    );
+                } else {
+                    cumulativeTickDeltas = LeftRightSigned
+                        .wrap(0)
+                        .addToRightSlot(
+                            cumulativeTickDeltas.rightSlot() +
+                                int128(Math.abs(int24(cumulativeTickDeltas.leftSlot()) - startTick))
+                        )
+                        .addToLeftSlot(startTick);
+                }
             }
         }
-        for (uint256 i = 0; i < positionIdList.length; ) {
+        for (uint256 i = 0; i != positionIdList.length; ) {
             TokenId tokenId = positionIdList[i];
 
             // make sure the tokenId is for this Panoptic pool
@@ -846,7 +845,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         premiasByLeg = new LeftRightSigned[4][](positionIdList.length);
         (RiskParameters riskParameters, ) = getRiskParameters(0);
 
-        for (uint256 i = 0; i < positionIdList.length; ) {
+        for (uint256 i = 0; i != positionIdList.length; ) {
             uint128 positionSize = s_positionBalance[owner][positionIdList[i]].positionSize();
 
             if (positionSize == 0) revert Errors.PositionNotOwned();
@@ -1045,7 +1044,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         // and increase the number of positions counter by 1.
         _updatePositionsHash(owner, tokenId, ADD, riskParameters.maxLegs());
 
-        for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
+        for (uint256 leg = 0; leg != tokenId.countLegs(); ) {
             if (tokenId.width(leg) != 0) {
                 uint256 isLong = tokenId.isLong(leg);
                 // if position is long, ensure that removed liquidity does not deplete strike beyond min(MAX_SPREAD, user-provided effectiveLiquidityLimit)
@@ -1175,7 +1174,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
                 ? type(int24).max
                 : int24(commitLongSettledAndKeepOpen.leftSlot() >> 2)
         );
-        for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
+        for (uint256 leg = 0; leg != tokenId.countLegs(); ) {
             if (tokenId.width(leg) != 0) {
                 LeftRightSigned legPremia = premiaByLeg[leg];
                 bytes32 chunkKey = PanopticMath.getChunkKey(tokenId, leg);
@@ -1768,7 +1767,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
             }
         }
         uint256 solvent;
-        for (uint256 i; i < atTicks.length; ) {
+        for (uint256 i; i != atTicks.length; ) {
             unchecked {
                 if (
                     _isAccountSolvent(
@@ -1858,7 +1857,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         }
 
         uint64 _poolId = poolId();
-        for (uint256 i = 0; i < pLength; ) {
+        for (uint256 i = 0; i != pLength; ) {
             TokenId tokenId = positionIdList[i];
             // make sure the tokenId is for this Panoptic pool
             if (tokenId.poolId() != _poolId) revert Errors.WrongPoolId();
@@ -2028,7 +2027,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         )
     {
         uint256 numLegs = tokenId.countLegs();
-        for (uint256 leg = 0; leg < numLegs; ) {
+        for (uint256 leg = 0; leg != numLegs; ) {
             uint256 isLong = tokenId.isLong(leg);
             if (tokenId.width(leg) != 0 && (isLong == 1 || usePremiaAsCollateral)) {
                 LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(

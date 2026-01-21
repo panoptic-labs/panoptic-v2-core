@@ -11,7 +11,7 @@ abstract contract Multicall {
     /// @return results The data returned by each call
     function multicall(bytes[] calldata data) public payable returns (bytes[] memory results) {
         results = new bytes[](data.length);
-        for (uint256 i = 0; i < data.length; ) {
+        for (uint256 i = 0; i != data.length; ) {
             (bool success, bytes memory result) = address(this).delegatecall(data[i]);
 
             if (!success) {
