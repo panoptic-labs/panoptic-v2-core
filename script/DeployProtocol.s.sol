@@ -1,15 +1,14 @@
-// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
 // Foundry
 import "forge-std/Script.sol";
-import {PanopticFactory} from "@contracts/PanopticFactory.sol";
+import {PanopticFactory} from "@contracts/PanopticFactoryV4.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
-import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
+import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManagerV4.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {Pointer, PointerLibrary} from "@types/Pointer.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 
@@ -23,8 +22,8 @@ contract DeployProtocol is Script {
     function run() public {
         uint256 DEPLOYER_PRIVATE_KEY = vm.envUint("DEPLOYER_PRIVATE_KEY");
 
-        // 0x0227628f3f023bb0b980b67d528571c95c6dac1c: sepolia
-        IUniswapV3Factory uniFactory = IUniswapV3Factory(vm.envAddress("UNIV3_FACTORY"));
+        // 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543: sepolia
+        IPoolManager uniPoolManager = IPoolManager(vm.envAddress("UNIV4_POOL_MANAGER"));
 
         vm.startBroadcast(DEPLOYER_PRIVATE_KEY);
 
@@ -81,7 +80,12 @@ contract DeployProtocol is Script {
             }
         }
 
-        SemiFungiblePositionManager sfpm = new SemiFungiblePositionManager(uniFactory, 10 ** 13, 0);
+        SemiFungiblePositionManager sfpm = new SemiFungiblePositionManager(
+            uniPoolManager,
+            10 ** 13,
+            10 ** 13,
+            0
+        );
 
         // risk engine MED
         new RiskEngine(
@@ -99,7 +103,7 @@ contract DeployProtocol is Script {
         */
         new PanopticFactory(
             sfpm,
-            uniFactory,
+            uniPoolManager,
             address(new PanopticPool(ISemiFungiblePositionManager(address(sfpm)))),
             address(new CollateralTracker(10)),
             props,
