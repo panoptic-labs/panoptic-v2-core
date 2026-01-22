@@ -477,6 +477,7 @@ library TokenIdLibrary {
         unchecked {
             // extract strike, width, and tokenType
             uint256 chunkData = (TokenId.unwrap(self) & CHUNK_MASK) >> 64;
+            uint256 numLegs = self.countLegs();
             for (uint256 i = 0; i != 4; ++i) {
                 if (self.optionRatio(i) == 0) {
                     // final leg in this position identified;
@@ -489,7 +490,6 @@ library TokenIdLibrary {
                 }
 
                 // prevent legs touching the same chunks - all chunks in the position must be discrete
-                uint256 numLegs = self.countLegs();
                 for (uint256 j = i + 1; j != numLegs; ++j) {
                     if (uint48(chunkData >> (48 * i)) == uint48(chunkData >> (48 * j))) {
                         revert Errors.InvalidTokenIdParameter(6);
@@ -505,6 +505,9 @@ library TokenIdLibrary {
                 // In the following, we check whether the risk partner of this leg is itself
                 // or another leg in this position.
                 uint256 riskPartnerIndex = self.riskPartner(i);
+                if (riskPartnerIndex > (numLegs - 1)) {
+                    revert Errors.InvalidTokenIdParameter(3);
+                }
                 if (riskPartnerIndex != i) {
                     // Ensures that risk partners are mutual
                     if (self.riskPartner(riskPartnerIndex) != i)
