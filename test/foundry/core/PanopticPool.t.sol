@@ -2409,8 +2409,207 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         console2.log("bobBefore0", bobBefore0);
+        console2.log("bobBefore1", bobBefore1);
         console2.log("newSharesFromLoan0", newSharesFromLoan0);
+        console2.log("newSharesFromLoan1", newSharesFromLoan1);
         console2.log("BobAfter0", bobAfter0);
+        console2.log("BobAfter1", bobAfter1);
+        assertApproxEqAbs(
+            int256(bobAfter0),
+            int256(bobBefore0) + newSharesFromLoan0,
+            10,
+            "FAIL: incorrect loan amount token0"
+        );
+        assertApproxEqAbs(
+            int256(bobAfter1),
+            int256(bobBefore1) + newSharesFromLoan1,
+            10,
+            "FAIL: incorrect loan amount token1"
+        );
+
+        {
+            (uint256 poolAssets, uint256 inAMM, , ) = ct0.getPoolData();
+            assertApproxEqAbs(inAMM, uint128(amountsMoved.rightSlot()), 10, "in AMM 0");
+        }
+        {
+            (uint256 poolAssets, uint256 inAMM, , ) = ct1.getPoolData();
+            assertApproxEqAbs(inAMM, uint128(amountsMoved.leftSlot()), 10, "in AMM 1");
+        }
+
+        assertEq(pp.positionsHash(Bob), uint248(uint256(keccak256(abi.encodePacked(tokenId)))));
+        assertEq(pp.numberOfLegs(Bob), 1);
+
+        int256 repaidSharesForLoan0 = int256(
+            (uint128(amountsMoved.rightSlot()) * ct0.totalSupply()) / ct0.totalAssets()
+        );
+        int256 repaidSharesForLoan1 = int256(
+            (uint128(amountsMoved.leftSlot()) * ct1.totalSupply()) / ct1.totalAssets()
+        );
+
+        burnOptions(
+            pp,
+            posIdList,
+            new TokenId[](0),
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        int256 bobRepaid0 = int256(ct0.balanceOf(Bob));
+        int256 bobRepaid1 = int256(ct1.balanceOf(Bob));
+
+        assertApproxEqRel(
+            int256(bobRepaid0),
+            int256(bobBefore0) + newSharesFromLoan0 - repaidSharesForLoan0,
+            1e6,
+            "FAIL: balance after loan repayment"
+        );
+        assertApproxEqRel(
+            int256(bobRepaid1),
+            int256(bobBefore1) + newSharesFromLoan1 - repaidSharesForLoan1,
+            1e6,
+            "FAIL: balance after loan repayment"
+        );
+    }
+
+    function test_Success_mintOptions_Option_Loan_swap(uint256 positionSizeSeed) public {
+        uint256 x = 0;
+        _initPool(x);
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId);
+        // short option + long loan
+
+        tokenId = tokenId.addLeg(
+            0,
+            100,
+            (x >> 1) % 2,
+            0,
+            ((x >> 2) % 2) + 1,
+            0,
+            (currentTick / tickSpacing) * tickSpacing + 50 * tickSpacing,
+            2 // width = 0 means a loan
+        );
+
+        tokenId = tokenId.addLeg(
+            1,
+            5,
+            (x >> 1) % 2,
+            1,
+            ((x >> 2) % 2) + 1,
+            1,
+            (currentTick / tickSpacing) * tickSpacing + 50 * tickSpacing,
+            0
+        );
+
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+
+        positionSize = uint128(bound(positionSizeSeed, 10 ** 10, 5 * 10 ** 14));
+
+        uint256 bobBefore0 = (ct0.balanceOf(Bob));
+        uint256 bobBefore1 = (ct1.balanceOf(Bob));
+
+        console2.log("Bob", positionSize);
+
+        (, LeftRightSigned amountsMoved) = PanopticMath.calculateIOAmounts(
+            tokenId,
+            uint128(positionSize),
+            0,
+            true
+        );
+        console2.log("Bob2");
+
+        int256 newSharesFromLoan0;
+        int256 newSharesFromLoan1;
+        {
+            newSharesFromLoan0 = -int256(
+                uint256(
+                    ((uint128(amountsMoved.rightSlot() * 10) / 10000) * ct1.totalSupply()) /
+                        ct1.totalAssets()
+                )
+            );
+            newSharesFromLoan1 = -int256(
+                uint256(
+                    ((uint128(amountsMoved.leftSlot() * 10) / 10000) * ct1.totalSupply()) /
+                        ct1.totalAssets()
+                )
+            );
+            int256 expectedSwap0;
+            int256 expectedSwap1;
+            {
+                uint256 snapshot = vm.snapshot();
+
+                vm.startPrank(address(pp));
+                console2.log("SNAPSHOT");
+                (, LeftRightSigned totalMoved, ) = sfpm.mintTokenizedPosition(
+                    abi.encode(poolKey),
+                    tokenId,
+                    positionSize,
+                    TickMath.MAX_TICK,
+                    TickMath.MIN_TICK
+                );
+                console2.log("");
+
+                expectedSwap0 = totalMoved.rightSlot();
+                expectedSwap1 = totalMoved.leftSlot();
+                console2.log("expectedSwap0", totalMoved.rightSlot());
+                console2.log("expectedSwap1", totalMoved.leftSlot());
+                vm.stopPrank();
+                vm.revertTo(snapshot);
+            }
+
+            console2.log("ct0.totalSupply", ct0.totalSupply());
+            console2.log("ct0.totalAssets", ct0.totalAssets());
+            if (amountsMoved.rightSlot() == 0) {
+                newSharesFromLoan0 =
+                    -(expectedSwap0 * int256(ct0.totalSupply())) /
+                    int256(ct0.totalAssets());
+            }
+            if (amountsMoved.leftSlot() == 0) {
+                newSharesFromLoan1 =
+                    -(expectedSwap1 * int256(ct1.totalSupply())) /
+                    int256(ct1.totalAssets());
+            }
+            console2.log("newSharesFromLoan0", newSharesFromLoan0);
+            console2.log("newSharesFromLoan1", newSharesFromLoan1);
+        }
+        // type(uint24).max/2 = no limit, ensure the operation works given the changed liquidity limit
+
+        {
+            (uint256 poolAssets, uint256 inAMM, , ) = ct0.getPoolData();
+        }
+        {
+            (uint256 poolAssets, uint256 inAMM, , ) = ct1.getPoolData();
+        }
+        vm.startPrank(Bob);
+        console2.log("REAL");
+        mintOptions(
+            pp,
+            posIdList,
+            positionSize,
+            type(uint24).max / 2,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+        uint256 bobAfter0 = (ct0.balanceOf(Bob));
+        uint256 bobAfter1 = (ct1.balanceOf(Bob));
+
+        assertEq(
+            sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)),
+            positionSize,
+            "panoptic pool balance"
+        );
+
+        console2.log("bobBefore0", bobBefore0);
+        console2.log("bobBefore1", bobBefore1);
+        console2.log("newSharesFromLoan0", newSharesFromLoan0);
+        console2.log("newSharesFromLoan1", newSharesFromLoan1);
+        console2.log("BobAfter0", bobAfter0);
+        console2.log("BobAfter1", bobAfter1);
+
+        console2.log("Bob asset delta0", ct0.convertToAssets(bobAfter0 - bobBefore0));
+        console2.log("Bob asset delta1", ct1.convertToAssets(bobAfter1 - bobBefore1));
         assertApproxEqAbs(
             int256(bobAfter0),
             int256(bobBefore0) + newSharesFromLoan0,

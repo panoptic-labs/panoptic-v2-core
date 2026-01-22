@@ -4755,4 +4755,121 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         assertGe(accountLiquidities.leftSlot(), accountLiquidities_leftSlot_before_overflow);
     }
+
+    function test_ZeroWidthTokenType0SwapDirection() public {
+        _initPool(0);
+
+        int24 strike = currentTick + 10 * tickSpacing;
+        uint128 positionSize = 1e9;
+
+        // tokenType=0 means token0 loan
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0, // tokenType=0
+            0,
+            strike,
+            0
+        );
+
+        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
+            tokenId,
+            positionSize,
+            0,
+            true
+        );
+
+        console2.log("=== TokenType=0 (token0 loan) ===");
+        console2.log("amountsMoved.rightSlot (token0):", amountsMoved.rightSlot());
+        console2.log("amountsMoved.leftSlot (token1):", amountsMoved.leftSlot());
+
+        vm.recordLogs();
+        sfpm.mintTokenizedPosition(
+            abi.encode(poolKey),
+            tokenId,
+            positionSize,
+            TickMath.MAX_TICK,
+            TickMath.MIN_TICK
+        );
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        (int128 swapAmount0, int128 swapAmount1) = _findSwapAmounts(logs);
+
+        console2.log("swapAmount0:", swapAmount0);
+        console2.log("swapAmount1:", swapAmount1);
+        console2.log("Swap direction: token0 -> token1?", swapAmount0 < 0);
+        console2.log("");
+    }
+
+    function test_ZeroWidthTokenType1SwapUsesToken1() public {
+        _initPool(0);
+
+        int24 strike = currentTick + 10 * tickSpacing;
+        uint128 positionSize = 1e9;
+
+        // tokenType=1 means token1 loan
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            1, // tokenType=1
+            0,
+            strike,
+            0
+        );
+
+        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
+            tokenId,
+            positionSize,
+            0,
+            true
+        );
+
+        console2.log("=== TokenType=1 (token1 loan) ===");
+        console2.log("amountsMoved.rightSlot (token0):", amountsMoved.rightSlot());
+        console2.log("amountsMoved.leftSlot (token1):", amountsMoved.leftSlot());
+
+        vm.recordLogs();
+        sfpm.mintTokenizedPosition(
+            abi.encode(poolKey),
+            tokenId,
+            positionSize,
+            TickMath.MAX_TICK,
+            TickMath.MIN_TICK
+        );
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        (int128 swapAmount0, int128 swapAmount1) = _findSwapAmounts(logs);
+
+        console2.log("swapAmount0:", swapAmount0);
+        console2.log("swapAmount1:", swapAmount1);
+        console2.log("Swap direction: token1 -> token0?", swapAmount1 > 0);
+        console2.log("");
+
+        // For a token1 loan, user borrows token1 and wants to swap it to token0
+        // So swapAmount1 should be POSITIVE (selling token1)
+        // But the current implementation makes it NEGATIVE (buying token1)
+        // This demonstrates the bug!
+        assertEq(swapAmount1, -int128(amountsMoved.leftSlot()));
+        assertTrue(swapAmount1 != 0, "swap still uses token1 for tokenType=1 width=0");
+    }
+
+    function _findSwapAmounts(Vm.Log[] memory logs) private pure returns (int128, int128) {
+        bytes32 encodedSwapSig = keccak256(
+            "Swap(bytes32,address,int128,int128,uint160,uint128,int24,uint24)"
+        );
+        for (uint256 i = 0; i < logs.length; ++i) {
+            if (logs[i].topics.length == 0) continue;
+            if (logs[i].topics[0] != encodedSwapSig) continue;
+            (int128 amount0, int128 amount1, , , , ) = abi.decode(
+                logs[i].data,
+                (int128, int128, uint160, uint128, int24, uint24)
+            );
+            return (amount0, amount1);
+        }
+        revert("swap log not found");
+    }
 }
