@@ -2226,10 +2226,12 @@ contract RiskEngine {
                 int256 speed = Math.wMulToZero(ADJUSTMENT_SPEED, err);
                 // Safe "unchecked" cast because block.timestamp - market.lastUpdate <= block.timestamp <= type(int256).max.
                 // Cap the elapsed time to prevent IRM drift
+                uint256 epochTime = uint256(block.timestamp) & ~uint256(3);
                 int256 elapsed = Math.min(
-                    int256(block.timestamp) - int256(previousTime),
+                    int256(epochTime) - int256(previousTime),
                     IRM_MAX_ELAPSED_TIME
                 );
+
                 int256 linearAdaptation = speed * elapsed;
 
                 if (linearAdaptation == 0) {
