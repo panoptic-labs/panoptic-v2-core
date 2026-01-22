@@ -772,7 +772,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     function _cacheWorldState(IUniswapV3Pool _pool) internal {
         pool = _pool;
         {
-            poolId = uint40(uint160(address(_pool)) >> 112) + uint64(uint256(vegoid) << 40);
+            poolId = uint40(uint160(address(_pool)) >> 120) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(_pool.tickSpacing())) << 48;
         }
         token0 = _pool.token0();

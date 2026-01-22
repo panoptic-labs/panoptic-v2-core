@@ -61,7 +61,7 @@ contract ReenterBurn {
         uint8 vegoid = 4;
 
         {
-            poolId = uint40(uint160(address(this)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(this)) >> 120) + uint64(vegoid << 40);
             poolId += uint64(uint24(tickSpacing)) << 48;
         }
 
@@ -129,7 +129,7 @@ contract ReenterMint {
         uint8 vegoid = 4;
 
         {
-            poolId = uint40(uint160(address(this)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(this)) >> 120) + uint64(vegoid << 40);
             poolId += uint64(uint24(tickSpacing)) << 48;
         }
 
@@ -196,7 +196,7 @@ contract ReenterTransferSingle {
         uint64 poolId;
         uint8 vegoid = 4;
         {
-            poolId = uint40(uint160(address(this)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(this)) >> 120) + uint64(vegoid << 40);
             poolId += uint64(uint24(tickSpacing)) << 48;
         }
 
@@ -263,7 +263,7 @@ contract ReenterTransferBatch {
         uint64 poolId;
         uint8 vegoid = 4;
         {
-            poolId = uint40(uint160(address(this)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(this)) >> 120) + uint64(vegoid << 40);
             poolId += uint64(uint24(tickSpacing)) << 48;
         }
 

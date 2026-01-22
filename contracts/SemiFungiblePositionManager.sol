@@ -446,7 +446,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         uint256 vegoid
     ) internal pure returns (uint64) {
         unchecked {
-            uint64 poolId = uint40(uint160(univ3pool) >> 112);
+            uint64 poolId = uint40(uint160(univ3pool) >> 120);
             poolId += (uint64(uint8(vegoid)) << 40);
             poolId += uint64(uint24(tickSpacing)) << 48;
             return poolId;
