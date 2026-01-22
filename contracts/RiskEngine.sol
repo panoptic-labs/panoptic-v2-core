@@ -905,8 +905,8 @@ contract RiskEngine {
 
             // Condition 3: Check for high internal divergence due to staleness by comparing the median and slow EMAs.
             // If the median tick is deviating too much from the slow EMA, it signals an unstable market.
-            // We use a larger threshold here (e.g., twice of the main delta) to be less sensitive to lag.
-            bool highDivergence = Math.abs(medianTick - slowEMA) > (MAX_TICKS_DELTA * 2);
+            // We use a smaller threshold here (e.g., half of the main delta) to be more sensitive to lag.
+            bool highDivergence = Math.abs(medianTick - slowEMA) > (MAX_TICKS_DELTA / 2);
 
             // check lock mode, add value = 3 to returned safeMode.
             uint8 lockMode = oraclePack.lockMode();
