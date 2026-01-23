@@ -3513,6 +3513,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, positionSizeSeed);
 
+        // create short option tokenId
         TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
             0,
             1,
@@ -3527,27 +3528,54 @@ contract PanopticPoolTest is PositionUtils {
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
+        // mint it at size positionSize
         mintOptions(
             pp,
             posIdList,
-            positionSize * 2,
+            positionSize,
             0,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true
         );
 
+        // switch to Alice, which will BUY that option
         vm.startPrank(Alice);
 
+        // create long option tokenId
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, isWETH, 1, 0, 0, strike, width);
         posIdList[0] = tokenId;
 
+        // mint it at size positionSize/2 but with 0 liquidity threhold parameter, expect revert
         vm.expectRevert(Errors.EffectiveLiquidityAboveThreshold.selector);
         mintOptions(
             pp,
             posIdList,
-            positionSize,
+            positionSize / 2,
             0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        // mint it at size 1bps above 0.9*positionSize with max liquidity threhold parameter, expect revert because (0.9+e)/(1-0.9-e) > MAX_SPREAD = 9
+        vm.expectRevert(Errors.EffectiveLiquidityAboveThreshold.selector);
+        mintOptions(
+            pp,
+            posIdList,
+            (positionSize * 9001) / 10000,
+            type(uint24).max,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        // mint it at size of exactly 0.9*positionSize with max liquidity threhold parameter, do not revert
+        mintOptions(
+            pp,
+            posIdList,
+            (positionSize * 9000) / 10000,
+            type(uint24).max,
             Constants.MAX_POOL_TICK,
             Constants.MIN_POOL_TICK,
             true

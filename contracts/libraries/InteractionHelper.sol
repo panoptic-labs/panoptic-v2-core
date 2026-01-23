@@ -25,17 +25,15 @@ library InteractionHelper {
     /// @param sfpm The SemiFungiblePositionManager being approved for both token0 and token1
     /// @param ct0 The CollateralTracker (token0) being approved for token0
     /// @param ct1 The CollateralTracker (token1) being approved for token1
-    /// @param token0 The token0 (in Uniswap) being approved for
-    /// @param token1 The token1 (in Uniswap) being approved for
     /// @param poolManager The Uniswap V4 pool manager address (zero address if using V3)
     function doApprovals(
         ISemiFungiblePositionManager sfpm,
         CollateralTracker ct0,
         CollateralTracker ct1,
-        address token0,
-        address token1,
         address poolManager
     ) external {
+        address token0 = ct0.token0();
+        address token1 = ct0.token1();
         if (poolManager == address(0)) {
             // Approve transfers of Panoptic Pool funds by SFPM
             IERC20Partial(token0).approve(address(sfpm), type(uint256).max);
