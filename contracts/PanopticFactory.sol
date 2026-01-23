@@ -128,7 +128,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         if (address(riskEngine) == address(0)) revert Errors.ZeroAddress();
 
         if (address(s_getPanopticPool[v3Pool][riskEngine]) != address(0))
-            revert Errors.PoolAlreadyInitialized();
+            revert Errors.AlreadyInitialized();
 
         // initialize pool in SFPM if it has not already been initialized
         uint64 poolId = SFPM.initializeAMMPool(token0, token1, fee, riskEngine.vegoid());

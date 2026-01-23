@@ -213,7 +213,7 @@ interface IRiskEngine {
     ) external view returns (RiskParameters);
 
     /// @notice computes the fee recipient address based on builder code and salt.
-    function getFeeRecipient(uint256 builderCode) external pure returns (uint128 feeRecipient);
+    function getFeeRecipient(uint256 builderCode) external view returns (address);
 
     /// @notice Checks for significant oracle deviation to determine if Safe Mode should be active.
     /// @param currentTick The current tick
@@ -227,11 +227,13 @@ interface IRiskEngine {
     /// @notice Determines which ticks to check for solvency based on market volatility.
     /// @param currentTick The current tick
     /// @param _oraclePack The oracle pack
+    /// @param safeMode A number representing whether the protocol is in Safe Mode.
     /// @return atTicks Array of ticks to check solvency at
     /// @return oraclePack The oracle pack (potentially updated)
     function getSolvencyTicks(
         int24 currentTick,
-        OraclePack _oraclePack
+        OraclePack _oraclePack,
+        uint8 safeMode
     ) external view returns (int24[] memory atTicks, OraclePack oraclePack);
 
     /// @notice Get the collateral status/margin details of an account/user.

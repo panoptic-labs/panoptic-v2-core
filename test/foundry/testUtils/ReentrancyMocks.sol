@@ -6,6 +6,7 @@ import {TokenId} from "@types/TokenId.sol";
 import {SemiFungiblePositionManagerHarness as SFPMHarnessV4} from "../core/SemiFungiblePositionManager.t.sol";
 import {SemiFungiblePositionManagerHarness} from "../coreV3/SemiFungiblePositionManager.t.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
+import "forge-std/Test.sol";
 
 contract ReenterBurn {
     // ensure storage conflicts don't occur with etched contract
@@ -60,7 +61,7 @@ contract ReenterBurn {
         uint8 vegoid = 4;
 
         {
-            poolId = uint40(uint160(address(this)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(this)) >> 120) + uint64(vegoid << 40);
             poolId += uint64(uint24(tickSpacing)) << 48;
         }
 
@@ -128,7 +129,7 @@ contract ReenterMint {
         uint8 vegoid = 4;
 
         {
-            poolId = uint40(uint160(address(this)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(this)) >> 120) + uint64(vegoid << 40);
             poolId += uint64(uint24(tickSpacing)) << 48;
         }
 
@@ -195,7 +196,7 @@ contract ReenterTransferSingle {
         uint64 poolId;
         uint8 vegoid = 4;
         {
-            poolId = uint40(uint160(address(this)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(this)) >> 120) + uint64(vegoid << 40);
             poolId += uint64(uint24(tickSpacing)) << 48;
         }
 
@@ -262,7 +263,7 @@ contract ReenterTransferBatch {
         uint64 poolId;
         uint8 vegoid = 4;
         {
-            poolId = uint40(uint160(address(this)) >> 112) + uint64(vegoid << 40);
+            poolId = uint40(uint160(address(this)) >> 120) + uint64(vegoid << 40);
             poolId += uint64(uint24(tickSpacing)) << 48;
         }
 
@@ -285,7 +286,7 @@ contract Reenter1155Initialize {
     address public token1;
     uint24 public fee;
     uint64 poolId;
-    uint8 vegoid = 4;
+    uint8 constant vegoid = 4;
     bool activated;
 
     function construct(address _token0, address _token1, uint24 _fee, uint64 _poolId) public {
@@ -304,9 +305,9 @@ contract Reenter1155Initialize {
     ) public returns (bytes4) {
         bool reenter = !activated;
         activated = true;
-
+        uint64 poolId;
         if (reenter)
-            SemiFungiblePositionManagerHarness(msg.sender).initializeAMMPool(
+            poolId = SemiFungiblePositionManagerHarness(msg.sender).initializeAMMPool(
                 token0,
                 token1,
                 fee,
@@ -330,7 +331,7 @@ contract Reenter1155InitializeV4 {
     uint256[65535] private __gap;
 
     PoolKey key;
-    uint8 vegoid = 4;
+    uint8 constant vegoid = 4;
     bool activated;
 
     function construct(PoolKey memory _key) public {
@@ -353,12 +354,17 @@ contract Reenter1155InitializeV4 {
         bool reenter = !activated;
         activated = true;
 
+        console2.log("vegoid", vegoid);
         PoolKey memory _key = key;
-        if (reenter) SFPMHarnessV4(msg.sender).initializeAMMPool(key, vegoid);
+        uint64 poolId;
+        if (reenter) {
+            poolId = SFPMHarnessV4(msg.sender).initializeAMMPool(key, vegoid);
+        }
+        console2.log("poolId", poolId);
         if (reenter)
             SFPMHarnessV4(msg.sender).mintTokenizedPosition(
                 abi.encode(_key),
-                TokenId.wrap(0),
+                TokenId.wrap(poolId),
                 0,
                 0,
                 0

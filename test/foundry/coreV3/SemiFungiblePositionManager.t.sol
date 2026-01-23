@@ -226,7 +226,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     function _cacheWorldState(IUniswapV3Pool _pool) internal {
         pool = _pool;
         {
-            poolId = uint40(uint160(address(_pool)) >> 112) + uint64(uint256(vegoid) << 40);
+            poolId = uint40(uint160(address(_pool)) >> 120) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(_pool.tickSpacing())) << 48;
         }
         token0 = _pool.token0();
@@ -899,7 +899,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         uint64 poolId;
 
         {
-            poolId = uint40(uint160(address(pool)) >> 112) + uint64(uint256(vegoid) << 40);
+            poolId = uint40(uint160(address(pool)) >> 120) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(pool.tickSpacing())) << 48;
         }
 
@@ -918,7 +918,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             uint64 poolId;
 
             {
-                poolId = uint40(uint160(address(pool)) >> 112) + uint64(uint256(vegoid) << 40);
+                poolId = uint40(uint160(address(pool)) >> 120) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(pool.tickSpacing())) << 48;
             }
 
@@ -1000,6 +1000,18 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // These values are zero at this point; thus there is no corresponding uni pool and we should revert
         sfpm.initializeAMMPool(token0, token1, fee, vegoid);
+    }
+
+    function test_Fail_initializeAMMPool_vegoid() public {
+        // Loop through all pools and test
+        for (uint256 i = 0; i < pools.length; i++) {
+            console2.log("i", i);
+            console2.log("pools", address(pools[i]));
+            _cacheWorldState(pools[i]);
+
+            vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 0));
+            sfpm.initializeAMMPool(token0, token1, fee, 0);
+        }
     }
 
     /// NOTE - the definitions of "call" and "put" can vary by Uniswap pair and which token is considered the asset
@@ -4611,7 +4623,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
             abi.encode(pool),
@@ -4672,7 +4684,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
             abi.encode(pool),
@@ -4733,7 +4745,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
             abi.encode(pool),
@@ -4779,7 +4791,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         Reenter1155Initialize(Alice).construct(address(token0), address(token1), fee, poolId);
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
             abi.encode(pool),
@@ -4848,7 +4860,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.burnTokenizedPosition(
             abi.encode(pool),

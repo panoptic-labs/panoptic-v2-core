@@ -53,7 +53,7 @@ contract RiskEngine {
 
     /// @notice Decimals for computation (1 millitick (1/1000th of a basis point) precision: 1e-7 = 0.00001%).
     /// @dev uint type for composability with unsigned integer based mathematical operations.
-    uint256 internal constant DECIMALS = 10_000_000;
+    uint256 public constant DECIMALS = 10_000_000;
 
     int16 internal constant MAX_UTILIZATION = 10_000;
     uint256 internal constant LN2_SCALED = 6931472;
@@ -61,28 +61,28 @@ contract RiskEngine {
     uint256 internal constant ONE_BPS = 1000;
     uint256 internal constant TEN_BPS = 10000;
 
-    //int256 constant EMA_PERIOD_SPOT = 120; // 2 minutes
-    //int256 constant EMA_PERIOD_FAST = 240; // 4 minutes
-    //int256 constant EMA_PERIOD_SLOW = 600; // 10 minutes
-    //int256 constant EMA_PERIOD_EONS = 1800; // 30 minutes
+    //int256 constant EMA_PERIOD_SPOT = 60; // 1 minutes
+    //int256 constant EMA_PERIOD_FAST = 120; // 2 minutes
+    //int256 constant EMA_PERIOD_SLOW = 240; // 4 minutes
+    //int256 constant EMA_PERIOD_EONS = 960; // 16 minutes
 
-    uint96 constant EMA_PERIODS = uint96(120 + (240 << 24) + (600 << 48) + (1800 << 72));
+    uint96 public constant EMA_PERIODS = uint96(60 + (120 << 24) + (240 << 48) + (960 << 72));
     /// @notice The maximum allowed cumulative delta between the fast & slow oracle tick, the current & slow oracle tick, and the last-observed & slow oracle tick.
     /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
-    int256 internal constant MAX_TICKS_DELTA = 953;
+    int256 public constant MAX_TICKS_DELTA = 953;
 
-    /// @notice The maximum allowed delta between the currentTick and the Uniswap TWAP tick during a liquidation (~5% down, ~5.26% up).
-    /// @dev Mitigates manipulation of the currentTick that causes positions to be liquidated at a less favorable price.
-    uint16 internal constant MAX_TWAP_DELTA_LIQUIDATION = 513;
+    /// @notice The maximum allowed delta between the currentTick and the Uniswap TWAP tick during a dispatch/dispatchFrom call (~5% down, ~5.26% up).
+    /// @dev Mitigates manipulation of the currentTick that causes positions to be force exercised at a less favorable price.
+    uint16 public constant MAX_TWAP_DELTA_DISPATCH = 513;
 
     /// @notice The maximum allowed ratio for a single chunk, defined as `removedLiquidity / netLiquidity`.
     /// @dev The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
     /// which can be explored in this calculator: [https://www.desmos.com/calculator/mdeqob2m04](https://www.desmos.com/calculator/mdeqob2m04).
-    uint24 internal constant MAX_SPREAD = 90_000;
+    uint24 public constant MAX_SPREAD = 90_000;
 
     /// @notice Multiplier in basis points for the collateral requirement in the event of a buying power decrease, such as minting or force exercising another user.
     /// @dev must fit inside a uint26
-    uint32 internal constant BP_DECREASE_BUFFER = 13_333_333;
+    uint32 public constant BP_DECREASE_BUFFER = 13_333_333;
 
     /// @notice Decimals for WAD calculations.
     int256 internal constant WAD = 1e18;
@@ -91,10 +91,8 @@ contract RiskEngine {
     /// @dev the time elapsed will be capped at IRM_MAX_ELAPSED_TIME
     int256 public constant IRM_MAX_ELAPSED_TIME = 4096;
 
-    bytes32 internal constant BUILDER_SALT = keccak256("panoptic.builder");
-
     /// @notice The maximum amount of change, in ticks, permitted between internal median updates.
-    int24 internal constant MAX_CLAMP_DELTA = 149;
+    int24 public constant MAX_CLAMP_DELTA = 149;
 
     /// @notice Parameter used to modify the [equation](https://www.desmos.com/calculator/mdeqob2m04) of the utilization-based multiplier for long premium.
     // ν = 1/VEGOID = multiplicative factor for long premium (Eqns 1-5)
@@ -102,57 +100,57 @@ contract RiskEngine {
     // and vegoid modifies the sensitivity of the streamia to changes in that utilization,
     // much like vega measures the sensitivity of traditional option prices to IV.
     // The effect of vegoid on the long premium multiplier can be explored here: https://www.desmos.com/calculator/mdeqob2m04
-    uint8 internal constant VEGOID = 4;
+    uint8 public constant VEGOID = 4;
 
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS
     //////////////////////////////////////////////////////////////*/
     /// @notice The notional fee, in basis points, collected from PLPs at option mint.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 constant NOTIONAL_FEE = 10;
+    uint16 public constant NOTIONAL_FEE = 10;
 
     /// @notice The premium fee, in basis points, collected from the premium paid/received.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 constant PREMIUM_FEE = 0;
+    uint16 public constant PREMIUM_FEE = 0;
 
     /// @notice The protocol split, in basis points, when a builder code is present.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 constant PROTOCOL_SPLIT = 6_500;
+    uint16 public constant PROTOCOL_SPLIT = 6_500;
 
     /// @notice The builder split, in basis points, when a builder code is present
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 constant BUILDER_SPLIT = 2_500;
+    uint16 public constant BUILDER_SPLIT = 2_500;
 
     /// @notice Required collateral ratios for selling options, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 20% -> 0.2 * 10_000_000 = 2_000_000.
-    uint256 constant SELLER_COLLATERAL_RATIO = 2_000_000;
+    uint256 public constant SELLER_COLLATERAL_RATIO = 2_000_000;
 
     /// @notice Required collateral ratios for buying options, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 10% -> 0.1 * 10_000_000 = 1_000_000.
-    uint256 constant BUYER_COLLATERAL_RATIO = 1_000_000;
+    uint256 public constant BUYER_COLLATERAL_RATIO = 1_000_000;
 
     /// @notice Required collateral margin for loans in excess of notional, fraction of 1, scaled by 10_000_000.
-    uint256 constant MAINT_MARGIN_RATE = 2_000_000;
+    uint256 public constant MAINT_MARGIN_RATE = 2_000_000;
 
     /// @notice Basal cost (in bps of notional) to force exercise an out-of-range position.
-    uint256 constant FORCE_EXERCISE_COST = 102_400;
+    uint256 public constant FORCE_EXERCISE_COST = 102_400;
 
     // Targets a pool utilization (balance between buying and selling)
     /// @notice Target pool utilization below which buying+selling is optimal, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 50% -> 0.5 * 10_000_000 = 5_000_000.
-    uint256 constant TARGET_POOL_UTIL = 5_000_000;
+    uint256 public constant TARGET_POOL_UTIL = 5_000_000;
 
     /// @notice Pool utilization above which selling is 100% collateral backed, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 90% -> 0.9 * 10_000_000 = 9_000_000.
-    uint256 constant SATURATED_POOL_UTIL = 9_000_000;
+    uint256 public constant SATURATED_POOL_UTIL = 9_000_000;
 
-    uint256 immutable CROSS_BUFFER_0;
-    uint256 immutable CROSS_BUFFER_1;
+    uint256 public immutable CROSS_BUFFER_0;
+    uint256 public immutable CROSS_BUFFER_1;
 
     address immutable BUILDER_FACTORY;
     bytes32 immutable BUILDER_INIT_CODE_HASH;
 
-    uint256 constant MAX_OPEN_LEGS = 33;
+    uint256 public constant MAX_OPEN_LEGS = 33;
 
     /*//////////////////////////////////////////////////////////////
                             IRM PARAMETERS
@@ -210,7 +208,7 @@ contract RiskEngine {
 
     /// @notice Address allowed to override the automatically computed safe mode.
     /// @dev Guardian can only increase the effective safe mode, never relax it.
-    address public immutable GUARDIAN;
+    address internal immutable GUARDIAN;
 
     /// @notice Emitted when the guardian updates the enforced safe mode.
     /// @param lockMode True when safe mode is forcibly locked, false when the lock is lifted.
@@ -240,16 +238,20 @@ contract RiskEngine {
     /// @dev Restores the pool to using only the automatically computed safe-mode level.
     /// @param pool The PanopticPool to unlock.
     function unlockPool(PanopticPool pool) external onlyGuardian {
-        emit GuardianSafeModeUpdated(true);
+        emit GuardianSafeModeUpdated(false);
         pool.unlockSafeMode();
     }
 
     /// @notice Returns the address of the guardian
     /// @return The guardian address that can override safe mode
-    function guardian() external returns (address) {
+    function guardian() external view returns (address) {
         return GUARDIAN;
     }
 
+    /// @notice Computes the deterministic address of a builder wallet using CREATE2
+    /// @dev Returns zero address if builderCode is zero. Uses keccak256 hash of factory, salt, and init code hash
+    /// @param builderCode The builder code used as the CREATE2 salt
+    /// @return wallet The computed address of the builder wallet
     function _computeBuilderWallet(uint256 builderCode) internal view returns (address wallet) {
         if (builderCode == 0) return address(0);
 
@@ -310,7 +312,10 @@ contract RiskEngine {
         {
             // if the refunder lacks sufficient currency0 to pay back the virtual shares, have the caller cover the difference in exchange for currency1 (and vice versa)
             int128 fees0 = fees.rightSlot();
-            uint256 feeShares0 = ct0.convertToShares(fees0 < 0 ? uint128(-fees0) : uint128(fees0));
+            // round up if amount is positive (negative fees means it is given to the exercisee)
+            uint256 feeShares0 = (fees0 > 0)
+                ? ct0.previewWithdraw(uint128(fees0))
+                : ct0.convertToShares(uint128(-fees0));
 
             // Liability (>0) adds to shortage; Asset (<0) subtracts from shortage
             int256 balanceShortage = int256(uint256(type(uint248).max)) -
@@ -346,7 +351,9 @@ contract RiskEngine {
             }
 
             int128 fees1 = fees.leftSlot();
-            uint256 feeShares1 = ct1.convertToShares(fees1 < 0 ? uint128(-fees1) : uint128(fees1));
+            uint256 feeShares1 = (fees1 > 0)
+                ? ct1.previewWithdraw(uint128(fees1))
+                : ct1.convertToShares(uint128(-fees1));
 
             // Liability (>0) adds to shortage; Asset (<0) subtracts from shortage
             balanceShortage =
@@ -406,7 +413,7 @@ contract RiskEngine {
         LeftRightSigned longAmounts;
         // we find whether the price is within any leg; any in-range leg will have a cost. Otherwise, the force-exercise fee is 1bps
         bool hasLegsInRange;
-        for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
+        for (uint256 leg = 0; leg != tokenId.countLegs(); ++leg) {
             // short legs are not counted - exercise is intended to be based on long legs
             if (tokenId.isLong(leg) == 0) continue;
 
@@ -505,40 +512,13 @@ contract RiskEngine {
         {
             // compute bonus as min(collateralBalance/2, required-collateralBalance)
             {
-                // compute the ratio of token0 to total collateral requirements
-                // evaluate at TWAP price to maintain consistency with solvency calculations
-                (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.getCrossBalances(
-                    tokenData0,
-                    tokenData1,
-                    atSqrtPriceX96
-                );
+                uint256 bal0 = tokenData0.rightSlot();
+                uint256 bal1 = tokenData1.rightSlot();
+                uint256 req0 = tokenData0.leftSlot();
+                uint256 req1 = tokenData1.leftSlot();
 
-                uint256 bonusCross = Math.min(balanceCross / 2, thresholdCross - balanceCross);
-
-                // `bonusCross` and `thresholdCross` are returned in terms of the lowest-priced token
-                if (atSqrtPriceX96 < Constants.FP96) {
-                    // required0 / (required0 + token0(required1))
-                    uint256 requiredRatioX128 = Math.mulDiv(
-                        tokenData0.leftSlot(),
-                        2 ** 128,
-                        thresholdCross
-                    );
-                    uint256 bonus0U = Math.mulDiv128(bonusCross, requiredRatioX128);
-                    bonus0 = int256(bonus0U);
-
-                    bonus1 = int256(PanopticMath.convert0to1(bonusCross - bonus0U, atSqrtPriceX96));
-                } else {
-                    // required1 / (token1(required0) + required1)
-                    uint256 requiredRatioX128 = Math.mulDiv(
-                        tokenData1.leftSlot(),
-                        2 ** 128,
-                        thresholdCross
-                    );
-                    uint256 bonus1U = Math.mulDiv128(bonusCross, requiredRatioX128);
-                    bonus1 = int256(bonus1U);
-
-                    bonus0 = int256(PanopticMath.convert1to0(bonusCross - bonus1U, atSqrtPriceX96));
-                }
+                bonus0 = Math.min(bal0 / 2, req0 > bal0 ? req0 - bal0 : 0).toInt256();
+                bonus1 = Math.min(bal1 / 2, req1 > bal1 ? req1 - bal1 : 0).toInt256();
             }
 
             // negative premium (owed to the liquidatee) is credited to the collateral balance
@@ -643,10 +623,10 @@ contract RiskEngine {
                 int256 collateralDelta1 = -Math.min(collateralRemaining.leftSlot(), 0);
                 // get the amount of premium paid by the liquidatee
 
-                for (uint256 i = 0; i < positionIdList.length; ++i) {
+                for (uint256 i = 0; i != positionIdList.length; ++i) {
                     TokenId tokenId = positionIdList[i];
                     uint256 numLegs = tokenId.countLegs();
-                    for (uint256 leg = 0; leg < numLegs; ++leg) {
+                    for (uint256 leg = 0; leg != numLegs; ++leg) {
                         if (tokenId.isLong(leg) == 1) {
                             longPremium = longPremium.sub(premiasByLeg[i][leg]);
                         }
@@ -735,10 +715,10 @@ contract RiskEngine {
                 haircutPerLeg = new LeftRightSigned[4][](positionIdList.length);
                 // total haircut after rounding up prorated haircut amounts for each leg
                 address _liquidatee = liquidatee;
-                for (uint256 i = 0; i < positionIdList.length; i++) {
+                for (uint256 i = 0; i != positionIdList.length; i++) {
                     TokenId tokenId = positionIdList[i];
                     LeftRightSigned[4][] memory _premiasByLeg = premiasByLeg;
-                    for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
+                    for (uint256 leg = 0; leg != tokenId.countLegs(); ++leg) {
                         if (
                             tokenId.isLong(leg) == 1 &&
                             LeftRightSigned.unwrap(_premiasByLeg[i][leg]) != 0
@@ -835,7 +815,7 @@ contract RiskEngine {
     /// @return The blended time-weighted average price, represented as an int24 tick.
     function twapEMA(OraclePack oraclePack) external pure returns (int24) {
         // Extract current EMAs from oraclePack
-        (int256 eonsEMA, int256 slowEMA, int256 fastEMA, , ) = oraclePack.getEMAs();
+        (, int256 fastEMA, int256 slowEMA, int256 eonsEMA, ) = oraclePack.getEMAs();
         return int24((6 * fastEMA + 3 * slowEMA + eonsEMA) / 10);
     }
 
@@ -877,7 +857,7 @@ contract RiskEngine {
                 PREMIUM_FEE,
                 PROTOCOL_SPLIT,
                 BUILDER_SPLIT,
-                MAX_TWAP_DELTA_LIQUIDATION,
+                MAX_TWAP_DELTA_DISPATCH,
                 MAX_SPREAD,
                 BP_DECREASE_BUFFER,
                 MAX_OPEN_LEGS,
@@ -913,7 +893,7 @@ contract RiskEngine {
         (int24 spotEMA, int24 fastEMA, int24 slowEMA, , int24 medianTick) = oraclePack.getEMAs();
 
         unchecked {
-            // can never miscart because all math is int24 or below
+            // can never miscast because all math is int24 or below
             // Condition 1: Check for a sudden deviation of the spot price from the spot EMA.
             // This is your primary defense against a flash crash or single-block manipulation.
             bool externalShock = Math.abs(currentTick - spotEMA) > MAX_TICKS_DELTA;
@@ -925,8 +905,8 @@ contract RiskEngine {
 
             // Condition 3: Check for high internal divergence due to staleness by comparing the median and slow EMAs.
             // If the median tick is deviating too much from the slow EMA, it signals an unstable market.
-            // We use a larger threshold here (e.g., twice of the main delta) to be less sensitive to lag.
-            bool highDivergence = Math.abs(medianTick - slowEMA) > (MAX_TICKS_DELTA * 2);
+            // We use a smaller threshold here (e.g., half of the main delta) to be more sensitive to lag.
+            bool highDivergence = Math.abs(medianTick - slowEMA) > (MAX_TICKS_DELTA / 2);
 
             // check lock mode, add value = 3 to returned safeMode.
             uint8 lockMode = oraclePack.lockMode();
@@ -942,11 +922,13 @@ contract RiskEngine {
     /// @notice Determines which ticks to check for solvency based on market volatility
     /// @param currentTick The current tick of the pool
     /// @param _oraclePack The oracle pack containing historical price data
+    /// @param safeMode A number representing whether the protocol is in Safe Mode.
     /// @return atTicks Array of ticks at which to check solvency
     /// @return oraclePack The oracle pack (potentially updated)
     function getSolvencyTicks(
         int24 currentTick,
-        OraclePack _oraclePack
+        OraclePack _oraclePack,
+        uint8 safeMode
     ) external view returns (int24[] memory, OraclePack) {
         (int24 spotTick, int24 medianTick, int24 latestTick, OraclePack oraclePack) = _oraclePack
             .getOracleTicks(currentTick, EMA_PERIODS, MAX_CLAMP_DELTA);
@@ -959,11 +941,12 @@ contract RiskEngine {
         // (spotTick - medianTick, latestTick - medianTick, currentTick - medianTick)
         // This approach is more conservative than checking each tick difference individually,
         // as the Euclidean norm is always greater than or equal to the maximum of the individual differences.
+        // Conversely, check at all 4 ticks when safeMode is larger than 0.
         if (
-            int256(spotTick - medianTick) ** 2 +
+            (int256(spotTick - medianTick) ** 2 +
                 int256(latestTick - medianTick) ** 2 +
                 int256(currentTick - medianTick) ** 2 >
-            MAX_TICKS_DELTA ** 2
+                MAX_TICKS_DELTA ** 2) || (safeMode > 0)
         ) {
             // High deviation detected; check against all four ticks.
             atTicks = new int24[](4);
@@ -972,7 +955,7 @@ contract RiskEngine {
             atTicks[2] = latestTick;
             atTicks[3] = currentTick;
         } else {
-            // Normal operation; check against the spot tick = 10 mins EMA.
+            // Normal operation; check against the spot tick.
             atTicks = new int24[](1);
             atTicks[0] = spotTick;
         }
@@ -1202,7 +1185,7 @@ contract RiskEngine {
         int256 utilization1;
         uint256 pLength = positionBalanceArray.length;
 
-        for (uint256 i; i < pLength; ) {
+        for (uint256 i; i != pLength; ) {
             PositionBalance positionBalance = positionBalanceArray[i];
 
             int256 _utilization0 = positionBalance.utilization0();
@@ -1221,7 +1204,10 @@ contract RiskEngine {
             globalUtilizations = PositionBalanceLibrary.storeBalanceData(
                 0,
                 uint32(uint256(utilization0) + (uint256(utilization1) << 16)),
-                0
+                0,
+                0,
+                0,
+                false
             );
         }
     }
@@ -1252,7 +1238,7 @@ contract RiskEngine {
         // add long premia to tokens required
         tokensRequired = tokensRequired.add(longPremia);
 
-        for (uint256 i; i < positionBalanceArray.length; ) {
+        for (uint256 i; i != positionBalanceArray.length; ) {
             uint256 _tokenRequired0;
             uint256 _credits0;
             uint256 _tokenRequired1;
@@ -1317,7 +1303,7 @@ contract RiskEngine {
         uint256 numLegs = tokenId.countLegs();
 
         unchecked {
-            for (uint256 index = 0; index < numLegs; ++index) {
+            for (uint256 index = 0; index != numLegs; ++index) {
                 // bypass the collateral calculation if tokenType doesn't match the requested token (underlyingIsToken0)
                 if (tokenId.tokenType(index) != (underlyingIsToken0 ? 0 : 1)) continue;
 
@@ -1328,7 +1314,7 @@ contract RiskEngine {
                         index,
                         false
                     );
-                    credits = tokenId.tokenType(index) == 0
+                    credits += tokenId.tokenType(index) == 0
                         ? amountsMoved.rightSlot()
                         : amountsMoved.leftSlot();
                 }
@@ -1506,7 +1492,7 @@ contract RiskEngine {
                     uint256 positionWidth = uint256(uint24(tickUpper - tickLower));
 
                     uint256 distanceFromStrike = Math.max(
-                        positionWidth / 2,
+                        Math.unsafeDivRoundingUp(positionWidth, 2),
                         atTick > strike
                             ? uint256(uint24(atTick - strike))
                             : uint256(uint24(strike - atTick))
@@ -1637,8 +1623,8 @@ contract RiskEngine {
                         if (_isLong != isLongP) {
                             // SPREADS: same token type, one is long and the other is short
                             return
-                                // only return the requirement once for the first leg it encounters
-                                index < partnerIndex
+                                // only return the requirement once when long leg == index
+                                _isLong == 1
                                     ? _computeSpread(
                                         tokenId,
                                         positionSize,
@@ -1937,6 +1923,15 @@ contract RiskEngine {
         }
     }
 
+    /// @notice Computes the required collateral for a composite position with a loan option strategy
+    /// @dev Calculates requirements for both the loan leg and its partner, returning the maximum of the two
+    /// @param tokenId The token ID representing the position
+    /// @param positionSize The size of the position in contracts
+    /// @param index The leg index of the loan option
+    /// @param partnerIndex The leg index of the partner to the loan option
+    /// @param atTick The tick at which to evaluate the collateral requirement
+    /// @param poolUtilization The current pool utilization percentage
+    /// @return The required collateral amount for the composite position
     function _computeLoanOptionComposite(
         TokenId tokenId,
         uint128 positionSize,
@@ -1971,6 +1966,13 @@ contract RiskEngine {
         }
     }
 
+    /// @notice Computes the required collateral for a composite position with a credit option strategy
+    /// @dev Assumes 100% utilization (cash account requirement) for sold options. Only called when partnerIndex is the credit
+    /// @param tokenId The token ID representing the position
+    /// @param positionSize The size of the position in contracts
+    /// @param index The leg index of the option
+    /// @param atTick The tick at which to evaluate the collateral requirement
+    /// @return The required collateral amount for the credit option
     function _computeCreditOptionComposite(
         TokenId tokenId,
         uint128 positionSize,
@@ -1992,6 +1994,14 @@ contract RiskEngine {
         return _required;
     }
 
+    /// @notice Computes the required collateral for a delayed swap strategy by netting the credit against the loan
+    /// @dev Calculates loan amount with seller collateral ratio, converts credit to same token type, and nets them. Floors result at 1
+    /// @param tokenId The token ID representing the position
+    /// @param positionSize The size of the position in contracts
+    /// @param index The leg index of the loan
+    /// @param partnerIndex The leg index of the credit partner
+    /// @param atTick The tick at which to evaluate the collateral requirement and perform conversions
+    /// @return The net required collateral after crediting, floored at 1
     function _computeDelayedSwap(
         TokenId tokenId,
         uint128 positionSize,
@@ -2033,9 +2043,9 @@ contract RiskEngine {
                 : PanopticMath.convert1to0RoundingUp(creditAmount, Math.getSqrtRatioAtTick(atTick));
 
             if (required > convertedCredit) {
-                return required;
+                return required - convertedCredit; // ✓ Net the credit
             } else {
-                return convertedCredit;
+                return 1; // ✓ Floor at 1
             }
         }
     }
@@ -2111,10 +2121,10 @@ contract RiskEngine {
         int256 utilization,
         uint256 crossBuffer
     ) internal view returns (uint256 crossBufferRatio) {
-        // linear from crossBuffer to 0 between 50% and 90%
-        // the buy ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
-        //   (x0,y0) = (targetPoolUtilization, crossBuffer) and
-        //   (x1,y1) = (saturatedPoolUtilization, 0)
+        // linear from crossBuffer to 0 between 90% and 95%
+        // the buffer ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
+        //   (x0,y0) = (saturatedPoolUtilization, crossBuffer) and
+        //   (x1,y1) = ((saturatedPoolUtilization + 100%)/2, 0)
         // note that y1<y0 so the slope is negative:
         // aka the cross buffer starts high and drops to zero with increased utilization
         // the line's formula: y = a * (x - x0) + y0, where a = (y1 - y0) / (x1 - x0)
@@ -2126,27 +2136,28 @@ contract RiskEngine {
           BUFFER
           RATIO
                  ^
-                 |   cross_buffer = 80%
-           80% - |----------_
+                 |   cross_buffer = 100%
+           100% - |----------_
                  |         . ¯-_
                  |         .    ¯-_
            0% -  +---------+-------∓---+--->   POOL_
-                          50%     90% 100%      UTILIZATION
+                          90%     95% 100%      UTILIZATION
          */
         unchecked {
             uint256 utilizationScaled = uint256(utilization * 1_000);
             // return the basal cross buffer ratio if pool utilization is lower than target
-            if (utilizationScaled < TARGET_POOL_UTIL) {
+            if (utilizationScaled < SATURATED_POOL_UTIL) {
                 return crossBuffer;
             }
 
-            // return 0 if pool utilization is above saturated pool utilization
-            if (utilizationScaled > SATURATED_POOL_UTIL) {
+            uint256 cutoffPoolUtilization = (SATURATED_POOL_UTIL + DECIMALS) / 2;
+            // return 0 if pool utilization is above halfway between the saturated pool utilization and 100%
+            if (utilizationScaled > cutoffPoolUtilization) {
                 return 0;
             }
 
-            return ((crossBuffer * (SATURATED_POOL_UTIL - utilizationScaled)) /
-                (SATURATED_POOL_UTIL - TARGET_POOL_UTIL));
+            return ((crossBuffer * (cutoffPoolUtilization - utilizationScaled)) /
+                (cutoffPoolUtilization - SATURATED_POOL_UTIL));
         }
     }
 
@@ -2215,10 +2226,12 @@ contract RiskEngine {
                 int256 speed = Math.wMulToZero(ADJUSTMENT_SPEED, err);
                 // Safe "unchecked" cast because block.timestamp - market.lastUpdate <= block.timestamp <= type(int256).max.
                 // Cap the elapsed time to prevent IRM drift
+                uint256 epochTime = uint256(block.timestamp) & ~uint256(3);
                 int256 elapsed = Math.min(
-                    int256(block.timestamp) - int256(previousTime),
+                    int256(epochTime) - int256(previousTime),
                     IRM_MAX_ELAPSED_TIME
                 );
+
                 int256 linearAdaptation = speed * elapsed;
 
                 if (linearAdaptation == 0) {
@@ -2254,10 +2267,11 @@ contract RiskEngine {
         }
     }
 
-    /// @dev Returns the rate for a given `_rateAtTarget` and an `err`.
-    /// The formula of the curve is the following:
-    /// r = ((1-1/C)*err + 1) * rateAtTarget if err < 0
-    ///     ((C-1)*err + 1) * rateAtTarget else.
+    /// @notice Applies a piecewise linear curve to compute the interest rate based on error from target
+    /// @dev Formula: r = ((1-1/C)*err + 1) * rateAtTarget if err < 0, else ((C-1)*err + 1) * rateAtTarget, where C is curve steepness
+    /// @param _rateAtTarget The base rate at target utilization
+    /// @param err The error/deviation from target utilization
+    /// @return The adjusted interest rate after applying the curve
     function _curve(int256 _rateAtTarget, int256 err) private pure returns (int256) {
         // Non negative because 1 - 1/C >= 0, C - 1 >= 0.
         unchecked {
@@ -2269,8 +2283,11 @@ contract RiskEngine {
         }
     }
 
-    /// @dev Returns the new rate at target, for a given `startRateAtTarget` and a given `linearAdaptation`.
-    /// The formula is: max(min(startRateAtTarget * exp(linearAdaptation), maxRateAtTarget), minRateAtTarget).
+    /// @notice Computes a new rate at target by applying exponential adaptation and bounding the result
+    /// @dev Formula: max(min(startRateAtTarget * exp(linearAdaptation), maxRateAtTarget), minRateAtTarget)
+    /// @param startRateAtTarget The starting rate at target utilization
+    /// @param linearAdaptation The linear adaptation factor to apply exponentially
+    /// @return newRateAtTarget The new bounded rate at target utilization
     function _newRateAtTarget(
         int256 startRateAtTarget,
         int256 linearAdaptation
@@ -2298,39 +2315,64 @@ contract RiskEngine {
                        BUILDER WALLETS
 //////////////////////////////////////////////////////////////*/
 
-interface IERC20 {
-    function balanceOf(address) external view returns (uint256);
-
-    function transfer(address to, uint256 amount) external returns (bool);
-}
-
 contract BuilderWallet {
+    using SafeTransferLib for address;
+
     address public immutable FACTORY;
     address public builderAdmin;
 
+    /// @notice Emitted when the builder wallet is initialized
+    /// @param builderAdmin The address of the builder admin
+    event BuilderWalletInitialized(address indexed builderAdmin);
+
+    /// @notice Emitted when tokens are swept from the wallet
+    /// @param token The address of the token swept
+    /// @param to The address that received the tokens
+    /// @param amount The amount of tokens swept
+    event TokensSwept(address indexed token, address indexed to, uint256 amount);
+
+    /// @notice Constructs a new BuilderWallet instance
+    /// @param factory The address of the BuilderFactory contract that deployed this wallet
     constructor(address factory) {
         FACTORY = factory;
     }
 
+    /// @notice Initializes the builder wallet with a builder admin address
+    /// @dev Can only be called once. Reverts if already initialized or if _builderAdmin is the zero address
+    /// @param _builderAdmin The address that will be set as the builder admin with permission to sweep tokens
     function init(address _builderAdmin) external {
+        if (builderAdmin != address(0)) revert Errors.AlreadyInitialized();
+        if (_builderAdmin == address(0)) revert Errors.ZeroAddress();
+
         builderAdmin = _builderAdmin;
+        emit BuilderWalletInitialized(_builderAdmin);
     }
 
+    /// @notice Transfers all tokens of a given type from this wallet to a specified address
+    /// @dev Only callable by the builder admin. Emits TokensSwept event even if balance is zero
+    /// @param token The address of the token to sweep from the wallet
+    /// @param to The destination address to receive the swept tokens
     function sweep(address token, address to) external {
         if (msg.sender != builderAdmin) revert Errors.NotBuilder();
 
-        uint256 bal = IERC20(token).balanceOf(address(this));
-        if (bal == 0) return;
-
-        bool ok = IERC20(token).transfer(to, bal);
-        if (!ok) {
-            // `from` is this wallet, `balance` is pre-transfer token balance
-            revert Errors.TransferFailed(token, address(this), bal, bal);
+        uint256 bal = SafeTransferLib.balanceOfOrZero(token, address(this));
+        if (bal == 0) {
+            emit TokensSwept(token, to, 0);
+            return;
         }
+
+        token.safeTransfer(to, bal);
+        emit TokensSwept(token, to, bal);
     }
 }
 
 library Create2Lib {
+    /// @notice Deploys a contract using CREATE2 opcode for deterministic addresses
+    /// @dev Reverts with "CREATE2 failed" if deployment returns zero address
+    /// @param value The amount of wei to send to the new contract
+    /// @param salt The CREATE2 salt for deterministic address generation
+    /// @param code The initialization bytecode of the contract to deploy
+    /// @return addr The address of the deployed contract
     function deploy(
         uint256 value,
         bytes32 salt,
@@ -2348,26 +2390,40 @@ contract BuilderFactory {
 
     address public immutable OWNER;
 
+    /// @notice Emitted when a new builder wallet is deployed
+    /// @param builderCode The builder code used as salt
+    /// @param wallet The address of the deployed wallet
+    /// @param builderAdmin The admin address for the wallet
+    event BuilderWalletDeployed(
+        uint48 indexed builderCode,
+        address indexed wallet,
+        address indexed builderAdmin
+    );
+
+    /// @notice Constructs a new BuilderFactory instance
+    /// @dev Reverts if owner is the zero address
+    /// @param owner The address that will have permission to deploy new builder wallets
     constructor(address owner) {
         if (owner == address(0)) revert Errors.ZeroAddress();
         OWNER = owner;
     }
 
+    /// @notice Modifier function to check if caller is the factory owner
     modifier onlyOwner() {
         _onlyOwner();
         _;
     }
 
-    function _onlyOwner() internal {
+    /// @notice Internal function to check if caller is the factory owner
+    /// @dev Reverts with "NOT_OWNER" if msg.sender is not the OWNER
+    function _onlyOwner() internal view {
         require(msg.sender == OWNER, "NOT_OWNER");
     }
 
-    /**
-     * @notice Deploys a BuilderWallet contract using CREATE2.
-     * @param builderCode The uint256 used as the CREATE2 salt (must match caller's referral code).
-     * @param builderAdmin The EOA/multisig allowed to sweep tokens from the wallet.
-     * @return wallet The deployed wallet address (deterministic).
-     */
+    /// @notice Deploys a BuilderWallet contract using CREATE2.
+    /// @param builderCode The uint256 used as the CREATE2 salt (must match caller's referral code).
+    /// @param builderAdmin The EOA/multisig allowed to sweep tokens from the wallet.
+    /// @return wallet The deployed wallet address (deterministic).
     function deployBuilder(
         uint48 builderCode,
         address builderAdmin
@@ -2383,12 +2439,12 @@ contract BuilderFactory {
         wallet = Create2Lib.deploy(0, salt, initCode);
         // now set the admin in storage (not part of init code)
         BuilderWallet(wallet).init(builderAdmin);
+
+        emit BuilderWalletDeployed(builderCode, wallet, builderAdmin);
     }
 
-    /**
-     * @notice Computes the CREATE2 address for (builderCode, builderAdmin).
-     * @dev Must match the formula used in the RiskEngine.
-     */
+    /// @notice Computes the CREATE2 address for (builderCode, builderAdmin).
+    /// @dev Must match the formula used in the RiskEngine.
     function predictBuilderWallet(uint48 builderCode) external view returns (address) {
         bytes32 salt = bytes32(uint256(builderCode));
 

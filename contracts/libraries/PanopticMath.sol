@@ -14,7 +14,6 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import {RiskParameters} from "@types/RiskParameters.sol";
 
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
 /// @notice Contains Panoptic-specific helpers and math functions.
@@ -274,7 +273,7 @@ library PanopticMath {
 
             uint256[] memory timestamps = new uint256[](cardinality + 1);
             // get the last "cardinality" timestamps/tickCumulatives (if observationIndex < cardinality, the index will wrap back from observationCardinality)
-            for (uint256 i = 0; i < cardinality + 1; ++i) {
+            for (uint256 i = 0; i != cardinality + 1; ++i) {
                 (timestamps[i], tickCumulatives[i], , ) = univ3pool.observations(
                     uint256(
                         (int256(observationIndex) - int256(i * period)) +
@@ -285,7 +284,7 @@ library PanopticMath {
 
             int256[] memory ticks = new int256[](cardinality);
             // use cardinality periods given by cardinality + 1 accumulator observations to compute the last cardinality observed ticks spaced by period
-            for (uint256 i = 0; i < cardinality; ++i) {
+            for (uint256 i = 0; i != cardinality; ++i) {
                 ticks[i] =
                     (tickCumulatives[i] - tickCumulatives[i + 1]) /
                     int256(timestamps[i] - timestamps[i + 1]);
@@ -312,7 +311,7 @@ library PanopticMath {
 
         unchecked {
             // construct the time slots
-            for (uint256 i = 0; i < 20; ++i) {
+            for (uint256 i = 0; i != 20; ++i) {
                 secondsAgos[i] = uint32(((i + 1) * twapWindow) / 20);
             }
 
@@ -320,7 +319,7 @@ library PanopticMath {
             (int56[] memory tickCumulatives, ) = univ3pool.observe(secondsAgos);
 
             // compute the average tick per 30s window
-            for (uint256 i = 0; i < 19; ++i) {
+            for (uint256 i = 0; i != 19; ++i) {
                 twapMeasurement[i] = int24(
                     (tickCumulatives[i] - tickCumulatives[i + 1]) / int56(uint56(twapWindow / 20))
                 );
@@ -456,7 +455,7 @@ library PanopticMath {
         bool opening
     ) internal pure returns (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) {
         uint256 numLegs = tokenId.countLegs();
-        for (uint256 leg = 0; leg < numLegs; ) {
+        for (uint256 leg = 0; leg != numLegs; ) {
             (LeftRightSigned longs, LeftRightSigned shorts) = calculateIOAmounts(
                 tokenId,
                 positionSize,

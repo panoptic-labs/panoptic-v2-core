@@ -15,6 +15,28 @@ contract ERC1155MinimalHarness is ERC1155 {
     }
 }
 
+contract UnsafeRecipient {
+    function onERC1155Received(
+        address,
+        address,
+        uint256,
+        uint256,
+        bytes calldata
+    ) external pure returns (bytes4) {
+        return 0xdeadbeef;
+    }
+
+    function onERC1155BatchReceived(
+        address,
+        address,
+        uint256[] calldata,
+        uint256[] calldata,
+        bytes calldata
+    ) external pure returns (bytes4) {
+        return 0xdeadbeef;
+    }
+}
+
 contract ERC1155Minimal is Test {
     ERC1155MinimalHarness token;
     mapping(uint256 => bool) seen;
@@ -108,9 +130,9 @@ contract ERC1155Minimal is Test {
 
     function test_fail__safeTransferFrom_unsafeRecipient(uint256 id, uint256 amount) public {
         token.mint(id, amount);
-        vm.stopPrank();
+        UnsafeRecipient unsafeRecipient = new UnsafeRecipient();
         vm.expectRevert("UnsafeRecipient()");
-        token.safeTransferFrom(address(1), address(this), id, amount, "");
+        token.safeTransferFrom(address(1), address(unsafeRecipient), id, amount, "");
     }
 
     function testSuccess_safeBatchTransferFrom(
@@ -166,18 +188,18 @@ contract ERC1155Minimal is Test {
         );
     }
 
-    function test_fail__safeTransferFrom_unsafeRecipient(
+    function test_fail__safeBatchTransferFrom_unsafeRecipient(
         uint256[10] memory ids,
         uint256[10] memory amounts
     ) public {
         for (uint256 i = 0; i < ids.length; i++) {
             token.mint(ids[i], amounts[i]);
         }
-        vm.stopPrank();
+        UnsafeRecipient unsafeRecipient = new UnsafeRecipient();
         vm.expectRevert("UnsafeRecipient()");
         token.safeBatchTransferFrom(
             address(1),
-            address(this),
+            address(unsafeRecipient),
             fixedToDynamic(ids),
             fixedToDynamic(amounts),
             ""
@@ -209,6 +231,7 @@ contract ERC1155Minimal is Test {
         uint256 amount
     ) public {
         vm.assume(approvee.code.length == 0);
+        vm.assume(approvee != address(1));
         token.mint(id, amount);
         vm.startPrank(approvee);
         vm.expectRevert("NotAuthorized()");
@@ -241,12 +264,13 @@ contract ERC1155Minimal is Test {
         );
     }
 
-    function test_fail__safeTransferFrom_unapproved(
+    function test_fail__safeBatchTransferFrom_unapproved(
         address approvee,
         uint256[10] memory ids,
         uint256[10] memory amounts
     ) public {
         vm.assume(approvee.code.length == 0);
+        vm.assume(approvee != address(1));
         for (uint256 i = 0; i < ids.length; i++) {
             token.mint(ids[i], amounts[i]);
         }

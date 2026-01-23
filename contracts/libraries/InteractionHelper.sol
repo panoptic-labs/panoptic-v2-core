@@ -25,17 +25,15 @@ library InteractionHelper {
     /// @param sfpm The SemiFungiblePositionManager being approved for both token0 and token1
     /// @param ct0 The CollateralTracker (token0) being approved for token0
     /// @param ct1 The CollateralTracker (token1) being approved for token1
-    /// @param token0 The token0 (in Uniswap) being approved for
-    /// @param token1 The token1 (in Uniswap) being approved for
     /// @param poolManager The Uniswap V4 pool manager address (zero address if using V3)
     function doApprovals(
         ISemiFungiblePositionManager sfpm,
         CollateralTracker ct0,
         CollateralTracker ct1,
-        address token0,
-        address token1,
         address poolManager
     ) external {
+        address token0 = ct0.token0();
+        address token1 = ct0.token1();
         if (poolManager == address(0)) {
             // Approve transfers of Panoptic Pool funds by SFPM
             IERC20Partial(token0).approve(address(sfpm), type(uint256).max);
@@ -109,6 +107,16 @@ library InteractionHelper {
         }
     }
 
+    /// @notice Settles haircut premia and burns collateral shares during liquidation when protocol loss occurs.
+    /// @dev Updates settled token accumulators for haircut long legs and burns collateral shares equal to the total haircut amount via settleBurn().
+    /// @param liquidatee The address of the user being liquidated whose premia is being haircut
+    /// @param positionIdList The list of all positions held by the liquidatee being closed
+    /// @param haircutTotal The total premium clawed back from the liquidatee across all positions (rightSlot: token0, leftSlot: token1)
+    /// @param haircutPerLeg The haircut amount for each leg of each position in the positionIdList
+    /// @param premiasByLeg The original premium owed to (positive) or paid by (negative) the liquidatee for each leg before haircut
+    /// @param ct0 The CollateralTracker for token0, used to burn shares corresponding to token0 haircut
+    /// @param ct1 The CollateralTracker for token1, used to burn shares corresponding to token1 haircut
+    /// @param settledTokens Storage mapping tracking accumulated premia for each liquidity chunk (indexed by chunk key)
     function settleAmounts(
         address liquidatee,
         TokenId[] memory positionIdList,
@@ -120,9 +128,9 @@ library InteractionHelper {
         mapping(bytes32 chunkKey => LeftRightUnsigned settledTokens) storage settledTokens
     ) external {
         unchecked {
-            for (uint256 i = 0; i < positionIdList.length; i++) {
+            for (uint256 i = 0; i != positionIdList.length; i++) {
                 TokenId tokenId = positionIdList[i];
-                for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
+                for (uint256 leg = 0; leg != tokenId.countLegs(); ++leg) {
                     if (
                         tokenId.isLong(leg) == 1 &&
                         LeftRightSigned.unwrap(premiasByLeg[i][leg]) != 0
