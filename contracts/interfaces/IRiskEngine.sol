@@ -65,6 +65,72 @@ interface IRiskEngine {
     /// @notice Address allowed to override the automatically computed safe mode.
     function GUARDIAN() external view returns (address);
 
+    /// @notice Decimals for computation (1 millitick precision).
+    function DECIMALS() external view returns (uint256);
+
+    /// @notice Packed EMA periods for spot, fast, and slow EMAs.
+    function EMA_PERIODS() external view returns (uint96);
+
+    /// @notice The maximum allowed cumulative delta between oracle ticks.
+    function MAX_TICKS_DELTA() external view returns (int256);
+
+    /// @notice The maximum allowed delta between the currentTick and the Uniswap TWAP tick during dispatch.
+    function MAX_TWAP_DELTA_DISPATCH() external view returns (uint16);
+
+    /// @notice The maximum spread for long premium calculations.
+    function MAX_SPREAD() external view returns (uint24);
+
+    /// @notice Multiplier for the collateral requirement during buying power decrease.
+    function BP_DECREASE_BUFFER() external view returns (uint32);
+
+    /// @notice The maximum amount of change, in ticks, permitted between internal median updates.
+    function MAX_CLAMP_DELTA() external view returns (int24);
+
+    /// @notice The notional fee, in basis points, collected from PLPs at option mint.
+    function NOTIONAL_FEE() external view returns (uint16);
+
+    /// @notice The premium fee, in basis points, collected from the premium paid/received.
+    function PREMIUM_FEE() external view returns (uint16);
+
+    /// @notice The protocol split, in basis points, when a builder code is present.
+    function PROTOCOL_SPLIT() external view returns (uint16);
+
+    /// @notice The builder split, in basis points, when a builder code is present.
+    function BUILDER_SPLIT() external view returns (uint16);
+
+    /// @notice Required collateral ratio for selling options, scaled by 10_000_000.
+    function SELLER_COLLATERAL_RATIO() external view returns (uint256);
+
+    /// @notice Required collateral ratio for buying options, scaled by 10_000_000.
+    function BUYER_COLLATERAL_RATIO() external view returns (uint256);
+
+    /// @notice Required collateral margin for loans in excess of notional, scaled by 10_000_000.
+    function MAINT_MARGIN_RATE() external view returns (uint256);
+
+    /// @notice Basal cost (in bps of notional) to force exercise an out-of-range position.
+    function FORCE_EXERCISE_COST() external view returns (uint256);
+
+    /// @notice Target pool utilization below which buying+selling is optimal, scaled by 10_000_000.
+    function TARGET_POOL_UTIL() external view returns (uint256);
+
+    /// @notice Pool utilization above which selling is 100% collateral backed, scaled by 10_000_000.
+    function SATURATED_POOL_UTIL() external view returns (uint256);
+
+    /// @notice Cross buffer parameter for token0.
+    function CROSS_BUFFER_0() external view returns (uint256);
+
+    /// @notice Cross buffer parameter for token1.
+    function CROSS_BUFFER_1() external view returns (uint256);
+
+    /// @notice Maximum number of open legs allowed.
+    function MAX_OPEN_LEGS() external view returns (uint256);
+
+    /// @notice The factory address.
+    function FACTORY() external view returns (address);
+
+    /// @notice The owner address.
+    function OWNER() external view returns (address);
+
     /*//////////////////////////////////////////////////////////////
                                 GUARDIAN
     //////////////////////////////////////////////////////////////*/
@@ -318,4 +384,14 @@ interface IRiskEngine {
 
     /// @notice Returns the stored VEGOID parameter
     function vegoid() external view returns (uint8);
+
+    /// @notice Get the cross buffer ratio for a given utilization.
+    /// @dev This is computed using the global utilization of the user.
+    /// @param utilization The pool utilization of this collateral vault at the time the position is minted
+    /// @param crossBuffer The cross buffer parameter
+    /// @return The cross buffer ratio at `utilization`
+    function crossBufferRatio(
+        int256 utilization,
+        uint256 crossBuffer
+    ) external view returns (uint256);
 }

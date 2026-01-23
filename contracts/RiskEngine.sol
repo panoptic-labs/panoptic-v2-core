@@ -1011,12 +1011,12 @@ contract RiskEngine {
 
         uint256 scaledSurplusToken0 = Math.mulDiv(
             bal0 > maintReq0 ? bal0 - maintReq0 : 0,
-            _crossBufferRatio(globalUtilizations.utilization0(), CROSS_BUFFER_0),
+            crossBufferRatio(globalUtilizations.utilization0(), CROSS_BUFFER_0),
             DECIMALS
         );
         uint256 scaledSurplusToken1 = Math.mulDiv(
             bal1 > maintReq1 ? bal1 - maintReq1 : 0,
-            _crossBufferRatio(globalUtilizations.utilization1(), CROSS_BUFFER_1),
+            crossBufferRatio(globalUtilizations.utilization1(), CROSS_BUFFER_1),
             DECIMALS
         );
 
@@ -2117,10 +2117,10 @@ contract RiskEngine {
     /// @dev This is computed using the global utilization of the user.
     /// @param utilization The pool utilization of this collateral vault at the time the position is minted
     /// @return crossBufferRatio The cross buffer ratio at `utilization`
-    function _crossBufferRatio(
+    function crossBufferRatio(
         int256 utilization,
         uint256 crossBuffer
-    ) internal view returns (uint256 crossBufferRatio) {
+    ) public view returns (uint256 crossBufferRatio) {
         // linear from crossBuffer to 0 between 90% and 95%
         // the buffer ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
         //   (x0,y0) = (saturatedPoolUtilization, crossBuffer) and
