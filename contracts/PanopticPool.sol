@@ -115,6 +115,12 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
     /// @notice Flag for `_checkSolvency` to indicate that an account should be insolvent at all input ticks.
     bool internal constant ASSERT_INSOLVENCY = false;
 
+    /// @notice Flag for calls to CollateralTracker for token0
+    bool internal constant CALL_CT0 = true;
+
+    /// @notice Flag for calls to CollateralTracker for token1
+    bool internal constant CALL_CT1 = false;
+
     /// @notice Flag that signals to add a new position to the user's positions hash (as opposed to removing an existing position).
     bool internal constant ADD = true;
 
@@ -356,14 +362,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         // SFPM: token0, token1
         // CollateralTracker0 - token0
         // CollateralTracker1 - token1
-        InteractionHelper.doApprovals(
-            SFPM,
-            collateralToken0(),
-            collateralToken1(),
-            collateralToken0().token0(),
-            collateralToken0().token1(),
-            poolManager()
-        );
+        InteractionHelper.doApprovals(SFPM, collateralToken0(), collateralToken1(), poolManager());
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -794,23 +793,25 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize, true);
         {
-            (uint32 utilization0, int128 paid0) = collateralToken0().settleMint(
+            (uint32 utilization0, int128 paid0) = _settleMint(
                 owner,
                 longAmounts.rightSlot(),
                 shortAmounts.rightSlot(),
                 netAmmDelta.rightSlot(),
-                riskParameters
+                riskParameters,
+                CALL_CT0
             );
             utilizations = utilization0;
             paidAmounts = paidAmounts.addToRightSlot(paid0);
         }
         {
-            (uint32 utilization1, int128 paid1) = collateralToken1().settleMint(
+            (uint32 utilization1, int128 paid1) = _settleMint(
                 owner,
                 longAmounts.leftSlot(),
                 shortAmounts.leftSlot(),
                 netAmmDelta.leftSlot(),
-                riskParameters
+                riskParameters,
+                CALL_CT1
             );
             unchecked {
                 // no miscast because utilization is <=10_000
@@ -821,6 +822,33 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
 
         // return pool utilizations as two uint16 (pool Utilization is always <= 10_000)
         return (utilizations, paidAmounts);
+    }
+
+    /// @notice Internal function that calls CollateralTracker to take commission and settle ITM amounts on option creation.
+    /// @param optionOwner The user minting the option
+    /// @param longAmount The amount of longs
+    /// @param shortAmount The amount of shorts
+    /// @param ammDeltaAmount The amount of tokens moved during creation of the option position
+    /// @param riskParameters The RiskEngine's core parameters
+    /// @param isCollateralToken0 The flag that determines if the call is to ct0 or ct1
+    /// @return utilization The final utilization of the collateral vault (in basis points)
+    /// @return paid The total amount of tokens paid by the option owner (negative if tokens were received)
+    function _settleMint(
+        address optionOwner,
+        int128 longAmount,
+        int128 shortAmount,
+        int128 ammDeltaAmount,
+        RiskParameters riskParameters,
+        bool isCollateralToken0
+    ) internal returns (uint32 utilization, int128 paid) {
+        CollateralTracker ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
+        (utilization, paid) = ct.settleMint(
+            optionOwner,
+            longAmount,
+            shortAmount,
+            ammDeltaAmount,
+            riskParameters
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -922,28 +950,59 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
 
         RiskParameters _rp = riskParameters;
         {
-            int128 paid0 = collateralToken0().settleBurn(
+            int128 paid0 = _settleBurn(
                 owner,
                 longAmounts.rightSlot(),
                 shortAmounts.rightSlot(),
                 netAmmDelta.rightSlot(),
                 realizedPremia.rightSlot(),
-                _rp
+                _rp,
+                CALL_CT0
             );
             paidAmounts = paidAmounts.addToRightSlot(paid0);
         }
 
         {
-            int128 paid1 = collateralToken1().settleBurn(
+            int128 paid1 = _settleBurn(
                 owner,
                 longAmounts.leftSlot(),
                 shortAmounts.leftSlot(),
                 netAmmDelta.leftSlot(),
                 realizedPremia.leftSlot(),
-                _rp
+                _rp,
+                CALL_CT1
             );
             paidAmounts = paidAmounts.addToLeftSlot(paid1);
         }
+    }
+
+    /// @notice Internal function that calls CollateralTracker to Exercise an option and pay to the seller what is owed from the buyer.
+    /// @dev Called when a position is burnt because it may need to be exercised.
+    /// @param optionOwner The owner of the option being burned
+    /// @param longAmount The notional value of the long legs of the position (if any)
+    /// @param shortAmount The notional value of the short legs of the position (if any)
+    /// @param ammDeltaAmount The amount of tokens moved during the option close
+    /// @param realizedPremium Premium to settle on the current positions
+    /// @param riskParameters The RiskEngine's core risk parameters
+    /// @return paid The amount of tokens paid when closing that position
+    function _settleBurn(
+        address optionOwner,
+        int128 longAmount,
+        int128 shortAmount,
+        int128 ammDeltaAmount,
+        int128 realizedPremium,
+        RiskParameters riskParameters,
+        bool isCollateralToken0
+    ) internal returns (int128 paid) {
+        CollateralTracker ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
+        paid = ct.settleBurn(
+            optionOwner,
+            longAmount,
+            shortAmount,
+            ammDeltaAmount,
+            realizedPremium,
+            riskParameters
+        );
     }
 
     /// @notice Validates the solvency of `user`.
@@ -1021,8 +1080,8 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
             );
         }
         // deduct the paid premium tokens from the owner's balance
-        collateralToken0().settleBurn(owner, 0, 0, 0, realizedPremia.rightSlot(), riskParameters);
-        collateralToken1().settleBurn(owner, 0, 0, 0, realizedPremia.leftSlot(), riskParameters);
+        _settleBurn(owner, 0, 0, 0, realizedPremia.rightSlot(), riskParameters, CALL_CT0);
+        _settleBurn(owner, 0, 0, 0, realizedPremia.leftSlot(), riskParameters, CALL_CT1);
     }
 
     /// @notice Adds collected tokens to `s_settledTokens` and adjusts `s_grossPremiumLast` for any liquidity added.
@@ -1392,7 +1451,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
             // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
             int24 spotTick;
             int24 latestTick;
-            (spotTick, , latestTick, ) = riskEngine().getOracleTicks(currentTick, s_oraclePack);
+            (spotTick, , latestTick) = _getOracleTicks(currentTick);
 
             // Ensure the account is insolvent at twapTick (in place of medianTick), currentTick, spotTick, and latestTick
             int24[] memory atTicks = new int24[](4);
@@ -1489,6 +1548,60 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         );
     }
 
+    /// @notice Internal function that calls CollateralTracker to accrue the protocol-wide interest.
+    /// @dev since the caller is PanopticPool, that call will just update the unrealizedGlobalInterest, currentBorrowIndex, and currentEpoch
+    function _accrueInterests() internal {
+        collateralToken0().accrueInterest();
+        collateralToken1().accrueInterest();
+    }
+
+    /// @notice Internal function that calls CollateralTracker to increase the share balance of a user by `2^248 - 1` without updating the total supply.
+    /// @param delegatee The account to increase the balance of
+    /// @param isCollateralToken0 The flag that determines if the call is to ct0 or ct1
+    function _delegate(address delegatee, bool isCollateralToken0) internal {
+        CollateralTracker ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
+
+        ct.delegate(delegatee);
+    }
+
+    /// @notice Internal function that calls CollateralTracker to decrease the share balance of a user by `2^248 - 1` without updating the total supply.
+    /// @param delegatee The account to decrease the balance of
+    /// @param isCollateralToken0 The flag that determines if the call is to ct0 or ct1
+    function _revoke(address delegatee, bool isCollateralToken0) internal {
+        CollateralTracker ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
+
+        ct.revoke(delegatee);
+    }
+
+    /// @notice Internal function that calls CollateralTracker to refunds tokens to `refunder` from `refundee`.
+    /// @param refunder The account refunding tokens to `refundee`
+    /// @param assets The amount of assets to refund. Positive means a transfer from refunder to refundee, vice versa for negative
+    /// @param isCollateralToken0 The flag that determines if the call is to ct0 or ct1
+    function _refund(address refunder, int256 assets, bool isCollateralToken0) internal {
+        CollateralTracker ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
+
+        ct.refund(refunder, msg.sender, assets);
+    }
+
+    /// @notice Internal function that calls CollateralTracker to substitute surplus tokens to a caller in exchange for any potential token shortages prior to revoking virtual shares from a payor.
+    /// @param payor The address of the user being exercised/settled
+    /// @param fees If applicable, fees to debit from caller (rightSlot = currency0 left = currency1), 0 for `settleLongPremium`
+    /// @param atTick The tick at which to convert between currency0/currency1 when redistributing the surplus tokens
+    /// @return refundAmounts The LeftRight-packed deltas for currency0/currency1 to move from the caller to the payor
+    function _getRefundAmounts(
+        address payor,
+        LeftRightSigned fees,
+        int24 atTick
+    ) internal view returns (LeftRightSigned refundAmounts) {
+        refundAmounts = riskEngine().getRefundAmounts(
+            payor,
+            fees,
+            atTick,
+            collateralToken0(),
+            collateralToken1()
+        );
+    }
+
     /// @notice Liquidates a distressed account. Will burn all positions and issue a bonus to the liquidator.
     /// @dev Will revert if liquidated account is solvent at one of the oracle ticks or if TWAP tick is too far away from the current tick.
     /// @param liquidatee Address of the distressed account
@@ -1499,101 +1612,103 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         int24 twapTick,
         int24 currentTick
     ) internal {
-        LeftRightUnsigned tokenData0;
-        LeftRightUnsigned tokenData1;
-        LeftRightUnsigned shortPremium;
-        {
-            PositionBalance[] memory positionBalanceArray = new PositionBalance[](
-                positionIdList.length
-            );
-            LeftRightUnsigned longPremium;
-            (shortPremium, longPremium, positionBalanceArray) = _calculateAccumulatedPremia(
-                liquidatee,
-                positionIdList,
-                COMPUTE_PREMIA_AS_COLLATERAL,
-                ONLY_AVAILABLE_PREMIUM,
-                currentTick
-            );
-            (tokenData0, tokenData1, ) = riskEngine().getMargin(
-                positionBalanceArray,
-                twapTick,
-                liquidatee,
-                positionIdList,
-                shortPremium,
-                longPremium,
-                collateralToken0(),
-                collateralToken1()
-            );
-        }
-
-        // The protocol delegates some virtual shares to ensure the burn can be settled.
-        collateralToken0().delegate(liquidatee);
-        collateralToken1().delegate(liquidatee);
-
         LeftRightSigned bonusAmounts;
-        LeftRightUnsigned haircutTotal;
+
         {
-            LeftRightSigned netPaid;
-            LeftRightSigned[4][] memory premiasByLeg;
-            // burn all options from the liquidatee
+            LeftRightUnsigned tokenData0;
+            LeftRightUnsigned tokenData1;
+            LeftRightUnsigned shortPremium;
+            {
+                PositionBalance[] memory positionBalanceArray = new PositionBalance[](
+                    positionIdList.length
+                );
+                LeftRightUnsigned longPremium;
+                (shortPremium, longPremium, positionBalanceArray) = _calculateAccumulatedPremia(
+                    liquidatee,
+                    positionIdList,
+                    COMPUTE_PREMIA_AS_COLLATERAL,
+                    ONLY_AVAILABLE_PREMIUM,
+                    currentTick
+                );
+                (tokenData0, tokenData1, ) = riskEngine().getMargin(
+                    positionBalanceArray,
+                    twapTick,
+                    liquidatee,
+                    positionIdList,
+                    shortPremium,
+                    longPremium,
+                    collateralToken0(),
+                    collateralToken1()
+                );
+            }
 
-            // Do not commit any settled long premium to storage - we will do this after we determine if any long premium must be revoked
-            // This is to prevent any short positions the liquidatee has being settled with tokens that will later be revoked
-            // NOTE: tick limits are not applied here since it is not the liquidator's position being liquidated
-            (netPaid, premiasByLeg) = _burnAllOptionsFrom(
-                liquidatee,
-                MIN_SWAP_TICK,
-                MAX_SWAP_TICK,
-                DONOT_COMMIT_LONG_SETTLED,
-                positionIdList
-            );
+            // The protocol delegates some virtual shares to ensure the burn can be settled.
+            _delegate(liquidatee, CALL_CT0);
+            _delegate(liquidatee, CALL_CT1);
 
-            LeftRightSigned collateralRemaining;
+            {
+                LeftRightUnsigned haircutTotal;
+                LeftRightSigned netPaid;
+                LeftRightSigned[4][] memory premiasByLeg;
+                // burn all options from the liquidatee
 
-            // compute bonus amounts using latest tick data
-            (bonusAmounts, collateralRemaining) = riskEngine().getLiquidationBonus(
-                tokenData0,
-                tokenData1,
-                Math.getSqrtRatioAtTick(twapTick),
-                netPaid,
-                shortPremium
-            );
+                // Do not commit any settled long premium to storage - we will do this after we determine if any long premium must be revoked
+                // This is to prevent any short positions the liquidatee has being settled with tokens that will later be revoked
+                // NOTE: tick limits are not applied here since it is not the liquidator's position being liquidated
+                (netPaid, premiasByLeg) = _burnAllOptionsFrom(
+                    liquidatee,
+                    MIN_SWAP_TICK,
+                    MAX_SWAP_TICK,
+                    DONOT_COMMIT_LONG_SETTLED,
+                    positionIdList
+                );
 
-            // premia cannot be paid if there is protocol loss associated with the liquidatee
-            // otherwise, an economic exploit could occur if the liquidator and liquidatee collude to
-            // manipulate the fees in a liquidity area they control past the protocol loss threshold
-            // such that the PLPs are forced to pay out premia to the liquidator
-            // thus, we haircut any premium paid by the liquidatee (converting tokens as necessary) until the protocol loss is covered or the premium is exhausted
-            // note that the haircutPremia function also commits the settled amounts (adjusted for the haircut) to storage, so it will be called even if there is no haircut
+                LeftRightSigned collateralRemaining;
 
-            // if premium is haircut from a token that is not in protocol loss, some of the liquidation bonus will be converted into that token
-            address _liquidatee = liquidatee;
-            int24 _twapTick = twapTick;
-            TokenId[] memory _positionIdList = positionIdList;
-            LeftRightSigned bonusDeltas;
-            LeftRightSigned[4][] memory haircutPerLeg;
-            (bonusDeltas, haircutTotal, haircutPerLeg) = riskEngine().haircutPremia(
-                _liquidatee,
-                _positionIdList,
-                premiasByLeg,
-                collateralRemaining,
-                Math.getSqrtRatioAtTick(_twapTick)
-            );
+                // compute bonus amounts using latest tick data
+                (bonusAmounts, collateralRemaining) = riskEngine().getLiquidationBonus(
+                    tokenData0,
+                    tokenData1,
+                    Math.getSqrtRatioAtTick(twapTick),
+                    netPaid,
+                    shortPremium
+                );
 
-            bonusAmounts = bonusAmounts.add(bonusDeltas);
+                // premia cannot be paid if there is protocol loss associated with the liquidatee
+                // otherwise, an economic exploit could occur if the liquidator and liquidatee collude to
+                // manipulate the fees in a liquidity area they control past the protocol loss threshold
+                // such that the PLPs are forced to pay out premia to the liquidator
+                // thus, we haircut any premium paid by the liquidatee (converting tokens as necessary) until the protocol loss is covered or the premium is exhausted
+                // note that the haircutPremia function also commits the settled amounts (adjusted for the haircut) to storage, so it will be called even if there is no haircut
 
-            InteractionHelper.settleAmounts(
-                _liquidatee,
-                _positionIdList,
-                haircutTotal,
-                haircutPerLeg,
-                premiasByLeg,
-                collateralToken0(),
-                collateralToken1(),
-                s_settledTokens
-            );
+                // if premium is haircut from a token that is not in protocol loss, some of the liquidation bonus will be converted into that token
+                address _liquidatee = liquidatee;
+                int24 _twapTick = twapTick;
+                TokenId[] memory _positionIdList = positionIdList;
+                LeftRightSigned bonusDeltas;
+                LeftRightSigned[4][] memory haircutPerLeg;
+                (bonusDeltas, haircutTotal, haircutPerLeg) = riskEngine().haircutPremia(
+                    _liquidatee,
+                    _positionIdList,
+                    premiasByLeg,
+                    collateralRemaining,
+                    Math.getSqrtRatioAtTick(_twapTick)
+                );
+
+                bonusAmounts = bonusAmounts.add(bonusDeltas);
+
+                InteractionHelper.settleAmounts(
+                    _liquidatee,
+                    _positionIdList,
+                    haircutTotal,
+                    haircutPerLeg,
+                    premiasByLeg,
+                    collateralToken0(),
+                    collateralToken1(),
+                    s_settledTokens
+                );
+            }
         }
-
         // revoke delegated virtual shares and settle any bonus deltas with the liquidator
         // native currency is represented as address(0), so it will always be currency0 alphanumerically
         collateralToken0().settleLiquidation{value: msg.value}(
@@ -1615,9 +1730,6 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         int24 twapTick,
         int24 currentTick
     ) internal {
-        CollateralTracker ct0 = collateralToken0();
-        CollateralTracker ct1 = collateralToken1();
-
         uint128 positionSize;
 
         LeftRightSigned exerciseFees;
@@ -1639,8 +1751,8 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         }
 
         // The protocol delegates some virtual shares to ensure the burn can be settled.
-        ct0.delegate(account);
-        ct1.delegate(account);
+        _delegate(account, CALL_CT0);
+        _delegate(account, CALL_CT1);
         {
             int24[2] memory tickLimits;
             tickLimits[0] = MIN_SWAP_TICK;
@@ -1659,20 +1771,14 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
             );
         }
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
-        LeftRightSigned refundAmounts = riskEngine().getRefundAmounts(
-            account,
-            exerciseFees,
-            twapTick,
-            ct0,
-            ct1
-        );
+        LeftRightSigned refundAmounts = _getRefundAmounts(account, exerciseFees, twapTick);
 
         // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
-        ct0.refund(account, msg.sender, refundAmounts.rightSlot());
-        ct1.refund(account, msg.sender, refundAmounts.leftSlot());
+        _refund(account, refundAmounts.rightSlot(), CALL_CT0);
+        _refund(account, refundAmounts.leftSlot(), CALL_CT1);
         // revoke the virtual shares that were delegated after settling the difference with the exercisor
-        ct0.revoke(account);
-        ct1.revoke(account);
+        _revoke(account, CALL_CT0);
+        _revoke(account, CALL_CT1);
 
         emit ForcedExercised(msg.sender, account, tokenId, exerciseFees);
     }
@@ -1688,12 +1794,9 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         int24 twapTick,
         int24 currentTick
     ) internal {
-        CollateralTracker ct0 = collateralToken0();
-        CollateralTracker ct1 = collateralToken1();
-
         // The protocol delegates some virtual shares to ensure the premia can be settled.
-        ct0.delegate(owner);
-        ct1.delegate(owner);
+        _delegate(owner, CALL_CT0);
+        _delegate(owner, CALL_CT1);
 
         (RiskParameters riskParameters, ) = getRiskParameters(0);
         uint128 positionSize = s_positionBalance[owner][tokenId].positionSize();
@@ -1701,19 +1804,13 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
 
         _settleOptions(owner, tokenId, positionSize, riskParameters, currentTick);
 
-        LeftRightSigned refundAmounts = riskEngine().getRefundAmounts(
-            owner,
-            LeftRightSigned.wrap(0),
-            twapTick,
-            ct0,
-            ct1
-        );
+        LeftRightSigned refundAmounts = _getRefundAmounts(owner, LeftRightSigned.wrap(0), twapTick);
         // allow the caller to settle tokens owed to the protocol by the settlee in exchange for the surplus token
-        ct0.refund(owner, msg.sender, refundAmounts.rightSlot());
-        ct1.refund(owner, msg.sender, refundAmounts.leftSlot());
+        _refund(owner, refundAmounts.rightSlot(), CALL_CT0);
+        _refund(owner, refundAmounts.leftSlot(), CALL_CT1);
 
-        ct0.revoke(owner);
-        ct1.revoke(owner);
+        _revoke(owner, CALL_CT0);
+        _revoke(owner, CALL_CT1);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1925,11 +2022,22 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         )
     {
         currentTick = getCurrentTick();
+        (spotTick, medianTick, latestTick) = _getOracleTicks(currentTick);
+        oraclePack = s_oraclePack;
+    }
+
+    /// @notice Internal call that computes and returns all oracle ticks.
+    /// @param currentTick the current pool tick
+    /// @return spotTick The fast oracle tick, sourced from the internal 10-minute EMA.
+    /// @return medianTick The slow oracle tick, calculated as the median of the 8 stored price points in the internal oracle.
+    /// @return latestTick The reconstructed absolute tick of the latest observation stored in the internal oracle.
+    function _getOracleTicks(
+        int24 currentTick
+    ) internal view returns (int24 spotTick, int24 medianTick, int24 latestTick) {
         (spotTick, medianTick, latestTick, ) = riskEngine().getOracleTicks(
             currentTick,
             s_oraclePack
         );
-        oraclePack = s_oraclePack;
     }
 
     /// @notice Get the current number of legs across all open positions for an account.
