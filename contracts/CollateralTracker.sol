@@ -1575,6 +1575,17 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
                 .mulDivRoundingUp(commission, riskParameters.notionalFee(), DECIMALS)
                 .toUint128();
             uint256 sharesToBurn = Math.mulDivRoundingUp(commissionFee, _totalSupply, _totalAssets);
+
+            {
+                address _optionOwner = optionOwner;
+                if (balanceOf[_optionOwner] < sharesToBurn)
+                    revert Errors.NotEnoughTokens(
+                        address(this),
+                        convertToAssets(sharesToBurn),
+                        convertToAssets(balanceOf[_optionOwner])
+                    );
+            }
+
             if (riskParameters.feeRecipient() == 0) {
                 _burn(optionOwner, sharesToBurn);
                 emit CommissionPaid(optionOwner, address(0), commissionFee, 0);
@@ -1656,6 +1667,15 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
             }
 
             uint256 sharesToBurn = Math.mulDivRoundingUp(commissionFee, _totalSupply, _totalAssets);
+            {
+                address _optionOwner = optionOwner;
+                if (balanceOf[_optionOwner] < sharesToBurn)
+                    revert Errors.NotEnoughTokens(
+                        address(this),
+                        convertToAssets(sharesToBurn),
+                        convertToAssets(balanceOf[_optionOwner])
+                    );
+            }
 
             if (riskParameters.feeRecipient() == 0) {
                 _burn(optionOwner, sharesToBurn);
