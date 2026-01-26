@@ -17,7 +17,7 @@ contract SellOptions is Script {
     using TokenIdLibrary for TokenId;
     using PoolIdLibrary for PoolKey;
 
-    function _getCurrentStrike(int24 tickSpacing) internal returns (int24 strike) {
+    function _getCurrentStrike(int24 tickSpacing) internal view returns (int24 strike) {
         PoolKey memory poolKey = PoolKey(
             Currency.wrap(vm.envAddress("CURRENCY0")),
             Currency.wrap(vm.envAddress("CURRENCY1")),

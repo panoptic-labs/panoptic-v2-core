@@ -5,7 +5,7 @@ pragma solidity ^0.8.24;
 import "forge-std/Script.sol";
 import {PanopticFactory} from "@contracts/PanopticFactoryV4.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
-import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {RiskEngine, BuilderFactory} from "@contracts/RiskEngine.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManagerV4.sol";
@@ -13,6 +13,7 @@ import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {Pointer, PointerLibrary} from "@types/Pointer.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 
+// forge script script/DeployProtocol.s.sol --rpc-url sepolia --turnkey --sender 0x62CB5f6E9F8Bca7032dDf993de8A02ae437D39b8
 contract DeployProtocol is Script {
     struct PointerInfo {
         uint256 codeIndex;
@@ -86,13 +87,10 @@ contract DeployProtocol is Script {
             0
         );
 
+        BuilderFactory builderFactory = new BuilderFactory(msg.sender);
+
         // risk engine MED
-        new RiskEngine(
-            10_000_000,
-            10_000_000,
-            address(0), // add guardian
-            address(0) // add builderFactory
-        );
+        new RiskEngine(10_000_000, 10_000_000, address(builderFactory), address(msg.sender));
 
         /*
         // risk engine LOW

@@ -1,3 +1,5 @@
+pragma solidity ^0.8.24;
+
 import "forge-std/Script.sol";
 import {PanopticFactory} from "@contracts/PanopticFactoryV4.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
@@ -6,6 +8,7 @@ import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 
+// forge script script/CreatePool.s.sol --rpc-url sepolia --turnkey --sender 0x62CB5f6E9F8Bca7032dDf993de8A02ae437D39b8
 contract CreatePool is Script {
     function run() public {
         PanopticFactory factory = PanopticFactory(vm.envAddress("PANOPTIC_FACTORY_V4"));
