@@ -57,7 +57,7 @@ import {PositionUtils, MiniPositionManager} from "../testUtils/PositionUtils.sol
 // CollateralTracker with extended functionality intended to expose internal data
 contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPositionManager {
     //constructor() CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000) {}
-    constructor() CollateralTracker(10) {
+    constructor() CollateralTracker() {
         bytes32 slot = keccak256("panoptic.utilization.snapshot");
         assembly {
             tstore(slot, 0)
@@ -1270,7 +1270,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function test_Success_StartToken_virtualShares() public {
         _initWorld(0);
-        CollateralTracker ct = new CollateralTracker(10);
+        CollateralTracker ct = new CollateralTracker();
         ct.initialize();
 
         assertEq(ct.totalSupply(), 10 ** 6);

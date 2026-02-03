@@ -3,16 +3,17 @@ pragma solidity ^0.8.24;
 
 // Foundry
 import "forge-std/Script.sol";
-import {PanopticFactory} from "@contracts/PanopticFactory.sol";
+import {PanopticFactory} from "@contracts/PanopticFactoryV4.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
-import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {RiskEngine, BuilderFactory} from "@contracts/RiskEngine.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
-import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
+import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManagerV4.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {Pointer, PointerLibrary} from "@types/Pointer.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 
+// forge script script/DeployProtocol.s.sol --rpc-url sepolia --turnkey --sender 0x62CB5f6E9F8Bca7032dDf993de8A02ae437D39b8
 contract DeployProtocol is Script {
     struct PointerInfo {
         uint256 codeIndex;
@@ -21,12 +22,10 @@ contract DeployProtocol is Script {
     }
 
     function run() public {
-        uint256 DEPLOYER_PRIVATE_KEY = vm.envUint("DEPLOYER_PRIVATE_KEY");
+        // 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543: sepolia
+        IPoolManager uniPoolManager = IPoolManager(vm.envAddress("UNIV4_POOL_MANAGER"));
 
-        // 0x0227628f3f023bb0b980b67d528571c95c6dac1c: sepolia
-        IUniswapV3Factory uniFactory = IUniswapV3Factory(vm.envAddress("UNIV3_FACTORY"));
-
-        vm.startBroadcast(DEPLOYER_PRIVATE_KEY);
+        vm.startBroadcast();
 
         string memory metadata = vm.readFile("./metadata/out/MetadataPackage.json");
 
@@ -81,15 +80,17 @@ contract DeployProtocol is Script {
             }
         }
 
-        SemiFungiblePositionManager sfpm = new SemiFungiblePositionManager(uniFactory, 10 ** 13, 0);
+        SemiFungiblePositionManager sfpm = new SemiFungiblePositionManager(
+            uniPoolManager,
+            10 ** 13,
+            10 ** 13,
+            0
+        );
+
+        BuilderFactory builderFactory = new BuilderFactory(msg.sender);
 
         // risk engine MED
-        new RiskEngine(
-            10_000_000,
-            10_000_000,
-            address(0), // add guardian
-            address(0) // add builderFactory
-        );
+        new RiskEngine(10_000_000, 10_000_000, address(builderFactory), address(msg.sender));
 
         /*
         // risk engine LOW
@@ -99,15 +100,15 @@ contract DeployProtocol is Script {
         */
         new PanopticFactory(
             sfpm,
-            uniFactory,
+            uniPoolManager,
             address(new PanopticPool(ISemiFungiblePositionManager(address(sfpm)))),
-            address(new CollateralTracker(10)),
+            address(new CollateralTracker()),
             props,
             indices,
             pointers
         );
 
-        new PanopticHelper(ISemiFungiblePositionManager(address(sfpm)));
+        //new PanopticHelper(ISemiFungiblePositionManager(address(sfpm)));
 
         // factory.tokenURI(0x00c34C41289e6c433723542BB1Eba79c6919504EDD);
         vm.stopBroadcast();

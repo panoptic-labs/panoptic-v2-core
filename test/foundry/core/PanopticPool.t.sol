@@ -760,7 +760,7 @@ contract PanopticPoolTest is PositionUtils {
 
         // deploy reference pool and collateral token
         poolReference = address(new PanopticPoolHarness(sfpm));
-        collateralReference = address(new CollateralTracker(10));
+        collateralReference = address(new CollateralTracker());
     }
 
     /*//////////////////////////////////////////////////////////////

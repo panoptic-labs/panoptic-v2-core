@@ -266,7 +266,7 @@ contract PanopticFactoryTest is Test {
             sfpm,
             manager,
             address(new PanopticPool(ISemiFungiblePositionManager(address(sfpm)))),
-            address(new CollateralTracker(10)),
+            address(new CollateralTracker()),
             props,
             indices,
             pointers

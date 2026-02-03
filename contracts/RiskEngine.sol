@@ -82,7 +82,7 @@ contract RiskEngine {
 
     /// @notice Multiplier in basis points for the collateral requirement in the event of a buying power decrease, such as minting or force exercising another user.
     /// @dev must fit inside a uint26
-    uint32 public constant BP_DECREASE_BUFFER = 13_333_333;
+    uint32 public constant BP_DECREASE_BUFFER = 11_111_111;
 
     /// @notice Decimals for WAD calculations.
     int256 internal constant WAD = 1e18;
@@ -107,19 +107,19 @@ contract RiskEngine {
     //////////////////////////////////////////////////////////////*/
     /// @notice The notional fee, in basis points, collected from PLPs at option mint.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 public constant NOTIONAL_FEE = 10;
+    uint16 public constant NOTIONAL_FEE = 1;
 
     /// @notice The premium fee, in basis points, collected from the premium paid/received.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 public constant PREMIUM_FEE = 0;
+    uint16 public constant PREMIUM_FEE = 100;
 
     /// @notice The protocol split, in basis points, when a builder code is present.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 public constant PROTOCOL_SPLIT = 6_500;
+    uint16 public constant PROTOCOL_SPLIT = 6_000;
 
     /// @notice The builder split, in basis points, when a builder code is present
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 public constant BUILDER_SPLIT = 2_500;
+    uint16 public constant BUILDER_SPLIT = 3_000;
 
     /// @notice Required collateral ratios for selling options, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 20% -> 0.2 * 10_000_000 = 2_000_000.
@@ -150,7 +150,7 @@ contract RiskEngine {
     address immutable BUILDER_FACTORY;
     bytes32 immutable BUILDER_INIT_CODE_HASH;
 
-    uint256 public constant MAX_OPEN_LEGS = 33;
+    uint256 public constant MAX_OPEN_LEGS = 26;
 
     /*//////////////////////////////////////////////////////////////
                             IRM PARAMETERS
