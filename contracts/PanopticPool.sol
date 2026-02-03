@@ -392,10 +392,20 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
     /// @param minValue0 The minimum acceptable `token0` value of collateral
     /// @param minValue1 The minimum acceptable `token1` value of collateral
     function assertMinCollateralValues(uint256 minValue0, uint256 minValue1) external view {
+        (uint256 assets0, uint256 assets1) = getAssetsOf(msg.sender);
+        if (assets0 < minValue0 || assets1 < minValue1) revert Errors.AccountInsolvent(0, 0);
+    }
+
+    /// @notice Get the balance of underlying collateral tokens (token0 and token1) held by an account.
+    /// @dev This queries the `CollateralTracker` for both tokens and converts shares to underlying asset amounts.
+    /// @param account The address of the user to query balances for.
+    /// @return assets0 The total amount of `token0` collateral owned by the account.
+    /// @return assets1 The total amount of `token1` collateral owned by the account.
+    function getAssetsOf(address account) public view returns (uint256 assets0, uint256 assets1) {
         CollateralTracker ct0 = collateralToken0();
         CollateralTracker ct1 = collateralToken1();
-        if (ct0.assetsOf(msg.sender) < minValue0 || ct1.assetsOf(msg.sender) < minValue1)
-            revert Errors.AccountInsolvent(0, 0);
+        assets0 = ct0.assetsOf(account);
+        assets1 = ct1.assetsOf(account);
     }
 
     /// @notice Determines if account is eligible to withdraw or transfer collateral.
