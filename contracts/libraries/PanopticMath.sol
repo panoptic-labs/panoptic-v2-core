@@ -439,6 +439,29 @@ library PanopticMath {
         );
     }
 
+    /// @notice Computes the chunk key for a given leg of a position.
+    /// @dev The chunk key uniquely identifies a liquidity chunk by its strike, width, and token type.
+    /// @param tickLower The tickLower of the chunk
+    /// @param tickUpper The tickUpper of the chunk
+    /// @param tickSpacing The tickspacing of the pool
+    /// @param tokenType The token type (0 = token0, 1 = token1)
+    /// @return chunkKey The keccak256 hash identifying this chunk
+    function getChunkKey(
+        int24 tickLower,
+        int24 tickUpper,
+        int24 tickSpacing,
+        uint256 tokenType
+    ) internal pure returns (bytes32 chunkKey) {
+        int24 width = (tickUpper - tickLower) / tickSpacing;
+
+        if (width >= 4096) revert Errors.InvalidTickBound();
+
+        (int24 rangeDown, ) = PanopticMath.getRangesFromStrike(width, tickSpacing);
+        int24 strike = tickLower + rangeDown;
+
+        chunkKey = EfficientHash.efficientKeccak256(abi.encodePacked(strike, width, tokenType));
+    }
+
     /*//////////////////////////////////////////////////////////////
                          TOKEN CONVERSION LOGIC
     //////////////////////////////////////////////////////////////*/

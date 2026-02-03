@@ -264,6 +264,12 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         return uint64(_getArgUint64(80));
     }
 
+    /// @notice Get the Uniswap tickSpacing for the Uniswap pool used by this Panoptic.
+    /// @return The tickSpacing for this Panoptic Pool
+    function tickSpacing() public pure returns (int24) {
+        return int24(uint24((uint64(_getArgUint64(80)) >> 48) & 0xFFFF));
+    }
+
     /// @notice Get the pool key for the Uniswap pool used by this Panoptic Pool.
     /// @dev For Uniswap v3, this is the address of the UniswapV3Pool
     /// @dev For Uniswap v4, this is Pool Key
@@ -406,6 +412,42 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         CollateralTracker ct1 = collateralToken1();
         assets0 = ct0.assetsOf(account);
         assets1 = ct1.assetsOf(account);
+    }
+
+    /// @notice Get onchain data for a liquidity chunk.
+    /// @dev Retrieves both active liquidity from the SFPM and settled tokens from the Panoptic Pool's state for a given tick range.
+    /// @param tickLower The lower tick boundary of the chunk.
+    /// @param tickUpper The upper tick boundary of the chunk.
+    /// @return liquidities0 A packed struct containing the removed/bought liquidity (left slot) and net/available liquidity (right slot) for token0.
+    /// @return liquidities1 A packed struct containing the removed/bought liquidity (left slot) and net/available liquidity (right slot) for token1.
+    /// @return settled0 A packed struct containing settled tokens within the chunk for tokenType = 0.
+    /// @return settled1 A packed struct containing settled tokens within the chunk for tokenType = 1.
+    function getChunkData(
+        int24 tickLower,
+        int24 tickUpper
+    )
+        external
+        view
+        returns (
+            LeftRightUnsigned liquidities0,
+            LeftRightUnsigned liquidities1,
+            LeftRightUnsigned settled0,
+            LeftRightUnsigned settled1
+        )
+    {
+        int24 ts = tickSpacing();
+
+        if (tickLower % ts != 0 || tickUpper % ts != 0 || tickLower >= tickUpper)
+            revert Errors.InvalidTickBound();
+
+        liquidities0 = _getLiquiditiesFromSFPM(tickLower, tickUpper, 0);
+        liquidities1 = _getLiquiditiesFromSFPM(tickLower, tickUpper, 1);
+
+        bytes32 chunkKey0 = PanopticMath.getChunkKey(tickLower, tickUpper, ts, 0);
+        settled0 = s_settledTokens[chunkKey0];
+
+        bytes32 chunkKey1 = PanopticMath.getChunkKey(tickLower, tickUpper, ts, 1);
+        settled1 = s_settledTokens[chunkKey1];
     }
 
     /// @notice Determines if account is eligible to withdraw or transfer collateral.
@@ -2273,12 +2315,10 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
     {
         (int24 tickLower, int24 tickUpper) = tokenId.asTicks(leg);
 
-        LeftRightUnsigned accountLiquidities = SFPM.getAccountLiquidity(
-            poolKey(),
-            address(this),
-            tokenId.tokenType(leg),
+        LeftRightUnsigned accountLiquidities = _getLiquiditiesFromSFPM(
             tickLower,
-            tickUpper
+            tickUpper,
+            tokenId.tokenType(leg)
         );
 
         netLiquidity = accountLiquidities.rightSlot();
@@ -2287,5 +2327,19 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         unchecked {
             totalLiquidity = netLiquidity + removedLiquidity;
         }
+    }
+
+    function _getLiquiditiesFromSFPM(
+        int24 tickLower,
+        int24 tickUpper,
+        uint256 tokenType
+    ) internal view returns (LeftRightUnsigned accountLiquidities) {
+        accountLiquidities = SFPM.getAccountLiquidity(
+            poolKey(),
+            address(this),
+            tokenType,
+            tickLower,
+            tickUpper
+        );
     }
 }
