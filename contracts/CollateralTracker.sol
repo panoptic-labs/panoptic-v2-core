@@ -259,15 +259,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
     mapping(address account => LeftRightSigned interestState) internal s_interestState;
 
     /*//////////////////////////////////////////////////////////////
-                            RISK PARAMETERS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice The commission fee, in basis points, collected from PLPs at option mint.
-    /// @dev In Panoptic, options never expire, commissions are only paid when a new position is minted.
-    /// @dev We believe that this will eliminate the impact of the commission fee on the user's decision-making process when closing a position.
-    uint256 immutable COMMISSION_FEE;
-
-    /*//////////////////////////////////////////////////////////////
                             ACCESS CONTROL
     //////////////////////////////////////////////////////////////*/
 
@@ -287,11 +278,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
                   INITIALIZATION & PARAMETER SETTINGS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Set immutable parameters for the Collateral Tracker.
-    /// @param _commissionFee The commission fee, in basis points, collected from PLPs at option mint
-    constructor(uint256 _commissionFee) {
-        COMMISSION_FEE = _commissionFee;
-    }
+    /// @notice No immutable parameters for the Collateral Tracker.
+    constructor() {}
 
     /// @notice Initializes a new `CollateralTracker` instance with 1 virtual asset and 10^6 virtual shares. Can only be called once; reverts if already initialized.
     function initialize() external {

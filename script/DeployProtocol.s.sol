@@ -102,13 +102,13 @@ contract DeployProtocol is Script {
             sfpm,
             uniPoolManager,
             address(new PanopticPool(ISemiFungiblePositionManager(address(sfpm)))),
-            address(new CollateralTracker(10)),
+            address(new CollateralTracker()),
             props,
             indices,
             pointers
         );
 
-        new PanopticHelper(ISemiFungiblePositionManager(address(sfpm)));
+        //new PanopticHelper(ISemiFungiblePositionManager(address(sfpm)));
 
         // factory.tokenURI(0x00c34C41289e6c433723542BB1Eba79c6919504EDD);
         vm.stopBroadcast();
