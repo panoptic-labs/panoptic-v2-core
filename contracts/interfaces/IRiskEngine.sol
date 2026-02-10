@@ -188,7 +188,7 @@ interface IRiskEngine {
         int24 oracleTick,
         TokenId tokenId,
         PositionBalance positionBalance
-    ) external view returns (LeftRightSigned exerciseFees);
+    ) external pure returns (LeftRightSigned exerciseFees);
 
     /// @notice Compute the pre-haircut liquidation bonuses to be paid to the liquidator and the protocol loss caused by the liquidation (pre-haircut).
     /// @param tokenData0 LeftRight encoded word with balance of token0 in the right slot, and required balance in left slot
@@ -207,7 +207,6 @@ interface IRiskEngine {
     ) external pure returns (LeftRightSigned, LeftRightSigned);
 
     /// @notice Haircut/clawback any premium paid by `liquidatee` on `positionIdList` over the protocol loss threshold during a liquidation.
-    /// @param liquidatee The address of the user being liquidated
     /// @param positionIdList The list of position ids being liquidated
     /// @param premiasByLeg The premium paid (or received) by the liquidatee for each leg of each position
     /// @param collateralRemaining The remaining collateral after the liquidation (negative if protocol loss)
@@ -216,13 +215,13 @@ interface IRiskEngine {
     /// @return haircutTotal Total premium clawed back from the liquidatee
     /// @return haircutPerLeg Per-position/per-leg haircut amounts
     function haircutPremia(
-        address liquidatee,
         TokenId[] memory positionIdList,
         LeftRightSigned[4][] memory premiasByLeg,
         LeftRightSigned collateralRemaining,
         uint160 atSqrtPriceX96
     )
         external
+        pure
         returns (
             LeftRightSigned bonusDeltas,
             LeftRightUnsigned haircutTotal,

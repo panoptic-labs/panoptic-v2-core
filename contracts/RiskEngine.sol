@@ -408,7 +408,7 @@ contract RiskEngine {
         int24 oracleTick,
         TokenId tokenId,
         PositionBalance positionBalance
-    ) external view returns (LeftRightSigned exerciseFees) {
+    ) external pure returns (LeftRightSigned exerciseFees) {
         // keep everything checked to catch any under/overflow or miscastings
         LeftRightSigned longAmounts;
         // we find whether the price is within any leg; any in-range leg will have a cost. Otherwise, the force-exercise fee is 1bps
@@ -589,7 +589,6 @@ contract RiskEngine {
     }
 
     /// @notice Haircut/clawback any premium paid by `liquidatee` on `positionIdList` over the protocol loss threshold during a liquidation.
-    /// @param liquidatee The address of the user being liquidated
     /// @param positionIdList The list of position ids being liquidated
     /// @param premiasByLeg The premium paid (or received) by the liquidatee for each leg of each position
     /// @param collateralRemaining The remaining collateral after the liquidation (negative if protocol loss)
@@ -598,13 +597,13 @@ contract RiskEngine {
     /// @return haircutTotal Total premium clawed back from the liquidatee
     /// @return haircutPerLeg Per-position/per-leg haircut amounts
     function haircutPremia(
-        address liquidatee,
         TokenId[] memory positionIdList,
         LeftRightSigned[4][] memory premiasByLeg,
         LeftRightSigned collateralRemaining,
         uint160 atSqrtPriceX96
     )
         external
+        pure
         returns (
             LeftRightSigned bonusDeltas,
             LeftRightUnsigned haircutTotal,
@@ -714,7 +713,6 @@ contract RiskEngine {
             {
                 haircutPerLeg = new LeftRightSigned[4][](positionIdList.length);
                 // total haircut after rounding up prorated haircut amounts for each leg
-                address _liquidatee = liquidatee;
                 for (uint256 i = 0; i != positionIdList.length; i++) {
                     TokenId tokenId = positionIdList[i];
                     LeftRightSigned[4][] memory _premiasByLeg = premiasByLeg;
@@ -1226,7 +1224,7 @@ contract RiskEngine {
         LeftRightUnsigned longPremia
     )
         internal
-        view
+        pure
         returns (
             LeftRightUnsigned tokensRequired,
             LeftRightUnsigned creditAmounts,
@@ -1299,7 +1297,7 @@ contract RiskEngine {
         int24 atTick,
         int16 poolUtilization,
         bool underlyingIsToken0
-    ) internal view returns (uint256 tokenRequired, uint256 credits) {
+    ) internal pure returns (uint256 tokenRequired, uint256 credits) {
         uint256 numLegs = tokenId.countLegs();
 
         unchecked {
@@ -1343,7 +1341,7 @@ contract RiskEngine {
         uint128 positionSize,
         int24 atTick,
         int16 poolUtilization
-    ) internal view returns (uint256 required) {
+    ) internal pure returns (uint256 required) {
         return
             tokenId.riskPartner(index) == index // does this leg have a risk partner? Affects required collateral
                 ? _getRequiredCollateralSingleLegNoPartner(
@@ -1375,7 +1373,7 @@ contract RiskEngine {
         uint128 positionSize,
         int24 atTick,
         int16 poolUtilization
-    ) internal view returns (uint256 required) {
+    ) internal pure returns (uint256 required) {
         // extract the tokenType (token0 or token1)
         uint256 tokenType = tokenId.tokenType(index);
 
@@ -1550,7 +1548,7 @@ contract RiskEngine {
         uint128 positionSize,
         int24 atTick,
         int16 poolUtilization
-    ) internal view returns (uint256) {
+    ) internal pure returns (uint256) {
         // extract partner index (associated with another liquidity chunk)
         uint256 partnerIndex = tokenId.riskPartner(index);
 
@@ -1710,7 +1708,7 @@ contract RiskEngine {
         uint128 amount,
         uint256 isLong,
         int16 utilization
-    ) internal view returns (uint256 required, uint256 baseCollateralRatio) {
+    ) internal pure returns (uint256 required, uint256 baseCollateralRatio) {
         // if position is short, use sell collateral ratio
 
         if (isLong == 0) {
@@ -1752,7 +1750,7 @@ contract RiskEngine {
         uint256 partnerIndex,
         int24 atTick,
         int16 poolUtilization
-    ) internal view returns (uint256 spreadRequirement) {
+    ) internal pure returns (uint256 spreadRequirement) {
         spreadRequirement = 1;
 
         uint256 splitRequirement;
@@ -1886,7 +1884,7 @@ contract RiskEngine {
         uint128 positionSize,
         int24 atTick,
         int16 poolUtilization
-    ) internal view returns (uint256 strangleRequired) {
+    ) internal pure returns (uint256 strangleRequired) {
         // If both tokenTypes are the same, then this is a short strangle.
         // A strangle is an options strategy in which the investor holds a position
         // in both a call and a put option with different strike prices,
@@ -1939,7 +1937,7 @@ contract RiskEngine {
         uint256 partnerIndex,
         int24 atTick,
         int16 poolUtilization
-    ) internal view returns (uint256) {
+    ) internal pure returns (uint256) {
         // compute both token requirements. Can directly compare them because they have the same tokenType
         uint256 _required = _getRequiredCollateralSingleLegNoPartner(
             tokenId,
@@ -1978,7 +1976,7 @@ contract RiskEngine {
         uint128 positionSize,
         uint256 index,
         int24 atTick
-    ) internal view returns (uint256) {
+    ) internal pure returns (uint256) {
         // can only be called when partnerIndex is the credit
         // required amount for the option leg
         // Assume 100% utilization, which means
@@ -2008,7 +2006,7 @@ contract RiskEngine {
         uint256 index,
         uint256 partnerIndex,
         int24 atTick
-    ) internal view returns (uint256) {
+    ) internal pure returns (uint256) {
         unchecked {
             // can only be called when partnerIndex is the credit
             LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
@@ -2056,7 +2054,7 @@ contract RiskEngine {
     /// @return sellCollateralRatio The sell collateral ratio at `utilization`
     function _sellCollateralRatio(
         int256 utilization
-    ) internal view returns (uint256 sellCollateralRatio) {
+    ) internal pure returns (uint256 sellCollateralRatio) {
         // the sell ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
         //   (x0,y0) = (targetPoolUtilization,min_sell_ratio) and
         //   (x1,y1) = (saturatedPoolUtilization,max_sell_ratio)
@@ -2109,18 +2107,18 @@ contract RiskEngine {
     /// @notice Get the base collateral requirement for a long leg at a given pool utilization.
     /// @dev This is computed at the time the position is minted.
     /// @return buyCollateralRatio The buy collateral ratio at `utilization`
-    function _buyCollateralRatio() internal view returns (uint256 buyCollateralRatio) {
+    function _buyCollateralRatio() internal pure returns (uint256 buyCollateralRatio) {
         return BUYER_COLLATERAL_RATIO;
     }
 
     /// @notice Get the cross buffer ration for a given utilization
     /// @dev This is computed using the global utilization of the user.
     /// @param utilization The pool utilization of this collateral vault at the time the position is minted
-    /// @return crossBufferRatio The cross buffer ratio at `utilization`
+    /// @return  The cross buffer ratio at `utilization`
     function crossBufferRatio(
         int256 utilization,
         uint256 crossBuffer
-    ) public view returns (uint256 crossBufferRatio) {
+    ) public pure returns (uint256) {
         // linear from crossBuffer to 0 between 90% and 95%
         // the buffer ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
         //   (x0,y0) = (saturatedPoolUtilization, crossBuffer) and
@@ -2306,7 +2304,7 @@ contract RiskEngine {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Returns the stored VEGOID parameter
-    function vegoid() external view returns (uint8) {
+    function vegoid() external pure returns (uint8) {
         return uint8(VEGOID);
     }
 }

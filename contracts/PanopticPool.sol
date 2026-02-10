@@ -1740,7 +1740,6 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
                 LeftRightSigned bonusDeltas;
                 LeftRightSigned[4][] memory haircutPerLeg;
                 (bonusDeltas, haircutTotal, haircutPerLeg) = riskEngine().haircutPremia(
-                    _liquidatee,
                     _positionIdList,
                     premiasByLeg,
                     collateralRemaining,
