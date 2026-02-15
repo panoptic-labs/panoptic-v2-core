@@ -74,6 +74,8 @@ library PanopticMath {
     /// @param token The address of the token to get the symbol of
     /// @return The symbol of `token` or "???" if not supported
     function safeERC20Symbol(address token) external view returns (string memory) {
+        // handle native ETH
+        if (token == address(0)) return "ETH";
         // not guaranteed that token supports metadata extension
         // so we need to let call fail and return placeholder if not
         try IERC20Metadata(token).symbol() returns (string memory symbol) {

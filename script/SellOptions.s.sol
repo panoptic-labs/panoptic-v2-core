@@ -60,8 +60,8 @@ contract SellOptions is Script {
         CollateralTracker ct0 = pp.collateralToken0();
         CollateralTracker ct1 = pp.collateralToken1();
 
-        IERC20Partial(vm.envAddress("CURRENCY0")).approve(address(ct0), 1e16);
-        ct0.deposit(1e16, sender);
+        // IERC20Partial(vm.envAddress("CURRENCY0")).approve(address(ct0), 1e16);
+        ct0.deposit{value: 1e16}(1e16, sender);
         IERC20Partial(vm.envAddress("CURRENCY1")).approve(address(ct1), 1e7);
         ct1.deposit(1e7, sender);
 
