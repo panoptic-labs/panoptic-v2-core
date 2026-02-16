@@ -98,6 +98,8 @@ library InteractionHelper {
     /// @param token The address of the underlying token used to compute the decimals
     /// @return The decimals of the token
     function computeDecimals(address token) external view returns (uint8) {
+        // handle native ETH
+        if (token == address(0)) return 18;
         // not guaranteed that token supports metadata extension
         // so we need to let call fail and return placeholder if not
         try IERC20Metadata(token).decimals() returns (uint8 _decimals) {
