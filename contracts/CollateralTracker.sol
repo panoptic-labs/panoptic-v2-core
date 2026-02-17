@@ -816,9 +816,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
         unchecked {
             uint256 available = convertToShares(depositedAssets > 0 ? depositedAssets - 1 : 0);
 
-            // prevent credited assets to be withdrawn, round down
-            uint256 creditedAssets = convertToAssets(s_creditedShares);
-            available = available > creditedAssets ? available - creditedAssets : 0;
+            uint256 _creditedShares = s_creditedShares;
+            available = available > _creditedShares ? available - _creditedShares : 0;
 
             uint256 balance = balanceOf[owner];
             return panopticPool().numberOfLegs(owner) == 0 ? Math.min(available, balance) : 0;
