@@ -23,12 +23,12 @@ import {LiquidityAmounts} from "v3-periphery/libraries/LiquidityAmounts.sol";
 import {SqrtPriceMath} from "v3-core/libraries/SqrtPriceMath.sol";
 import {PositionKey} from "v3-periphery/libraries/PositionKey.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManagerV4.sol";
-import {PanopticPool} from "@contracts/PanopticPool.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {SemiFungiblePositionManagerV4} from "@contracts/SemiFungiblePositionManagerV4.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
-import {PanopticFactory} from "@contracts/PanopticFactoryV4.sol";
+import {PanopticFactoryV4} from "@contracts/PanopticFactoryV4.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
@@ -46,13 +46,13 @@ import {PoolManager} from "v4-core/PoolManager.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {V4RouterSimple} from "../testUtils/V4RouterSimple.sol";
 
-contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
+contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManagerV4 {
     constructor(
         IPoolManager _manager
-    ) SemiFungiblePositionManager(_manager, 10 ** 13, 10 ** 13, 0) {}
+    ) SemiFungiblePositionManagerV4(_manager, 10 ** 13, 10 ** 13, 0) {}
 }
 
-contract PanopticPoolHarness is PanopticPool {
+contract PanopticPoolHarness is PanopticPoolV2 {
     /// @notice get the positions hash of an account
     /// @param user the account to get the positions hash of
     /// @return _positionsHash positions hash of the account
@@ -129,8 +129,8 @@ contract PanopticPoolHarness is PanopticPool {
     }
 
     constructor(
-        SemiFungiblePositionManager _sfpm
-    ) PanopticPool(ISemiFungiblePositionManager(address(_sfpm))) {}
+        SemiFungiblePositionManagerV4 _sfpm
+    ) PanopticPoolV2(ISemiFungiblePositionManager(address(_sfpm))) {}
 }
 
 contract PriceImpactAttacker {
@@ -271,10 +271,10 @@ contract PanopticPoolTest is PositionUtils {
     LeftRightSigned $longAmounts;
     LeftRightSigned $shortAmounts;
 
-    PanopticFactory factory;
+    PanopticFactoryV4 factory;
     PanopticPoolHarness pp;
-    CollateralTracker ct0;
-    CollateralTracker ct1;
+    CollateralTrackerV2 ct0;
+    CollateralTrackerV2 ct1;
     IRiskEngine re;
 
     PanopticHelper ph;
@@ -494,7 +494,7 @@ contract PanopticPoolTest is PositionUtils {
     }
 
     function liquidate(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory liquidatorList,
         address liquidatee,
         TokenId[] memory positionIdList
@@ -511,7 +511,7 @@ contract PanopticPoolTest is PositionUtils {
     }
 
     function forceExercise(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         address exercisee,
         TokenId tokenId,
         TokenId[] memory exerciseeListFinal,
@@ -536,7 +536,7 @@ contract PanopticPoolTest is PositionUtils {
     }
 
     function settlePremium(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory settlerList,
         TokenId[] memory settleeList,
         address exercisee,
@@ -651,7 +651,7 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.startPrank(Deployer);
 
-        factory = new PanopticFactory(
+        factory = new PanopticFactoryV4(
             sfpm,
             manager,
             poolReference,
@@ -760,7 +760,7 @@ contract PanopticPoolTest is PositionUtils {
 
         // deploy reference pool and collateral token
         poolReference = address(new PanopticPoolHarness(sfpm));
-        collateralReference = address(new CollateralTracker());
+        collateralReference = address(new CollateralTrackerV2());
     }
 
     /*//////////////////////////////////////////////////////////////

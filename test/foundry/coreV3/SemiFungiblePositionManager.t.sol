@@ -23,15 +23,15 @@ import {SqrtPriceMath} from "v3-core/libraries/SqrtPriceMath.sol";
 import {PoolAddress} from "v3-periphery/libraries/PoolAddress.sol";
 import {PositionKey} from "v3-periphery/libraries/PositionKey.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
+import {SemiFungiblePositionManagerV3} from "@contracts/SemiFungiblePositionManagerV3.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
 import {ReenterMint, ReenterBurn, Reenter1155Initialize, ReenterTransferSingle, ReenterTransferBatch} from "../testUtils/ReentrancyMocks.sol";
 
-contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
-    constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory, 10 ** 13, 0) {}
+contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManagerV3 {
+    constructor(IUniswapV3Factory _factory) SemiFungiblePositionManagerV3(_factory, 10 ** 13, 0) {}
 
     function addressToPoolData(address pool, uint8 vegoid) public view returns (PoolData) {
         return s_addressToPoolData[pool][vegoid];

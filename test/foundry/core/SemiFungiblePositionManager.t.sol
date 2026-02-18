@@ -23,7 +23,7 @@ import {SqrtPriceMath} from "v3-core/libraries/SqrtPriceMath.sol";
 import {PoolAddress} from "v3-periphery/libraries/PoolAddress.sol";
 import {PositionKey} from "v3-periphery/libraries/PositionKey.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManagerV4.sol";
+import {SemiFungiblePositionManagerV4} from "@contracts/SemiFungiblePositionManagerV4.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
@@ -42,10 +42,10 @@ import {PoolManager} from "v4-core/PoolManager.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {V4RouterSimple} from "../testUtils/V4RouterSimple.sol";
 
-contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
+contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManagerV4 {
     constructor(
         IPoolManager _manager
-    ) SemiFungiblePositionManager(_manager, 10 ** 13, 10 ** 13, 0) {}
+    ) SemiFungiblePositionManagerV4(_manager, 10 ** 13, 10 ** 13, 0) {}
 
     function poolIdToPoolData(uint64 poolId) public view returns (PoolData) {
         return s_V4toSFPMIdData[s_poolIdToKey[poolId].toId()][uint8(poolId >> 40)];

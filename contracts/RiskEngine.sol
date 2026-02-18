@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 // Interfaces
-import {CollateralTracker} from "./CollateralTracker.sol";
-import {PanopticPool} from "./PanopticPool.sol";
+import {CollateralTrackerV2} from "./CollateralTracker.sol";
+import {PanopticPoolV2} from "./PanopticPool.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
@@ -229,7 +229,7 @@ contract RiskEngine {
     /// @dev Sets the pool’s internal oracle pack into permanent safe-mode override
     ///      until explicitly unlocked by the guardian.
     /// @param pool The PanopticPool to lock.
-    function lockPool(PanopticPool pool) external onlyGuardian {
+    function lockPool(PanopticPoolV2 pool) external onlyGuardian {
         emit GuardianSafeModeUpdated(true);
         pool.lockSafeMode();
     }
@@ -237,7 +237,7 @@ contract RiskEngine {
     /// @notice Removes the forced safe-mode lock on a PanopticPool.
     /// @dev Restores the pool to using only the automatically computed safe-mode level.
     /// @param pool The PanopticPool to unlock.
-    function unlockPool(PanopticPool pool) external onlyGuardian {
+    function unlockPool(PanopticPoolV2 pool) external onlyGuardian {
         emit GuardianSafeModeUpdated(false);
         pool.unlockSafeMode();
     }
@@ -304,8 +304,8 @@ contract RiskEngine {
         address payor,
         LeftRightSigned fees,
         int24 atTick,
-        CollateralTracker ct0,
-        CollateralTracker ct1
+        CollateralTrackerV2 ct0,
+        CollateralTrackerV2 ct1
     ) external view returns (LeftRightSigned) {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         // keep everything checked to catch any under/overflow or miscastings
@@ -981,8 +981,8 @@ contract RiskEngine {
         address user,
         LeftRightUnsigned shortPremia,
         LeftRightUnsigned longPremia,
-        CollateralTracker ct0,
-        CollateralTracker ct1,
+        CollateralTrackerV2 ct0,
+        CollateralTrackerV2 ct1,
         uint256 buffer
     ) external view returns (bool) {
         (
@@ -1057,8 +1057,8 @@ contract RiskEngine {
         TokenId[] calldata positionIdList,
         LeftRightUnsigned shortPremia,
         LeftRightUnsigned longPremia,
-        CollateralTracker ct0,
-        CollateralTracker ct1
+        CollateralTrackerV2 ct0,
+        CollateralTrackerV2 ct1
     )
         external
         view
@@ -1105,8 +1105,8 @@ contract RiskEngine {
         address user,
         LeftRightUnsigned shortPremia,
         LeftRightUnsigned longPremia,
-        CollateralTracker ct0,
-        CollateralTracker ct1
+        CollateralTrackerV2 ct0,
+        CollateralTrackerV2 ct1
     )
         internal
         view

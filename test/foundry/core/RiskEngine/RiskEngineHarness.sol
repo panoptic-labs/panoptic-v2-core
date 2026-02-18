@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 
 import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {PositionBalance} from "@types/PositionBalance.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {OraclePack} from "@types/OraclePack.sol";
@@ -154,8 +154,8 @@ contract RiskEngineHarness is RiskEngine {
         TokenId[] calldata positionIdList,
         LeftRightUnsigned shortPremia,
         LeftRightUnsigned longPremia,
-        CollateralTracker ct0,
-        CollateralTracker ct1
+        CollateralTrackerV2 ct0,
+        CollateralTrackerV2 ct1
     ) external view returns (LeftRightUnsigned, LeftRightUnsigned, PositionBalance) {
         address _user = user;
         return

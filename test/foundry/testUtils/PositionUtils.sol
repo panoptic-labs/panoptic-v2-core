@@ -11,7 +11,7 @@ import {PoolAddress} from "v3-periphery/libraries/PoolAddress.sol";
 import {LiquidityAmounts} from "@uniswap/v3-periphery/contracts/libraries/LiquidityAmounts.sol";
 import {TransferHelper} from "v3-periphery/libraries/TransferHelper.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {Math} from "@libraries/Math.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
@@ -1731,12 +1731,12 @@ contract PositionUtils is Test {
     }
 
     // convert signed int to assets
-    function convertToAssets(CollateralTracker ct, int256 amount) internal view returns (int256) {
+    function convertToAssets(CollateralTrackerV2 ct, int256 amount) internal view returns (int256) {
         return (amount > 0 ? int8(1) : -1) * int256(ct.convertToAssets(uint256(Math.abs(amount))));
     }
 
     // "virtual" deposit or withdrawal from an account without changing the share price
-    function editCollateral(CollateralTracker ct, address owner, uint256 newShares) internal {
+    function editCollateral(CollateralTrackerV2 ct, address owner, uint256 newShares) internal {
         int256 shareDelta = int256(newShares) - int256(ct.balanceOf(owner));
         int256 assetDelta = convertToAssets(ct, shareDelta);
         uint256 _internalSupply = uint256(vm.load(address(ct), bytes32(uint256(0))));

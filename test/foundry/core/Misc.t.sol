@@ -2,12 +2,12 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManagerV4.sol";
-import {PanopticPool} from "@contracts/PanopticPool.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {SemiFungiblePositionManagerV4} from "@contracts/SemiFungiblePositionManagerV4.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
-import {PanopticFactory} from "@contracts/PanopticFactoryV4.sol";
+import {PanopticFactoryV4} from "@contracts/PanopticFactoryV4.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
@@ -142,7 +142,7 @@ contract SwapperC {
 // mostly just fixed one-off tests/PoC
 contract Misctest is Test, PositionUtils {
     // the instance of SFPM we are testing
-    SemiFungiblePositionManager sfpm;
+    SemiFungiblePositionManagerV4 sfpm;
 
     // reference implemenatations used by the factory
     address poolReference;
@@ -155,10 +155,10 @@ contract Misctest is Test, PositionUtils {
     // Mainnet router address - used for swaps to test fees/premia
     ISwapRouter router = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
 
-    PanopticFactory factory;
-    PanopticPool pp;
-    CollateralTracker ct0;
-    CollateralTracker ct1;
+    PanopticFactoryV4 factory;
+    PanopticPoolV2 pp;
+    CollateralTrackerV2 ct0;
+    CollateralTrackerV2 ct1;
     PanopticHelper ph;
     IRiskEngine re;
 
@@ -231,13 +231,13 @@ contract Misctest is Test, PositionUtils {
         manager = new PoolManager(address(0));
         routerV4 = new V4RouterSimple(manager);
 
-        sfpm = new SemiFungiblePositionManager(manager, 10 ** 13, 10 ** 13, 0);
+        sfpm = new SemiFungiblePositionManagerV4(manager, 10 ** 13, 10 ** 13, 0);
 
         ph = new PanopticHelper(ISemiFungiblePositionManager(address(sfpm)));
 
         // deploy reference pool and collateral token
-        poolReference = address(new PanopticPool(ISemiFungiblePositionManager(address(sfpm))));
-        collateralReference = address(new CollateralTracker());
+        poolReference = address(new PanopticPoolV2(ISemiFungiblePositionManager(address(sfpm))));
+        collateralReference = address(new CollateralTrackerV2());
         token0 = new ERC20S("token0", "T0", 18);
         token1 = new ERC20S("token1", "T1", 18);
         uniPool = IUniswapV3Pool(V3FACTORY.createPool(address(token0), address(token1), 500));
@@ -365,7 +365,7 @@ contract Misctest is Test, PositionUtils {
     function _createPanopticPool() internal {
         vm.startPrank(Deployer);
 
-        factory = new PanopticFactory(
+        factory = new PanopticFactoryV4(
             sfpm,
             manager,
             poolReference,
@@ -380,7 +380,7 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(factory), type(uint104).max);
         token1.approve(address(factory), type(uint104).max);
 
-        pp = PanopticPool(address(factory.deployNewPool(poolKey, re, uint96(block.timestamp))));
+        pp = PanopticPoolV2(address(factory.deployNewPool(poolKey, re, uint96(block.timestamp))));
 
         vm.startPrank(Swapper);
         swapperc.swapTo(uniPool, 2 ** 96);
@@ -412,7 +412,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function mintOptions(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory positionIdList,
         uint128 positionSize,
         uint24 effectiveLiquidityLimitX32,
@@ -435,7 +435,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function burnOptions(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId tokenId,
         TokenId[] memory positionIdList,
         int24 tickLimitLow,
@@ -455,7 +455,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function burnOptions(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory tokenIds,
         TokenId[] memory positionIdList,
         int24 tickLimitLow,
@@ -475,7 +475,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function liquidate(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory liquidatorList,
         address liquidatee,
         TokenId[] memory positionIdList
@@ -492,7 +492,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function forceExercise(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         address exercisee,
         TokenId tokenId,
         TokenId[] memory exerciseeListFinal,
@@ -517,7 +517,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function settlePremium(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory settlerList,
         TokenId[] memory settleeList,
         address exercisee,
@@ -540,7 +540,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function settlePremiumSelf(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory mintList,
         uint128 positionSize,
         bool premiaAsCollateral
@@ -1112,7 +1112,7 @@ contract Misctest is Test, PositionUtils {
         uint256 token1Supply,
         uint256 tickSpacingSeed
     ) public {
-        sfpm = new SemiFungiblePositionManager(manager, 2100 * 10 ** 18, 2100 * 10 ** 18, 10_000);
+        sfpm = new SemiFungiblePositionManagerV4(manager, 2100 * 10 ** 18, 2100 * 10 ** 18, 10_000);
 
         token0 = new ERC20S("token0", "T0", 18);
         token1 = new ERC20S("token1", "T1", 18);
@@ -1357,7 +1357,7 @@ contract Misctest is Test, PositionUtils {
         uint256 token1Supply,
         uint256 tickSpacingSeed
     ) public {
-        sfpm = new SemiFungiblePositionManager(manager, 2100 * 10 ** 18, 2100 * 10 ** 18, 10_000);
+        sfpm = new SemiFungiblePositionManagerV4(manager, 2100 * 10 ** 18, 2100 * 10 ** 18, 10_000);
 
         token0 = new ERC20S("token0", "T0", 18);
         token1 = new ERC20S("token1", "T1", 18);
@@ -1602,7 +1602,12 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_TickLimits_native(uint256 tickSpacingSeed) public {
-        sfpm = new SemiFungiblePositionManager(manager, 2100 * 10 ** 18, 21_000 * 10 ** 18, 10_000);
+        sfpm = new SemiFungiblePositionManagerV4(
+            manager,
+            2100 * 10 ** 18,
+            21_000 * 10 ** 18,
+            10_000
+        );
 
         token0 = ERC20S(address(0));
         token1 = new ERC20S("token1", "T1", 18);
@@ -1661,7 +1666,7 @@ contract Misctest is Test, PositionUtils {
 
         manager.initialize(poolKey, 2 ** 96);
 
-        pp = PanopticPool(address(factory.deployNewPool(poolKey, re, uint96(block.timestamp))));
+        pp = PanopticPoolV2(address(factory.deployNewPool(poolKey, re, uint96(block.timestamp))));
 
         ct0 = pp.collateralToken0();
         ct1 = pp.collateralToken1();

@@ -2,8 +2,8 @@
 pragma solidity ^0.8.24;
 
 // Interfaces
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
-import {PanopticPool} from "@contracts/PanopticPool.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
 
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
@@ -137,11 +137,11 @@ interface IRiskEngine {
 
     /// @notice Forces a PanopticPool into locked safe mode.
     /// @param pool The PanopticPool to lock.
-    function lockPool(PanopticPool pool) external;
+    function lockPool(PanopticPoolV2 pool) external;
 
     /// @notice Removes the forced safe-mode lock on a PanopticPool.
     /// @param pool The PanopticPool to unlock.
-    function unlockPool(PanopticPool pool) external;
+    function unlockPool(PanopticPoolV2 pool) external;
 
     /*//////////////////////////////////////////////////////////////
                                 TRANSFERS
@@ -173,8 +173,8 @@ interface IRiskEngine {
         address payor,
         LeftRightSigned fees,
         int24 atTick,
-        CollateralTracker ct0,
-        CollateralTracker ct1
+        CollateralTrackerV2 ct0,
+        CollateralTrackerV2 ct1
     ) external view returns (LeftRightSigned);
 
     /// @notice Get the cost of exercising an option. Used during a forced exercise.
@@ -319,8 +319,8 @@ interface IRiskEngine {
         address user,
         LeftRightUnsigned shortPremia,
         LeftRightUnsigned longPremia,
-        CollateralTracker ct0,
-        CollateralTracker ct1,
+        CollateralTrackerV2 ct0,
+        CollateralTrackerV2 ct1,
         uint256 buffer
     ) external view returns (bool);
 
@@ -343,8 +343,8 @@ interface IRiskEngine {
         TokenId[] calldata positionIdList,
         LeftRightUnsigned shortPremia,
         LeftRightUnsigned longPremia,
-        CollateralTracker ct0,
-        CollateralTracker ct1
+        CollateralTrackerV2 ct0,
+        CollateralTrackerV2 ct1
     )
         external
         view

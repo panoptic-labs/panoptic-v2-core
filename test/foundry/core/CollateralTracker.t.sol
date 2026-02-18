@@ -4,9 +4,9 @@ pragma solidity ^0.8.24;
 // Foundry
 import "forge-std/Test.sol";
 // Panoptic Core
-import {PanopticPool} from "@contracts/PanopticPool.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManagerV4.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
+import {SemiFungiblePositionManagerV4} from "@contracts/SemiFungiblePositionManagerV4.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {BuilderWallet} from "@contracts/RiskEngine.sol";
 import {BuilderFactory} from "@contracts/RiskEngine.sol";
@@ -55,9 +55,9 @@ import {V4RouterSimple} from "../testUtils/V4RouterSimple.sol";
 import {PositionUtils, MiniPositionManager} from "../testUtils/PositionUtils.sol";
 
 // CollateralTracker with extended functionality intended to expose internal data
-contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPositionManager {
+contract CollateralTrackerHarness is CollateralTrackerV2, PositionUtils, MiniPositionManager {
     //constructor() CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000) {}
-    constructor() CollateralTracker() {
+    constructor() CollateralTrackerV2() {
         bytes32 slot = keccak256("panoptic.utilization.snapshot");
         assembly {
             tstore(slot, 0)
@@ -142,12 +142,12 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
 
 // Inherits all of PanopticPool's functionality, however uses a modified version of startPool
 // which enables us to use our modified CollateralTracker harness that exposes internal data
-contract PanopticPoolHarness is PanopticPool {
+contract PanopticPoolHarness is PanopticPoolV2 {
     constructor(
-        SemiFungiblePositionManager _SFPM
-    ) PanopticPool(ISemiFungiblePositionManager(address(_SFPM))) {}
+        SemiFungiblePositionManagerV4 _SFPM
+    ) PanopticPoolV2(ISemiFungiblePositionManager(address(_SFPM))) {}
 
-    function delegate(address delegatee, CollateralTracker collateralToken) external {
+    function delegate(address delegatee, CollateralTrackerV2 collateralToken) external {
         collateralToken.delegate(delegatee);
     }
 
@@ -155,12 +155,12 @@ contract PanopticPoolHarness is PanopticPool {
         address delegator,
         address delegatee,
         int256 requestedAmount,
-        CollateralTracker collateralToken
+        CollateralTrackerV2 collateralToken
     ) external {
         collateralToken.refund(delegator, delegatee, requestedAmount);
     }
 
-    function revoke(address delegatee, CollateralTracker collateralToken) external {
+    function revoke(address delegatee, CollateralTrackerV2 collateralToken) external {
         collateralToken.revoke(delegatee);
     }
 
@@ -198,10 +198,10 @@ contract PanopticPoolHarness is PanopticPool {
     }
 }
 
-contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
+contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManagerV4 {
     constructor(
         IPoolManager _manager
-    ) SemiFungiblePositionManager(_manager, 10 ** 13, 10 ** 13, 0) {}
+    ) SemiFungiblePositionManagerV4(_manager, 10 ** 13, 10 ** 13, 0) {}
 
     function accountLiquidity(
         bytes32 positionKey
@@ -348,11 +348,15 @@ contract UniswapV3PoolMock {
 }
 
 contract Attacker {
-    CollateralTracker internal collateralToken;
+    CollateralTrackerV2 internal collateralToken;
     IERC20Partial internal underlyingToken;
-    PanopticPool internal panopticPool;
+    PanopticPoolV2 internal panopticPool;
 
-    constructor(CollateralTracker _collateral, IERC20Partial _token, PanopticPool _panopticPool) {
+    constructor(
+        CollateralTrackerV2 _collateral,
+        IERC20Partial _token,
+        PanopticPoolV2 _panopticPool
+    ) {
         collateralToken = _collateral;
         underlyingToken = _token;
         panopticPool = _panopticPool;
@@ -558,7 +562,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     int128 DECIMALS128 = 10_000_000;
 
     function mintOptions(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory positionIdList,
         uint128 positionSize,
         uint24 effectiveLiquidityLimitX32,
@@ -583,7 +587,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function mintOptions(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory positionIdList,
         uint128 positionSize,
         uint24 effectiveLiquidityLimitX32,
@@ -616,7 +620,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function burnOptions(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId tokenId,
         TokenId[] memory positionIdList,
         int24 tickLimitLow,
@@ -638,7 +642,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function burnOptions(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory tokenIds,
         TokenId[] memory positionIdList,
         int24 tickLimitLow,
@@ -660,7 +664,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function burnOptions(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory tokenIds,
         TokenId[] memory positionIdList,
         int24 tickLimitLow,
@@ -690,7 +694,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function liquidate(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory liquidatorList,
         address liquidatee,
         TokenId[] memory positionIdList
@@ -711,7 +715,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function forceExercise(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         address exercisee,
         TokenId tokenId,
         TokenId[] memory exerciseeList,
@@ -736,7 +740,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function settlePremium(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory settlerList,
         TokenId[] memory settleeList,
         address exercisee,
@@ -1270,7 +1274,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function test_Success_StartToken_virtualShares() public {
         _initWorld(0);
-        CollateralTracker ct = new CollateralTracker();
+        CollateralTrackerV2 ct = new CollateralTrackerV2();
         ct.initialize();
 
         assertEq(ct.totalSupply(), 10 ** 6);
@@ -12829,7 +12833,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function convertToShares(
         uint256 assets,
-        CollateralTracker collateralToken
+        CollateralTrackerV2 collateralToken
     ) public view returns (uint256 shares) {
         uint256 supply = collateralToken.totalSupply();
         return Math.mulDiv(assets, supply, collateralToken.totalAssets());
@@ -12837,7 +12841,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function convertToAssets(
         uint256 shares,
-        CollateralTracker collateralToken
+        CollateralTrackerV2 collateralToken
     ) public view returns (uint256 assets) {
         uint256 supply = collateralToken.totalSupply();
         return Math.mulDiv(shares, collateralToken.totalAssets(), supply);

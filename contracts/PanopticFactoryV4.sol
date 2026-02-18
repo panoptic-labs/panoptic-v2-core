@@ -2,11 +2,11 @@
 pragma solidity ^0.8.24;
 
 // Interfaces
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
-import {PanopticPool} from "@contracts/PanopticPool.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
 import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManagerV4.sol";
+import {SemiFungiblePositionManagerV4} from "@contracts/SemiFungiblePositionManagerV4.sol";
 // Inherited implementations
 import {Multicall} from "@base/Multicall.sol";
 import {FactoryNFT} from "@base/FactoryNFT.sol";
@@ -24,7 +24,7 @@ import {PoolKey} from "v4-core/types/PoolKey.sol";
 /// @title Panoptic Factory which creates and registers Panoptic Pools.
 /// @author Axicon Labs Limited
 /// @notice Facilitates deployment of Panoptic pools.
-contract PanopticFactory is FactoryNFT, Multicall {
+contract PanopticFactoryV4 is FactoryNFT, Multicall {
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -36,10 +36,10 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @param collateralTracker1 Address of the collateral tracker contract for currency1
     /// @param riskEngine Address of the risk engine used
     event PoolDeployed(
-        PanopticPool indexed poolAddress,
+        PanopticPoolV2 indexed poolAddress,
         PoolId indexed idV4,
-        CollateralTracker collateralTracker0,
-        CollateralTracker collateralTracker1,
+        CollateralTrackerV2 collateralTracker0,
+        CollateralTrackerV2 collateralTracker1,
         IRiskEngine riskEngine
     );
 
@@ -57,7 +57,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     IPoolManager internal immutable POOL_MANAGER_V4;
 
     /// @notice The Semi Fungible Position Manager (SFPM) which tracks option positions across Panoptic Pools.
-    SemiFungiblePositionManager internal immutable SFPM;
+    SemiFungiblePositionManagerV4 internal immutable SFPM;
 
     /// @notice Reference implementation of the `PanopticPool` to clone.
     address internal immutable POOL_REFERENCE;
@@ -73,7 +73,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Mapping from hash(Uniswap V4 pool key, riskEngine contract address) to address(PanopticPool) that stores the address of all deployed Panoptic Pools.
-    mapping(bytes32 panopticPoolKey => PanopticPool panopticPool) internal s_getPanopticPool;
+    mapping(bytes32 panopticPoolKey => PanopticPoolV2 panopticPool) internal s_getPanopticPool;
 
     /*//////////////////////////////////////////////////////////////
                              INITIALIZATION
@@ -88,7 +88,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @param indices A nested array of keys for K-V metadata pairs for each property in `properties`
     /// @param pointers Contains pointers to the metadata values stored in contract data slices for each index in `indices`
     constructor(
-        SemiFungiblePositionManager _SFPM,
+        SemiFungiblePositionManagerV4 _SFPM,
         IPoolManager _manager,
         address _poolReference,
         address _collateralReference,
@@ -118,7 +118,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         PoolKey calldata key,
         IRiskEngine riskEngine,
         uint96 salt
-    ) external returns (PanopticPool newPoolContract) {
+    ) external returns (PanopticPoolV2 newPoolContract) {
         PoolId idV4 = key.toId();
 
         bytes32 panopticPoolKey = _getPoolKey(key, riskEngine);
@@ -145,16 +145,16 @@ contract PanopticFactory is FactoryNFT, Multicall {
             )
         );
 
-        // using CREATE3 for the PanopticPool given we don't know some of the immutable args (`CollateralTracker` addresses)
+        // using CREATE3 for the PanopticPool given we don't know some of the immutable args (`CollateralTrackerV2` addresses)
         // this allows us to link the PanopticPool into the CollateralTrackers as an immutable arg without advance knowledge of their addresses
-        newPoolContract = PanopticPool(ClonesWithImmutableArgs.addressOfClone3(salt32));
+        newPoolContract = PanopticPoolV2(ClonesWithImmutableArgs.addressOfClone3(salt32));
 
-        CollateralTracker collateralTracker0;
-        CollateralTracker collateralTracker1;
+        CollateralTrackerV2 collateralTracker0;
+        CollateralTrackerV2 collateralTracker1;
         {
             uint24 fee = key.fee;
             // Deploy collateral token proxies
-            collateralTracker0 = CollateralTracker(
+            collateralTracker0 = CollateralTrackerV2(
                 COLLATERAL_REFERENCE.clone2(
                     abi.encodePacked(
                         newPoolContract,
@@ -168,7 +168,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
                     )
                 )
             );
-            collateralTracker1 = CollateralTracker(
+            collateralTracker1 = CollateralTrackerV2(
                 COLLATERAL_REFERENCE.clone2(
                     abi.encodePacked(
                         newPoolContract,
@@ -185,7 +185,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         }
 
         // This creates a new Panoptic Pool (proxy to the PanopticPool implementation)
-        newPoolContract = PanopticPool(
+        newPoolContract = PanopticPoolV2(
             POOL_REFERENCE.clone3(
                 abi.encodePacked(
                     collateralTracker0,
@@ -297,7 +297,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     function getPanopticPool(
         PoolKey calldata keyV4,
         IRiskEngine riskEngine
-    ) external view returns (PanopticPool) {
+    ) external view returns (PanopticPoolV2) {
         bytes32 panopticPoolKey = _getPoolKey(keyV4, riskEngine);
         return s_getPanopticPool[panopticPoolKey];
     }

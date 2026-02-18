@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 // Interfaces
 import {PanopticMath} from "@libraries/PanopticMath.sol";
-import {PanopticPool} from "@contracts/PanopticPool.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
 // Inherited implementations
 import {ERC721} from "solmate/src/tokens/ERC721.sol";
 import {MetadataStore} from "@base/MetadataStore.sol";
@@ -30,7 +30,7 @@ contract FactoryNFT is MetadataStore, ERC721 {
         Pointer[][] memory pointers
     )
         MetadataStore(properties, indices, pointers)
-        ERC721("Panoptic V1 Factory Deployer NFTs", "PANOPTIC-NFT")
+        ERC721("Panoptic V2 Factory Deployer NFTs", "PANOPTIC-NFT")
     {}
 
     /// @notice Returns the metadata URI for a given `tokenId`.
@@ -45,12 +45,12 @@ contract FactoryNFT is MetadataStore, ERC721 {
             constructMetadata(
                 panopticPool,
                 PanopticMath.safeERC20Symbol(
-                    PanopticPool(panopticPool).collateralToken0().token0()
+                    PanopticPoolV2(panopticPool).collateralToken0().token0()
                 ),
                 PanopticMath.safeERC20Symbol(
-                    PanopticPool(panopticPool).collateralToken0().token1()
+                    PanopticPoolV2(panopticPool).collateralToken0().token1()
                 ),
-                PanopticPool(panopticPool).collateralToken0().poolFee()
+                PanopticPoolV2(panopticPool).collateralToken0().poolFee()
             );
     }
 

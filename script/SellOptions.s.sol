@@ -1,9 +1,9 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Script.sol";
-import {PanopticPool} from "@contracts/PanopticPool.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManagerV4.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
+import {SemiFungiblePositionManagerV4} from "@contracts/SemiFungiblePositionManagerV4.sol";
 import {TokenId, TokenIdLibrary} from "@types/TokenId.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
@@ -56,9 +56,9 @@ contract SellOptions is Script {
         }
     }
 
-    function _depositCollateral(PanopticPool pp, address sender) internal {
-        CollateralTracker ct0 = pp.collateralToken0();
-        CollateralTracker ct1 = pp.collateralToken1();
+    function _depositCollateral(PanopticPoolV2 pp, address sender) internal {
+        CollateralTrackerV2 ct0 = pp.collateralToken0();
+        CollateralTrackerV2 ct1 = pp.collateralToken1();
 
         // IERC20Partial(vm.envAddress("CURRENCY0")).approve(address(ct0), 1e16);
         ct0.deposit{value: 1e16}(1e16, sender);
@@ -70,7 +70,7 @@ contract SellOptions is Script {
     }
 
     function run() public {
-        PanopticPool pp = PanopticPool(vm.envAddress("PANOPTIC_POOL"));
+        PanopticPoolV2 pp = PanopticPoolV2(vm.envAddress("PANOPTIC_POOL"));
         int24 tickSpacing = int24(uint24(vm.envUint("TICK_SPACING")));
         uint64 poolId = pp.poolId();
 
@@ -87,7 +87,7 @@ contract SellOptions is Script {
 
         vm.startBroadcast();
 
-        SemiFungiblePositionManager(vm.envAddress("SFPM_V4")).expandEnforcedTickRange(poolId);
+        SemiFungiblePositionManagerV4(vm.envAddress("SFPM_V4")).expandEnforcedTickRange(poolId);
         _depositCollateral(pp, msg.sender);
 
         uint128[] memory sizes = new uint128[](5);

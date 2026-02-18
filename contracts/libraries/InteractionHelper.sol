@@ -2,12 +2,12 @@
 pragma solidity ^0.8.24;
 
 // Interfaces
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-import {PanopticPool} from "@contracts/PanopticPool.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
 // Libraries
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
@@ -28,8 +28,8 @@ library InteractionHelper {
     /// @param poolManager The Uniswap V4 pool manager address (zero address if using V3)
     function doApprovals(
         ISemiFungiblePositionManager sfpm,
-        CollateralTracker ct0,
-        CollateralTracker ct1,
+        CollateralTrackerV2 ct0,
+        CollateralTrackerV2 ct1,
         address poolManager
     ) external {
         address token0 = ct0.token0();
@@ -125,8 +125,8 @@ library InteractionHelper {
         LeftRightUnsigned haircutTotal,
         LeftRightSigned[4][] memory haircutPerLeg,
         LeftRightSigned[4][] memory premiasByLeg,
-        CollateralTracker ct0,
-        CollateralTracker ct1,
+        CollateralTrackerV2 ct0,
+        CollateralTrackerV2 ct1,
         mapping(bytes32 chunkKey => LeftRightUnsigned settledTokens) storage settledTokens
     ) external {
         unchecked {
@@ -145,7 +145,7 @@ library InteractionHelper {
                             )
                         );
 
-                        emit PanopticPool.PremiumSettled(
+                        emit PanopticPoolV2.PremiumSettled(
                             liquidatee,
                             tokenId,
                             leg,
