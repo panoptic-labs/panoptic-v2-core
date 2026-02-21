@@ -62,7 +62,7 @@ library Errors {
     /// @notice PanopticPool: The Net Liquidity is zero due to small positions and cannot be used to compute the liquiditySpread
     error NetLiquidityZero();
 
-    /// @notice PanopticPool: None of the legs in a position are force-exercisable (they are all either short or ATM long)
+    /// @notice PanopticPool: None of the legs in a position are force-exercisable (they are all short or are credits/loans)
     error NoLegsExercisable();
 
     /// @notice PanopticPool: The leg is not long, so premium cannot be settled through `settleLongPremium`
