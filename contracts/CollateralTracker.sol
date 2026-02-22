@@ -1335,15 +1335,17 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall, TransientReentranc
                 uint256 _totalSupply = totalSupply();
                 uint256 mintedShares;
                 unchecked {
-                    mintedShares = Math.min(
-                        Math.mulDivCapped(
-                            uint256(bonus),
-                            _totalSupply - liquidateeBalance,
-                            uint256(Math.max(1, int256(totalAssets()) - bonus))
-                        ) - liquidateeBalance,
-                        _totalSupply * DECIMALS
+                    uint256 rawMinted = Math.mulDivCapped(
+                        uint256(bonus),
+                        _totalSupply - liquidateeBalance,
+                        uint256(Math.max(1, int256(totalAssets()) - bonus))
                     );
+
+                    mintedShares = rawMinted > liquidateeBalance
+                        ? Math.min(rawMinted - liquidateeBalance, _totalSupply * DECIMALS)
+                        : 0;
                 }
+
                 _mint(liquidator, mintedShares);
                 protocolLossShares += mintedShares;
             } else {
