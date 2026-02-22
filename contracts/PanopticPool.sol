@@ -603,6 +603,8 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
     /// @dev This function allows anyone to update the oracle state, which is used for risk calculations and collateral requirements.
     /// The oracle values can only be updated once every 64s
     function pokeOracle() external nonReentrant {
+        _accrueInterests();
+
         int24 currentTick = getCurrentTick();
 
         (, OraclePack oraclePack) = riskEngine().computeInternalMedian(s_oraclePack, currentTick);
