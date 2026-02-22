@@ -1789,12 +1789,11 @@ contract RiskEngine {
             unchecked {
                 // This is a CALENDAR SPREAD adjustment, where the collateral requirement is the max loss of the position
                 // real formula is contractSize * (1/(sqrt(r1)+1) - 1/(sqrt(r2)+1))
-                // Taylor expand to get a rough approximation of: contractSize * ∆width * tickSpacing / 40000
+                // Taylor expand to get a rough approximation of: contractSize * ∆width * tickSpacing / 80000
                 // This is strictly larger than the real one, so OK to use that for a collateral requirement.
                 TokenId _tokenId = tokenId;
                 int24 deltaWidth = _tokenId.width(index) - _tokenId.width(partnerIndex);
 
-                // TODO check if same strike and same width is allowed -> Think not from TokenId.sol?
                 if (deltaWidth < 0) deltaWidth = -deltaWidth;
 
                 if (tokenType == 0) {
@@ -1859,7 +1858,7 @@ contract RiskEngine {
                     contracts = moved0;
                 }
                 // the required amount is the amount of contracts multiplied by (notional1 - notional2)/max(notional1, notional2)
-                // can use unsafe because denominator is always nonzero
+                // can use unsafe because when denominator is zero, numerator is also zero (0/0 = 0 in EVM)
                 spreadRequirement += (notional < notionalP)
                     ? Math.unsafeDivRoundingUp((notionalP - notional) * contracts, notionalP)
                     : Math.unsafeDivRoundingUp((notional - notionalP) * contracts, notional);
