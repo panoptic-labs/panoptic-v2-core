@@ -1437,12 +1437,16 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
                 } else {
                     // update the premium accumulator to the latest value: only if it is a long leg (settleLongPremium) OR if owner == msg.sender (autocollect)
                     if (tokenId.isLong(leg) != 0 || msg.sender == owner) {
-                        s_options[owner][tokenId][leg] = LeftRightUnsigned
-                            .wrap(0)
-                            .addToRightSlot(uint128(premiumAccumulatorsByLeg[leg][0]))
-                            .addToLeftSlot(uint128(premiumAccumulatorsByLeg[leg][1]));
+                        // Only advance the accumulator snapshot if premium was actually realized.
+                        // Otherwise dust rounds to 0 and the owed amount is permanently lost.
+                        if (premiaByLeg[leg].rightSlot() != 0 || premiaByLeg[leg].leftSlot() != 0) {
+                            s_options[owner][tokenId][leg] = LeftRightUnsigned
+                                .wrap(0)
+                                .addToRightSlot(uint128(premiumAccumulatorsByLeg[leg][0]))
+                                .addToLeftSlot(uint128(premiumAccumulatorsByLeg[leg][1]));
 
-                        emit PremiumSettled(owner, tokenId, leg, premiaByLeg[leg]);
+                            emit PremiumSettled(owner, tokenId, leg, premiaByLeg[leg]);
+                        }
                     }
                 }
             }
