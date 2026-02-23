@@ -82,7 +82,7 @@ contract RiskEngine {
 
     /// @notice Multiplier in basis points for the collateral requirement in the event of a buying power decrease, such as minting or force exercising another user.
     /// @dev must fit inside a uint26
-    uint32 public constant BP_DECREASE_BUFFER = 11_111_111;
+    uint32 public constant BP_DECREASE_BUFFER = 10_416_667;
 
     /// @notice Decimals for WAD calculations.
     int256 internal constant WAD = 1e18;
