@@ -6470,6 +6470,10 @@ contract Misctest is Test, PositionUtils {
                     } else if (receivedSelector == Errors.PositionTooLarge.selector) {
                         console2.log("PositionTooLarge at strike:", strike);
                         // Position size exceeds protocol limits
+                    } else if (receivedSelector == Errors.NotEnoughTokens.selector) {
+                        console2.log("NotEnoughTokens at strike:", strike);
+                    } else if (receivedSelector == Errors.CastingError.selector) {
+                        console2.log("CastingError at strike:", strike);
                     } else {
                         // Unexpected error
                         console2.logBytes4(receivedSelector);

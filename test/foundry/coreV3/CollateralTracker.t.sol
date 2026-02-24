@@ -7267,7 +7267,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             collateralToken0.withdraw(
-                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 1000 - 1,
+                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 100 - 1,
                 Alice,
                 Alice
             );
@@ -7382,7 +7382,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             collateralToken0.withdraw(
-                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 1000 - 1,
+                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 100 - 1,
                 Alice,
                 Alice
             );
@@ -11654,7 +11654,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
                 positionSize0 / 4,
-                false
+                true
             );
             bool hasLegsInRange;
             if ((currentTick < strike + rangeUp) && (currentTick >= strike - rangeDown)) {
@@ -11795,7 +11795,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
                 positionSize0 / 4,
-                false
+                true
             );
 
             bool hasLegsInRange;

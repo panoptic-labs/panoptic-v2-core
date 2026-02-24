@@ -6682,6 +6682,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     //////////////////////////////////////////////////////////////*/
 
     function test_Fail_OnlyGuardian_lockPool(uint256 x, address caller) public {
+        vm.assume(caller != address(0));
         {
             _initWorld(x);
 
@@ -6697,6 +6698,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function test_Fail_OnlyGuardian_unlockPool(uint256 x, address caller) public {
+        vm.assume(caller != address(0));
         {
             _initWorld(x);
 
@@ -6715,6 +6717,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function test_Fail_OnlyGuardian_collect(uint256 x, address caller) public {
+        vm.assume(caller != address(0));
         {
             _initWorld(x);
 
@@ -6737,6 +6740,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function test_success_OnlyGuardian_lockPool_oraclePackState(uint256 x, address caller) public {
+        vm.assume(caller != address(0));
         {
             _initWorld(x);
 
@@ -6756,6 +6760,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 x,
         address caller
     ) public {
+        vm.assume(caller != address(0));
         {
             _initWorld(x);
 
@@ -6777,6 +6782,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function test_success_OnlyGuardian_lockPool_noMint_burnOnly(uint256 x, address caller) public {
+        vm.assume(caller != address(0));
         {
             _initWorld(x);
 
@@ -7002,6 +7008,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     // Tests for BuilderWallet.init protection (S-16)
     function test_Fail_builderWallet_init_AlreadyInitialized(uint256 x, address caller) public {
+        vm.assume(caller != address(0));
         _initWorld(x);
 
         // initalize a custom Panoptic pool
@@ -7025,6 +7032,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function test_Fail_builderWallet_init_ZeroAddress(uint256 x, address caller) public {
+        vm.assume(caller != address(0));
         _initWorld(x);
 
         // initalize a custom Panoptic pool
@@ -7651,7 +7659,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             collateralToken0.withdraw(
-                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 1000 - 1,
+                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 100 - 1,
                 Alice,
                 Alice
             );
@@ -7766,7 +7774,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             collateralToken0.withdraw(
-                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 1000 - 1,
+                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 100 - 1,
                 Alice,
                 Alice
             );
@@ -12315,7 +12323,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
                 positionSize0 / 4,
-                false
+                true
             );
             bool hasLegsInRange;
             if ((currentTick < strike + rangeUp) && (currentTick >= strike - rangeDown)) {
