@@ -227,6 +227,30 @@ contract MathTest is Test {
         }
     }
 
+    function test_mulDivCapped_Regression712() public view {
+        uint256 a = 4977;
+        uint256 b = 28269553036042873567630223227095349922499556783798681177904640807934099455;
+        uint256 c = 1761;
+        uint256 power = 246; // bound(2550, 0, 255) = 246
+
+        uint256 uncapped = harness.mulDiv(a, b, c);
+        uint256 expected = Math.min(2 ** power - 1, uncapped);
+        assertLt(uncapped, 2 ** power);
+        assertEq(expected, Math.mulDivCapped(a, b, c, power));
+    }
+
+    function test_mulDivCapped_Regression712_BoundaryMustCap() public view {
+        uint256 a = 4977;
+        uint256 b = 28269553036042873567630223227095349922499556783798681177904640807934099455;
+        uint256 c = 1024;
+        uint256 power = 246;
+        uint256 cap = 2 ** power - 1;
+
+        uint256 uncapped = harness.mulDiv(a, b, c);
+        assertGt(uncapped, cap);
+        assertEq(cap, Math.mulDivCapped(a, b, c, power));
+    }
+
     function test_Success_unsafeDivRoundingUp(uint256 a, uint256 b) public view {
         uint256 divRes;
         uint256 modRes;
