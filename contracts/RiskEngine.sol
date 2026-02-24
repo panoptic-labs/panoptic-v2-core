@@ -208,7 +208,7 @@ contract RiskEngine {
 
     /// @notice Address allowed to override the automatically computed safe mode.
     /// @dev Guardian can only increase the effective safe mode, never relax it.
-    address internal immutable GUARDIAN;
+    address public immutable GUARDIAN;
 
     /// @notice Emitted when the guardian updates the enforced safe mode.
     /// @param lockMode True when safe mode is forcibly locked, false when the lock is lifted.

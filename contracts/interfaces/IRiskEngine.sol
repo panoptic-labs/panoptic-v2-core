@@ -125,12 +125,6 @@ interface IRiskEngine {
     /// @notice Maximum number of open legs allowed.
     function MAX_OPEN_LEGS() external view returns (uint256);
 
-    /// @notice The factory address.
-    function FACTORY() external view returns (address);
-
-    /// @notice The owner address.
-    function OWNER() external view returns (address);
-
     /*//////////////////////////////////////////////////////////////
                                 GUARDIAN
     //////////////////////////////////////////////////////////////*/
