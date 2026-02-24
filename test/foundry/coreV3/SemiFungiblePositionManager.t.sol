@@ -90,7 +90,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     // immutable data about the pool being tested
     IUniswapV3Pool pool;
     uint64 poolId;
-    uint8 vegoid = 4;
+    uint8 vegoid = 8;
     address token0;
     address token1;
     uint24 fee;
@@ -940,7 +940,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         UniPoolPriceMock pm = new UniPoolPriceMock();
-        uint64 poolIdNew = (200 << 48) + (4 << 40);
+        uint64 poolIdNew = (200 << 48) + (uint64(vegoid) << 40);
         for (uint160 i = 0; i < 100; i++) {
             factoryMock.increment();
 

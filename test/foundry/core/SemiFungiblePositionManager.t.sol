@@ -27,7 +27,7 @@ import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManage
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
-import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
+
 import {ReenterMint, ReenterBurn, Reenter1155InitializeV4, ReenterTransferSingle, ReenterTransferBatch} from "../testUtils/ReentrancyMocks.sol";
 import {PoolData, PoolDataLibrary} from "@types/PoolData.sol";
 // V4 types
@@ -52,15 +52,11 @@ contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     }
 }
 
-contract UniswapV3FactoryMock {
-    uint160 nextPool;
-
-    function getPool(address, address, uint24) external view returns (address) {
-        return address(nextPool << 24);
-    }
-
-    function increment() external {
-        nextPool++;
+contract PoolManagerMock {
+    /// @notice Always reports a non-zero sqrtPriceX96, so any PoolKey passes the
+    /// V4StateReader.getSqrtPriceX96 != 0 initialization check in the SFPM.
+    function extsload(bytes32) external pure returns (bytes32) {
+        return bytes32(uint256(1));
     }
 }
 
@@ -97,7 +93,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     // immutable data about the pool being tested
     IUniswapV3Pool pool;
     uint64 poolId;
-    uint8 vegoid = 4;
+    uint8 vegoid = 8;
     address token0;
     address token1;
     uint24 fee;
@@ -1032,59 +1028,83 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         }
     }
 
-    /*
     function test_Success_initializeAMMPool_HandleCollisions() public {
-        // Create a mock factory that generates colliding pool addresses
-        UniswapV3FactoryMock factoryMock = new UniswapV3FactoryMock();
+        // Deploy a mock pool manager that reports any pool as initialized (non-zero sqrtPriceX96).
+        // V4 pool IDs are keccak hashes so we cannot craft colliding addresses the way the V3 test
+        // does.  Instead we use vm.etch to plant the mock at a controlled address and vm.store to
+        // pre-seed fake PoolKey entries (tickSpacing != 0) in the SFPM's s_poolIdToKey mapping,
+        // forcing the collision-resolution loop to increment the pool pattern.
+        PoolManagerMock pm = new PoolManagerMock();
+        address mockManagerAddr = address(uint160(0x1) << 24);
+        vm.etch(mockManagerAddr, address(pm).code);
 
-        // Create an instance of the SFPM tied to the factory mock that generates colliding pool addresses
-        SemiFungiblePositionManagerHarness sfpm_t = new SemiFungiblePositionManagerHarness(manager);
+        SemiFungiblePositionManagerHarness sfpm_t = new SemiFungiblePositionManagerHarness(
+            IPoolManager(mockManagerAddr)
+        );
 
-        UniPoolPriceMock pm = new UniPoolPriceMock();
-        uint64 poolIdNew = (200 << 48);
+        _cacheWorldState(USDC_WETH_5);
+
+        // Plant minimal ERC20 bytecode at each currency0 address so that the
+        // IERC20Partial(currency0).totalSupply() call inside initializeAMMPool does not revert
+        // due to empty returndata from a code-less address.
+        // Bytecode: PUSH1 0x20, PUSH1 0x00, RETURN  → returns 32 zero bytes (totalSupply = 0).
+        bytes memory returnZero = hex"60206000f3";
+        for (uint160 j = 0; j < 100; j++) {
+            vm.etch(address(uint160(token0) + j + 1), returnZero);
+        }
+
         for (uint160 i = 0; i < 100; i++) {
-            factoryMock.increment();
-
-            vm.etch(address((i + 1) << 24), address(pm).code);
-
-            token0 = USDC_WETH_5.token0();
-            token1 = USDC_WETH_5.token1();
-            pm = UniPoolPriceMock(address((i + 1) << 24));
-            pm.construct(
-                UniPoolPriceMock.Slot0({
-                    sqrtPriceX96: 0,
-                    tick: 0,
-                    observationIndex: 0,
-                    observationCardinality: 0,
-                    observationCardinalityNext: 0,
-                    feeProtocol: 0,
-                    unlocked: false
-                }),
-                address(0),
-                address(0),
-                0,
-                200
+            // Build a fresh PoolKey for each iteration by shifting currency0 upward.
+            // token0 < token1 is maintained: USDC (0xA0b8...) + small i << WETH (0xC02a...).
+            PoolKey memory key = PoolKey(
+                Currency.wrap(address(uint160(token0) + i + 1)),
+                Currency.wrap(token1),
+                fee,
+                tickSpacing,
+                IHooks(address(0))
             );
 
-            // etch tickSpacing
-            // These values are zero at this point, but they are ignored by the factory mock
-            sfpm_t.initializeAMMPool(poolKey);
+            // Natural base poolId for this key.
+            uint64 naturalId = uint40(uint256(PoolId.unwrap(key.toId()))) |
+                (uint64(vegoid) << 40) |
+                (uint64(uint24(tickSpacing)) << 48);
 
-            if (i != 0) {
-                poolIdNew = PanopticMath.incrementPoolPattern(poolIdNew);
+            // Pre-occupy the first i slots in the collision chain via vm.store.
+            // s_poolIdToKey is at storage slot 3 in the SFPM (ERC1155 uses slots 0-1,
+            // s_V4toSFPMIdData uses slot 2).  PoolKey struct layout (from forge inspect):
+            //   struct slot +0: currency0 (offset 0, 20 bytes)
+            //   struct slot +1: currency1 (offset 0, 20 bytes) | fee (offset 20, 3 bytes)
+            //                   | tickSpacing (offset 23, 3 bytes)
+            //   struct slot +2: hooks (offset 0, 20 bytes)
+            // tickSpacing is in struct slot +1 at byte-offset 23 from the LSB,
+            // i.e., bit offset 23*8 = 184.  Writing uint256(200) << 184 sets
+            // tickSpacing = 200 while leaving currency1 and fee as zero.
+            uint64 expectedPoolId = naturalId;
+            for (uint64 j = 0; j < i; j++) {
+                bytes32 mappingSlot = keccak256(abi.encode(uint256(expectedPoolId), uint256(3)));
+                vm.store(
+                    address(sfpm_t),
+                    bytes32(uint256(mappingSlot) + 1),
+                    bytes32(uint256(200) << (23 * 8))
+                );
+                expectedPoolId = PanopticMath.incrementPoolPattern(expectedPoolId);
             }
 
-            // Check that the pool address is set correctly
-            assertEq(address(sfpm_t.getUniswapV3PoolFromId(poolIdNew)), address((i + 1) << 24));
+            // Register the pool — it should skip i fake-occupied slots and land at expectedPoolId.
+            sfpm_t.initializeAMMPool(key, vegoid);
 
-            // Check that the pool ID is set correctly
-            // Addresses output from the factory mock start at 1 to avoid errors so we need to add that to the address
-            assertEq(sfpm_t.addressToPoolData(address((i + 1) << 24)).initialized(), true);
+            // Check that the pool key is stored at the resolved poolId.
+            assertEq(
+                abi.encode(sfpm_t.getUniswapV4PoolKeyFromId(expectedPoolId)),
+                abi.encode(key),
+                "pool key is set correctly"
+            );
 
-            token0 = address(uint160(token0) + 1);
+            // Check that the pool is marked as initialized.
+            assertEq(sfpm_t.poolIdToPoolData(expectedPoolId).initialized(), true, "initialized");
         }
     }
-    */
+
     /*//////////////////////////////////////////////////////////////
                          POOL INITIALIZATION: -
     //////////////////////////////////////////////////////////////*/
