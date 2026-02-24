@@ -8802,6 +8802,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             vm.assume(legUpperTick < maxTick);
             vm.assume(legLowerTick > minTick);
+            vm.assume(minTick >= -887272);
+            vm.assume(maxTick <= 887272);
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
             console2.log("");
@@ -12454,7 +12456,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
                 positionSize0 / 4,
-                false
+                true
             );
 
             bool hasLegsInRange;

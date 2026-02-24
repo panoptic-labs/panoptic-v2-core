@@ -6974,7 +6974,10 @@ contract PanopticPoolTest is PositionUtils {
 
         assertApproxEqAbs(
             balanceBefores[1],
-            uint256(type(uint104).max) + tokensOwed1,
+            uint256(type(uint104).max) +
+                tokensOwed1 -
+                (uint256(tokensOwed1) * re.PREMIUM_FEE()) /
+                10_000,
             tokensOwed1 / 1_000_000 + 10
         );
     }
@@ -7187,7 +7190,8 @@ contract PanopticPoolTest is PositionUtils {
 
         assertApproxEqAbs(
             int256(balanceBefores[1]) - int256(uint256(type(uint104).max)),
-            int256(uint256(tokensOwed1)),
+            int256(uint256(tokensOwed1)) -
+                int256((uint256(tokensOwed1) * re.PREMIUM_FEE()) / 10_000),
             tokensOwed1 / 1_000_000 + 10,
             "Incorrect token1 delta"
         );
@@ -7383,7 +7387,10 @@ contract PanopticPoolTest is PositionUtils {
 
         assertApproxEqAbs(
             int256(balanceBefores[1]) - int256(uint256(type(uint104).max)),
-            -notionalVals1[0] - notionalVals1[1] + int256(uint256(tokensOwed1)),
+            -notionalVals1[0] -
+                notionalVals1[1] +
+                int256(uint256(tokensOwed1)) -
+                int256((uint256(tokensOwed1) * re.PREMIUM_FEE()) / 10_000),
             tokensOwed1 / 1_000_000 + 10 + uint256(ITMSpread1 * 0) / 1_000_000,
             "Incorrect token1 delta"
         );
