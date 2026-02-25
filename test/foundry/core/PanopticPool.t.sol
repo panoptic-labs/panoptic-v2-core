@@ -648,7 +648,7 @@ contract PanopticPoolTest is PositionUtils {
             poolKey,
             (TickMath.MIN_TICK / tickSpacing) * tickSpacing,
             (TickMath.MAX_TICK / tickSpacing) * tickSpacing,
-            1_000_000 ether
+            1_000_000_000 ether
         );
 
         vm.startPrank(Deployer);
@@ -5821,7 +5821,7 @@ contract PanopticPoolTest is PositionUtils {
             poolKey,
             (TickMath.MIN_TICK / tickSpacing) * tickSpacing,
             (TickMath.MAX_TICK / tickSpacing) * tickSpacing,
-            -1_000_000 ether
+            -1_000_000_000 ether
         );
 
         routerV4.modifyLiquidity(
@@ -5908,7 +5908,7 @@ contract PanopticPoolTest is PositionUtils {
             poolKey,
             (TickMath.MIN_TICK / tickSpacing) * tickSpacing,
             (TickMath.MAX_TICK / tickSpacing) * tickSpacing,
-            -1_000_000 ether
+            -1_000_000_000 ether
         );
 
         routerV4.modifyLiquidity(
@@ -6036,7 +6036,7 @@ contract PanopticPoolTest is PositionUtils {
             poolKey,
             (TickMath.MIN_TICK / tickSpacing) * tickSpacing,
             (TickMath.MAX_TICK / tickSpacing) * tickSpacing,
-            -1_000_000 ether
+            -1_000_000_000 ether
         );
 
         routerV4.modifyLiquidity(
