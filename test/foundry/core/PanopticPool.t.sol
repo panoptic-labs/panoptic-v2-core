@@ -271,6 +271,8 @@ contract PanopticPoolTest is PositionUtils {
     LeftRightSigned $longAmounts;
     LeftRightSigned $shortAmounts;
 
+    bool $hasLegsInRange;
+
     PanopticFactory factory;
     PanopticPoolHarness pp;
     CollateralTracker ct0;
@@ -8145,6 +8147,13 @@ contract PanopticPoolTest is PositionUtils {
         (LeftRightSigned longAmountsAlice, LeftRightSigned shortAmountsAlice) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize, false);
 
+        // exercise cost in the contract uses opening=true (different rounding for long legs)
+        (LeftRightSigned longAmountsForExercise, ) = PanopticMath.computeExercisedAmounts(
+            tokenId,
+            positionSize,
+            true
+        );
+
         {
             uint128[] memory sizeList = new uint128[](1);
 
@@ -8217,7 +8226,7 @@ contract PanopticPoolTest is PositionUtils {
             .slot0();
         currentTick = sfpm.getCurrentTick(abi.encode(poolKey));
 
-        bool hasLegsInRange;
+        $hasLegsInRange = false;
         for (uint256 i = 0; i < numLegs; ++i) {
             if (isLongs[i] == 0) continue;
 
@@ -8231,7 +8240,7 @@ contract PanopticPoolTest is PositionUtils {
                     (currentTick < tokenId.strike(i) + rangeUp) &&
                     (currentTick >= tokenId.strike(i) - rangeDown)
                 ) {
-                    hasLegsInRange = true;
+                    $hasLegsInRange = true;
                 }
             }
 
@@ -8270,10 +8279,10 @@ contract PanopticPoolTest is PositionUtils {
         // note: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
         // the result is rounded DOWN and NOT toward zero
         // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
-        int256 exerciseFee = hasLegsInRange ? -int256(102400) : -int256(1000);
+        int256 exerciseFee = $hasLegsInRange ? -int256(102400) : -int256(1000);
 
-        exerciseFeeAmounts[0] += (longAmountsAlice.rightSlot() * (-exerciseFee)) / 10_000_000;
-        exerciseFeeAmounts[1] += (longAmountsAlice.leftSlot() * (-exerciseFee)) / 10_000_000;
+        exerciseFeeAmounts[0] += (longAmountsForExercise.rightSlot() * (-exerciseFee)) / 10_000_000;
+        exerciseFeeAmounts[1] += (longAmountsForExercise.leftSlot() * (-exerciseFee)) / 10_000_000;
 
         console2.log("exerciseFeeAmounts0", exerciseFeeAmounts[0]);
         console2.log("exerciseFeeAmounts1", exerciseFeeAmounts[1]);
@@ -8329,33 +8338,6 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         {
-            console2.log("");
-            console2.log("$shottP", $shortPremia.rightSlot());
-            console2.log("$longP", $longPremia.rightSlot());
-            console2.log("$intrinsicValue0", $intrinsicValue0);
-            console2.log("exerciseFeeAmounts[0]", exerciseFeeAmounts[0]);
-
-            int256 realizedPremiumEstimate0 = int256(uint256($shortPremia.rightSlot())) -
-                int256(uint256($longPremia.rightSlot()));
-            int256 realizedPremiumEstimate1 = int256(uint256($shortPremia.leftSlot())) -
-                int256(uint256($longPremia.leftSlot()));
-
-            int256 grossNotional0 = int256(longAmountsAlice.rightSlot()) +
-                int256(shortAmountsAlice.rightSlot());
-            int256 grossNotional1 = int256(longAmountsAlice.leftSlot()) +
-                int256(shortAmountsAlice.leftSlot());
-
-            // settleBurn charges a burn commission on top of the premium/intrinsic path.
-            // This test model previously omitted it and had to absorb it in tolerance.
-            uint256 burnCommissionEstimate0 = Math.min(
-                Math.mulDivRoundingUp(uint256(Math.abs(realizedPremiumEstimate0)), 100, 10_000_000),
-                Math.mulDivRoundingUp(uint256(Math.abs(grossNotional0)), 10, 10_000_000)
-            );
-            uint256 burnCommissionEstimate1 = Math.min(
-                Math.mulDivRoundingUp(uint256(Math.abs(realizedPremiumEstimate1)), 100, 10_000_000),
-                Math.mulDivRoundingUp(uint256(Math.abs(grossNotional1)), 10, 10_000_000)
-            );
-
             $balanceDelta0 =
                 int256(exerciseFeeAmounts[0]) -
                 $intrinsicValue0 +
@@ -8363,9 +8345,8 @@ contract PanopticPoolTest is PositionUtils {
                 int256(uint256($longPremia.rightSlot()));
 
             $balanceDelta0 = $balanceDelta0 > 0
-                ? int256((uint256($balanceDelta0)))
-                : -int256((uint256(-$balanceDelta0)));
-            $balanceDelta0 -= int256(burnCommissionEstimate0);
+                ? int256(uint256($balanceDelta0))
+                : -int256(uint256(-$balanceDelta0));
 
             $balanceDelta1 =
                 int256(exerciseFeeAmounts[1]) -
@@ -8374,24 +8355,38 @@ contract PanopticPoolTest is PositionUtils {
                 int256(uint256($longPremia.leftSlot()));
 
             $balanceDelta1 = $balanceDelta1 > 0
-                ? int256((uint256($balanceDelta1)))
-                : -int256((uint256(-$balanceDelta1)));
-            $balanceDelta1 -= int256(burnCommissionEstimate1);
+                ? int256(uint256($balanceDelta1))
+                : -int256(uint256(-$balanceDelta1));
 
-            console2.log("@balanceDe", $balanceDelta1);
             assertApproxEqAbs(
                 int256(ct0.convertToAssets(ct0.balanceOf(Alice))) -
-                    int256((lastCollateralBalance0[Alice])),
+                    int256(lastCollateralBalance0[Alice]),
                 $balanceDelta0,
-                uint256(int256(Math.abs($balanceDelta0) / 1_000_000_000 + 10)),
-                "Incorrect balance delta for token0 (Force Exercisee) 2"
+                uint256(
+                    int256(
+                        Math.abs($balanceDelta0) /
+                            1_000_000_000 +
+                            (longAmountsAlice.rightSlot() + shortAmountsAlice.rightSlot()) /
+                            1_000_000 +
+                            10
+                    )
+                ),
+                "Incorrect balance delta for token0 (Force Exercisee)"
             );
             assertApproxEqAbs(
                 int256(ct1.convertToAssets(ct1.balanceOf(Alice))) -
                     int256(lastCollateralBalance1[Alice]),
                 $balanceDelta1,
-                uint256(int256(Math.abs($balanceDelta1) / 1_000_000_000 + 10)),
-                "Incorrect balance delta for token1 (Force Exercisee) 2"
+                uint256(
+                    int256(
+                        Math.abs($balanceDelta1) /
+                            1_000_000_000 +
+                            (longAmountsAlice.leftSlot() + shortAmountsAlice.leftSlot()) /
+                            1_000_000 +
+                            10
+                    )
+                ),
+                "Incorrect balance delta for token1 (Force Exercisee)"
             );
         }
     }

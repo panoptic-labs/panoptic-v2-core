@@ -6180,18 +6180,19 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.revertTo(0);
 
-        (uint256[2] memory expectedSwaps, ) = PositionUtils.simulateSwap(
-            pool,
-            tickLower,
-            tickUpper,
-            expectedLiq,
-            router,
-            token0,
-            token1,
-            fee,
-            [true, false],
-            amount1Moveds
-        );
+        (uint256[2] memory expectedSwaps, uint256[2] memory expectedSwaps1) = PositionUtils
+            .simulateSwap(
+                pool,
+                tickLower,
+                tickUpper,
+                expectedLiq,
+                router,
+                token0,
+                token1,
+                fee,
+                [true, false],
+                amount1Moveds
+            );
 
         (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
@@ -6202,6 +6203,11 @@ contract PanopticPoolTest is PositionUtils {
         int256[2] memory notionalVals = [
             int256(expectedSwaps[0]) + amount0Moveds[0] - shortAmounts.rightSlot(),
             -int256(expectedSwaps[1]) - amount0Moveds[1] + shortAmounts.rightSlot()
+        ];
+
+        int256[2] memory notionalVals1 = [
+            -int256(expectedSwaps1[0]) - amount1Moveds[0],
+            int256(expectedSwaps1[1]) - amount1Moveds[1]
         ];
 
         // set itm spread fee to 0
@@ -6223,12 +6229,12 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         assertApproxEqAbs(
-            balanceBefores[1],
-            uint256(type(uint104).max) +
-                tokensOwed1 -
-                (uint256(tokensOwed1) * re.PREMIUM_FEE()) /
-                10_000,
-            tokensOwed1 / 1_000_000 + 10
+            int256(balanceBefores[1]) - int256(uint256(type(uint104).max)),
+            -notionalVals1[0] -
+                notionalVals1[1] +
+                int256(uint256(tokensOwed1)) -
+                int256((uint256(tokensOwed1) * re.PREMIUM_FEE()) / 10_000),
+            tokensOwed1 / 1_000_000 + (expectedSwaps1[0] + expectedSwaps1[1]) / 100 + 10
         );
     }
 
