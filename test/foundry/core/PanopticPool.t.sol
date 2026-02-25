@@ -8366,6 +8366,8 @@ contract PanopticPoolTest is PositionUtils {
                     int256(
                         Math.abs($balanceDelta0) /
                             1_000_000_000 +
+                            Math.abs(exerciseFeeAmounts[0]) /
+                            1_000_000 +
                             (longAmountsAlice.rightSlot() + shortAmountsAlice.rightSlot()) /
                             1_000_000 +
                             10
@@ -8380,9 +8382,11 @@ contract PanopticPoolTest is PositionUtils {
                 uint256(
                     int256(
                         Math.abs($balanceDelta1) /
-                            1_000_000_000 +
+                            500_000_000 +
+                            Math.abs(exerciseFeeAmounts[1]) /
+                            500_000 +
                             (longAmountsAlice.leftSlot() + shortAmountsAlice.leftSlot()) /
-                            1_000_000 +
+                            500_000 +
                             10
                     )
                 ),

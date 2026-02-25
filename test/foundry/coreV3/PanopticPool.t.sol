@@ -6234,7 +6234,11 @@ contract PanopticPoolTest is PositionUtils {
                 notionalVals1[1] +
                 int256(uint256(tokensOwed1)) -
                 int256((uint256(tokensOwed1) * re.PREMIUM_FEE()) / 10_000),
-            tokensOwed1 / 1_000_000 + (expectedSwaps1[0] + expectedSwaps1[1]) / 100 + 10
+            tokensOwed1 /
+                1_000_000 +
+                (uint256(Math.abs(amount1Moveds[0])) + uint256(Math.abs(amount1Moveds[1]))) /
+                100 +
+                10
         );
     }
 
