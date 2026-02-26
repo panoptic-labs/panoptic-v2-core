@@ -6228,6 +6228,7 @@ contract PanopticPoolTest is PositionUtils {
             uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10)
         );
 
+        int256[2] memory _amount1Moveds = amount1Moveds;
         assertApproxEqAbs(
             int256(balanceBefores[1]) - int256(uint256(type(uint104).max)),
             -notionalVals1[0] -
@@ -6236,7 +6237,7 @@ contract PanopticPoolTest is PositionUtils {
                 int256((uint256(tokensOwed1) * re.PREMIUM_FEE()) / 10_000),
             tokensOwed1 /
                 1_000_000 +
-                (uint256(Math.abs(amount1Moveds[0])) + uint256(Math.abs(amount1Moveds[1]))) /
+                (uint256(Math.abs(_amount1Moveds[0])) + uint256(Math.abs(_amount1Moveds[1]))) /
                 100 +
                 10
         );
