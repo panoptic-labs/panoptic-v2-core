@@ -709,7 +709,7 @@ library Math {
                 return Math.min(result, 2 ** power - 1);
             }
 
-            if (denominator >> (256 - power) <= prod1) return 2 ** power - 1;
+            if (denominator >> (256 - power) < prod1) return 2 ** power - 1;
 
             ///////////////////////////////////////////////
             // 512 by 256 division.
@@ -770,7 +770,7 @@ library Math {
             // that the outcome is less than 2**256, this is the final result.
             // We don't need to compute the high bits of the result and prod1
             // is no longer required.
-            result = prod0 * inv;
+            result = Math.min(prod0 * inv, 2 ** power - 1);
         }
     }
 

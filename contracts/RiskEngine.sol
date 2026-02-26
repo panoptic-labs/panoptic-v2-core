@@ -82,14 +82,14 @@ contract RiskEngine {
 
     /// @notice Multiplier in basis points for the collateral requirement in the event of a buying power decrease, such as minting or force exercising another user.
     /// @dev must fit inside a uint26
-    uint32 public constant BP_DECREASE_BUFFER = 11_111_111;
+    uint32 public constant BP_DECREASE_BUFFER = 10_416_667;
 
     /// @notice Decimals for WAD calculations.
     int256 internal constant WAD = 1e18;
 
     /// @notice Constant, in seconds, used to determine the max elapsed time between adaptive interest rate updates.
     /// @dev the time elapsed will be capped at IRM_MAX_ELAPSED_TIME
-    int256 public constant IRM_MAX_ELAPSED_TIME = 4096;
+    int256 public constant IRM_MAX_ELAPSED_TIME = 16384; // 2**14 seconds = 4.5h
 
     /// @notice The maximum amount of change, in ticks, permitted between internal median updates.
     int24 public constant MAX_CLAMP_DELTA = 149;
@@ -100,7 +100,7 @@ contract RiskEngine {
     // and vegoid modifies the sensitivity of the streamia to changes in that utilization,
     // much like vega measures the sensitivity of traditional option prices to IV.
     // The effect of vegoid on the long premium multiplier can be explored here: https://www.desmos.com/calculator/mdeqob2m04
-    uint8 public constant VEGOID = 4;
+    uint8 public constant VEGOID = 8;
 
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS
@@ -138,7 +138,7 @@ contract RiskEngine {
     // Targets a pool utilization (balance between buying and selling)
     /// @notice Target pool utilization below which buying+selling is optimal, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 50% -> 0.5 * 10_000_000 = 5_000_000.
-    uint256 public constant TARGET_POOL_UTIL = 5_000_000;
+    uint256 public constant TARGET_POOL_UTIL = 6_666_667;
 
     /// @notice Pool utilization above which selling is 100% collateral backed, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 90% -> 0.9 * 10_000_000 = 9_000_000.
@@ -169,7 +169,7 @@ contract RiskEngine {
     int256 public constant MAX_RATE_AT_TARGET = 2.0 ether / int256(365 days);
 
     /// @notice Target utilization (scaled by WAD).
-    /// @dev Target utilization = 90%.
+    /// @dev Target utilization = 66%.
     int256 public constant TARGET_UTILIZATION = 2 ether / int256(3);
 
     /// @notice Initial rate at target per second (scaled by WAD).
@@ -208,7 +208,7 @@ contract RiskEngine {
 
     /// @notice Address allowed to override the automatically computed safe mode.
     /// @dev Guardian can only increase the effective safe mode, never relax it.
-    address internal immutable GUARDIAN;
+    address public immutable GUARDIAN;
 
     /// @notice Emitted when the guardian updates the enforced safe mode.
     /// @param lockMode True when safe mode is forcibly locked, false when the lock is lifted.
@@ -1789,12 +1789,11 @@ contract RiskEngine {
             unchecked {
                 // This is a CALENDAR SPREAD adjustment, where the collateral requirement is the max loss of the position
                 // real formula is contractSize * (1/(sqrt(r1)+1) - 1/(sqrt(r2)+1))
-                // Taylor expand to get a rough approximation of: contractSize * ∆width * tickSpacing / 40000
+                // Taylor expand to get a rough approximation of: contractSize * ∆width * tickSpacing / 80000
                 // This is strictly larger than the real one, so OK to use that for a collateral requirement.
                 TokenId _tokenId = tokenId;
                 int24 deltaWidth = _tokenId.width(index) - _tokenId.width(partnerIndex);
 
-                // TODO check if same strike and same width is allowed -> Think not from TokenId.sol?
                 if (deltaWidth < 0) deltaWidth = -deltaWidth;
 
                 if (tokenType == 0) {
@@ -1859,7 +1858,7 @@ contract RiskEngine {
                     contracts = moved0;
                 }
                 // the required amount is the amount of contracts multiplied by (notional1 - notional2)/max(notional1, notional2)
-                // can use unsafe because denominator is always nonzero
+                // can use unsafe because when denominator is zero, numerator is also zero (0/0 = 0 in EVM)
                 spreadRequirement += (notional < notionalP)
                     ? Math.unsafeDivRoundingUp((notionalP - notional) * contracts, notionalP)
                     : Math.unsafeDivRoundingUp((notional - notionalP) * contracts, notional);

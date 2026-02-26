@@ -90,7 +90,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     // immutable data about the pool being tested
     IUniswapV3Pool pool;
     uint64 poolId;
-    uint8 vegoid = 4;
+    uint8 vegoid = 8;
     address token0;
     address token1;
     uint24 fee;
@@ -940,7 +940,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         UniPoolPriceMock pm = new UniPoolPriceMock();
-        uint64 poolIdNew = (200 << 48) + (4 << 40);
+        uint64 poolIdNew = (200 << 48) + (uint64(vegoid) << 40);
         for (uint160 i = 0; i < 100; i++) {
             factoryMock.increment();
 
@@ -4267,7 +4267,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         {
             // net = CURRENTLY in AMM
             // short = REMOVED from AMM
-            // 2 ** 2 = 2 ** VEGOID (VEGOID=2)
+            // vegoid = 2 ** VEGOID (VEGOID=2)
             uint256 netLiq = expectedLiq - expectedLiqs[1];
             uint256 shortLiq = expectedLiqs[1];
             uint256 basePremia = FullMath.mulDiv(
@@ -4285,7 +4285,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                             uint256(expectedLiq) ** 2 -
                                 uint256(expectedLiq) *
                                 shortLiq +
-                                (shortLiq ** 2 / 2 ** 2),
+                                (shortLiq ** 2 / vegoid),
                             uint256(expectedLiq) ** 2
                         )
                 ) +
@@ -4297,7 +4297,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                     uint256(expectedLiq) ** 2 -
                         uint256(expectedLiq) *
                         shortLiq +
-                        (shortLiq ** 2 / 2 ** 2),
+                        (shortLiq ** 2 / vegoid),
                     uint256(expectedLiq) ** 2
                 ),
                 premiaError0[0]
@@ -4315,7 +4315,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                             uint256(expectedLiq) ** 2 -
                                 uint256(expectedLiq) *
                                 shortLiq +
-                                (shortLiq ** 2 / 2 ** 2),
+                                (shortLiq ** 2 / vegoid),
                             uint256(expectedLiq) ** 2
                         )
                 ) +
@@ -4327,7 +4327,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                     uint256(expectedLiq) ** 2 -
                         uint256(expectedLiq) *
                         shortLiq +
-                        (shortLiq ** 2 / 2 ** 2),
+                        (shortLiq ** 2 / vegoid),
                     uint256(expectedLiq) ** 2
                 ),
                 premiaError1[0]
@@ -4348,7 +4348,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         {
             // net = CURRENTLY in AMM
             // short = REMOVED from AMM
-            // 2 ** 2 = 2 ** VEGOID (VEGOID=2)
+            // vegoid = 2 ** VEGOID (VEGOID=2)
             // note - we do not need to calculate base premium seperately here because the totalLiquidity fully cancels
             uint256 netLiq = expectedLiq - expectedLiqs[1];
             uint256 shortLiq = expectedLiqs[1];
@@ -4359,13 +4359,13 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 (
                     tokensOwed0 == 0
                         ? uint(0)
-                        : (2 * 2 ** 64 * (netLiq + shortLiq / 2 ** 2)) / (netLiq ** 2)
+                        : (2 * 2 ** 64 * (netLiq + shortLiq / vegoid)) / (netLiq ** 2)
                 ) +
                 10;
 
             assertApproxEqAbs(
                 premium0Long - premium0LongOld,
-                FullMath.mulDiv(tokensOwed0 * 2 ** 64, netLiq + shortLiq / 2 ** 2, netLiq ** 2),
+                FullMath.mulDiv(tokensOwed0 * 2 ** 64, netLiq + shortLiq / vegoid, netLiq ** 2),
                 premiaError0[1]
             );
 
@@ -4375,12 +4375,12 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 (
                     tokensOwed1 == 0
                         ? uint(0)
-                        : (2 * 2 ** 64 * (netLiq + shortLiq / 2 ** 2)) / (netLiq ** 2)
+                        : (2 * 2 ** 64 * (netLiq + shortLiq / vegoid)) / (netLiq ** 2)
                 ) +
                 10;
             assertApproxEqAbs(
                 premium1Long - premium1LongOld,
-                FullMath.mulDiv(tokensOwed1 * 2 ** 64, netLiq + shortLiq / 2 ** 2, netLiq ** 2),
+                FullMath.mulDiv(tokensOwed1 * 2 ** 64, netLiq + shortLiq / vegoid, netLiq ** 2),
                 premiaError1[1]
             );
         }

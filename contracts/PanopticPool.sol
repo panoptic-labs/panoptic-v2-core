@@ -603,6 +603,8 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
     /// @dev This function allows anyone to update the oracle state, which is used for risk calculations and collateral requirements.
     /// The oracle values can only be updated once every 64s
     function pokeOracle() external nonReentrant {
+        _accrueInterests();
+
         int24 currentTick = getCurrentTick();
 
         (, OraclePack oraclePack) = riskEngine().computeInternalMedian(s_oraclePack, currentTick);
@@ -1437,12 +1439,16 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
                 } else {
                     // update the premium accumulator to the latest value: only if it is a long leg (settleLongPremium) OR if owner == msg.sender (autocollect)
                     if (tokenId.isLong(leg) != 0 || msg.sender == owner) {
-                        s_options[owner][tokenId][leg] = LeftRightUnsigned
-                            .wrap(0)
-                            .addToRightSlot(uint128(premiumAccumulatorsByLeg[leg][0]))
-                            .addToLeftSlot(uint128(premiumAccumulatorsByLeg[leg][1]));
+                        // Only advance the accumulator snapshot if premium was actually realized.
+                        // Otherwise dust rounds to 0 and the owed amount is permanently lost.
+                        if (premiaByLeg[leg].rightSlot() != 0 || premiaByLeg[leg].leftSlot() != 0) {
+                            s_options[owner][tokenId][leg] = LeftRightUnsigned
+                                .wrap(0)
+                                .addToRightSlot(uint128(premiumAccumulatorsByLeg[leg][0]))
+                                .addToLeftSlot(uint128(premiumAccumulatorsByLeg[leg][1]));
 
-                        emit PremiumSettled(owner, tokenId, leg, premiaByLeg[leg]);
+                            emit PremiumSettled(owner, tokenId, leg, premiaByLeg[leg]);
+                        }
                     }
                 }
             }
@@ -1774,7 +1780,7 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
 
     /// @notice Force the exercise of a single position. Exercisor will have to pay a fee to the force exercisee.
     /// @param account Address of the distressed account
-    /// @param tokenId The position to be force exercised; this position must contain at least one out-of-range long leg
+    /// @param tokenId The position to be force exercised
     function _forceExercise(
         address account,
         TokenId tokenId,
@@ -1834,11 +1840,11 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
         emit ForcedExercised(msg.sender, account, tokenId, exerciseFees);
     }
 
-    /// @notice Settle unpaid premium for one `legIndex` on a position owned by `owner`.
+    /// @notice Settle unpaid premium on a position owned by `owner`.
     /// @dev Called by sellers on buyers of their chunk to increase the available premium for withdrawal (before closing their position).
     /// @dev This feature is only available when `owner` is solvent and has the requisite tokens to settle the premium.
     /// @param owner The owner of the option position to make premium payments on
-    /// @param tokenId The position to be force exercised; this position must contain at least one out-of-range long leg
+    /// @param tokenId The position to be force exercised; this position must contain at least one option long leg
     function _settlePremium(
         address owner,
         TokenId tokenId,

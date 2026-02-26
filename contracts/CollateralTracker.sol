@@ -816,9 +816,8 @@ contract CollateralTrackerV2 is Clone, ERC20Minimal, Multicall, TransientReentra
         unchecked {
             uint256 available = convertToShares(depositedAssets > 0 ? depositedAssets - 1 : 0);
 
-            // prevent credited assets to be withdrawn, round down
-            uint256 creditedAssets = convertToAssets(s_creditedShares);
-            available = available > creditedAssets ? available - creditedAssets : 0;
+            uint256 _creditedShares = s_creditedShares;
+            available = available > _creditedShares ? available - _creditedShares : 0;
 
             uint256 balance = balanceOf[owner];
             return panopticPool().numberOfLegs(owner) == 0 ? Math.min(available, balance) : 0;
@@ -1336,15 +1335,17 @@ contract CollateralTrackerV2 is Clone, ERC20Minimal, Multicall, TransientReentra
                 uint256 _totalSupply = totalSupply();
                 uint256 mintedShares;
                 unchecked {
-                    mintedShares = Math.min(
-                        Math.mulDivCapped(
-                            uint256(bonus),
-                            _totalSupply - liquidateeBalance,
-                            uint256(Math.max(1, int256(totalAssets()) - bonus))
-                        ) - liquidateeBalance,
-                        _totalSupply * DECIMALS
+                    uint256 rawMinted = Math.mulDivCapped(
+                        uint256(bonus),
+                        _totalSupply - liquidateeBalance,
+                        uint256(Math.max(1, int256(totalAssets()) - bonus))
                     );
+
+                    mintedShares = rawMinted > liquidateeBalance
+                        ? Math.min(rawMinted - liquidateeBalance, _totalSupply * DECIMALS)
+                        : 0;
                 }
+
                 _mint(liquidator, mintedShares);
                 protocolLossShares += mintedShares;
             } else {
