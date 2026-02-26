@@ -7,7 +7,7 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
 import {ERC1155} from "@tokens/ERC1155Minimal.sol";
 import {Multicall} from "@base/Multicall.sol";
-import {TransientReentrancyGuard} from "solmate/src/utils/TransientReentrancyGuard.sol";
+import {TransientReentrancyGuard} from "@libraries/TransientReentrancyGuard.sol";
 // Libraries
 import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {Constants} from "@libraries/Constants.sol";
@@ -72,7 +72,7 @@ import {TokenId} from "@types/TokenId.sol";
 /// @title Semi-Fungible Position Manager (ERC1155) - a gas-efficient Uniswap V3 position manager.
 /// @notice Wraps Uniswap V3 positions with up to 4 legs behind an ERC1155 token.
 /// @dev Replaces the NonfungiblePositionManager.sol (ERC721) from Uniswap Labs.
-contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyGuard {
+contract SemiFungiblePositionManagerV3 is ERC1155, Multicall, TransientReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -118,6 +118,23 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         address indexed caller,
         TokenId indexed tokenId,
         uint128 positionSize
+    );
+
+    /// @notice Emitted when liquidity is modified in a chunk during position mint/burn.
+    /// @dev This event provides detailed information about liquidity changes per chunk, simplifying indexing.
+    /// @param univ3pool The Uniswap V3 pool address
+    /// @param owner The owner of the position
+    /// @param tokenType The type of token for this leg (token0 or token1)
+    /// @param tickLower The lower tick of the liquidity chunk
+    /// @param tickUpper The upper tick of the liquidity chunk
+    /// @param liquidityDelta The signed change in liquidity (positive for additions, negative for removals)
+    event LiquidityChunkUpdated(
+        address indexed univ3pool,
+        address indexed owner,
+        uint256 indexed tokenType,
+        int24 tickLower,
+        int24 tickUpper,
+        int128 liquidityDelta
     );
 
     /*//////////////////////////////////////////////////////////////
@@ -342,6 +359,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         // reverts if the Uniswap V3 pool has not been initialized
         if (univ3pool == address(0)) revert Errors.PoolNotInitialized();
 
+        if (vegoid == 0) revert Errors.InvalidTokenIdParameter(0);
+
         // return if the pool has already been initialized in SFPM
         // pools can be initialized from the Panoptic Factory or by calling initializeAMMPool directly, so reverting
         // could prevent a PanopticPool from being deployed on a previously initialized but otherwise valid pool
@@ -427,7 +446,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         uint256 vegoid
     ) internal pure returns (uint64) {
         unchecked {
-            uint64 poolId = uint40(uint160(univ3pool) >> 112);
+            uint64 poolId = uint40(uint160(univ3pool) >> 120);
             poolId += (uint64(uint8(vegoid)) << 40);
             poolId += uint64(uint24(tickSpacing)) << 48;
             return poolId;
@@ -812,7 +831,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
         LeftRightSigned itmAmounts;
 
-        for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
+        for (uint256 leg = 0; leg != tokenId.countLegs(); ) {
             if (tokenId.width(leg) == 0) {
                 uint256 isLong = tokenId.isLong(leg);
                 LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
@@ -991,6 +1010,29 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             s_accountLiquidity[positionKey] = LeftRightUnsigned
                 .wrap(updatedLiquidity)
                 .addToLeftSlot(removedLiquidity);
+
+            // emit event with liquidity delta information for indexing
+            {
+                uint256 tokenType = tokenId.tokenType(leg);
+                address _univ3pool = address(univ3pool);
+                int24 tickLower = liquidityChunk.tickLower();
+                int24 tickUpper = liquidityChunk.tickUpper();
+                int128 liquidityDelta;
+                if (isLong == 0) {
+                    liquidityDelta = isBurn ? -int128(chunkLiquidity) : int128(chunkLiquidity);
+                } else {
+                    liquidityDelta = isBurn ? int128(chunkLiquidity) : -int128(chunkLiquidity);
+                }
+
+                emit LiquidityChunkUpdated(
+                    _univ3pool,
+                    msg.sender,
+                    tokenType,
+                    tickLower,
+                    tickUpper,
+                    liquidityDelta
+                );
+            }
         }
 
         // track how much liquidity we need to collect from uniswap

@@ -14,7 +14,6 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import {RiskParameters} from "@types/RiskParameters.sol";
 
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
 /// @notice Contains Panoptic-specific helpers and math functions.
@@ -75,6 +74,8 @@ library PanopticMath {
     /// @param token The address of the token to get the symbol of
     /// @return The symbol of `token` or "???" if not supported
     function safeERC20Symbol(address token) external view returns (string memory) {
+        // handle native ETH
+        if (token == address(0)) return "ETH";
         // not guaranteed that token supports metadata extension
         // so we need to let call fail and return placeholder if not
         try IERC20Metadata(token).symbol() returns (string memory symbol) {
@@ -274,7 +275,7 @@ library PanopticMath {
 
             uint256[] memory timestamps = new uint256[](cardinality + 1);
             // get the last "cardinality" timestamps/tickCumulatives (if observationIndex < cardinality, the index will wrap back from observationCardinality)
-            for (uint256 i = 0; i < cardinality + 1; ++i) {
+            for (uint256 i = 0; i != cardinality + 1; ++i) {
                 (timestamps[i], tickCumulatives[i], , ) = univ3pool.observations(
                     uint256(
                         (int256(observationIndex) - int256(i * period)) +
@@ -285,7 +286,7 @@ library PanopticMath {
 
             int256[] memory ticks = new int256[](cardinality);
             // use cardinality periods given by cardinality + 1 accumulator observations to compute the last cardinality observed ticks spaced by period
-            for (uint256 i = 0; i < cardinality; ++i) {
+            for (uint256 i = 0; i != cardinality; ++i) {
                 ticks[i] =
                     (tickCumulatives[i] - tickCumulatives[i + 1]) /
                     int256(timestamps[i] - timestamps[i + 1]);
@@ -312,7 +313,7 @@ library PanopticMath {
 
         unchecked {
             // construct the time slots
-            for (uint256 i = 0; i < 20; ++i) {
+            for (uint256 i = 0; i != 20; ++i) {
                 secondsAgos[i] = uint32(((i + 1) * twapWindow) / 20);
             }
 
@@ -320,7 +321,7 @@ library PanopticMath {
             (int56[] memory tickCumulatives, ) = univ3pool.observe(secondsAgos);
 
             // compute the average tick per 30s window
-            for (uint256 i = 0; i < 19; ++i) {
+            for (uint256 i = 0; i != 19; ++i) {
                 twapMeasurement[i] = int24(
                     (tickCumulatives[i] - tickCumulatives[i + 1]) / int56(uint56(twapWindow / 20))
                 );
@@ -440,6 +441,29 @@ library PanopticMath {
         );
     }
 
+    /// @notice Computes the chunk key for a given leg of a position.
+    /// @dev The chunk key uniquely identifies a liquidity chunk by its strike, width, and token type.
+    /// @param tickLower The tickLower of the chunk
+    /// @param tickUpper The tickUpper of the chunk
+    /// @param tickSpacing The tickspacing of the pool
+    /// @param tokenType The token type (0 = token0, 1 = token1)
+    /// @return chunkKey The keccak256 hash identifying this chunk
+    function getChunkKey(
+        int24 tickLower,
+        int24 tickUpper,
+        int24 tickSpacing,
+        uint256 tokenType
+    ) internal pure returns (bytes32 chunkKey) {
+        int24 width = (tickUpper - tickLower) / tickSpacing;
+
+        if (width >= 4096) revert Errors.InvalidTickBound();
+
+        (int24 rangeDown, ) = PanopticMath.getRangesFromStrike(width, tickSpacing);
+        int24 strike = tickLower + rangeDown;
+
+        chunkKey = EfficientHash.efficientKeccak256(abi.encodePacked(strike, width, tokenType));
+    }
+
     /*//////////////////////////////////////////////////////////////
                          TOKEN CONVERSION LOGIC
     //////////////////////////////////////////////////////////////*/
@@ -456,7 +480,7 @@ library PanopticMath {
         bool opening
     ) internal pure returns (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) {
         uint256 numLegs = tokenId.countLegs();
-        for (uint256 leg = 0; leg < numLegs; ) {
+        for (uint256 leg = 0; leg != numLegs; ) {
             (LeftRightSigned longs, LeftRightSigned shorts) = calculateIOAmounts(
                 tokenId,
                 positionSize,

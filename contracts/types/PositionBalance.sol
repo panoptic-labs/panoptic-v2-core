@@ -14,18 +14,18 @@ using PositionBalanceLibrary for PositionBalance global;
 // (1) positionSize     128bits : The size of this position (uint128).
 // (2) poolUtilization0 16bits  : The pool utilization of token0, stored as (10000 * inAMM0)/totalAssets0 (uint16).
 // (3) poolUtilization1 16bits  : The pool utilization of token1, stored as (10000 * inAMM1)/totalAssets1 (uint16).
-// (4) currentTick      24bits  : The currentTick at mint (int24).
-// (5) fastOracleTick   24bits  : The fastOracleTick at mint (int24).
-// (6) slowOracleTick   24bits  : The slowOracleTick at mint (int24).
-// (7) lastObservedTick 24bits  : The lastObservedTick at mint (int24).
+// (4) tickAtMint       24bits  : The tick at mint (int24).
+// (5) timestampAtMint 32bits   : The block.timestamp at mint (uint32).
+// (6) blockAtMint      39bits  : The block.number at mint (uint39).
+// (7) swapAtMint       1bit    : Whether a swap happened at mint
 // Total                256bits : Total bits used by a PositionBalance.
 // ===============================================================================================
 //
 // The bit pattern is therefore:
 //
-//           (7)             (6)            (5)             (4)             (3)             (2)             (1)
-//    <-- 24 bits --> <-- 24 bits --> <-- 24 bits --> <-- 24 bits --> <-- 16 bits --> <-- 16 bits --> <-- 128 bits -->
-//   lastObservedTick  slowOracleTick  fastOracleTick   currentTick     utilization1    utilization0    positionSize
+//         (7)             (6)            (5)             (4)             (3)             (2)             (1)
+//    <-- 1 bit --><-- 39 bits --> <-- 32 bits --> <-- 24 bits --> <-- 16 bits --> <-- 16 bits --> <-- 128 bits -->
+//       swapAtMint    blockAtMint     timestampAtMint   tickAtMint     utilization1    utilization0    positionSize
 //
 //    <--- most significant bit                                                             least significant bit --->
 //
@@ -34,46 +34,34 @@ library PositionBalanceLibrary {
                                 ENCODING
     //////////////////////////////////////////////////////////////*/
 
+    uint256 internal constant BITMASK_UINT39 = ((uint256(1) << 39) - 1);
+
     /// @notice Create a new `PositionBalance` given by positionSize, utilizations, and its tickData.
     /// @param _positionSize The amount of option minted
     /// @param _utilizations Packed data containing pool utilizations for token0 and token1 at mint
-    /// @param _tickData Packed data containing ticks at mint (currentTick, fastOracleTick, slowOracleTick, lastObservedTick)
-    /// @return The new PositionBalance with the given positionSize, utilization, and tickData
+    /// @param _tickAtMint the ticks at the end of the mint
+    /// @param _timestampAtMint the timestamp at mint
+    /// @param _blockNumberAtMint the block number at mint
+    /// @param _swapAtMint whether the position was minted with a swapAtMint flag (inverted tick limits)
+    /// @return The new PositionBalance with the given positionSize, utilization, and tick/block data
     function storeBalanceData(
         uint128 _positionSize,
         uint32 _utilizations,
-        uint96 _tickData
+        int24 _tickAtMint,
+        uint32 _timestampAtMint,
+        uint40 _blockNumberAtMint,
+        bool _swapAtMint
     ) internal pure returns (PositionBalance) {
         unchecked {
             return
                 PositionBalance.wrap(
-                    (uint256(_tickData) << 160) +
+                    (uint256(_swapAtMint ? 1 : 0) << 255) +
+                        ((uint256(_blockNumberAtMint) & BITMASK_UINT39) << 216) +
+                        (uint256(_timestampAtMint) << 184) +
+                        (uint256(uint24(_tickAtMint)) << 160) +
                         (uint256(_utilizations) << 128) +
                         uint256(_positionSize)
                 );
-        }
-    }
-
-    /// @notice Concatenate all oracle ticks into a single uint96.
-    /// @param _currentTick The current tick
-    /// @param _fastOracleTick The fast oracle tick
-    /// @param _slowOracleTick The slow oracle tick
-    /// @param _lastObservedTick The last observed tick
-    /// @return A 96bit word concatenating all 4 input ticks
-    function packTickData(
-        int24 _currentTick,
-        int24 _fastOracleTick,
-        int24 _slowOracleTick,
-        int24 _lastObservedTick
-    ) internal pure returns (uint96) {
-        unchecked {
-            return
-                // casting to 'uint24' is safe because ticks are always < 2**24
-                // forge-lint: disable-next-line(unsafe-typecast)
-                uint96(uint24(_currentTick)) +
-                (uint96(uint24(_fastOracleTick)) << 24) +
-                (uint96(uint24(_slowOracleTick)) << 48) +
-                (uint96(uint24(_lastObservedTick)) << 72);
         }
     }
 
@@ -81,65 +69,40 @@ library PositionBalanceLibrary {
                                 DECODING
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Get the last observed tick of `self`.
-    /// @param self The PositionBalance to retrieve the last observed tick from
-    /// @return The last observed tick of `self`
-    function lastObservedTick(PositionBalance self) internal pure returns (int24) {
+    /// @notice Get the swapAtMint of `self`.
+    /// @param self The PositionBalance to retrieve the swapAtMint from
+    /// @return The swapAtMint of `self`
+    function swapAtMint(PositionBalance self) internal pure returns (bool) {
         unchecked {
-            return int24(int256(PositionBalance.unwrap(self) >> 232));
+            return (PositionBalance.unwrap(self) >> 255) == 1;
         }
     }
 
-    /// @notice Get the slow oracle tick of `self`.
-    /// @param self The PositionBalance to retrieve the slow oracle tick from
-    /// @return The slow oracle tick of `self`
-    function slowOracleTick(PositionBalance self) internal pure returns (int24) {
+    /// @notice Get the blockAtMint of `self`.
+    /// @param self The PositionBalance to retrieve the blockAtMint from
+    /// @return The blockAtMint of `self`
+    function blockAtMint(PositionBalance self) internal pure returns (uint256) {
         unchecked {
-            return int24(int256(PositionBalance.unwrap(self) >> 208));
+            return (PositionBalance.unwrap(self) >> 216) & BITMASK_UINT39;
         }
     }
 
-    /// @notice Get the fast oracle tick of `self`.
-    /// @param self The PositionBalance to retrieve the fast oracle tick from
-    /// @return The fast oracle tick of `self`
-    function fastOracleTick(PositionBalance self) internal pure returns (int24) {
+    /// @notice Get the timestamp at mint of `self`.
+    /// @param self The PositionBalance to retrieve the timestamp from
+    /// @return The timestamp at mint of `self`
+    function timestampAtMint(PositionBalance self) internal pure returns (uint256) {
         unchecked {
-            return int24(int256(PositionBalance.unwrap(self) >> 184));
+            return uint32(PositionBalance.unwrap(self) >> 184);
         }
     }
 
     /// @notice Get the current tick of `self`.
     /// @param self The PositionBalance to retrieve the current tick from
     /// @return The current tick of `self`
-    function currentTick(PositionBalance self) internal pure returns (int24) {
+    function tickAtMint(PositionBalance self) internal pure returns (int24) {
         unchecked {
             return int24(int256(PositionBalance.unwrap(self) >> 160));
         }
-    }
-
-    /// @notice Get the tickData of `self`.
-    /// @param self The PositionBalance to retrieve the tickData from
-    /// @return The packed tickData (currentTick, fastOracleTick, slowOracleTick, lastObservedTick)
-    function tickData(PositionBalance self) internal pure returns (uint96) {
-        unchecked {
-            return uint96(PositionBalance.unwrap(self) >> 160);
-        }
-    }
-
-    /// @notice Unpack the current, last observed, and fast/slow oracle ticks from a 96-bit tickData encoding.
-    /// @param _tickData The packed tickData to unpack ticks from
-    /// @return The current tick contained in `_tickData`
-    /// @return The fast oracle tick contained in `_tickData`
-    /// @return The slow oracle tick contained in `_tickData`
-    /// @return The last observed tick contained in `_tickData`
-    function unpackTickData(uint96 _tickData) internal pure returns (int24, int24, int24, int24) {
-        PositionBalance self = PositionBalance.wrap(uint256(_tickData) << 160);
-        return (
-            int24(int256(PositionBalance.unwrap(self) >> 160)),
-            int24(int256(PositionBalance.unwrap(self) >> 184)),
-            int24(int256(PositionBalance.unwrap(self) >> 208)),
-            int24(int256(PositionBalance.unwrap(self) >> 232))
-        );
     }
 
     /// @notice Get token0 utilization of `self`.
@@ -180,10 +143,10 @@ library PositionBalanceLibrary {
 
     /// @notice Unpack all data from `self`.
     /// @param self The PositionBalance to get all data from
-    /// @return currentTickAtMint `currentTick` at mint
-    /// @return fastOracleTickAtMint Fast oracle tick at mint
-    /// @return slowOracleTickAtMint Slow oracle tick at mint
-    /// @return lastObservedTickAtMint Last observed tick at mint
+    /// @return _swapAtMint whether a swap happened at mint
+    /// @return _blockAtMint `block.number` at mint
+    /// @return _timestampAtMint `block.timestamp` at mint
+    /// @return _tickAtMint `currentTick` at mint
     /// @return utilization0AtMint Utilization of token0 at mint
     /// @return utilization1AtMint Utilization of token1 at mint
     /// @return _positionSize Size of the position
@@ -193,21 +156,21 @@ library PositionBalanceLibrary {
         external
         pure
         returns (
-            int24 currentTickAtMint,
-            int24 fastOracleTickAtMint,
-            int24 slowOracleTickAtMint,
-            int24 lastObservedTickAtMint,
+            bool _swapAtMint,
+            uint256 _blockAtMint,
+            uint256 _timestampAtMint,
+            int24 _tickAtMint,
             int256 utilization0AtMint,
             int256 utilization1AtMint,
             uint128 _positionSize
         )
     {
-        (
-            currentTickAtMint,
-            fastOracleTickAtMint,
-            slowOracleTickAtMint,
-            lastObservedTickAtMint
-        ) = unpackTickData(self.tickData());
+        _swapAtMint = self.swapAtMint();
+
+        _blockAtMint = self.blockAtMint();
+        _timestampAtMint = self.timestampAtMint();
+
+        _tickAtMint = self.tickAtMint();
 
         utilization0AtMint = self.utilization0();
         utilization1AtMint = self.utilization1();

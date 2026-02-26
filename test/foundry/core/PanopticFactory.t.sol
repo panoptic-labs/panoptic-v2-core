@@ -4,12 +4,12 @@ pragma solidity ^0.8.24;
 // Foundry
 import "forge-std/Test.sol";
 // Panoptic Core
-import {PanopticFactory} from "@contracts/PanopticFactoryV4.sol";
-import {PanopticPool} from "@contracts/PanopticPool.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {PanopticFactoryV4} from "@contracts/PanopticFactoryV4.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManagerV4.sol";
+import {SemiFungiblePositionManagerV4} from "@contracts/SemiFungiblePositionManagerV4.sol";
 // Panoptic Libraries
 import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {Constants} from "@libraries/Constants.sol";
@@ -39,9 +39,9 @@ import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 
-contract PanopticFactoryHarness is PanopticFactory {
+contract PanopticFactoryHarness is PanopticFactoryV4 {
     constructor(
-        SemiFungiblePositionManager _SFPM,
+        SemiFungiblePositionManagerV4 _SFPM,
         IPoolManager _manager,
         address poolReference,
         address collateralReference,
@@ -49,7 +49,7 @@ contract PanopticFactoryHarness is PanopticFactory {
         uint256[][] memory indices,
         Pointer[][] memory pointers
     )
-        PanopticFactory(
+        PanopticFactoryV4(
             _SFPM,
             _manager,
             poolReference,
@@ -81,8 +81,8 @@ contract PanopticFactoryTest is Test {
     V4RouterSimple routerV4 = new V4RouterSimple(manager);
 
     // deploy the semiFungiblePositionManager
-    SemiFungiblePositionManager sfpm =
-        new SemiFungiblePositionManager(manager, 10 ** 13, 10 ** 13, 0);
+    SemiFungiblePositionManagerV4 sfpm =
+        new SemiFungiblePositionManagerV4(manager, 10 ** 13, 10 ** 13, 0);
 
     address Deployer = makeAddr("Deployer");
 
@@ -265,8 +265,8 @@ contract PanopticFactoryTest is Test {
         panopticFactory = new PanopticFactoryHarness(
             sfpm,
             manager,
-            address(new PanopticPool(ISemiFungiblePositionManager(address(sfpm)))),
-            address(new CollateralTracker(10)),
+            address(new PanopticPoolV2(ISemiFungiblePositionManager(address(sfpm)))),
+            address(new CollateralTrackerV2()),
             props,
             indices,
             pointers
@@ -298,7 +298,7 @@ contract PanopticFactoryTest is Test {
         {
             // Deploy pool
             // links the Uniswap V3 pool to the Panoptic pool
-            PanopticPool deployedPool = panopticFactory.deployNewPool(poolKey, riskEngine, salt);
+            PanopticPoolV2 deployedPool = panopticFactory.deployNewPool(poolKey, riskEngine, salt);
 
             // see if pool exists at the precomputed address
             uint256 size;
@@ -315,7 +315,7 @@ contract PanopticFactoryTest is Test {
                 "getPanopticPool"
             );
             // see if correct poolKey
-            assertEq(PanopticPool(preComputedPool).poolKey(), abi.encode(poolKey), "linkedPool");
+            assertEq(PanopticPoolV2(preComputedPool).poolKey(), abi.encode(poolKey), "linkedPool");
         }
     }
 
@@ -342,7 +342,7 @@ contract PanopticFactoryTest is Test {
         panopticFactory.deployNewPool(poolKey, riskEngine, salt);
 
         // Attempt to deploy pool again
-        vm.expectRevert(Errors.PoolAlreadyInitialized.selector);
+        vm.expectRevert(Errors.AlreadyInitialized.selector);
         unchecked {
             panopticFactory.deployNewPool(poolKey, riskEngine, salt + 1);
         }
@@ -355,7 +355,7 @@ contract PanopticFactoryTest is Test {
     function test_Success_tokenURI_decodes() public {
         _initalizeWorldState(pools[1]);
         uint96 salt = uint96(block.timestamp);
-        PanopticPool deployedPool = panopticFactory.deployNewPool(poolKey, riskEngine, salt);
+        PanopticPoolV2 deployedPool = panopticFactory.deployNewPool(poolKey, riskEngine, salt);
         uint256 panopticPoolAddress = uint256(uint160(address(deployedPool)));
         bytes memory uri = bytes(panopticFactory.tokenURI(panopticPoolAddress));
         uint256 prefixLength = bytes("data:application/json;base64,").length;
@@ -403,13 +403,13 @@ contract PanopticFactoryTest is Test {
         uint96 salt = 12345;
 
         // Act: Deploy two Panoptic pools for the same Uniswap pool but with different risk engines
-        PanopticPool poolA = panopticFactory.deployNewPool(
+        PanopticPoolV2 poolA = panopticFactory.deployNewPool(
             poolKey,
             riskEngine, // The default risk engine from setUp
             salt
         );
 
-        PanopticPool poolB = panopticFactory.deployNewPool(
+        PanopticPoolV2 poolB = panopticFactory.deployNewPool(
             poolKey,
             riskEngineB, // The new, second risk engine
             salt // We can even use the same salt to prove the riskEngine makes it unique

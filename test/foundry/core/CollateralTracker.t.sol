@@ -4,9 +4,9 @@ pragma solidity ^0.8.24;
 // Foundry
 import "forge-std/Test.sol";
 // Panoptic Core
-import {PanopticPool} from "@contracts/PanopticPool.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManagerV4.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
+import {SemiFungiblePositionManagerV4} from "@contracts/SemiFungiblePositionManagerV4.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {BuilderWallet} from "@contracts/RiskEngine.sol";
 import {BuilderFactory} from "@contracts/RiskEngine.sol";
@@ -55,9 +55,9 @@ import {V4RouterSimple} from "../testUtils/V4RouterSimple.sol";
 import {PositionUtils, MiniPositionManager} from "../testUtils/PositionUtils.sol";
 
 // CollateralTracker with extended functionality intended to expose internal data
-contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPositionManager {
+contract CollateralTrackerHarness is CollateralTrackerV2, PositionUtils, MiniPositionManager {
     //constructor() CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000) {}
-    constructor() CollateralTracker(10) {
+    constructor() CollateralTrackerV2() {
         bytes32 slot = keccak256("panoptic.utilization.snapshot");
         assembly {
             tstore(slot, 0)
@@ -142,12 +142,12 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
 
 // Inherits all of PanopticPool's functionality, however uses a modified version of startPool
 // which enables us to use our modified CollateralTracker harness that exposes internal data
-contract PanopticPoolHarness is PanopticPool {
+contract PanopticPoolHarness is PanopticPoolV2 {
     constructor(
-        SemiFungiblePositionManager _SFPM
-    ) PanopticPool(ISemiFungiblePositionManager(address(_SFPM))) {}
+        SemiFungiblePositionManagerV4 _SFPM
+    ) PanopticPoolV2(ISemiFungiblePositionManager(address(_SFPM))) {}
 
-    function delegate(address delegatee, CollateralTracker collateralToken) external {
+    function delegate(address delegatee, CollateralTrackerV2 collateralToken) external {
         collateralToken.delegate(delegatee);
     }
 
@@ -155,12 +155,12 @@ contract PanopticPoolHarness is PanopticPool {
         address delegator,
         address delegatee,
         int256 requestedAmount,
-        CollateralTracker collateralToken
+        CollateralTrackerV2 collateralToken
     ) external {
         collateralToken.refund(delegator, delegatee, requestedAmount);
     }
 
-    function revoke(address delegatee, CollateralTracker collateralToken) external {
+    function revoke(address delegatee, CollateralTrackerV2 collateralToken) external {
         collateralToken.revoke(delegatee);
     }
 
@@ -198,10 +198,10 @@ contract PanopticPoolHarness is PanopticPool {
     }
 }
 
-contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
+contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManagerV4 {
     constructor(
         IPoolManager _manager
-    ) SemiFungiblePositionManager(_manager, 10 ** 13, 10 ** 13, 0) {}
+    ) SemiFungiblePositionManagerV4(_manager, 10 ** 13, 10 ** 13, 0) {}
 
     function accountLiquidity(
         bytes32 positionKey
@@ -348,11 +348,15 @@ contract UniswapV3PoolMock {
 }
 
 contract Attacker {
-    CollateralTracker internal collateralToken;
+    CollateralTrackerV2 internal collateralToken;
     IERC20Partial internal underlyingToken;
-    PanopticPool internal panopticPool;
+    PanopticPoolV2 internal panopticPool;
 
-    constructor(CollateralTracker _collateral, IERC20Partial _token, PanopticPool _panopticPool) {
+    constructor(
+        CollateralTrackerV2 _collateral,
+        IERC20Partial _token,
+        PanopticPoolV2 _panopticPool
+    ) {
         collateralToken = _collateral;
         underlyingToken = _token;
         panopticPool = _panopticPool;
@@ -465,7 +469,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     // store some data about the pool we are testing
     IUniswapV3Pool pool;
     uint64 poolId;
-    uint8 vegoid = 4;
+    uint8 vegoid = 8;
     uint256 isWETH;
     address token0;
     address token1;
@@ -558,7 +562,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     int128 DECIMALS128 = 10_000_000;
 
     function mintOptions(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory positionIdList,
         uint128 positionSize,
         uint24 effectiveLiquidityLimitX32,
@@ -583,7 +587,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function mintOptions(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory positionIdList,
         uint128 positionSize,
         uint24 effectiveLiquidityLimitX32,
@@ -616,7 +620,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function burnOptions(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId tokenId,
         TokenId[] memory positionIdList,
         int24 tickLimitLow,
@@ -638,7 +642,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function burnOptions(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory tokenIds,
         TokenId[] memory positionIdList,
         int24 tickLimitLow,
@@ -660,7 +664,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function burnOptions(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory tokenIds,
         TokenId[] memory positionIdList,
         int24 tickLimitLow,
@@ -690,7 +694,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function liquidate(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory liquidatorList,
         address liquidatee,
         TokenId[] memory positionIdList
@@ -711,7 +715,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function forceExercise(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         address exercisee,
         TokenId tokenId,
         TokenId[] memory exerciseeList,
@@ -736,7 +740,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function settlePremium(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory settlerList,
         TokenId[] memory settleeList,
         address exercisee,
@@ -1270,7 +1274,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function test_Success_StartToken_virtualShares() public {
         _initWorld(0);
-        CollateralTracker ct = new CollateralTracker(10);
+        CollateralTrackerV2 ct = new CollateralTrackerV2();
         ct.initialize();
 
         assertEq(ct.totalSupply(), 10 ** 6);
@@ -1287,7 +1291,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.initialize();
 
         // fails if already initialized
-        vm.expectRevert(Errors.CollateralTokenAlreadyInitialized.selector);
+        vm.expectRevert(Errors.AlreadyInitialized.selector);
         collateralToken0.initialize();
     }
 
@@ -3672,7 +3676,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
         assertApproxEqAbs(
             charlieAssetsAfter - charlieAssetsBefore,
-            0,
+            bobAssetsBefore - expectedBonus,
             1,
             "FAIL: charlie did not get his share of the interests"
         );
@@ -5488,6 +5492,206 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.withdraw(assets0, Bob, Bob, invalidList, true);
     }
 
+    /// @notice It should revert if a user tries to withdraw using a tokenId with no legs.
+    function test_Fail_withdrawWhileInsolvent(address caller) public {
+        _initWorld(0);
+
+        // initalize a custom Panoptic pool
+        _deployCustomPanopticPool(token0, token1, pool, caller);
+
+        // --- Alice setup (not used in these specific tests, but good practice) ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e18, Alice);
+        collateralToken1.deposit(1e18, Alice);
+        vm.stopPrank();
+
+        // --- Bob setup (the primary actor in these tests) ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e10, Bob);
+
+        // Define and mint Bob's initial, legitimate position
+        (width, strike) = PositionUtils.getOTMSW(
+            12345, // Using a fixed seed for determinism
+            67890,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
+        );
+        collateralToken0.withdraw(9999000000, Bob, Bob, positionIdList, true);
+    }
+
+    /// @notice It should revert if a user tries to withdraw using a tokenId with no legs.
+    function test_Fail_withdrawWhileInSafeMode(address caller) public {
+        _initWorld(0);
+
+        // initalize a custom Panoptic pool
+        _deployCustomPanopticPool(token0, token1, pool, caller);
+
+        // --- Alice setup (not used in these specific tests, but good practice) ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e18, Alice);
+        collateralToken1.deposit(1e18, Alice);
+        vm.stopPrank();
+
+        // --- Bob setup (the primary actor in these tests) ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e10, Bob);
+
+        // Define and mint Bob's initial, legitimate position
+        (width, strike) = PositionUtils.getOTMSW(
+            12345, // Using a fixed seed for determinism
+            67890,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        uint256 snapshot = vm.snapshot();
+        // Bob can withdraw
+        collateralToken0.withdraw(8999000000, Bob, Bob, positionIdList, true);
+
+        vm.revertTo(snapshot);
+
+        // put in safeMode
+        vm.startPrank(caller);
+        riskEngine.lockPool(panopticPool);
+
+        vm.startPrank(Bob);
+        // Bob cannot withdraw
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(4))
+        );
+        collateralToken0.withdraw(8999000000, Bob, Bob, positionIdList, true);
+    }
+
+    /// @notice It should revert if a user tries to withdraw using a tokenId with no legs.
+    function test_Fail_withdraw_credited_shares(address caller) public {
+        _initWorld(0);
+
+        // initalize a custom Panoptic pool
+        _deployCustomPanopticPool(token0, token1, pool, caller);
+
+        // --- Alice setup (not used in these specific tests, but good practice) ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e18, Alice);
+
+        vm.stopPrank();
+
+        vm.startPrank(Charlie);
+        _grantTokens(Charlie);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e10, Charlie);
+
+        vm.stopPrank();
+
+        // --- Bob setup (the primary actor in these tests) ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e10, Bob);
+
+        // Define and mint Bob's initial, legitimate position
+        (width, strike) = PositionUtils.getOTMSW(
+            12345, // Using a fixed seed for determinism
+            67890,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            uint128(3e10),
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+        vm.stopPrank();
+
+        vm.startPrank(Charlie);
+
+        //credit tokenId
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, strike, 0);
+        positionIdList.pop();
+        positionIdList.push(tokenId);
+
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            uint128(1e10 * 99) / 100,
+            0,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+        // put in safeMode
+        vm.startPrank(Alice);
+
+        (
+            uint256 depositedAssets,
+            uint256 insideAMM,
+            uint256 creditedShares,
+            uint256 currentPoolUtilization
+        ) = collateralToken0.getPoolData();
+
+        vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
+        collateralToken0.withdraw(depositedAssets - 1, Alice, Alice);
+
+        collateralToken0.withdraw(
+            depositedAssets - collateralToken0.convertToAssets(creditedShares) - 1,
+            Alice,
+            Alice
+        );
+    }
+
     /// @notice It should revert if a user tries to mint options with a list containing duplicate tokenIds.
     function test_Fail_spoof_mintOptionsWithDuplicateTokenId() public {
         // Initialize world state
@@ -6312,381 +6516,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     /*//////////////////////////////////////////////////////////////
-                        SHARE DONATION TESTS
-    //////////////////////////////////////////////////////////////*/
-
-    function test_Success_donate(uint256 x, uint104 shares) public {
-        uint256 assetsToken0;
-        uint256 assetsToken1;
-
-        {
-            _initWorld(x);
-
-            // Invoke all interactions with the Collateral Tracker from user Bob
-            vm.startPrank(Bob);
-
-            // give Bob the max amount of tokens
-            _grantTokens(Bob);
-
-            // calculate underlying assets via amount of shares
-            assetsToken0 = convertToAssets(shares, collateralToken0);
-            assetsToken1 = convertToAssets(shares, collateralToken1);
-
-            // approve collateral tracker to move tokens on Bob's behalf
-            IERC20Partial(token0).approve(address(collateralToken0), assetsToken0);
-            IERC20Partial(token1).approve(address(collateralToken1), assetsToken1);
-
-            // deposit a number of assets determined via fuzzing
-            _mockMaxDeposit(Bob);
-        }
-
-        // We must ensure Bob leaves at least 1 share to avoid "CannotBurnLastShare" logic
-        // We also ensure shares > 0 to avoid BelowMinimumRedemption
-        uint256 maxRedeem0 = collateralToken0.maxRedeem(Bob);
-        uint256 maxRedeem1 = collateralToken1.maxRedeem(Bob);
-
-        // If maxRedeem is too small to split (need at least 2 shares: 1 to donate, 1 to keep), skip
-        if (maxRedeem0 < 2) return;
-        if (maxRedeem1 < 2) return;
-
-        // Bound shares to [previewWithdraw(1), maxRedeem - 1]
-        // This ensures we don't burn the very last share of the protocol
-        uint256 shares0 = bound(shares, collateralToken0.previewWithdraw(1), maxRedeem0 - 1);
-        uint256 shares1 = bound(shares, collateralToken1.previewWithdraw(1), maxRedeem1 - 1);
-
-        // Snapshot state before
-        uint256 sharesBefore0 = collateralToken0.balanceOf(Bob);
-        uint256 sharesBefore1 = collateralToken1.balanceOf(Bob);
-        uint256 totalSupplyBefore0 = collateralToken0.totalSupply();
-        uint256 totalSupplyBefore1 = collateralToken1.totalSupply();
-
-        // Expect Event
-        vm.expectEmit(true, false, false, true, address(collateralToken0));
-        emit Donate(Bob, shares0);
-        collateralToken0.donate(shares0);
-
-        vm.expectEmit(true, false, false, true, address(collateralToken1));
-        emit Donate(Bob, shares1);
-        collateralToken1.donate(shares1);
-
-        // Snapshot state after
-        uint256 sharesAfter0 = collateralToken0.balanceOf(Bob);
-        uint256 sharesAfter1 = collateralToken1.balanceOf(Bob);
-
-        // assertions
-        assertEq(sharesAfter0, sharesBefore0 - shares0, "Bob shares not burned correctly");
-        assertEq(sharesAfter1, sharesBefore1 - shares1, "Bob shares not burned correctly");
-
-        assertEq(
-            collateralToken0.totalSupply(),
-            totalSupplyBefore0 - shares0,
-            "Total supply not updated"
-        );
-        assertEq(
-            collateralToken1.totalSupply(),
-            totalSupplyBefore1 - shares1,
-            "Total supply not updated"
-        );
-
-        // Verify assets did NOT move (Balance of pool should be same)
-        // Indirectly checked because no transfer events were emitted and balance check would show no change
-    }
-
-    function test_Success_donate_IncreasesSharePrice(uint256 x) public {
-        _initWorld(x);
-        vm.startPrank(Bob);
-        _grantTokens(Bob);
-
-        // 1. Bob deposits 1000 assets -> gets 1000 shares (assuming 1:1 initially)
-        uint256 depositAmt = 1000e18;
-        IERC20Partial(token0).approve(address(collateralToken0), depositAmt);
-        uint256 shares = collateralToken0.deposit(depositAmt, Bob);
-
-        // 2. Alice deposits 1000 assets -> gets 1000 shares
-        vm.stopPrank();
-        vm.startPrank(Alice);
-        _grantTokens(Alice);
-        IERC20Partial(token0).approve(address(collateralToken0), depositAmt);
-        collateralToken0.deposit(depositAmt, Alice);
-
-        // Current state: Total Assets 2000, Total Shares 2000. Price = 1.0
-
-        // 3. Alice donates 500 shares
-        // Alice burns 500 shares, but assets remain 2000.
-        // New State: Total Assets 2000, Total Shares 1500.
-        // Expected Price = 2000 / 1500 = 1.333...
-        collateralToken0.donate(collateralToken0.convertToShares(500e18));
-        vm.stopPrank();
-
-        // 4. Bob checks exchange rate
-        vm.startPrank(Bob);
-
-        // If Bob redeems his 1000 shares now, he should get > 1000 assets
-        uint256 previewAssets = collateralToken0.previewRedeem(shares);
-
-        assertGt(previewAssets, 1000e18, "Share price did not increase after donation");
-
-        // Math check: (1000 shares / 1500 total shares) * 2000 total assets = 1333.33
-        assertEq(previewAssets, 1333333333333333333333);
-    }
-
-    function testFuzz_Success_donate_IncreasesSharePrice(uint256 donationSize) public {
-        // 0. Init
-        _initWorld(1);
-        uint256 depositAmt = 1000e18;
-
-        // 1. Bob deposits
-        vm.startPrank(Bob);
-        _grantTokens(Bob);
-        IERC20Partial(token0).approve(address(collateralToken0), depositAmt);
-        uint256 bobShares = collateralToken0.deposit(depositAmt, Bob);
-        vm.stopPrank();
-
-        // 2. Alice deposits
-        vm.startPrank(Alice);
-        _grantTokens(Alice);
-        IERC20Partial(token0).approve(address(collateralToken0), depositAmt);
-        uint256 aliceShares = collateralToken0.deposit(depositAmt, Alice);
-
-        // 3. Fuzz Constraint
-        // Alice cannot donate less than 0 assets and cannot donate more than she has.
-        uint256 minimumDonation = collateralToken0.previewWithdraw(1);
-        donationSize = bound(donationSize, minimumDonation, aliceShares);
-
-        // Capture state before donation
-        uint256 totalAssetsBefore = collateralToken0.totalAssets();
-        uint256 totalSupplyBefore = collateralToken0.totalSupply();
-
-        // 4. Alice donates (burns shares)
-        collateralToken0.donate(donationSize);
-        vm.stopPrank();
-
-        // 5. Invariant Checks
-
-        // Bob's Check: His 1000 shares should now be worth MORE than 1000 assets
-        // because the total assets are the same, but there are fewer shares in existence.
-        uint256 bobPreviewAssets = collateralToken0.previewRedeem(bobShares);
-        assertGe(bobPreviewAssets, depositAmt, "Bob's share value should increase after donation");
-
-        // Alice's Check: Her remaining value must be LOWER than her initial deposit
-        // because she literally gave away value to the pool.
-        uint256 aliceRemainingShares = aliceShares - donationSize;
-        uint256 alicePreviewAssets = collateralToken0.previewRedeem(aliceRemainingShares);
-        assertLt(
-            alicePreviewAssets,
-            depositAmt,
-            "Alice's share value should decrease after donation"
-        );
-
-        assertEq(
-            collateralToken0.totalAssets(),
-            totalAssetsBefore,
-            "Total assets changed during share donation"
-        );
-        assertEq(
-            collateralToken0.totalSupply(),
-            totalSupplyBefore - donationSize,
-            "Total supply did not decrease by donation amount"
-        );
-        // Allow for 1 wei rounding error due to division
-        assertApproxEqAbs(
-            bobPreviewAssets + alicePreviewAssets,
-            totalAssetsBefore,
-            3,
-            "Assets extracted do not match assets in vault"
-        );
-        assertLe(
-            bobPreviewAssets + alicePreviewAssets,
-            totalAssetsBefore,
-            "Assets after are less than before (although should be same)"
-        );
-    }
-
-    function test_Fail_donate_exceedsMax(uint256 x, uint256 sharesSeed) public {
-        _initWorld(x);
-        vm.startPrank(Bob);
-        _grantTokens(Bob);
-
-        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
-        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
-        _mockMaxDeposit(Bob);
-
-        // We want to try donating more than we own OR more than allowed
-        // maxRedeem is the strict upper bound
-        uint256 maxRedeem0 = collateralToken0.maxRedeem(Bob);
-        uint256 maxRedeem1 = collateralToken1.maxRedeem(Bob);
-
-        uint256 badShares0 = bound(sharesSeed, maxRedeem0 + 1, type(uint136).max);
-        uint256 badShares1 = bound(sharesSeed, maxRedeem1 + 1, type(uint136).max);
-
-        vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
-        collateralToken0.donate(badShares0);
-
-        vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
-        collateralToken1.donate(badShares1);
-    }
-
-    function test_Fail_donate_LastShare(uint256 x) public {
-        // This tests the "Zero Supply Bug" protection logic
-        _initWorld(x);
-        vm.startPrank(Bob);
-        _grantTokens(Bob);
-
-        uint256 virtualShares = collateralToken0.totalSupply();
-        uint256 oneShareAssets = collateralToken0.previewRedeem(1);
-
-        // Deposit
-        uint256 depositAmt = 1000e18;
-        IERC20Partial(token0).approve(address(collateralToken0), depositAmt);
-        uint256 shares = collateralToken0.deposit(depositAmt, Bob);
-
-        // Verify Bob owns everything
-        assertEq(collateralToken0.totalSupply(), shares + 1_000_000, "totalSupply");
-        assertEq(collateralToken0.balanceOf(Bob), shares, "bob shares");
-
-        // Attempt to donate EVERYTHING (totalSupply)
-        // This should revert because shares >= totalSupply()
-        collateralToken0.donate(shares);
-
-        assertEq(collateralToken0.balanceOf(Bob), 0, "Bob should be empty");
-        assertEq(collateralToken0.totalSupply(), virtualShares, "Only virtual shares remain");
-
-        // 5. Verify the Virtual Shares now have huge value (PPS increased)
-        assertGt(collateralToken0.previewRedeem(1), oneShareAssets);
-
-        // The virtual shares now claim the 1 virtual asset + Bob's 1000e18 assets
-        // Price Per Share = ~1000e18 / 10**6 = 10**12
-        assertEq(
-            collateralToken0.previewRedeem(1),
-            depositAmt / virtualShares,
-            "one share is 1e15 assets"
-        );
-    }
-
-    function test_Fail_donate_BelowMinimumRedemption(uint256 x, uint104 depositAssets) public {
-        _initWorld(x);
-        depositAssets = uint104(bound(depositAssets, 1e18, type(uint104).max));
-
-        vm.startPrank(Bob);
-        _grantTokens(Bob);
-
-        IERC20Partial(token0).approve(address(collateralToken0), depositAssets);
-        IERC20Partial(token1).approve(address(collateralToken1), depositAssets);
-
-        collateralToken0.deposit(depositAssets, Bob);
-        collateralToken1.deposit(depositAssets, Bob);
-
-        // 1. Try to donate 0
-        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
-        collateralToken0.donate(0);
-
-        // 2. Try to donate amount that converts to 0 assets
-        // (This catches rounding issues where shares are non-zero but assets are zero)
-        uint256 sharesBelow0 = collateralToken0.convertToShares(1) - 1;
-        uint256 sharesBelow1 = collateralToken1.convertToShares(1) - 1;
-
-        // Only run if rounding actually creates a gap (sharesBelow > 0)
-        if (sharesBelow0 > 0) {
-            vm.expectRevert(Errors.BelowMinimumRedemption.selector);
-            collateralToken0.donate(sharesBelow0);
-        }
-        if (sharesBelow1 > 0) {
-            vm.expectRevert(Errors.BelowMinimumRedemption.selector);
-            collateralToken1.donate(sharesBelow1);
-        }
-    }
-
-    function test_Fail_donate_RevertDueToAccruedInterestLiquidityCrunch() public {
-        _initWorld(0);
-
-        uint104 assets = 1000 ether; // Use a fixed deposit amount
-
-        // Get the initial borrow index right after initialization
-        uint128 initialBorrowIndex = collateralToken0.borrowIndex();
-
-        // --- Alice deposits ---
-        vm.startPrank(Alice);
-        _grantTokens(Alice);
-        IERC20Partial(token0).approve(address(collateralToken0), assets);
-        uint256 initialShares = collateralToken0.deposit(assets, Alice);
-        IERC20Partial(token1).approve(address(collateralToken1), assets);
-        collateralToken1.deposit(assets, Alice);
-        vm.stopPrank();
-
-        // --- Bob deposits + Mints ---
-        vm.startPrank(Bob);
-        _grantTokens(Bob);
-        IERC20Partial(token0).approve(address(collateralToken0), assets);
-        collateralToken0.deposit(assets, Bob);
-
-        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
-
-        strike = 198600 + 6000;
-        width = 2;
-
-        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
-        positionIdList.push(tokenId);
-
-        mintOptions(
-            panopticPool,
-            positionIdList,
-            (assets * 15) / 10,
-            0,
-            Constants.MAX_POOL_TICK,
-            Constants.MIN_POOL_TICK,
-            true
-        );
-
-        // At this specific moment (price 1:1), maxRedeem is exactly 100 shares (worth 100 assets).
-        // But Bob has 1000 shares.
-        // If he tried to donate 100 shares now, it would work.
-        // We want to show that INTEREST ACCRUAL specifically tightens this constraint.
-
-        // 3. Accrue Massive Interest
-        // We warp time forward significantly.
-        uint256 blockAfterBorrow = block.number;
-        uint256 timestampAfterBorrow = block.timestamp;
-        uint32 timeSkip = 20 * 365 days; // Large time jump to generate significant interest
-
-        vm.roll(blockAfterBorrow + timeSkip / 12);
-        vm.warp(timestampAfterBorrow + timeSkip);
-
-        burnOptions(
-            panopticPool,
-            positionIdList,
-            new TokenId[](0),
-            Constants.MAX_POOL_TICK,
-            Constants.MIN_POOL_TICK,
-            true
-        );
-        assertEq(collateralToken0.balanceOf(Bob), 0, "bob has zero balance");
-        // 4. Alice burns
-
-        vm.startPrank(Alice);
-        uint256 maxRedeemableShares = collateralToken0.maxRedeem(Alice);
-
-        assertLt(maxRedeemableShares, initialShares, "less shares due to interest rate accrual");
-
-        uint256 aliceAssetValue = collateralToken0.convertToAssets(
-            collateralToken0.balanceOf(Alice)
-        );
-        // 5. Bob tries to donate what WAS a valid liquid amount (e.g. 100 shares)
-        vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
-        collateralToken0.donate(initialShares);
-
-        vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
-        collateralToken0.donate(maxRedeemableShares + 1);
-
-        collateralToken0.donate(maxRedeemableShares);
-
-        assertLt(
-            collateralToken0.convertToAssets(collateralToken0.balanceOf(Alice)),
-            aliceAssetValue,
-            "Alice's balance is zero"
-        );
-    }
-
-    /*//////////////////////////////////////////////////////////////
                         DELEGATE/REVOKE TESTS
     //////////////////////////////////////////////////////////////*/
 
@@ -6857,6 +6686,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     //////////////////////////////////////////////////////////////*/
 
     function test_Fail_OnlyGuardian_lockPool(uint256 x, address caller) public {
+        vm.assume(caller != address(0));
         {
             _initWorld(x);
 
@@ -6872,6 +6702,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function test_Fail_OnlyGuardian_unlockPool(uint256 x, address caller) public {
+        vm.assume(caller != address(0));
         {
             _initWorld(x);
 
@@ -6890,6 +6721,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function test_Fail_OnlyGuardian_collect(uint256 x, address caller) public {
+        vm.assume(caller != address(0));
         {
             _initWorld(x);
 
@@ -6912,6 +6744,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function test_success_OnlyGuardian_lockPool_oraclePackState(uint256 x, address caller) public {
+        vm.assume(caller != address(0));
         {
             _initWorld(x);
 
@@ -6931,6 +6764,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 x,
         address caller
     ) public {
+        vm.assume(caller != address(0));
         {
             _initWorld(x);
 
@@ -6952,6 +6786,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function test_success_OnlyGuardian_lockPool_noMint_burnOnly(uint256 x, address caller) public {
+        vm.assume(caller != address(0));
         {
             _initWorld(x);
 
@@ -7173,6 +7008,50 @@ contract CollateralTrackerTest is Test, PositionUtils {
         riskEngine.collect(address(collateralToken0), caller, 1);
 
         riskEngine.collect(address(collateralToken0), caller);
+    }
+
+    // Tests for BuilderWallet.init protection (S-16)
+    function test_Fail_builderWallet_init_AlreadyInitialized(uint256 x, address caller) public {
+        vm.assume(caller != address(0));
+        _initWorld(x);
+
+        // initalize a custom Panoptic pool
+        _deployCustomPanopticPool(token0, token1, pool, caller);
+        vm.startPrank(caller);
+
+        uint48 builderCode = 12345;
+        address builderAdmin = Bob;
+
+        // Deploy builder wallet (this calls init internally)
+        address wallet = builderFactory.deployBuilder(builderCode, builderAdmin);
+
+        // Verify initial setup worked
+        assertEq(BuilderWallet(wallet).builderAdmin(), builderAdmin);
+
+        // Attempt to reinitialize - should fail
+        vm.expectRevert(Errors.AlreadyInitialized.selector);
+        BuilderWallet(wallet).init(Alice);
+
+        vm.stopPrank();
+    }
+
+    function test_Fail_builderWallet_init_ZeroAddress(uint256 x, address caller) public {
+        vm.assume(caller != address(0));
+        _initWorld(x);
+
+        // initalize a custom Panoptic pool
+        _deployCustomPanopticPool(token0, token1, pool, caller);
+        vm.startPrank(caller);
+
+        // We need to create a BuilderWallet directly without calling init
+        // to test the zero address check in init
+        BuilderWallet wallet = new BuilderWallet(address(builderFactory));
+
+        // Attempt to initialize with zero address - should fail
+        vm.expectRevert(Errors.ZeroAddress.selector);
+        wallet.init(address(0));
+
+        vm.stopPrank();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -7784,7 +7663,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             collateralToken0.withdraw(
-                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 1000 - 1,
+                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 100 - 1,
                 Alice,
                 Alice
             );
@@ -7899,7 +7778,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             collateralToken0.withdraw(
-                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 1000 - 1,
+                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 100 - 1,
                 Alice,
                 Alice
             );
@@ -8142,6 +8021,284 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 poolUtilizations,
                 atTick
             );
+
+            // ensure the leg order has no impact
+
+            {
+                TokenId tokenId1_flipped = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                    0,
+                    1,
+                    1,
+                    0,
+                    1,
+                    1,
+                    strike1,
+                    width1
+                );
+                tokenId1_flipped = tokenId1_flipped.addLeg(1, 1, 1, 1, 1, 0, strike, width);
+
+                uint128 required_flipped = _spreadTokensRequired(
+                    tokenId1_flipped,
+                    positionSize0 / 2,
+                    poolUtilizations,
+                    atTick
+                );
+
+                assertEq(required, required_flipped, "FAIL: leg order matters");
+            }
+
+            // only add premium requirement if there is net premia owed
+            int128 premium0 = int256(uint256($shortPremia.rightSlot())) -
+                int256(uint256($longPremia.rightSlot())) <
+                0
+                ? int128(
+                    DECIMALS *
+                        uint128(
+                            -int128(
+                                int256(uint256($shortPremia.rightSlot())) -
+                                    int256(uint256($longPremia.rightSlot()))
+                            )
+                        )
+                ) / int128(DECIMALS)
+                : int128(0);
+            required += int256(uint256($shortPremia.leftSlot())) -
+                int256(uint256($longPremia.leftSlot())) <
+                0
+                ? uint128(
+                    (uint128(DECIMALS) *
+                        uint128(
+                            -int128(
+                                int256(uint256($shortPremia.leftSlot())) -
+                                    int256(uint256($longPremia.leftSlot()))
+                            )
+                        )) / uint128(DECIMALS)
+                )
+                : 0;
+
+            assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
+            assertEq(required, tokenData1.leftSlot(), "required token1");
+        }
+
+        {
+            ($shortPremia, $longPremia, posBalanceArray) = panopticPool
+                .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
+
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
+                posBalanceArray,
+                currentTick,
+                Alice,
+                positionIdList1,
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
+            );
+
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
+
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
+                panopticPool,
+                Alice,
+                currentTick,
+                positionIdList1
+            );
+
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
+        }
+    }
+
+    function test_Success_collateralCheck_OTMputCalendar(
+        uint256 x,
+        uint128 positionSizeSeed,
+        uint256 widthSeed,
+        uint256 widthSeed2,
+        int256 strikeSeed,
+        int256 strikeSeed2,
+        int24 atTick,
+        uint24 swapSizeSeed
+    ) public {
+        vm.assume(strikeSeed != strikeSeed2);
+
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool);
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.startPrank(Bob);
+
+            // give Bob the max amount of tokens
+            _grantTokens(Bob);
+
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+
+            // award corresponding shares
+            _mockMaxDeposit(Bob);
+
+            // have Bob sell
+            (width, strike) = PositionUtils.getOTMSW(
+                widthSeed,
+                strikeSeed,
+                uint24(tickSpacing),
+                currentTick,
+                1
+            );
+
+            (width1, strike1) = PositionUtils.getOTMSW(
+                widthSeed2,
+                strikeSeed2,
+                uint24(tickSpacing),
+                currentTick,
+                1
+            );
+
+            vm.assume(width != width1);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
+            tokenId = tokenId.addLeg(1, 1, 1, 0, 1, 1, strike, width1);
+            positionIdList.push(tokenId);
+
+            positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 128));
+            _assumePositionValidity(Bob, tokenId, positionSize0);
+
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                positionSize0,
+                type(uint24).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+        }
+
+        {
+            // Alice buys
+            vm.startPrank(Alice);
+
+            // give Bob the max amount of tokens
+            _grantTokens(Alice);
+
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+
+            // award corresponding shares
+            _mockMaxDeposit(Alice);
+
+            tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 1, 1, strike, width);
+            tokenId1 = tokenId1.addLeg(1, 1, 1, 0, 1, 0, strike, width1);
+            positionIdList1.push(tokenId1);
+
+            _assumePositionValidity(Alice, tokenId1, positionSize0 / 2);
+
+            mintOptions(
+                panopticPool,
+                positionIdList1,
+                positionSize0 / 2,
+                type(uint24).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+
+            console2.log("strike", strike);
+            console2.log("width", width);
+            console2.log("width1", width1);
+            console2.log("positionSize0/2", positionSize0 / 2);
+            (int256 iamount0, int256 iamount1) = panopticHelper.getPortfolioValue(
+                panopticPool,
+                Alice,
+                strike,
+                positionIdList1
+            );
+            console2.log("iamount0", iamount0);
+            console2.log("iamount1", iamount1);
+
+            (iamount0, iamount1) = panopticHelper.getPortfolioValue(
+                panopticPool,
+                Alice,
+                strike - (width + width1) * tickSpacing,
+                positionIdList1
+            );
+            console2.log("iamount0-MINTICK", iamount0);
+            console2.log("iamount1-MINTICK", iamount1);
+            (iamount0, iamount1) = panopticHelper.getPortfolioValue(
+                panopticPool,
+                Alice,
+                strike + (width + width1) * tickSpacing,
+                positionIdList1
+            );
+            console2.log("iamount0-MAXTICK", iamount0);
+            console2.log("iamount1-MAXTICK", iamount1);
+        }
+
+        // mimic pool activity
+        twoWaySwap(swapSizeSeed);
+
+        // check requirement at fuzzed tick
+        {
+            atTick = int24(bound(atTick, TickMath.MIN_TICK, TickMath.MAX_TICK));
+            atTick = (atTick / tickSpacing) * tickSpacing;
+
+            ($shortPremia, $longPremia, posBalanceArray) = panopticPool
+                .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
+
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = riskEngine.getMargin(
+                posBalanceArray,
+                atTick,
+                Alice,
+                positionIdList1,
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
+            );
+
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Alice, tokenId1);
+
+            uint128 poolUtilizations = uint128(poolUtilization0) +
+                (uint128(poolUtilization1) << 64);
+
+            uint128 required = _spreadTokensRequired(
+                tokenId1,
+                positionSize0 / 2,
+                poolUtilizations,
+                atTick
+            );
+            console2.log("required", required);
+            // ensure the leg order has no impact
+
+            {
+                TokenId tokenId1_flipped = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                    0,
+                    1,
+                    1,
+                    0,
+                    1,
+                    1,
+                    strike,
+                    width1
+                );
+                tokenId1_flipped = tokenId1_flipped.addLeg(1, 1, 1, 1, 1, 0, strike, width);
+
+                uint128 required_flipped = _spreadTokensRequired(
+                    tokenId1_flipped,
+                    positionSize0 / 2,
+                    poolUtilizations,
+                    atTick
+                );
+
+                assertEq(required, required_flipped, "FAIL: leg order matters");
+            }
 
             // only add premium requirement if there is net premia owed
             int128 premium0 = int256(uint256($shortPremia.rightSlot())) -
@@ -8657,6 +8814,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             vm.assume(legUpperTick < maxTick);
             vm.assume(legLowerTick > minTick);
+            vm.assume(minTick >= -887272);
+            vm.assume(maxTick <= 887272);
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
             console2.log("");
@@ -12043,7 +12202,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                PositionBalanceLibrary.storeBalanceData((positionSize0 / 4), 0, 0)
+                PositionBalanceLibrary.storeBalanceData((positionSize0 / 4), 0, 0, 0, 0, false)
             );
 
             assertEq(exerciseFees.rightSlot(), exerciseFee0);
@@ -12168,7 +12327,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
                 positionSize0 / 4,
-                false
+                true
             );
             bool hasLegsInRange;
             if ((currentTick < strike + rangeUp) && (currentTick >= strike - rangeDown)) {
@@ -12184,7 +12343,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0)
+                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0, 0, 0, false)
             );
 
             assertEq(exerciseFees.rightSlot(), exerciseFee0);
@@ -12309,7 +12468,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
                 positionSize0 / 4,
-                false
+                true
             );
 
             bool hasLegsInRange;
@@ -12326,7 +12485,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0)
+                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0, 0, 0, false)
             );
 
             assertEq(exerciseFees.rightSlot(), exerciseFee0);
@@ -12468,7 +12627,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0)
+                PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0, 0, 0, false)
             );
 
             assertEq(exerciseFees.rightSlot(), exerciseFee0);
@@ -12937,7 +13096,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function convertToShares(
         uint256 assets,
-        CollateralTracker collateralToken
+        CollateralTrackerV2 collateralToken
     ) public view returns (uint256 shares) {
         uint256 supply = collateralToken.totalSupply();
         return Math.mulDiv(assets, supply, collateralToken.totalAssets());
@@ -12945,7 +13104,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function convertToAssets(
         uint256 shares,
-        CollateralTracker collateralToken
+        CollateralTrackerV2 collateralToken
     ) public view returns (uint256 assets) {
         uint256 supply = collateralToken.totalSupply();
         return Math.mulDiv(shares, collateralToken.totalAssets(), supply);

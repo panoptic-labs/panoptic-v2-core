@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {RiskEngineHarness} from "./RiskEngineHarness.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {MockCollateralTracker} from "./mocks/MockCollateralTracker.sol";
 import {LeftRightUnsigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
@@ -92,8 +92,8 @@ contract RiskEngineScenarios is Test {
             user,
             zero,
             zero,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1)),
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1)),
             9_000_000
         );
         bool s2 = E.isAccountSolvent(
@@ -103,8 +103,8 @@ contract RiskEngineScenarios is Test {
             user,
             zero,
             zero,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1)),
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1)),
             10_000_000
         );
         bool s3 = E.isAccountSolvent(
@@ -114,8 +114,8 @@ contract RiskEngineScenarios is Test {
             user,
             zero,
             zero,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1)),
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1)),
             11_000_000
         );
 

@@ -23,11 +23,11 @@ import {SqrtPriceMath} from "v3-core/libraries/SqrtPriceMath.sol";
 import {PoolAddress} from "v3-periphery/libraries/PoolAddress.sol";
 import {PositionKey} from "v3-periphery/libraries/PositionKey.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManagerV4.sol";
+import {SemiFungiblePositionManagerV4} from "@contracts/SemiFungiblePositionManagerV4.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
-import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
+
 import {ReenterMint, ReenterBurn, Reenter1155InitializeV4, ReenterTransferSingle, ReenterTransferBatch} from "../testUtils/ReentrancyMocks.sol";
 import {PoolData, PoolDataLibrary} from "@types/PoolData.sol";
 // V4 types
@@ -42,25 +42,21 @@ import {PoolManager} from "v4-core/PoolManager.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {V4RouterSimple} from "../testUtils/V4RouterSimple.sol";
 
-contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
+contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManagerV4 {
     constructor(
         IPoolManager _manager
-    ) SemiFungiblePositionManager(_manager, 10 ** 13, 10 ** 13, 0) {}
+    ) SemiFungiblePositionManagerV4(_manager, 10 ** 13, 10 ** 13, 0) {}
 
     function poolIdToPoolData(uint64 poolId) public view returns (PoolData) {
         return s_V4toSFPMIdData[s_poolIdToKey[poolId].toId()][uint8(poolId >> 40)];
     }
 }
 
-contract UniswapV3FactoryMock {
-    uint160 nextPool;
-
-    function getPool(address, address, uint24) external view returns (address) {
-        return address(nextPool << 24);
-    }
-
-    function increment() external {
-        nextPool++;
+contract PoolManagerMock {
+    /// @notice Always reports a non-zero sqrtPriceX96, so any PoolKey passes the
+    /// V4StateReader.getSqrtPriceX96 != 0 initialization check in the SFPM.
+    function extsload(bytes32) external pure returns (bytes32) {
+        return bytes32(uint256(1));
     }
 }
 
@@ -97,7 +93,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     // immutable data about the pool being tested
     IUniswapV3Pool pool;
     uint64 poolId;
-    uint8 vegoid = 4;
+    uint8 vegoid = 8;
     address token0;
     address token1;
     uint24 fee;
@@ -1032,59 +1028,83 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         }
     }
 
-    /*
     function test_Success_initializeAMMPool_HandleCollisions() public {
-        // Create a mock factory that generates colliding pool addresses
-        UniswapV3FactoryMock factoryMock = new UniswapV3FactoryMock();
+        // Deploy a mock pool manager that reports any pool as initialized (non-zero sqrtPriceX96).
+        // V4 pool IDs are keccak hashes so we cannot craft colliding addresses the way the V3 test
+        // does.  Instead we use vm.etch to plant the mock at a controlled address and vm.store to
+        // pre-seed fake PoolKey entries (tickSpacing != 0) in the SFPM's s_poolIdToKey mapping,
+        // forcing the collision-resolution loop to increment the pool pattern.
+        PoolManagerMock pm = new PoolManagerMock();
+        address mockManagerAddr = address(uint160(0x1) << 24);
+        vm.etch(mockManagerAddr, address(pm).code);
 
-        // Create an instance of the SFPM tied to the factory mock that generates colliding pool addresses
-        SemiFungiblePositionManagerHarness sfpm_t = new SemiFungiblePositionManagerHarness(manager);
+        SemiFungiblePositionManagerHarness sfpm_t = new SemiFungiblePositionManagerHarness(
+            IPoolManager(mockManagerAddr)
+        );
 
-        UniPoolPriceMock pm = new UniPoolPriceMock();
-        uint64 poolIdNew = (200 << 48);
+        _cacheWorldState(USDC_WETH_5);
+
+        // Plant minimal ERC20 bytecode at each currency0 address so that the
+        // IERC20Partial(currency0).totalSupply() call inside initializeAMMPool does not revert
+        // due to empty returndata from a code-less address.
+        // Bytecode: PUSH1 0x20, PUSH1 0x00, RETURN  → returns 32 zero bytes (totalSupply = 0).
+        bytes memory returnZero = hex"60206000f3";
+        for (uint160 j = 0; j < 100; j++) {
+            vm.etch(address(uint160(token0) + j + 1), returnZero);
+        }
+
         for (uint160 i = 0; i < 100; i++) {
-            factoryMock.increment();
-
-            vm.etch(address((i + 1) << 24), address(pm).code);
-
-            token0 = USDC_WETH_5.token0();
-            token1 = USDC_WETH_5.token1();
-            pm = UniPoolPriceMock(address((i + 1) << 24));
-            pm.construct(
-                UniPoolPriceMock.Slot0({
-                    sqrtPriceX96: 0,
-                    tick: 0,
-                    observationIndex: 0,
-                    observationCardinality: 0,
-                    observationCardinalityNext: 0,
-                    feeProtocol: 0,
-                    unlocked: false
-                }),
-                address(0),
-                address(0),
-                0,
-                200
+            // Build a fresh PoolKey for each iteration by shifting currency0 upward.
+            // token0 < token1 is maintained: USDC (0xA0b8...) + small i << WETH (0xC02a...).
+            PoolKey memory key = PoolKey(
+                Currency.wrap(address(uint160(token0) + i + 1)),
+                Currency.wrap(token1),
+                fee,
+                tickSpacing,
+                IHooks(address(0))
             );
 
-            // etch tickSpacing
-            // These values are zero at this point, but they are ignored by the factory mock
-            sfpm_t.initializeAMMPool(poolKey);
+            // Natural base poolId for this key.
+            uint64 naturalId = uint40(uint256(PoolId.unwrap(key.toId()))) |
+                (uint64(vegoid) << 40) |
+                (uint64(uint24(tickSpacing)) << 48);
 
-            if (i != 0) {
-                poolIdNew = PanopticMath.incrementPoolPattern(poolIdNew);
+            // Pre-occupy the first i slots in the collision chain via vm.store.
+            // s_poolIdToKey is at storage slot 3 in the SFPM (ERC1155 uses slots 0-1,
+            // s_V4toSFPMIdData uses slot 2).  PoolKey struct layout (from forge inspect):
+            //   struct slot +0: currency0 (offset 0, 20 bytes)
+            //   struct slot +1: currency1 (offset 0, 20 bytes) | fee (offset 20, 3 bytes)
+            //                   | tickSpacing (offset 23, 3 bytes)
+            //   struct slot +2: hooks (offset 0, 20 bytes)
+            // tickSpacing is in struct slot +1 at byte-offset 23 from the LSB,
+            // i.e., bit offset 23*8 = 184.  Writing uint256(200) << 184 sets
+            // tickSpacing = 200 while leaving currency1 and fee as zero.
+            uint64 expectedPoolId = naturalId;
+            for (uint64 j = 0; j < i; j++) {
+                bytes32 mappingSlot = keccak256(abi.encode(uint256(expectedPoolId), uint256(3)));
+                vm.store(
+                    address(sfpm_t),
+                    bytes32(uint256(mappingSlot) + 1),
+                    bytes32(uint256(200) << (23 * 8))
+                );
+                expectedPoolId = PanopticMath.incrementPoolPattern(expectedPoolId);
             }
 
-            // Check that the pool address is set correctly
-            assertEq(address(sfpm_t.getUniswapV3PoolFromId(poolIdNew)), address((i + 1) << 24));
+            // Register the pool — it should skip i fake-occupied slots and land at expectedPoolId.
+            sfpm_t.initializeAMMPool(key, vegoid);
 
-            // Check that the pool ID is set correctly
-            // Addresses output from the factory mock start at 1 to avoid errors so we need to add that to the address
-            assertEq(sfpm_t.addressToPoolData(address((i + 1) << 24)).initialized(), true);
+            // Check that the pool key is stored at the resolved poolId.
+            assertEq(
+                abi.encode(sfpm_t.getUniswapV4PoolKeyFromId(expectedPoolId)),
+                abi.encode(key),
+                "pool key is set correctly"
+            );
 
-            token0 = address(uint160(token0) + 1);
+            // Check that the pool is marked as initialized.
+            assertEq(sfpm_t.poolIdToPoolData(expectedPoolId).initialized(), true, "initialized");
         }
     }
-    */
+
     /*//////////////////////////////////////////////////////////////
                          POOL INITIALIZATION: -
     //////////////////////////////////////////////////////////////*/
@@ -1094,6 +1114,19 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // These values are zero at this point; thus there is no corresponding uni pool and we should revert
         sfpm.initializeAMMPool(poolKey, vegoid);
+    }
+
+    function test_Fail_initializeAMMPool_vegoid() public {
+        // Loop through all pools and test
+        for (uint256 i = 0; i < pools.length; i++) {
+            console2.log("i", i);
+            console2.log("pools", address(pools[i]));
+            _cacheWorldState(pools[i]);
+
+            manager.initialize(poolKey, currentSqrtPriceX96);
+            vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 0));
+            sfpm.initializeAMMPool(poolKey, 0);
+        }
     }
 
     /// NOTE - the definitions of "call" and "put" can vary by Uniswap pair and which token is considered the asset
@@ -3943,7 +3976,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                             uint256(expectedLiq) ** 2 -
                                 uint256(expectedLiq) *
                                 shortLiq +
-                                (shortLiq ** 2 / 2 ** 2),
+                                (shortLiq ** 2 / vegoid),
                             uint256(expectedLiq) ** 2
                         )
                 ) +
@@ -3955,7 +3988,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                     uint256(expectedLiq) ** 2 -
                         uint256(expectedLiq) *
                         shortLiq +
-                        (shortLiq ** 2 / 2 ** 2),
+                        (shortLiq ** 2 / vegoid),
                     uint256(expectedLiq) ** 2
                 ),
                 premiaError0[0]
@@ -3973,7 +4006,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                             uint256(expectedLiq) ** 2 -
                                 uint256(expectedLiq) *
                                 shortLiq +
-                                (shortLiq ** 2 / 2 ** 2),
+                                (shortLiq ** 2 / vegoid),
                             uint256(expectedLiq) ** 2
                         )
                 ) +
@@ -3985,7 +4018,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                     uint256(expectedLiq) ** 2 -
                         uint256(expectedLiq) *
                         shortLiq +
-                        (shortLiq ** 2 / 2 ** 2),
+                        (shortLiq ** 2 / vegoid),
                     uint256(expectedLiq) ** 2
                 ),
                 premiaError1[0]
@@ -4017,13 +4050,13 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 (
                     tokensOwed0 == 0
                         ? uint(0)
-                        : (2 * 2 ** 64 * (netLiq + shortLiq / 2 ** 2)) / (netLiq ** 2)
+                        : (2 * 2 ** 64 * (netLiq + shortLiq / vegoid)) / (netLiq ** 2)
                 ) +
                 10;
 
             assertApproxEqAbs(
                 premium0Long - premium0LongOld,
-                FullMath.mulDiv(tokensOwed0 * 2 ** 64, netLiq + shortLiq / 2 ** 2, netLiq ** 2),
+                FullMath.mulDiv(tokensOwed0 * 2 ** 64, netLiq + shortLiq / vegoid, netLiq ** 2),
                 premiaError0[1]
             );
 
@@ -4033,12 +4066,12 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 (
                     tokensOwed1 == 0
                         ? uint(0)
-                        : (2 * 2 ** 64 * (netLiq + shortLiq / 2 ** 2)) / (netLiq ** 2)
+                        : (2 * 2 ** 64 * (netLiq + shortLiq / vegoid)) / (netLiq ** 2)
                 ) +
                 10;
             assertApproxEqAbs(
                 premium1Long - premium1LongOld,
-                FullMath.mulDiv(tokensOwed1 * 2 ** 64, netLiq + shortLiq / 2 ** 2, netLiq ** 2),
+                FullMath.mulDiv(tokensOwed1 * 2 ** 64, netLiq + shortLiq / vegoid, netLiq ** 2),
                 premiaError1[1]
             );
         }
@@ -4257,7 +4290,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
             abi.encode(poolKey),
@@ -4318,7 +4351,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
             abi.encode(poolKey),
@@ -4379,7 +4412,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
             abi.encode(poolKey),
@@ -4425,7 +4458,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         Reenter1155InitializeV4(Alice).construct(poolKey);
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
             abi.encode(poolKey),
@@ -4494,7 +4527,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.burnTokenizedPosition(
             abi.encode(poolKey),
@@ -4741,5 +4774,122 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         assertGe(accountLiquidities.leftSlot(), accountLiquidities_leftSlot_before_overflow);
+    }
+
+    function test_ZeroWidthTokenType0SwapDirection() public {
+        _initPool(0);
+
+        int24 strike = currentTick + 10 * tickSpacing;
+        uint128 positionSize = 1e9;
+
+        // tokenType=0 means token0 loan
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0, // tokenType=0
+            0,
+            strike,
+            0
+        );
+
+        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
+            tokenId,
+            positionSize,
+            0,
+            true
+        );
+
+        console2.log("=== TokenType=0 (token0 loan) ===");
+        console2.log("amountsMoved.rightSlot (token0):", amountsMoved.rightSlot());
+        console2.log("amountsMoved.leftSlot (token1):", amountsMoved.leftSlot());
+
+        vm.recordLogs();
+        sfpm.mintTokenizedPosition(
+            abi.encode(poolKey),
+            tokenId,
+            positionSize,
+            TickMath.MAX_TICK,
+            TickMath.MIN_TICK
+        );
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        (int128 swapAmount0, int128 swapAmount1) = _findSwapAmounts(logs);
+
+        console2.log("swapAmount0:", swapAmount0);
+        console2.log("swapAmount1:", swapAmount1);
+        console2.log("Swap direction: token0 -> token1?", swapAmount0 < 0);
+        console2.log("");
+    }
+
+    function test_ZeroWidthTokenType1SwapUsesToken1() public {
+        _initPool(0);
+
+        int24 strike = currentTick + 10 * tickSpacing;
+        uint128 positionSize = 1e9;
+
+        // tokenType=1 means token1 loan
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            1, // tokenType=1
+            0,
+            strike,
+            0
+        );
+
+        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
+            tokenId,
+            positionSize,
+            0,
+            true
+        );
+
+        console2.log("=== TokenType=1 (token1 loan) ===");
+        console2.log("amountsMoved.rightSlot (token0):", amountsMoved.rightSlot());
+        console2.log("amountsMoved.leftSlot (token1):", amountsMoved.leftSlot());
+
+        vm.recordLogs();
+        sfpm.mintTokenizedPosition(
+            abi.encode(poolKey),
+            tokenId,
+            positionSize,
+            TickMath.MAX_TICK,
+            TickMath.MIN_TICK
+        );
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        (int128 swapAmount0, int128 swapAmount1) = _findSwapAmounts(logs);
+
+        console2.log("swapAmount0:", swapAmount0);
+        console2.log("swapAmount1:", swapAmount1);
+        console2.log("Swap direction: token1 -> token0?", swapAmount1 > 0);
+        console2.log("");
+
+        // For a token1 loan, user borrows token1 and wants to swap it to token0
+        // So swapAmount1 should be POSITIVE (selling token1)
+        // But the current implementation makes it NEGATIVE (buying token1)
+        // This demonstrates the bug!
+        assertEq(swapAmount1, -int128(amountsMoved.leftSlot()));
+        assertTrue(swapAmount1 != 0, "swap still uses token1 for tokenType=1 width=0");
+    }
+
+    function _findSwapAmounts(Vm.Log[] memory logs) private pure returns (int128, int128) {
+        bytes32 encodedSwapSig = keccak256(
+            "Swap(bytes32,address,int128,int128,uint160,uint128,int24,uint24)"
+        );
+        for (uint256 i = 0; i < logs.length; ++i) {
+            if (logs[i].topics.length == 0) continue;
+            if (logs[i].topics[0] != encodedSwapSig) continue;
+            (int128 amount0, int128 amount1, , , , ) = abi.decode(
+                logs[i].data,
+                (int128, int128, uint160, uint128, int24, uint24)
+            );
+            return (amount0, amount1);
+        }
+        revert("swap log not found");
     }
 }

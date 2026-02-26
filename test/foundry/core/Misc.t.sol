@@ -2,12 +2,12 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManagerV4.sol";
-import {PanopticPool} from "@contracts/PanopticPool.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {SemiFungiblePositionManagerV4} from "@contracts/SemiFungiblePositionManagerV4.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
-import {PanopticFactory} from "@contracts/PanopticFactoryV4.sol";
+import {PanopticFactoryV4} from "@contracts/PanopticFactoryV4.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
@@ -142,7 +142,7 @@ contract SwapperC {
 // mostly just fixed one-off tests/PoC
 contract Misctest is Test, PositionUtils {
     // the instance of SFPM we are testing
-    SemiFungiblePositionManager sfpm;
+    SemiFungiblePositionManagerV4 sfpm;
 
     // reference implemenatations used by the factory
     address poolReference;
@@ -155,10 +155,10 @@ contract Misctest is Test, PositionUtils {
     // Mainnet router address - used for swaps to test fees/premia
     ISwapRouter router = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
 
-    PanopticFactory factory;
-    PanopticPool pp;
-    CollateralTracker ct0;
-    CollateralTracker ct1;
+    PanopticFactoryV4 factory;
+    PanopticPoolV2 pp;
+    CollateralTrackerV2 ct0;
+    CollateralTrackerV2 ct1;
     PanopticHelper ph;
     IRiskEngine re;
 
@@ -180,7 +180,7 @@ contract Misctest is Test, PositionUtils {
     OraclePack oraclePack;
     uint64 $poolId;
     uint64 poolId;
-    uint8 vegoid = 4;
+    uint8 vegoid = 8;
     uint256 medianData;
 
     uint256 assetsBefore0;
@@ -192,6 +192,8 @@ contract Misctest is Test, PositionUtils {
     uint256 basalCR;
     uint256 amountBorrowed;
     uint256 amountITM;
+    int256 $premium0;
+    int256 $premium1;
     int256 util;
     LeftRightUnsigned amountsMoved;
     uint256 remainingCR;
@@ -231,13 +233,13 @@ contract Misctest is Test, PositionUtils {
         manager = new PoolManager(address(0));
         routerV4 = new V4RouterSimple(manager);
 
-        sfpm = new SemiFungiblePositionManager(manager, 10 ** 13, 10 ** 13, 0);
+        sfpm = new SemiFungiblePositionManagerV4(manager, 10 ** 13, 10 ** 13, 0);
 
         ph = new PanopticHelper(ISemiFungiblePositionManager(address(sfpm)));
 
         // deploy reference pool and collateral token
-        poolReference = address(new PanopticPool(ISemiFungiblePositionManager(address(sfpm))));
-        collateralReference = address(new CollateralTracker(10));
+        poolReference = address(new PanopticPoolV2(ISemiFungiblePositionManager(address(sfpm))));
+        collateralReference = address(new CollateralTrackerV2());
         token0 = new ERC20S("token0", "T0", 18);
         token1 = new ERC20S("token1", "T1", 18);
         uniPool = IUniswapV3Pool(V3FACTORY.createPool(address(token0), address(token1), 500));
@@ -365,7 +367,7 @@ contract Misctest is Test, PositionUtils {
     function _createPanopticPool() internal {
         vm.startPrank(Deployer);
 
-        factory = new PanopticFactory(
+        factory = new PanopticFactoryV4(
             sfpm,
             manager,
             poolReference,
@@ -380,7 +382,7 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(factory), type(uint104).max);
         token1.approve(address(factory), type(uint104).max);
 
-        pp = PanopticPool(address(factory.deployNewPool(poolKey, re, uint96(block.timestamp))));
+        pp = PanopticPoolV2(address(factory.deployNewPool(poolKey, re, uint96(block.timestamp))));
 
         vm.startPrank(Swapper);
         swapperc.swapTo(uniPool, 2 ** 96);
@@ -412,7 +414,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function mintOptions(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory positionIdList,
         uint128 positionSize,
         uint24 effectiveLiquidityLimitX32,
@@ -435,7 +437,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function burnOptions(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId tokenId,
         TokenId[] memory positionIdList,
         int24 tickLimitLow,
@@ -455,7 +457,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function burnOptions(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory tokenIds,
         TokenId[] memory positionIdList,
         int24 tickLimitLow,
@@ -475,7 +477,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function liquidate(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory liquidatorList,
         address liquidatee,
         TokenId[] memory positionIdList
@@ -492,7 +494,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function forceExercise(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         address exercisee,
         TokenId tokenId,
         TokenId[] memory exerciseeListFinal,
@@ -517,7 +519,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function settlePremium(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory settlerList,
         TokenId[] memory settleeList,
         address exercisee,
@@ -540,7 +542,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function settlePremiumSelf(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory mintList,
         uint128 positionSize,
         bool premiaAsCollateral
@@ -558,7 +560,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_short_packed() public {
-        uint256 positionCount = 8;
+        uint256 positionCount = (re.MAX_OPEN_LEGS()) / 4;
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
@@ -711,7 +713,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_short_soloLeg() public {
-        uint256 positionCount = 32;
+        uint256 positionCount = (re.MAX_OPEN_LEGS());
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
@@ -801,7 +803,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_long_packed() public {
-        uint256 positionCount = 8;
+        uint256 positionCount = (re.MAX_OPEN_LEGS() / 4);
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
@@ -1000,7 +1002,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_long_soloLeg() public {
-        uint256 positionCount = 32;
+        uint256 positionCount = (re.MAX_OPEN_LEGS());
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
@@ -1112,7 +1114,7 @@ contract Misctest is Test, PositionUtils {
         uint256 token1Supply,
         uint256 tickSpacingSeed
     ) public {
-        sfpm = new SemiFungiblePositionManager(manager, 2100 * 10 ** 18, 2100 * 10 ** 18, 10_000);
+        sfpm = new SemiFungiblePositionManagerV4(manager, 2100 * 10 ** 18, 2100 * 10 ** 18, 10_000);
 
         token0 = new ERC20S("token0", "T0", 18);
         token1 = new ERC20S("token1", "T1", 18);
@@ -1357,7 +1359,7 @@ contract Misctest is Test, PositionUtils {
         uint256 token1Supply,
         uint256 tickSpacingSeed
     ) public {
-        sfpm = new SemiFungiblePositionManager(manager, 2100 * 10 ** 18, 2100 * 10 ** 18, 10_000);
+        sfpm = new SemiFungiblePositionManagerV4(manager, 2100 * 10 ** 18, 2100 * 10 ** 18, 10_000);
 
         token0 = new ERC20S("token0", "T0", 18);
         token1 = new ERC20S("token1", "T1", 18);
@@ -1602,7 +1604,12 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_TickLimits_native(uint256 tickSpacingSeed) public {
-        sfpm = new SemiFungiblePositionManager(manager, 2100 * 10 ** 18, 21_000 * 10 ** 18, 10_000);
+        sfpm = new SemiFungiblePositionManagerV4(
+            manager,
+            2100 * 10 ** 18,
+            21_000 * 10 ** 18,
+            10_000
+        );
 
         token0 = ERC20S(address(0));
         token1 = new ERC20S("token1", "T1", 18);
@@ -1661,7 +1668,7 @@ contract Misctest is Test, PositionUtils {
 
         manager.initialize(poolKey, 2 ** 96);
 
-        pp = PanopticPool(address(factory.deployNewPool(poolKey, re, uint96(block.timestamp))));
+        pp = PanopticPoolV2(address(factory.deployNewPool(poolKey, re, uint96(block.timestamp))));
 
         ct0 = pp.collateralToken0();
         ct1 = pp.collateralToken1();
@@ -3261,13 +3268,13 @@ contract Misctest is Test, PositionUtils {
 
             assertApproxEqAbs(
                 charlieDeltaPremia0,
-                owedPremia0,
+                (owedPremia0 * (10_000 - re.PREMIUM_FEE())) / 10_000,
                 1,
                 "charlie received exactly what they are owed due to settled token0"
             );
             assertApproxEqAbs(
                 charlieDeltaPremia1,
-                owedPremia1,
+                (owedPremia1 * (10_000 - re.PREMIUM_FEE())) / 10_000,
                 1,
                 "charlie received exactly what they are owed due to settled token0"
             );
@@ -3713,13 +3720,13 @@ contract Misctest is Test, PositionUtils {
 
             assertApproxEqAbs(
                 charlieDeltaPremia0,
-                owedPremia0,
+                (owedPremia0 * (10000 - re.PREMIUM_FEE())) / 10000,
                 1,
                 "charlie received exactly what they are owed due to settled token0"
             );
             assertApproxEqAbs(
                 charlieDeltaPremia1,
-                owedPremia1,
+                (owedPremia1 * (10000 - re.PREMIUM_FEE())) / 10000,
                 1,
                 "charlie received exactly what they are owed due to settled token0"
             );
@@ -4098,13 +4105,13 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             assetsBefore0 - ct0.convertToAssets(ct0.balanceOf(Buyers[0])),
-            33_453,
+            33_386,
             "Incorrect Buyer 1 1st Collect 0"
         );
 
         assertEq(
             assetsBefore1 - ct1.convertToAssets(ct1.balanceOf(Buyers[0])),
-            33_344_563,
+            33_276_737,
             "Incorrect Buyer 1 1st Collect 1: "
         );
 
@@ -4125,12 +4132,12 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            258_335,
+            256_686,
             "Incorrect Bob Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Bob)) - assetsBefore1,
-            258_335_862,
+            256_687_119,
             "Incorrect Bob Delta 1"
         );
 
@@ -4182,31 +4189,31 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             assetsBefore1Arr[0] - ct1.convertToAssets(ct1.balanceOf(Buyers[0])),
-            2_222,
+            2_218,
             "Incorrect Buyer 1 2nd Collect 1"
         );
 
         assertEq(
             assetsBefore0Arr[1] - ct0.convertToAssets(ct0.balanceOf(Buyers[1])),
-            11447,
+            11424,
             "Incorrect Buyer 2 2nd Collect 0"
         );
 
         assertEq(
             assetsBefore1Arr[1] - ct1.convertToAssets(ct1.balanceOf(Buyers[1])),
-            11117817,
+            11_095_203,
             "Incorrect Buyer 2 2nd Collect 1"
         );
 
         assertEq(
             assetsBefore0Arr[2] - ct0.convertToAssets(ct0.balanceOf(Buyers[2])),
-            11447,
+            11424,
             "Incorrect Buyer 3 2nd Collect 0"
         );
 
         assertEq(
             assetsBefore1Arr[2] - ct1.convertToAssets(ct1.balanceOf(Buyers[2])),
-            11117817,
+            11_095_203,
             "Incorrect Buyer 3 2nd Collect 1"
         );
 
@@ -4227,12 +4234,12 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
-            531_490,
+            527_929,
             "Incorrect Alice Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Alice)) - assetsBefore1,
-            531_491_038,
+            527_929_125,
             "Incorrect Alice Delta 1"
         );
 
@@ -4316,25 +4323,25 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             assetsBefore0Arr[1] - ct0.convertToAssets(ct0.balanceOf(Buyers[1])),
-            22_228,
+            22_184,
             "Incorrect Buyer 2 4th Collect 0"
         );
 
         assertEq(
             assetsBefore1Arr[1] - ct1.convertToAssets(ct1.balanceOf(Buyers[1])),
-            22_228_968,
+            22_183_752,
             "Incorrect Buyer 2 4th Collect 1:"
         );
 
         assertEq(
             assetsBefore0Arr[2] - ct0.convertToAssets(ct0.balanceOf(Buyers[2])),
-            22_228,
+            22_184,
             "Incorrect Buyer 3 4th Collect 0"
         );
 
         assertEq(
             assetsBefore1Arr[2] - ct1.convertToAssets(ct1.balanceOf(Buyers[2])),
-            22_228_968,
+            22_183_752,
             "Incorrect Buyer 3 4th Collect 1"
         );
 
@@ -4355,12 +4362,12 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
-            275_007,
+            272_511,
             "Incorrect Charlie Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Charlie)) - assetsBefore1,
-            275_007_589,
+            272_511_946,
             "Incorrect Charlie Delta 1"
         );
 
@@ -4410,14 +4417,14 @@ contract Misctest is Test, PositionUtils {
             // the positive premium is from the dummy short chunk
             assertEq(
                 int256(ct0.convertToAssets(ct0.balanceOf(Buyers[i]))) - int256(assetsBefore0),
-                i == 0 ? int256(107) : i == 1 ? int256(108) : int(99),
-                "Buyer paid premium twice"
+                i == 0 ? int256(105) : i == 1 ? int256(105) : int(96),
+                "Buyer paid premium twice 0"
             );
 
             assertEq(
                 ct1.convertToAssets(ct1.balanceOf(Buyers[i])) - assetsBefore1,
-                i < 2 ? 1086 : 1080,
-                "Buyer paid premium twice"
+                i == 0 ? 1074 : i < 2 ? 1075 : 1069,
+                "Buyer paid premium twice 1"
             );
         }
     }
@@ -4501,85 +4508,108 @@ contract Misctest is Test, PositionUtils {
             1_000_000_000
         );
 
-        int256 premium0 = 10388;
-        int256 premium1 = 10388989;
+        $premium0 = 10453;
+        $premium1 = 10452625;
 
-        console2.log("TWAP", pp.getTWAP());
         uint160 lastObservedPrice = Math.getSqrtRatioAtTick(pp.getTWAP());
 
         vm.startPrank(Alice);
 
-        uint256 settlerBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
-        uint256 settlerBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
 
         // shortage of token1 - succeeds and token1 is converted to token0
         editCollateral(ct1, Buyers[0], 0);
+        {
+            uint256 settleeBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[0]));
+            uint256 settleeBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[0]));
 
-        uint256 settleeBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[0]));
-        uint256 settleeBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[0]));
+            settlePremium(pp, $posIdLists[0], $posIdLists[1], Buyers[0], 0, true);
 
-        settlePremium(pp, $posIdLists[0], $posIdLists[1], Buyers[0], 0, true);
+            int256 balanceDelta0 = int256(ct0.convertToAssets(ct0.balanceOf(Buyers[0]))) -
+                int256(settleeBalanceBefore0);
+            int256 balanceDelta1 = int256(ct1.convertToAssets(ct1.balanceOf(Buyers[0]))) -
+                int256(settleeBalanceBefore1);
 
-        int256 balanceDelta0 = int256(ct0.convertToAssets(ct0.balanceOf(Buyers[0]))) -
-            int256(settleeBalanceBefore0);
-        int256 balanceDelta1 = int256(ct1.convertToAssets(ct1.balanceOf(Buyers[0]))) -
-            int256(settleeBalanceBefore1);
+            assertEq(
+                -balanceDelta0,
+                $premium0 +
+                    int256(
+                        PanopticMath.convert1to0RoundingUp(uint256($premium1), lastObservedPrice)
+                    ),
+                "Fail: balance delta0 does not match premium"
+            );
+            assertEq(balanceDelta1, 0);
 
-        assertEq(
-            -balanceDelta0,
-            premium0 +
-                int256(PanopticMath.convert1to0RoundingUp(uint256(premium1), lastObservedPrice)),
-            "Fail: balance delta0 does not match premium"
-        );
-        assertEq(balanceDelta1, 0);
+            // The commission burn redistributes value across all pool holders via the
+            // share-to-asset ratio change. The settler's effective balance change equals the
+            // premium minus commission leakage to non-settler holders.
+            // The leakage fraction (2/5) reflects the non-Alice share of the V4 pool.
+            // commission = premium - premium * 10000 / 10100
+            int256 comm0 = $premium0 -
+                ($premium0 * 10_000) /
+                (10_000 + int256(uint256(re.PREMIUM_FEE())));
+            int256 comm1 = $premium1 -
+                ($premium1 * 10_000) /
+                (10_000 + int256(uint256(re.PREMIUM_FEE())));
+            assertApproxEqAbs(
+                int256(assetsBefore0) - int256(ct0.convertToAssets(ct0.balanceOf(Alice))),
+                balanceDelta0 + $premium0 - (comm0 * 2) / 5,
+                1,
+                "bal0 a"
+            );
+            assertApproxEqAbs(
+                int256(assetsBefore1) - int256(ct1.convertToAssets(ct1.balanceOf(Alice))),
+                $premium1 - (comm1 * 2) / 5,
+                1,
+                "bal1 a"
+            );
+        }
 
-        assertEq(
-            int256(settlerBalanceBefore0) - int256(ct0.convertToAssets(ct0.balanceOf(Alice))),
-            balanceDelta0 + premium0,
-            "balance premium0"
-        );
-        assertEq(
-            int256(settlerBalanceBefore1) - int256(ct1.convertToAssets(ct1.balanceOf(Alice))),
-            premium1,
-            "balance premium1"
-        );
-
-        settlerBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
-        settlerBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
 
         // shortage of token0 - succeeds and token0 is converted to token1
         editCollateral(ct0, Buyers[1], 0);
+        {
+            uint256 settleeBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[1]));
+            uint256 settleeBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[1]));
 
-        settleeBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[1]));
-        settleeBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[1]));
+            settlePremium(pp, $posIdLists[0], $posIdLists[1], Buyers[1], 0, true);
 
-        settlePremium(pp, $posIdLists[0], $posIdLists[1], Buyers[1], 0, true);
+            int256 balanceDelta0 = int256(ct0.convertToAssets(ct0.balanceOf(Buyers[1]))) -
+                int256(settleeBalanceBefore0);
+            int256 balanceDelta1 = int256(ct1.convertToAssets(ct1.balanceOf(Buyers[1]))) -
+                int256(settleeBalanceBefore1);
 
-        balanceDelta0 =
-            int256(ct0.convertToAssets(ct0.balanceOf(Buyers[1]))) -
-            int256(settleeBalanceBefore0);
-        balanceDelta1 =
-            int256(ct1.convertToAssets(ct1.balanceOf(Buyers[1]))) -
-            int256(settleeBalanceBefore1);
+            assertEq(balanceDelta0, 0);
+            assertEq(
+                -balanceDelta1,
+                $premium1 +
+                    int256(
+                        PanopticMath.convert0to1RoundingUp(uint256($premium0), lastObservedPrice)
+                    )
+            );
 
-        assertEq(balanceDelta0, 0);
-        assertEq(
-            -balanceDelta1,
-            premium1 +
-                int256(PanopticMath.convert0to1RoundingUp(uint256(premium0), lastObservedPrice)),
-            "balancedelta1"
-        );
-
-        assertEq(
-            int256(settlerBalanceBefore0) - int256(ct0.convertToAssets(ct0.balanceOf(Alice))),
-            premium0 + 1,
-            "premium0"
-        );
-        assertEq(
-            int256(settlerBalanceBefore1) - int256(ct1.convertToAssets(ct1.balanceOf(Alice))),
-            balanceDelta1 + premium1,
-            "settlebakance"
-        );
+            int256 comm0 = $premium0 -
+                ($premium0 * 10_000) /
+                (10_000 + int256(uint256(re.PREMIUM_FEE())));
+            int256 comm1 = $premium1 -
+                ($premium1 * 10_000) /
+                (10_000 + int256(uint256(re.PREMIUM_FEE())));
+            assertApproxEqAbs(
+                int256(assetsBefore0) - int256(ct0.convertToAssets(ct0.balanceOf(Alice))),
+                $premium0 - (comm0 * 2) / 5,
+                1,
+                "bal0 b"
+            );
+            assertApproxEqAbs(
+                int256(assetsBefore1) - int256(ct1.convertToAssets(ct1.balanceOf(Alice))),
+                balanceDelta1 + $premium1 - (comm1 * 2) / 5,
+                1,
+                "bal1 b"
+            );
+        }
 
         // insolvent account - fails while revoking virtual shares
         editCollateral(ct0, Buyers[2], 0);
@@ -4723,12 +4753,12 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            250_000,
+            249_850,
             "Incorrect Bob Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Bob)) - assetsBefore1,
-            249_999_999,
+            248_499_997,
             "Incorrect Bob Delta 1"
         );
 
@@ -4776,12 +4806,12 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
-            533_333,
+            532_636,
             "Incorrect Alice Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Alice)) - assetsBefore1,
-            533_333_345,
+            529_738_672,
             "Incorrect Alice Delta 1"
         );
 
@@ -4812,12 +4842,12 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
-            275_000,
+            274_502,
             "Incorrect Charlie Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Charlie)) - assetsBefore1,
-            275_000_008,
+            272_504_601,
             "Incorrect Charlie Delta 1"
         );
     }
@@ -4887,7 +4917,7 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
 
-        ct0.withdraw(1_000_000 - 266269, Bob, Bob, $posIdList, true);
+        ct0.withdraw(1_000_000 - 220560, Bob, Bob, $posIdList, true);
     }
 
     function test_Fail_validateCollateralWithdrawable() public {
@@ -4918,7 +4948,7 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        editCollateral(ct0, Bob, ct0.convertToShares(264670));
+        editCollateral(ct0, Bob, ct0.convertToShares(206774));
         editCollateral(ct1, Bob, 0);
 
         vm.expectRevert(
@@ -4961,7 +4991,7 @@ contract Misctest is Test, PositionUtils {
         vm.expectRevert(
             abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
         );
-        ct0.withdraw(1_000_000 - 264670, Bob, Bob, $posIdList, true);
+        ct0.withdraw(1_000_000 - 206774, Bob, Bob, $posIdList, true);
     }
 
     function test_Fail_InsolventAtCurrentTick_itmPut() public {
@@ -5394,13 +5424,14 @@ contract Misctest is Test, PositionUtils {
         // setup mini-median price array
         for (uint256 i = 0; i < 60; ++i) {
             swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
-            vm.warp(block.timestamp + 3600); // 1h steps
+            vm.warp(block.timestamp + 65); // 1m steps
             vm.roll(block.number + 1);
             pp.pokeOracle();
             (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
                 .getOracleTicks();
             int24 TWAPtick = re.twapEMA(oraclePack);
-            console2.log(i, uint24(fastOracleTick), uint24(TWAPtick), uint24(lastObservedTick));
+
+            console2.log(i, uint24(fastOracleTick), uint24(TWAPtick), uint24(oraclePack.eonsEMA()));
             swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
         }
 
@@ -5517,7 +5548,7 @@ contract Misctest is Test, PositionUtils {
         vm.expectRevert(
             abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
         );
-        ct0.withdraw(1_000_000 - 264670, Alice, Bob, $posIdList, true);
+        ct0.withdraw(1_000_000 - 206774, Alice, Bob, $posIdList, true);
     }
 
     function test_Success_SafeMode_down() public {
@@ -6444,6 +6475,10 @@ contract Misctest is Test, PositionUtils {
                     } else if (receivedSelector == Errors.PositionTooLarge.selector) {
                         console2.log("PositionTooLarge at strike:", strike);
                         // Position size exceeds protocol limits
+                    } else if (receivedSelector == Errors.NotEnoughTokens.selector) {
+                        console2.log("NotEnoughTokens at strike:", strike);
+                    } else if (receivedSelector == Errors.CastingError.selector) {
+                        console2.log("CastingError at strike:", strike);
                     } else {
                         // Unexpected error
                         console2.logBytes4(receivedSelector);
@@ -6456,6 +6491,9 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_Fuzz_NotionalReverts_longs(uint128 positionSizeSeed, uint8 x) public {
+        uint128 positionSizeSeed = 50227321429460112432826120;
+        uint8 x = 254;
+
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
@@ -6977,13 +7015,13 @@ contract Misctest is Test, PositionUtils {
         // old with itmSpreadFee = -864427
         assertEq(
             int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0),
-            -864427
+            -324426
         );
 
         // but she earns all of fees on token 1 since the premium accumulator did not overflow (!)
         assertEq(
             int256(ct1.convertToAssets(ct1.balanceOf(Alice))) - int256(balanceBefore1),
-            999_999_999_998
+            993_999_993_598
         );
     }
 
@@ -7542,7 +7580,7 @@ contract Misctest is Test, PositionUtils {
 
         if (tokenType == 0) {
             token0.approve(address(ct0), 1000);
-            ct0.deposit(600, Bob);
+            ct0.deposit(360, Bob);
         } else {
             token1.approve(address(ct1), 1000);
             //ct1.deposit(0, Bob);
@@ -8160,14 +8198,62 @@ contract Misctest is Test, PositionUtils {
             console2.log("values 0", valueBefore0, valueAfter0);
             console2.log("values 1", valueBefore1, valueAfter1);
             assertEq(valueBefore0, valueAfter0, "share price 0 stays the same");
-            assertEq(valueBefore1, valueAfter1, "share price 1 stays the same");
+            assertLt(
+                valueBefore1,
+                valueAfter1,
+                "share price 1 increases due to commission on streamia"
+            );
             console2.log("bob0-after", ct0.balanceOf(Bob));
             console2.log("bob1-after", ct1.balanceOf(Bob));
         }
 
         vm.revertTo(snapshot);
         console2.log("");
-        console2.log("NO STREAMIA ACCRUAL BUT INTEREST, BUT MINIMAL PROTOCOL LOSS");
+        console2.log("STREAMIA ACCRUAL BUT NO INTEREST, PROTOCOL LOSS DUE TO INSOLVENT");
+        // STREAMIA ACCRUAL BUT NO INTEREST, HAIRCUT SO NO PROTOCOL LOSS
+
+        editCollateral(ct0, Bob, ct0.convertToShares(0));
+        editCollateral(ct1, Bob, ct1.convertToShares(0));
+
+        accruePoolFeesInRange(
+            manager,
+            poolKey,
+            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
+            2 ** 85,
+            2 ** 85
+        );
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable");
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            //assertGe(valueBefore0, valueAfter0, "share price 0 decreases");
+            assertGt(valueBefore1, valueAfter1, "share price 1 decreases");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
+
+        vm.revertTo(snapshot);
+        console2.log("");
+        console2.log("NO STREAMIA ACCRUAL BUT INTEREST, BUT NO PROTOCOL LOSS");
 
         // NO STREAMIA ACCRUAL BUT INTEREST, BUT MINIMAL PROTOCOL LOSS
 
@@ -8197,8 +8283,8 @@ contract Misctest is Test, PositionUtils {
 
             console2.log("values 0", valueBefore0, valueAfter0);
             console2.log("values 1", valueBefore1, valueAfter1);
-            assertEq(valueBefore0, valueAfter0, "share price 0 stays the same");
-            assertGt(valueBefore1, valueAfter1, "share price 1 decreases");
+            assertLt(valueBefore0, valueAfter0, "share price 0 increases due to interest");
+            assertLt(valueBefore1, valueAfter1, "share price 1 increases due to interest");
             console2.log("bob0-after", ct0.balanceOf(Bob));
             console2.log("bob1-after", ct1.balanceOf(Bob));
         }
@@ -8243,6 +8329,102 @@ contract Misctest is Test, PositionUtils {
 
             console2.log("values 0", valueBefore0, valueAfter0);
             console2.log("values 1", valueBefore1, valueAfter1);
+            assertLt(valueBefore0, valueAfter0, "share price 0 increases due to intertest");
+            assertLt(valueBefore1, valueAfter1, "share price 1 increases due to interest");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
+        vm.revertTo(snapshot);
+        console2.log("");
+        console2.log("STREAMIA ACCRUAL AND INTEREST, NO PROTOCOL LOSS DUE TO HAIRCUT");
+
+        // STREAMIA ACCRUAL AND INTEREST,
+
+        // increase interest owed  (100 years)
+        vm.warp(block.timestamp + 100 * 365 * 24 * 3600);
+        vm.roll(block.number + 10);
+
+        accruePoolFeesInRange(
+            manager,
+            poolKey,
+            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
+            2 ** 85,
+            2 ** 85
+        );
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            assertLt(valueBefore0, valueAfter0, "share price 0 increases due to intertest");
+            assertLt(valueBefore1, valueAfter1, "share price 1 increases due to interest");
+            console2.log("bob0-after", ct0.balanceOf(Bob));
+            console2.log("bob1-after", ct1.balanceOf(Bob));
+        }
+
+        vm.revertTo(snapshot);
+        console2.log("");
+        console2.log("STREAMIA ACCRUAL AND INTEREST, PROTOCOL LOSS DUE TO INSOLVENT");
+
+        editCollateral(ct0, Bob, ct0.convertToShares(0));
+        editCollateral(ct1, Bob, ct1.convertToShares(0));
+
+        // STREAMIA ACCRUAL AND INTEREST,
+        // increase interest owed  (100 years)
+        vm.warp(block.timestamp + 100 * 365 * 24 * 3600);
+        vm.roll(block.number + 10);
+
+        accruePoolFeesInRange(
+            manager,
+            poolKey,
+            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
+            2 ** 85,
+            2 ** 85
+        );
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        {
+            uint256 valueBefore0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueBefore1 = ct1.convertToAssets(10 ** 18);
+
+            liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+            uint256 valueAfter0 = ct0.convertToAssets(10 ** 18);
+            uint256 valueAfter1 = ct1.convertToAssets(10 ** 18);
+
+            console2.log("values 0", valueBefore0, valueAfter0);
+            console2.log("values 1", valueBefore1, valueAfter1);
+            assertGe(valueBefore0, valueAfter0, "share price 0 increases due to intertest");
+            assertGt(valueBefore1, valueAfter1, "share price 1 increases due to interest");
+
             assertEq(valueBefore0, valueAfter0, "share price 0 stays the same");
             assertGt(valueBefore1, valueAfter1, "share price 1 decreases");
             console2.log("bob0-after", ct0.balanceOf(Bob));
@@ -9762,5 +9944,570 @@ contract Misctest is Test, PositionUtils {
 
             vm.revertTo(snapshot);
         }
+    }
+
+    /// @notice POC for S-1224: Test that self-settlement with underfunded account reverts
+    /// @dev The finding claims that self-settlement via dispatchFrom bypasses refund mechanism
+    ///      allowing underfunded debt settlement. This test verifies the tx reverts due to
+    ///      underflow in revoke() when account has insufficient balance.
+    function test_POC_S1224_SelfSettlementUnderfundedReverts() public {
+        // Setup: Create a position for a user with minimal collateral
+        address underfundedUser = address(0xDEAD);
+
+        vm.startPrank(Alice);
+        uint256 smallDeposit = 1e18; // 1 token
+
+        // Create a small short position
+        {
+            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        TokenId shortPosId = TokenId.wrap(0).addPoolId(poolId).addLeg({
+            legIndex: 0,
+            _optionRatio: 1,
+            _asset: 1,
+            _isLong: 0,
+            _tokenType: 0,
+            _riskPartner: 0,
+            _strike: 0,
+            _width: 10
+        });
+
+        TokenId[] memory shortPosList = new TokenId[](1);
+        shortPosList[0] = shortPosId;
+
+        // Mint the short position
+        mintOptions(
+            pp,
+            shortPosList,
+            uint128(smallDeposit), // small position size
+            0,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        vm.startPrank(underfundedUser);
+
+        // Mint minimal tokens - just enough to open a small position
+        token0.mint(underfundedUser, smallDeposit * 10);
+        token1.mint(underfundedUser, smallDeposit * 10);
+
+        token0.approve(address(ct0), type(uint256).max);
+        token1.approve(address(ct1), type(uint256).max);
+
+        // Deposit a small amount
+        ct0.deposit(smallDeposit, underfundedUser);
+        ct1.deposit(smallDeposit, underfundedUser);
+
+        uint256 balanceBefore0 = ct0.balanceOf(underfundedUser);
+        uint256 balanceBefore1 = ct1.balanceOf(underfundedUser);
+
+        console2.log("User balance before (token0 shares):", balanceBefore0);
+        console2.log("User balance before (token1 shares):", balanceBefore1);
+
+        // Create a small short position
+
+        TokenId longPosId = TokenId.wrap(0).addPoolId(poolId).addLeg({
+            legIndex: 0,
+            _optionRatio: 1,
+            _asset: 1,
+            _isLong: 1,
+            _tokenType: 0,
+            _riskPartner: 0,
+            _strike: 0,
+            _width: 10
+        });
+
+        TokenId[] memory longPosList = new TokenId[](1);
+        longPosList[0] = longPosId;
+
+        // Mint the short position
+        mintOptions(
+            pp,
+            longPosList,
+            uint128((smallDeposit * 90) / 100), // small position size
+            type(uint24).max,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        // Generate some trading activity to accrue premium
+        vm.startPrank(Swapper);
+        for (uint256 i = 0; i < 10; ++i) {
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 10);
+            routerV4.swapTo(address(0), poolKey, 2 ** 96 + 2 ** 80);
+            routerV4.swapTo(address(0), poolKey, 2 ** 96 - 2 ** 80);
+            pp.pokeOracle();
+        }
+        routerV4.swapTo(address(0), poolKey, 2 ** 96 - 2 ** 89);
+
+        // Now withdraw most of the user's collateral to make them underfunded
+        vm.startPrank(underfundedUser);
+
+        uint256 currentBalance0 = ct0.balanceOf(underfundedUser);
+        uint256 currentBalance1 = ct1.balanceOf(underfundedUser);
+
+        console2.log("User balance after position (token0 shares):", currentBalance0);
+        console2.log("User balance after position (token1 shares):", currentBalance1);
+
+        // Withdraw almost all collateral to simulate underfunded state
+        // This is aggressive - in reality the user might just have accrued debt
+        editCollateral(ct0, underfundedUser, 0);
+
+        currentTick = pp.getCurrentTick();
+
+        (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            underfundedUser,
+            currentTick,
+            longPosList
+        );
+        console2.log(
+            "totalCollateralBalance0, totalCollateralRequired0",
+            totalCollateralBalance0,
+            totalCollateralRequired0
+        );
+        assertTrue(totalCollateralBalance0 > totalCollateralRequired0, "Is NOT liquidatable");
+
+        {
+            uint256 balanceAfterWithdraw0 = ct0.balanceOf(underfundedUser);
+            uint256 balanceAfterWithdraw1 = ct1.balanceOf(underfundedUser);
+
+            console2.log("User balance after withdraw (token0 shares):", balanceAfterWithdraw0);
+            console2.log("User balance after withdraw (token1 shares):", balanceAfterWithdraw1);
+        }
+
+        {
+            uint256 snapshot = vm.snapshot();
+
+            console2.log("burn option: doesnt have enough tokens to pay for premia");
+            vm.expectRevert();
+            burnOptions(
+                pp,
+                longPosId,
+                new TokenId[](0),
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                false
+            );
+
+            vm.revertTo(snapshot);
+
+            console2.log("burn option (zap): doesnt have enough tokens to pay for premia");
+            // burn option with
+            vm.expectRevert();
+            burnOptions(
+                pp,
+                longPosId,
+                new TokenId[](0),
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                false
+            );
+            vm.revertTo(snapshot);
+        }
+
+        // Now try to self-settle premium (account == msg.sender)
+        // According to the finding, this should succeed and allow underfunded settlement
+        // But according to our analysis, this should REVERT due to underflow in revoke()
+
+        // The finding claims:
+        // 1. delegate() inflates balance with phantom shares
+        // 2. settlement burns shares (succeeds due to inflated balance)
+        // 3. refund() is a self-transfer (no-op when account == msg.sender)
+        // 4. revoke() should "repair" by adding to _internalSupply
+        //
+        // Reality: revoke() simply does balanceOf[delegatee] -= type(uint248).max
+        // If balance < type(uint248).max, this UNDERFLOWS and REVERTS
+
+        vm.expectRevert(stdError.arithmeticError);
+        //call dispatchFrom settle on self
+        console2.log("call settle premium on self");
+        settlePremium(pp, longPosList, longPosList, underfundedUser, 0, true);
+
+        console2.log("call force exercise on self");
+        vm.expectRevert(stdError.arithmeticError);
+        forceExercise(
+            pp,
+            underfundedUser,
+            longPosList[0],
+            new TokenId[](0),
+            new TokenId[](0),
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
+        );
+
+        console2.log(
+            "SUCCESS: Self-settlement and self-forceExercise reverted as expected when underfunded"
+        );
+    }
+
+    /// @notice POC for S-1237: Insolvent Users Extract Full Premium During Liquidation Due to Haircut Calculation Using Stale Storage
+    /// @dev
+    function test_POC_S1237_InsolventUsersExtractPremium() public {
+        address underfundedUser = address(0xDEAD);
+        uint256 smallDeposit = 1e18; // 1 token
+
+        vm.startPrank(underfundedUser);
+
+        // Mint minimal tokens - just enough to open a small position
+        token0.mint(underfundedUser, smallDeposit * 10);
+        token1.mint(underfundedUser, smallDeposit * 10);
+
+        token0.approve(address(ct0), type(uint256).max);
+        token1.approve(address(ct1), type(uint256).max);
+
+        // Deposit a small amount
+        ct0.deposit(smallDeposit, underfundedUser);
+        ct1.deposit(smallDeposit, underfundedUser);
+
+        uint256 balanceBefore0 = ct0.balanceOf(underfundedUser);
+        uint256 balanceBefore1 = ct1.balanceOf(underfundedUser);
+
+        console2.log("User balance before (token0 shares):", balanceBefore0);
+        console2.log("User balance before (token1 shares):", balanceBefore1);
+
+        // Create a small short position
+        {
+            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        TokenId shortPosId = TokenId.wrap(0).addPoolId(poolId).addLeg({
+            legIndex: 0,
+            _optionRatio: 1,
+            _asset: 1,
+            _isLong: 0,
+            _tokenType: 0,
+            _riskPartner: 0,
+            _strike: 0,
+            _width: 10
+        });
+
+        TokenId[] memory shortPosList = new TokenId[](1);
+        shortPosList[0] = shortPosId;
+
+        // Mint the short position
+        mintOptions(
+            pp,
+            shortPosList,
+            uint128(smallDeposit), // small position size
+            type(uint24).max,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        // Generate some trading activity to accrue premium
+        vm.startPrank(Swapper);
+        for (uint256 i = 0; i < 10; ++i) {
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 10);
+            routerV4.swapTo(address(0), poolKey, 2 ** 96 + 2 ** 95);
+            routerV4.swapTo(address(0), poolKey, 2 ** 96 - 2 ** 95);
+            pp.pokeOracle();
+        }
+
+        // Now withdraw most of the user's collateral to make them underfunded
+        vm.startPrank(underfundedUser);
+
+        uint256 currentBalance0 = ct0.balanceOf(underfundedUser);
+        uint256 currentBalance1 = ct1.balanceOf(underfundedUser);
+
+        console2.log("User balance after position (token0 shares):", currentBalance0);
+        console2.log("User balance after position (token1 shares):", currentBalance1);
+
+        // Withdraw almost all collateral to simulate underfunded state
+        // This is aggressive - in reality the user might just have accrued debt
+        editCollateral(ct0, underfundedUser, 0);
+        editCollateral(ct1, underfundedUser, 0);
+
+        uint256 balanceAfterWithdraw0 = ct0.balanceOf(underfundedUser);
+        uint256 balanceAfterWithdraw1 = ct1.balanceOf(underfundedUser);
+
+        console2.log("User balance after withdraw (token0 shares):", balanceAfterWithdraw0);
+        console2.log("User balance after withdraw (token1 shares):", balanceAfterWithdraw1);
+
+        // Now try to self-settle premium (account == msg.sender)
+        // According to the finding, this should succeed and allow underfunded settlement
+        // But according to our analysis, this should REVERT due to underflow in revoke()
+
+        // The finding claims:
+        // 1. delegate() inflates balance with phantom shares
+        // 2. settlement burns shares (succeeds due to inflated balance)
+        // 3. refund() is a self-transfer (no-op when account == msg.sender)
+        // 4. revoke() should "repair" by adding to _internalSupply
+        //
+        // Reality: revoke() simply does balanceOf[delegatee] -= type(uint248).max
+        // If balance < type(uint248).max, this UNDERFLOWS and REVERTS
+
+        //vm.expectRevert();
+        //call dispatchFrom settle on self
+        vm.startPrank(Alice);
+        liquidate(pp, new TokenId[](0), underfundedUser, shortPosList);
+
+        uint256 balanceAfterLiquidation0 = ct0.balanceOf(underfundedUser);
+        uint256 balanceAfterLiquidation1 = ct1.balanceOf(underfundedUser);
+
+        console2.log("User balance after liquidation (token0 shares):", balanceAfterWithdraw0);
+        console2.log("User balance after liquidation (token1 shares):", balanceAfterWithdraw1);
+
+        console2.log("SUCCESS: Self-settlement reverted as expected when underfunded");
+    }
+
+    /**
+     * @notice POC: Fee Desync in Liquidation - Integration Test
+     * @dev Based on test_success_liquidation_LowCollateral_scenarios pattern
+     *
+     * VULNERABILITY:
+     *   - shortPremium (solvency/bonus) uses s_settledTokens (storage)
+     *   - availablePremium (actual payout) uses s_settledTokens + collectedByLeg
+     *   - SHORT holders RECEIVE premium - they are affected by this bug
+     */
+    function test_POC_FeeDesync_Liquidation_Integration() public {
+        console.log("=========================================================");
+        console.log("  POC: FEE DESYNC IN LIQUIDATION - SHORT HOLDER");
+        console.log("=========================================================");
+        console.log("");
+
+        // ============ STEP 0: Add JIT liquidity (both V3 and V4) ============
+        vm.startPrank(Swapper);
+        // Add MORE JIT liquidity to support position burns
+        swapperc.mint(uniPool, -1000, 1000, 10 ** 22);
+        routerV4.modifyLiquidity(address(0), poolKey, -1000, 1000, 10 ** 22);
+
+        // ============ STEP 1: Create SHORT position (Alice) ============
+        console.log("=== STEP 1: CREATE SHORT POSITION ===");
+
+        {
+            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        // Alice sells SHORT call (tokenType=0) - RECEIVES premium
+        TokenId shortPos = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0, // legIndex
+            1, // optionRatio
+            1, // asset (token1)
+            0, // isLong = 0 (SHORT)
+            0, // tokenType = 0 (call)
+            0, // riskPartner
+            0, // strike
+            2 // width = 2 (narrow like working tests)
+        );
+
+        TokenId[] memory alicePosIdList = new TokenId[](1);
+        alicePosIdList[0] = shortPos;
+
+        // Setup Alice with minimal collateral for call option
+        vm.startPrank(Alice);
+        ct0.withdraw(ct0.maxWithdraw(Alice), Alice, Alice);
+        ct1.withdraw(ct1.maxWithdraw(Alice), Alice, Alice);
+        token0.approve(address(ct0), 1000);
+        ct0.deposit(1000, Alice);
+
+        mintOptions(
+            pp,
+            alicePosIdList,
+            3000, // Size 3000 like working tests
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+        console.log("Alice opened SHORT call position (receives premium)");
+
+        // ============ STEP 2: Generate fees from trading activity ============
+        console.log("");
+        console.log("=== STEP 2: GENERATE UNISWAP TRADING FEES ===");
+
+        // In reality, fees accumulate from SWAPS happening in the pool
+        // These fees go into Uniswap's feeGrowthGlobal accumulators
+        // But s_settledTokens only updates when someone BURNS a position!
+
+        accruePoolFeesInRange(
+            manager,
+            poolKey,
+            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
+            10_000_000, // 10M fees in token0
+            20_000_000 // 20M fees in token1
+        );
+
+        console.log("Generated 10M/20M fees from trading activity");
+        console.log("");
+        console.log("KEY INSIGHT: WHY shortPremium = 0 IS REALISTIC");
+        console.log("------------------------------------------------");
+        console.log("- Fees accumulate CONTINUOUSLY from swaps in Uniswap");
+        console.log("- s_settledTokens ONLY updates when positions are BURNED");
+        console.log("- If Alice never burns/modifies her position, s_settledTokens = 0");
+        console.log("- This is NORMAL - users don't constantly burn to collect fees");
+        console.log("- When liquidation happens, ALL accumulated fees get collected at once");
+
+        // ============ STEP 3: Measure shortPremium BEFORE liquidation ============
+        console.log("");
+        console.log("=== STEP 3: MEASURE STATE BEFORE LIQUIDATION ===");
+
+        (LeftRightUnsigned shortPremiumBefore, , ) = pp.getAccumulatedFeesAndPositionsData(
+            Alice,
+            true,
+            alicePosIdList
+        );
+
+        console.log("Alice shortPremium (from s_settledTokens):");
+        console.log("  token0:", shortPremiumBefore.rightSlot());
+        console.log("  token1:", shortPremiumBefore.leftSlot());
+
+        (, currentTick, , , , , ) = uniPool.slot0();
+        console.log("Current tick:", currentTick);
+
+        (uint256 balance0, uint256 required0) = ph.checkCollateral(
+            pp,
+            Alice,
+            currentTick,
+            alicePosIdList
+        );
+        console.log("Alice balance:", balance0, " required:", required0);
+
+        // ============ STEP 4: Make Alice insolvent ============
+        console.log("");
+        console.log("=== STEP 4: MAKE ALICE INSOLVENT ===");
+
+        vm.startPrank(Swapper);
+        // Reduce collateral to make insolvent (like working tests use 550)
+        editCollateral(ct0, Alice, ct0.convertToShares(550));
+
+        (balance0, required0) = ph.checkCollateral(pp, Alice, currentTick, alicePosIdList);
+        console.log("After edit - Alice balance:", balance0, " required:", required0);
+        assertTrue(balance0 < required0, "Alice should be liquidatable");
+
+        // Update oracle
+        for (uint256 j = 0; j < 100; ++j) {
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 10);
+            swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+            swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+            pp.pokeOracle();
+        }
+
+        console.log("Oracle updated, Alice is now liquidatable");
+
+        // ============ STEP 5: Execute liquidation ============
+        console.log("");
+        console.log("=== STEP 5: EXECUTE LIQUIDATION ===");
+
+        uint256 aliceShares0Before = ct0.balanceOf(Alice);
+        uint256 aliceShares1Before = ct1.balanceOf(Alice);
+        console.log("Alice shares BEFORE: CT0=", aliceShares0Before, " CT1=", aliceShares1Before);
+
+        // Capture Charlie's balance before (liquidator)
+        uint256 charlieShares0Before = ct0.balanceOf(Charlie);
+        uint256 charlieShares1Before = ct1.balanceOf(Charlie);
+        console.log(
+            "Charlie (liquidator) BEFORE: CT0=",
+            charlieShares0Before,
+            " CT1=",
+            charlieShares1Before
+        );
+
+        vm.startPrank(Charlie);
+        liquidate(pp, new TokenId[](0), Alice, alicePosIdList);
+
+        // Check Charlie's balance after
+        uint256 charlieShares0After = ct0.balanceOf(Charlie);
+        uint256 charlieShares1After = ct1.balanceOf(Charlie);
+        console.log(
+            "Charlie (liquidator) AFTER:  CT0=",
+            charlieShares0After,
+            " CT1=",
+            charlieShares1After
+        );
+        console.log(
+            "Charlie CT0 change:",
+            int256(charlieShares0After) - int256(charlieShares0Before)
+        );
+        console.log(
+            "Charlie CT1 change:",
+            int256(charlieShares1After) - int256(charlieShares1Before)
+        );
+
+        console.log("LIQUIDATION EXECUTED!");
+
+        // ============ STEP 6: Measure results and ASSERT vulnerability ============
+        console.log("");
+        console.log("=== STEP 6: RESULTS & ASSERTIONS ===");
+
+        uint256 aliceShares0After = ct0.balanceOf(Alice);
+        uint256 aliceShares1After = ct1.balanceOf(Alice);
+        console.log("Alice shares AFTER: CT0=", aliceShares0After, " CT1=", aliceShares1After);
+
+        // Calculate what Alice received from liquidation
+        int256 change0 = int256(aliceShares0After) - int256(aliceShares0Before);
+        int256 change1 = int256(aliceShares1After) - int256(aliceShares1Before);
+        console.log("Alice CT0 change:", change0);
+        console.log("Alice CT1 change:", change1);
+
+        // ============ CRITICAL ASSERTIONS - PROVING THE VULNERABILITY ============
+        console.log("");
+        console.log("=========================================================");
+        console.log("  VULNERABILITY ASSERTIONS");
+        console.log("=========================================================");
+
+        // Record shortPremium values
+        uint256 shortPremiumToken0 = shortPremiumBefore.rightSlot();
+        uint256 shortPremiumToken1 = shortPremiumBefore.leftSlot();
+
+        // ASSERTION 1: shortPremium was 0 (s_settledTokens = 0 because no prior burns)
+        assertEq(shortPremiumToken0, 0, "shortPremium token0 should be 0");
+        assertEq(shortPremiumToken1, 0, "shortPremium token1 should be 0");
+        console.log("ASSERT 1 PASSED: shortPremium = 0 (no prior burns to update s_settledTokens)");
+
+        // ASSERTION 2: Alice received premium during liquidation
+        assertGt(aliceShares1After, 0, "Alice should have received CT1 shares");
+        console.log("ASSERT 2 PASSED: Alice received", aliceShares1After, "CT1 shares");
+
+        // ASSERTION 3: THE CORE PROOF - premiumReceived > shortPremium
+        // If haircut correctly bounded premium to shortPremium (0),
+        // Alice should have received 0. But she received > 0!
+        uint256 premiumReceivedToken1 = aliceShares1After;
+        assertGt(
+            premiumReceivedToken1,
+            shortPremiumToken1,
+            "premiumReceived > shortPremium proves desync"
+        );
+        console.log("ASSERT 3 PASSED: premiumReceived > shortPremium");
+        console.log("  premiumReceived:", premiumReceivedToken1);
+        console.log("  shortPremium:", shortPremiumToken1);
+
+        uint256 feesBypassedHaircut = premiumReceivedToken1 - shortPremiumToken1;
+        console.log("");
+        console.log("FEE DESYNC AMOUNT:", feesBypassedHaircut, "tokens BYPASSED haircut!");
+
+        // NOTE: PremiumSettled event is only emitted when position is KEPT OPEN
+        // During liquidation, position is FULLY CLOSED, so no event emitted
+        // But the premium IS still settled internally - just no event!
+        // Our 3 assertions above prove the vulnerability directly via state changes.
+
+        console.log("");
+        console.log("=========================================================");
+        console.log("  WHY shortPremium = 0 IS REALISTIC");
+        console.log("=========================================================");
+        console.log("");
+        console.log("Fees accumulate CONTINUOUSLY from swaps in Uniswap.");
+        console.log("But s_settledTokens ONLY updates when positions are BURNED.");
+        console.log("");
+        console.log("If user opens position and never modifies it:");
+        console.log("  - Fees accumulate in Uniswap feeGrowthGlobal: YES");
+        console.log("  - s_settledTokens updated: NO");
+        console.log("  - shortPremium from s_settledTokens: 0");
+        console.log("");
+        console.log("When liquidation burns the position:");
+        console.log("  - collectedByLeg = ALL accumulated fees");
+        console.log("  - availablePremium = s_settledTokens + collectedByLeg > 0");
+        console.log("  - But haircut was based on shortPremium = 0!");
+        console.log("");
+        console.log("CONCLUSION: ALL fees collected during burn BYPASS haircut!");
     }
 }

@@ -61,9 +61,7 @@ library OraclePackLibrary {
 
     uint256 internal constant BITMASK_UINT22 = 0x3FFFFF;
     uint256 internal constant BITMASK_UINT88 = 0xFFFFFFFFFFFFFFFFFFFFFF;
-    uint256 internal constant UPPER_118BITS_MASK =
-        0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0000000000000000000000000000000;
-
+    uint256 internal constant UPPER_138BITS_MASK = ~(uint256(1 << 118) - 1);
     uint256 internal constant LOCK_MODE_MASK = ~(uint256(3) << 118);
     uint256 internal constant LOCK_MODE_ON = uint256(3) << 118;
     uint256 internal constant LOCK_MODE_OFF = 0;
@@ -627,7 +625,7 @@ library OraclePackLibrary {
             }
 
             rebasedOraclePack = OraclePack.wrap(
-                (OraclePack.unwrap(oraclePack) & UPPER_118BITS_MASK) +
+                (OraclePack.unwrap(oraclePack) & UPPER_138BITS_MASK) +
                     (uint256(uint24(_newReferenceTick) & BITMASK_UINT22) << 96) +
                     uint96(_newResiduals)
             );

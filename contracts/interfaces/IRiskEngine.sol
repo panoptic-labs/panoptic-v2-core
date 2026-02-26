@@ -2,8 +2,8 @@
 pragma solidity ^0.8.24;
 
 // Interfaces
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
-import {PanopticPool} from "@contracts/PanopticPool.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
 
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
@@ -65,17 +65,77 @@ interface IRiskEngine {
     /// @notice Address allowed to override the automatically computed safe mode.
     function GUARDIAN() external view returns (address);
 
+    /// @notice Decimals for computation (1 millitick precision).
+    function DECIMALS() external view returns (uint256);
+
+    /// @notice Packed EMA periods for spot, fast, and slow EMAs.
+    function EMA_PERIODS() external view returns (uint96);
+
+    /// @notice The maximum allowed cumulative delta between oracle ticks.
+    function MAX_TICKS_DELTA() external view returns (int256);
+
+    /// @notice The maximum allowed delta between the currentTick and the Uniswap TWAP tick during dispatch.
+    function MAX_TWAP_DELTA_DISPATCH() external view returns (uint16);
+
+    /// @notice The maximum spread for long premium calculations.
+    function MAX_SPREAD() external view returns (uint24);
+
+    /// @notice Multiplier for the collateral requirement during buying power decrease.
+    function BP_DECREASE_BUFFER() external view returns (uint32);
+
+    /// @notice The maximum amount of change, in ticks, permitted between internal median updates.
+    function MAX_CLAMP_DELTA() external view returns (int24);
+
+    /// @notice The notional fee, in basis points, collected from PLPs at option mint.
+    function NOTIONAL_FEE() external view returns (uint16);
+
+    /// @notice The premium fee, in basis points, collected from the premium paid/received.
+    function PREMIUM_FEE() external view returns (uint16);
+
+    /// @notice The protocol split, in basis points, when a builder code is present.
+    function PROTOCOL_SPLIT() external view returns (uint16);
+
+    /// @notice The builder split, in basis points, when a builder code is present.
+    function BUILDER_SPLIT() external view returns (uint16);
+
+    /// @notice Required collateral ratio for selling options, scaled by 10_000_000.
+    function SELLER_COLLATERAL_RATIO() external view returns (uint256);
+
+    /// @notice Required collateral ratio for buying options, scaled by 10_000_000.
+    function BUYER_COLLATERAL_RATIO() external view returns (uint256);
+
+    /// @notice Required collateral margin for loans in excess of notional, scaled by 10_000_000.
+    function MAINT_MARGIN_RATE() external view returns (uint256);
+
+    /// @notice Basal cost (in bps of notional) to force exercise an out-of-range position.
+    function FORCE_EXERCISE_COST() external view returns (uint256);
+
+    /// @notice Target pool utilization below which buying+selling is optimal, scaled by 10_000_000.
+    function TARGET_POOL_UTIL() external view returns (uint256);
+
+    /// @notice Pool utilization above which selling is 100% collateral backed, scaled by 10_000_000.
+    function SATURATED_POOL_UTIL() external view returns (uint256);
+
+    /// @notice Cross buffer parameter for token0.
+    function CROSS_BUFFER_0() external view returns (uint256);
+
+    /// @notice Cross buffer parameter for token1.
+    function CROSS_BUFFER_1() external view returns (uint256);
+
+    /// @notice Maximum number of open legs allowed.
+    function MAX_OPEN_LEGS() external view returns (uint256);
+
     /*//////////////////////////////////////////////////////////////
                                 GUARDIAN
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Forces a PanopticPool into locked safe mode.
     /// @param pool The PanopticPool to lock.
-    function lockPool(PanopticPool pool) external;
+    function lockPool(PanopticPoolV2 pool) external;
 
     /// @notice Removes the forced safe-mode lock on a PanopticPool.
     /// @param pool The PanopticPool to unlock.
-    function unlockPool(PanopticPool pool) external;
+    function unlockPool(PanopticPoolV2 pool) external;
 
     /*//////////////////////////////////////////////////////////////
                                 TRANSFERS
@@ -107,8 +167,8 @@ interface IRiskEngine {
         address payor,
         LeftRightSigned fees,
         int24 atTick,
-        CollateralTracker ct0,
-        CollateralTracker ct1
+        CollateralTrackerV2 ct0,
+        CollateralTrackerV2 ct1
     ) external view returns (LeftRightSigned);
 
     /// @notice Get the cost of exercising an option. Used during a forced exercise.
@@ -122,7 +182,7 @@ interface IRiskEngine {
         int24 oracleTick,
         TokenId tokenId,
         PositionBalance positionBalance
-    ) external view returns (LeftRightSigned exerciseFees);
+    ) external pure returns (LeftRightSigned exerciseFees);
 
     /// @notice Compute the pre-haircut liquidation bonuses to be paid to the liquidator and the protocol loss caused by the liquidation (pre-haircut).
     /// @param tokenData0 LeftRight encoded word with balance of token0 in the right slot, and required balance in left slot
@@ -141,7 +201,6 @@ interface IRiskEngine {
     ) external pure returns (LeftRightSigned, LeftRightSigned);
 
     /// @notice Haircut/clawback any premium paid by `liquidatee` on `positionIdList` over the protocol loss threshold during a liquidation.
-    /// @param liquidatee The address of the user being liquidated
     /// @param positionIdList The list of position ids being liquidated
     /// @param premiasByLeg The premium paid (or received) by the liquidatee for each leg of each position
     /// @param collateralRemaining The remaining collateral after the liquidation (negative if protocol loss)
@@ -150,13 +209,13 @@ interface IRiskEngine {
     /// @return haircutTotal Total premium clawed back from the liquidatee
     /// @return haircutPerLeg Per-position/per-leg haircut amounts
     function haircutPremia(
-        address liquidatee,
         TokenId[] memory positionIdList,
         LeftRightSigned[4][] memory premiasByLeg,
         LeftRightSigned collateralRemaining,
         uint160 atSqrtPriceX96
     )
         external
+        pure
         returns (
             LeftRightSigned bonusDeltas,
             LeftRightUnsigned haircutTotal,
@@ -213,7 +272,7 @@ interface IRiskEngine {
     ) external view returns (RiskParameters);
 
     /// @notice computes the fee recipient address based on builder code and salt.
-    function getFeeRecipient(uint256 builderCode) external pure returns (uint128 feeRecipient);
+    function getFeeRecipient(uint256 builderCode) external view returns (address);
 
     /// @notice Checks for significant oracle deviation to determine if Safe Mode should be active.
     /// @param currentTick The current tick
@@ -227,11 +286,13 @@ interface IRiskEngine {
     /// @notice Determines which ticks to check for solvency based on market volatility.
     /// @param currentTick The current tick
     /// @param _oraclePack The oracle pack
+    /// @param safeMode A number representing whether the protocol is in Safe Mode.
     /// @return atTicks Array of ticks to check solvency at
     /// @return oraclePack The oracle pack (potentially updated)
     function getSolvencyTicks(
         int24 currentTick,
-        OraclePack _oraclePack
+        OraclePack _oraclePack,
+        uint8 safeMode
     ) external view returns (int24[] memory atTicks, OraclePack oraclePack);
 
     /// @notice Get the collateral status/margin details of an account/user.
@@ -252,8 +313,8 @@ interface IRiskEngine {
         address user,
         LeftRightUnsigned shortPremia,
         LeftRightUnsigned longPremia,
-        CollateralTracker ct0,
-        CollateralTracker ct1,
+        CollateralTrackerV2 ct0,
+        CollateralTrackerV2 ct1,
         uint256 buffer
     ) external view returns (bool);
 
@@ -276,8 +337,8 @@ interface IRiskEngine {
         TokenId[] calldata positionIdList,
         LeftRightUnsigned shortPremia,
         LeftRightUnsigned longPremia,
-        CollateralTracker ct0,
-        CollateralTracker ct1
+        CollateralTrackerV2 ct0,
+        CollateralTrackerV2 ct1
     )
         external
         view
@@ -316,4 +377,14 @@ interface IRiskEngine {
 
     /// @notice Returns the stored VEGOID parameter
     function vegoid() external view returns (uint8);
+
+    /// @notice Get the cross buffer ratio for a given utilization.
+    /// @dev This is computed using the global utilization of the user.
+    /// @param utilization The pool utilization of this collateral vault at the time the position is minted
+    /// @param crossBuffer The cross buffer parameter
+    /// @return The cross buffer ratio at `utilization`
+    function crossBufferRatio(
+        int256 utilization,
+        uint256 crossBuffer
+    ) external view returns (uint256);
 }

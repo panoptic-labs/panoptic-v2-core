@@ -23,15 +23,15 @@ import {SqrtPriceMath} from "v3-core/libraries/SqrtPriceMath.sol";
 import {PoolAddress} from "v3-periphery/libraries/PoolAddress.sol";
 import {PositionKey} from "v3-periphery/libraries/PositionKey.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
+import {SemiFungiblePositionManagerV3} from "@contracts/SemiFungiblePositionManagerV3.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
 import {ReenterMint, ReenterBurn, Reenter1155Initialize, ReenterTransferSingle, ReenterTransferBatch} from "../testUtils/ReentrancyMocks.sol";
 
-contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
-    constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory, 10 ** 13, 0) {}
+contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManagerV3 {
+    constructor(IUniswapV3Factory _factory) SemiFungiblePositionManagerV3(_factory, 10 ** 13, 0) {}
 
     function addressToPoolData(address pool, uint8 vegoid) public view returns (PoolData) {
         return s_addressToPoolData[pool][vegoid];
@@ -90,7 +90,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     // immutable data about the pool being tested
     IUniswapV3Pool pool;
     uint64 poolId;
-    uint8 vegoid = 4;
+    uint8 vegoid = 8;
     address token0;
     address token1;
     uint24 fee;
@@ -226,7 +226,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     function _cacheWorldState(IUniswapV3Pool _pool) internal {
         pool = _pool;
         {
-            poolId = uint40(uint160(address(_pool)) >> 112) + uint64(uint256(vegoid) << 40);
+            poolId = uint40(uint160(address(_pool)) >> 120) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(_pool.tickSpacing())) << 48;
         }
         token0 = _pool.token0();
@@ -899,7 +899,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         uint64 poolId;
 
         {
-            poolId = uint40(uint160(address(pool)) >> 112) + uint64(uint256(vegoid) << 40);
+            poolId = uint40(uint160(address(pool)) >> 120) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(pool.tickSpacing())) << 48;
         }
 
@@ -918,7 +918,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             uint64 poolId;
 
             {
-                poolId = uint40(uint160(address(pool)) >> 112) + uint64(uint256(vegoid) << 40);
+                poolId = uint40(uint160(address(pool)) >> 120) + uint64(uint256(vegoid) << 40);
                 poolId += uint64(uint24(pool.tickSpacing())) << 48;
             }
 
@@ -940,7 +940,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         UniPoolPriceMock pm = new UniPoolPriceMock();
-        uint64 poolIdNew = (200 << 48) + (4 << 40);
+        uint64 poolIdNew = (200 << 48) + (uint64(vegoid) << 40);
         for (uint160 i = 0; i < 100; i++) {
             factoryMock.increment();
 
@@ -1000,6 +1000,18 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // These values are zero at this point; thus there is no corresponding uni pool and we should revert
         sfpm.initializeAMMPool(token0, token1, fee, vegoid);
+    }
+
+    function test_Fail_initializeAMMPool_vegoid() public {
+        // Loop through all pools and test
+        for (uint256 i = 0; i < pools.length; i++) {
+            console2.log("i", i);
+            console2.log("pools", address(pools[i]));
+            _cacheWorldState(pools[i]);
+
+            vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 0));
+            sfpm.initializeAMMPool(token0, token1, fee, 0);
+        }
     }
 
     /// NOTE - the definitions of "call" and "put" can vary by Uniswap pair and which token is considered the asset
@@ -4255,7 +4267,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         {
             // net = CURRENTLY in AMM
             // short = REMOVED from AMM
-            // 2 ** 2 = 2 ** VEGOID (VEGOID=2)
+            // vegoid = 2 ** VEGOID (VEGOID=2)
             uint256 netLiq = expectedLiq - expectedLiqs[1];
             uint256 shortLiq = expectedLiqs[1];
             uint256 basePremia = FullMath.mulDiv(
@@ -4273,7 +4285,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                             uint256(expectedLiq) ** 2 -
                                 uint256(expectedLiq) *
                                 shortLiq +
-                                (shortLiq ** 2 / 2 ** 2),
+                                (shortLiq ** 2 / vegoid),
                             uint256(expectedLiq) ** 2
                         )
                 ) +
@@ -4285,7 +4297,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                     uint256(expectedLiq) ** 2 -
                         uint256(expectedLiq) *
                         shortLiq +
-                        (shortLiq ** 2 / 2 ** 2),
+                        (shortLiq ** 2 / vegoid),
                     uint256(expectedLiq) ** 2
                 ),
                 premiaError0[0]
@@ -4303,7 +4315,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                             uint256(expectedLiq) ** 2 -
                                 uint256(expectedLiq) *
                                 shortLiq +
-                                (shortLiq ** 2 / 2 ** 2),
+                                (shortLiq ** 2 / vegoid),
                             uint256(expectedLiq) ** 2
                         )
                 ) +
@@ -4315,7 +4327,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                     uint256(expectedLiq) ** 2 -
                         uint256(expectedLiq) *
                         shortLiq +
-                        (shortLiq ** 2 / 2 ** 2),
+                        (shortLiq ** 2 / vegoid),
                     uint256(expectedLiq) ** 2
                 ),
                 premiaError1[0]
@@ -4336,7 +4348,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         {
             // net = CURRENTLY in AMM
             // short = REMOVED from AMM
-            // 2 ** 2 = 2 ** VEGOID (VEGOID=2)
+            // vegoid = 2 ** VEGOID (VEGOID=2)
             // note - we do not need to calculate base premium seperately here because the totalLiquidity fully cancels
             uint256 netLiq = expectedLiq - expectedLiqs[1];
             uint256 shortLiq = expectedLiqs[1];
@@ -4347,13 +4359,13 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 (
                     tokensOwed0 == 0
                         ? uint(0)
-                        : (2 * 2 ** 64 * (netLiq + shortLiq / 2 ** 2)) / (netLiq ** 2)
+                        : (2 * 2 ** 64 * (netLiq + shortLiq / vegoid)) / (netLiq ** 2)
                 ) +
                 10;
 
             assertApproxEqAbs(
                 premium0Long - premium0LongOld,
-                FullMath.mulDiv(tokensOwed0 * 2 ** 64, netLiq + shortLiq / 2 ** 2, netLiq ** 2),
+                FullMath.mulDiv(tokensOwed0 * 2 ** 64, netLiq + shortLiq / vegoid, netLiq ** 2),
                 premiaError0[1]
             );
 
@@ -4363,12 +4375,12 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 (
                     tokensOwed1 == 0
                         ? uint(0)
-                        : (2 * 2 ** 64 * (netLiq + shortLiq / 2 ** 2)) / (netLiq ** 2)
+                        : (2 * 2 ** 64 * (netLiq + shortLiq / vegoid)) / (netLiq ** 2)
                 ) +
                 10;
             assertApproxEqAbs(
                 premium1Long - premium1LongOld,
-                FullMath.mulDiv(tokensOwed1 * 2 ** 64, netLiq + shortLiq / 2 ** 2, netLiq ** 2),
+                FullMath.mulDiv(tokensOwed1 * 2 ** 64, netLiq + shortLiq / vegoid, netLiq ** 2),
                 premiaError1[1]
             );
         }
@@ -4611,7 +4623,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
             abi.encode(pool),
@@ -4672,7 +4684,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
             abi.encode(pool),
@@ -4733,7 +4745,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
             abi.encode(pool),
@@ -4779,7 +4791,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         Reenter1155Initialize(Alice).construct(address(token0), address(token1), fee, poolId);
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.mintTokenizedPosition(
             abi.encode(pool),
@@ -4848,7 +4860,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert("REENTRANCY");
+        vm.expectRevert(Errors.Reentrancy.selector);
 
         sfpm.burnTokenizedPosition(
             abi.encode(pool),

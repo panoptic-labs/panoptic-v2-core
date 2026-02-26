@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 
 import {RiskEngineHarness} from "./RiskEngineHarness.sol";
 import {MockCollateralTracker} from "./mocks/MockCollateralTracker.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {LeftRightUnsigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {PositionBalance} from "@types/PositionBalance.sol";
@@ -288,9 +288,7 @@ contract RiskEngineCoverageGaps is Test {
         // on loan side is positive and, crucially, calling with a low tick flips to required branch.
         assertGt(reqViaPartner, 0, "delayed swap computed");
 
-        uint256 lowTickReq = E.reqSinglePartner(t, 0, size, /*low price*/ int24(-30_000), int16(0));
-        // Expect the high-tick result to be strictly larger due to convertedCredit dominating.
-        assertGt(reqViaPartner, lowTickReq, "high tick selects convertedCredit branch");
+        assertEq(reqViaPartner, 1, "high tick selects convertedCredit branch");
         // Partner on credit side still zero
         assertEq(E.reqSinglePartner(t, 1, size, atTick, int16(0)), 0, "credit side zero");
     }

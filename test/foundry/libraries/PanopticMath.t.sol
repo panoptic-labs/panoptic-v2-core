@@ -51,6 +51,11 @@ contract PanopticMathTest is Test, PositionUtils {
         harness = new PanopticMathHarness();
     }
 
+    function _pickTickSpacing(uint256 seed) internal pure returns (int24) {
+        int24[4] memory choices = [int24(1), int24(10), int24(60), int24(200)];
+        return choices[seed % choices.length];
+    }
+
     // Constants for computeInternalMedian tests
     int24 internal constant REFERENCE_TICK = 200000;
     uint256 internal constant INITIAL_EPOCH = 5;
@@ -261,6 +266,67 @@ contract PanopticMathTest is Test, PositionUtils {
             LiquidityChunk.unwrap(expectedLiquidityChunk),
             LiquidityChunk.unwrap(returnedLiquidityChunk)
         );
+    }
+
+    function testFuzz_ChunkKey_equivalence(
+        int24 strikeSeed,
+        uint16 widthSeed,
+        uint16 tokenTypeSeed,
+        uint256 tickSpacingSeed
+    ) public {
+        int24 tickSpacing = _pickTickSpacing(tickSpacingSeed);
+        int24 width = int24(uint24(bound(uint256(widthSeed), 1, 4095)));
+
+        int24 strike;
+        {
+            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
+            int24 minStrike = type(int24).min + rangeDown;
+            int24 maxStrike = type(int24).max - rangeUp;
+            strike = int24(bound(int256(strikeSeed), int256(minStrike), int256(maxStrike)));
+        }
+        uint256 tokenType = tokenTypeSeed & 0x1;
+
+        TokenId tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
+        tokenId = tokenId.addLeg(0, 1, 0, 0, tokenType, 0, strike, width);
+
+        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0);
+
+        bytes32 byTokenId = harness.getChunkKey(tokenId, 0);
+        bytes32 byTicks = harness.getChunkKey(tickLower, tickUpper, tickSpacing, tokenType);
+
+        assertEq(byTokenId, byTicks);
+    }
+
+    function test_ChunkKey_equivalence_boundaryWidths() public {
+        int24[3] memory tickSpacings = [int24(1), int24(10), int24(60)];
+        int24[2] memory widths = [int24(1), int24(4095)];
+        uint256[2] memory tokenTypes = [uint256(0), uint256(1)];
+
+        int24 strike = 0;
+
+        for (uint256 i = 0; i < tickSpacings.length; i++) {
+            int24 tickSpacing = tickSpacings[i];
+            for (uint256 j = 0; j < widths.length; j++) {
+                int24 width = widths[j];
+                for (uint256 k = 0; k < tokenTypes.length; k++) {
+                    uint256 tokenType = tokenTypes[k];
+                    TokenId tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
+                    tokenId = tokenId.addLeg(0, 1, 0, 0, tokenType, 0, strike, width);
+
+                    (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0);
+
+                    bytes32 byTokenId = harness.getChunkKey(tokenId, 0);
+                    bytes32 byTicks = harness.getChunkKey(
+                        tickLower,
+                        tickUpper,
+                        tickSpacing,
+                        tokenType
+                    );
+
+                    assertEq(byTokenId, byTicks);
+                }
+            }
+        }
     }
 
     function test_Success_getTicks_normalTickRange(

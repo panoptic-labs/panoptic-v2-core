@@ -2,10 +2,10 @@
 pragma solidity ^0.8.24;
 
 // Interfaces
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
-import {PanopticPool} from "@contracts/PanopticPool.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
 import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
+import {SemiFungiblePositionManagerV3} from "@contracts/SemiFungiblePositionManagerV3.sol";
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
@@ -22,7 +22,7 @@ import {Pointer} from "@types/Pointer.sol";
 /// @title Panoptic Factory which creates and registers Panoptic Pools.
 /// @author Axicon Labs Limited
 /// @notice Facilitates deployment of Panoptic pools.
-contract PanopticFactory is FactoryNFT, Multicall {
+contract PanopticFactoryV3 is FactoryNFT, Multicall {
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -34,10 +34,10 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @param collateralTracker1 Address of the collateral tracker contract for token1
     /// @param riskEngine Address of the risk engine used
     event PoolDeployed(
-        PanopticPool indexed poolAddress,
+        PanopticPoolV2 indexed poolAddress,
         IUniswapV3Pool indexed uniswapPool,
-        CollateralTracker collateralTracker0,
-        CollateralTracker collateralTracker1,
+        CollateralTrackerV2 collateralTracker0,
+        CollateralTrackerV2 collateralTracker1,
         IRiskEngine riskEngine
     );
 
@@ -55,7 +55,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     IUniswapV3Factory internal immutable UNIV3_FACTORY;
 
     /// @notice The Semi Fungible Position Manager (SFPM) which tracks option positions across Panoptic Pools.
-    SemiFungiblePositionManager internal immutable SFPM;
+    SemiFungiblePositionManagerV3 internal immutable SFPM;
 
     /// @notice Reference implementation of the `PanopticPool` to clone.
     address internal immutable POOL_REFERENCE;
@@ -68,7 +68,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Mapping from address(UniswapV3Pool) to address(PanopticPool) that stores the address of all deployed Panoptic Pools.
-    mapping(IUniswapV3Pool univ3pool => mapping(IRiskEngine riskEngine => PanopticPool panopticPool))
+    mapping(IUniswapV3Pool univ3pool => mapping(IRiskEngine riskEngine => PanopticPoolV2 panopticPool))
         internal s_getPanopticPool;
 
     /*//////////////////////////////////////////////////////////////
@@ -76,7 +76,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Set immutable variables and store metadata pointers.
-    /// @param _SFPM The canonical `SemiFungiblePositionManager` deployment
+    /// @param _SFPM The canonical `SemiFungiblePositionManagerV3` deployment
     /// @param _univ3Factory The canonical Uniswap V3 Factory deployment
     /// @param _poolReference The reference implementation of the `PanopticPool` to clone
     /// @param _collateralReference The reference implementation of the `CollateralTracker` to clone
@@ -84,7 +84,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @param indices A nested array of keys for K-V metadata pairs for each property in `properties`
     /// @param pointers Contains pointers to the metadata values stored in contract data slices for each index in `indices`
     constructor(
-        SemiFungiblePositionManager _SFPM,
+        SemiFungiblePositionManagerV3 _SFPM,
         IUniswapV3Factory _univ3Factory,
         address _poolReference,
         address _collateralReference,
@@ -118,7 +118,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         uint24 fee,
         IRiskEngine riskEngine,
         uint96 salt
-    ) external returns (PanopticPool newPoolContract) {
+    ) external returns (PanopticPoolV2 newPoolContract) {
         // sort the tokens, if necessary:
         (token0, token1) = token0 < token1 ? (token0, token1) : (token1, token0);
 
@@ -128,7 +128,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         if (address(riskEngine) == address(0)) revert Errors.ZeroAddress();
 
         if (address(s_getPanopticPool[v3Pool][riskEngine]) != address(0))
-            revert Errors.PoolAlreadyInitialized();
+            revert Errors.AlreadyInitialized();
 
         // initialize pool in SFPM if it has not already been initialized
         uint64 poolId = SFPM.initializeAMMPool(token0, token1, fee, riskEngine.vegoid());
@@ -144,13 +144,13 @@ contract PanopticFactory is FactoryNFT, Multicall {
             )
         );
 
-        // using CREATE3 for the PanopticPool given we don't know some of the immutable args (`CollateralTracker` addresses)
+        // using CREATE3 for the PanopticPool given we don't know some of the immutable args (`CollateralTrackerV2` addresses)
         // this allows us to link the PanopticPool into the CollateralTrackers as an immutable arg without advance knowledge of their addresses
-        newPoolContract = PanopticPool(ClonesWithImmutableArgs.addressOfClone3(salt32));
+        newPoolContract = PanopticPoolV2(ClonesWithImmutableArgs.addressOfClone3(salt32));
 
         uint24 _fee = fee;
         // Deploy collateral token proxies
-        CollateralTracker collateralTracker0 = CollateralTracker(
+        CollateralTrackerV2 collateralTracker0 = CollateralTrackerV2(
             COLLATERAL_REFERENCE.clone2(
                 abi.encodePacked(
                     newPoolContract,
@@ -164,7 +164,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
                 )
             )
         );
-        CollateralTracker collateralTracker1 = CollateralTracker(
+        CollateralTrackerV2 collateralTracker1 = CollateralTrackerV2(
             COLLATERAL_REFERENCE.clone2(
                 abi.encodePacked(
                     newPoolContract,
@@ -180,7 +180,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         );
 
         // This creates a new Panoptic Pool (proxy to the PanopticPool implementation)
-        newPoolContract = PanopticPool(
+        newPoolContract = PanopticPoolV2(
             POOL_REFERENCE.clone3(
                 abi.encodePacked(
                     collateralTracker0,
@@ -287,7 +287,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     function getPanopticPool(
         IUniswapV3Pool univ3pool,
         IRiskEngine riskEngine
-    ) external view returns (PanopticPool) {
+    ) external view returns (PanopticPoolV2) {
         return s_getPanopticPool[univ3pool][riskEngine];
     }
 }

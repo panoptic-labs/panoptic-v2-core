@@ -9,7 +9,7 @@ import {TokenId} from "@types/TokenId.sol";
 import {OraclePack} from "@types/OraclePack.sol";
 import {PositionBalance} from "@types/PositionBalance.sol";
 import {PositionFactory} from "./helpers/PositionFactory.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 
 contract RiskEngineInvariants is Test {
     using PositionFactory for *;
@@ -105,8 +105,8 @@ contract RiskEngineInvariants is Test {
             user,
             z,
             z,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1)),
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1)),
             9_000_000
         );
         bool s2 = E.isAccountSolvent(
@@ -116,8 +116,8 @@ contract RiskEngineInvariants is Test {
             user,
             z,
             z,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1)),
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1)),
             10_000_000
         );
         bool s3 = E.isAccountSolvent(
@@ -127,8 +127,8 @@ contract RiskEngineInvariants is Test {
             user,
             z,
             z,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1)),
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1)),
             11_000_000
         );
         // no re-entry
@@ -338,8 +338,8 @@ contract RiskEngineInvariants is Test {
                 user,
                 z,
                 z,
-                CollateralTracker(address(ct0)),
-                CollateralTracker(address(ct1)),
+                CollateralTrackerV2(address(ct0)),
+                CollateralTrackerV2(address(ct1)),
                 B[i]
             );
             if (i > 0 && !si && last) flipped = true;
@@ -399,8 +399,8 @@ contract RiskEngineInvariants is Test {
             user,
             z,
             z,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1)),
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1)),
             DEC
         );
         bool B = E.isAccountSolvent(
@@ -410,8 +410,8 @@ contract RiskEngineInvariants is Test {
             user,
             z,
             z,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1)),
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1)),
             DEC
         );
 
@@ -464,8 +464,8 @@ contract RiskEngineInvariants is Test {
             ids,
             shortPrem,
             longPrem,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1))
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1))
         );
 
         // Balances side must equal assets + shortPrem + credits(=0 here).

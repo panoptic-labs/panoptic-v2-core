@@ -18,8 +18,8 @@ library Errors {
     /// @notice SFPM: Mints/burns of zero-liquidity chunks in Uniswap are not supported
     error ChunkHasZeroLiquidity();
 
-    /// @notice CollateralTracker: Collateral token has already been initialized
-    error CollateralTokenAlreadyInitialized();
+    /// @notice Smart contract has already been initialized
+    error AlreadyInitialized();
 
     /// @notice CollateralTracker: The amount of shares (or assets) deposited is larger than the maximum permitted
     error DepositTooLarge();
@@ -62,7 +62,7 @@ library Errors {
     /// @notice PanopticPool: The Net Liquidity is zero due to small positions and cannot be used to compute the liquiditySpread
     error NetLiquidityZero();
 
-    /// @notice PanopticPool: None of the legs in a position are force-exercisable (they are all either short or ATM long)
+    /// @notice PanopticPool: None of the legs in a position are force-exercisable (they are all short or are credits/loans)
     error NoLegsExercisable();
 
     /// @notice PanopticPool: The leg is not long, so premium cannot be settled through `settleLongPremium`
@@ -85,9 +85,6 @@ library Errors {
 
     /// @notice CollateralTracker: The caller for a permissioned function is not the Panoptic Pool
     error NotPanopticPool();
-
-    /// @notice Uniswap pool has already been initialized in the SFPM or created in the factory
-    error PoolAlreadyInitialized();
 
     /// @notice The Uniswap Pool has not been created, so it cannot be used in the SFPM or have a PanopticPool created for it by the factory
     error PoolNotInitialized();
@@ -127,6 +124,9 @@ library Errors {
 
     /// @notice An operation in a library has failed due to an underflow or overflow
     error UnderOverFlow();
+
+    /// @notice The function has triggered a reentrancy check
+    error Reentrancy();
 
     /// @notice PanopticPool: The supplied poolId does not match the poolId for that Uniswap Pool
     error WrongPoolId();

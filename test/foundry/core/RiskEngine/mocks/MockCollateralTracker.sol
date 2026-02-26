@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 
 /// @notice Minimal, in-memory mock to satisfy RiskEngine calls.
 /// It simulates balances, interest accrual, convertToShares/Assets, totalAssets/Supply.

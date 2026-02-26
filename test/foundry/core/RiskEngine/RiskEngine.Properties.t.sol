@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import {RiskEngineHarness} from "./RiskEngineHarness.sol";
 import {MockCollateralTracker} from "./mocks/MockCollateralTracker.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {PositionBalance} from "@types/PositionBalance.sol";
 import {PositionFactory} from "./helpers/PositionFactory.sol";
@@ -65,8 +65,8 @@ contract RiskEngineProperties is Test {
             ids,
             shortPremia,
             longPremia,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1))
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1))
         );
 
         // left = requirement, right = balance including short premia and credits
@@ -384,8 +384,8 @@ contract RiskEngineProperties is Test {
             user,
             sPrem,
             lPrem,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1)),
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1)),
             /*buffer*/ DECIMALS
         );
 
@@ -397,8 +397,8 @@ contract RiskEngineProperties is Test {
             user,
             sPrem,
             lPrem,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1)),
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1)),
             /*buffer*/ DECIMALS
         );
 
@@ -433,8 +433,8 @@ contract RiskEngineProperties is Test {
             user,
             zero,
             zero,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1)),
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1)),
             DECIMALS // 1.0x
         );
 
@@ -445,8 +445,8 @@ contract RiskEngineProperties is Test {
             user,
             zero,
             zero,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1)),
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1)),
             12_000_000 // 1.2x
         );
 

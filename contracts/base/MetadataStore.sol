@@ -25,8 +25,8 @@ contract MetadataStore {
         uint256[][] memory indices,
         Pointer[][] memory pointers
     ) {
-        for (uint256 i = 0; i < properties.length; i++) {
-            for (uint256 j = 0; j < indices[i].length; j++) {
+        for (uint256 i = 0; i != properties.length; i++) {
+            for (uint256 j = 0; j != indices[i].length; j++) {
                 metadata[properties[i]][indices[i][j]] = pointers[i][j];
             }
         }

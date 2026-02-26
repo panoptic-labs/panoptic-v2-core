@@ -91,8 +91,8 @@
       "optimizeRuns": 9999999,
       "links": ["InteractionHelper"]
     },
-    "PanopticFactory": {
-      "path": "./contracts/PanopticFactory.sol",
+    "PanopticFactoryV3": {
+      "path": "./contracts/PanopticFactoryV3.sol",
       "deployment": {
         "address": "0x000000000000010a1DEc6c46371A28A071F8bb01",
         "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a19c1f30d54f612201804528b7",
@@ -102,7 +102,7 @@
       "links": ["PanopticMath"],
       "constructorArgs": [
         [
-          "@SemiFungiblePositionManager",
+          "@SemiFungiblePositionManagerV3",
           "$UNIV3_FACTORY",
           "@PanopticPool",
           "@CollateralTracker",
@@ -122,10 +122,10 @@
       },
       "optimizeRuns": 833,
       "links": ["InteractionHelper", "PanopticMath", "PositionBalanceLibrary"],
-      "constructorArgs": [["@SemiFungiblePositionManager"], ["address"]]
+      "constructorArgs": [["@SemiFungiblePositionManagerV3"], ["address"]]
     },
-    "SemiFungiblePositionManager": {
-      "path": "./contracts/SemiFungiblePositionManager.sol",
+    "SemiFungiblePositionManagerV3": {
+      "path": "./contracts/SemiFungiblePositionManagerV3.sol",
       "deployment": {
         "address": "0x0000000000000DEdEDdD16227aA3D836C5753194",
         "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a136f15df6a78bf60145fff15c",

@@ -29,6 +29,19 @@ contract PanopticMathHarness is Test {
         return liquidityChunk;
     }
 
+    function getChunkKey(TokenId tokenId, uint256 leg) public pure returns (bytes32) {
+        return PanopticMath.getChunkKey(tokenId, leg);
+    }
+
+    function getChunkKey(
+        int24 tickLower,
+        int24 tickUpper,
+        int24 tickSpacing,
+        uint256 tokenType
+    ) public pure returns (bytes32) {
+        return PanopticMath.getChunkKey(tickLower, tickUpper, tickSpacing, tokenType);
+    }
+
     /// @notice Extract the tick range specified by `strike` and `width` for the given `tickSpacing`, if valid.
     /// @param strike the strike price of the option
     /// @param width the width of the option

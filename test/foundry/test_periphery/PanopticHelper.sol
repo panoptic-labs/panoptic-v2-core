@@ -3,8 +3,8 @@ pragma solidity ^0.8.24;
 import "forge-std/Test.sol";
 // Interfaces
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
-import {PanopticPool} from "@contracts/PanopticPool.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
+import {SemiFungiblePositionManagerV3} from "@contracts/SemiFungiblePositionManagerV3.sol";
 import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
@@ -48,7 +48,7 @@ contract PanopticHelper {
     /// @return collateralBalance the total combined balance of token0 and token1 for a user in terms of tokenType
     /// @return requiredCollateral The combined collateral requirement for a user in terms of tokenType
     function checkCollateral(
-        PanopticPool pool,
+        PanopticPoolV2 pool,
         address account,
         int24 atTick,
         TokenId[] calldata positionIdList
@@ -60,7 +60,7 @@ contract PanopticHelper {
             PositionBalance[] memory positionBalanceArray
         ) = pool.getAccumulatedFeesAndPositionsData(account, false, positionIdList);
 
-        PanopticPool _pool = pool;
+        PanopticPoolV2 _pool = pool;
         // Query the current and required collateral amounts for the two tokens
         (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1, ) = pool
             .riskEngine()
@@ -88,7 +88,7 @@ contract PanopticHelper {
     /// @return value0 The amount of token0 owned by portfolio
     /// @return value1 The amount of token1 owned by portfolio
     function getPortfolioValue(
-        PanopticPool pool,
+        PanopticPoolV2 pool,
         address account,
         int24 atTick,
         TokenId[] calldata positionIdList
@@ -142,7 +142,7 @@ contract PanopticHelper {
     /// @return poolUtilization0 The utilization of token0 in the Panoptic pool at mint
     /// @return poolUtilization1 The utilization of token1 in the Panoptic pool at mint
     function optionPositionInfo(
-        PanopticPool pool,
+        PanopticPoolV2 pool,
         address account,
         TokenId tokenId
     ) external view returns (uint128, uint16, uint16) {
@@ -247,7 +247,7 @@ contract PanopticHelper {
         TokenId[] calldata positionIdList
     ) internal view returns (int256) {
         (uint256 balanceCross, uint256 requiredCross) = checkCollateral(
-            PanopticPool(pool),
+            PanopticPoolV2(pool),
             account,
             tick,
             positionIdList
@@ -274,7 +274,7 @@ contract PanopticHelper {
         TokenId[] calldata positionIdList
     ) public view returns (int24 liquidationTick) {
         // initialize right and left bounds from current tick
-        int24 currentTick = SFPM.getCurrentTick(PanopticPool(pool).poolKey());
+        int24 currentTick = SFPM.getCurrentTick(PanopticPoolV2(pool).poolKey());
 
         int24 x0 = currentTick - 10000;
         int24 x1 = currentTick;
@@ -323,7 +323,7 @@ contract PanopticHelper {
         TokenId[] calldata positionIdList
     ) public view returns (int24 liquidationTick) {
         // initialize right and left bounds from current tick
-        int24 currentTick = SFPM.getCurrentTick(PanopticPool(pool).poolKey());
+        int24 currentTick = SFPM.getCurrentTick(PanopticPoolV2(pool).poolKey());
         int24 x0 = currentTick;
         int24 x1 = currentTick + 10000;
         int24 tol = 100000;
