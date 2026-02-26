@@ -9,7 +9,7 @@ import {LeftRightUnsigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {PositionBalance} from "@types/PositionBalance.sol";
 import {PositionFactory} from "./helpers/PositionFactory.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {Constants} from "@libraries/Constants.sol";
 
 contract RiskEnginePropertiesPlus is Test {
@@ -65,8 +65,8 @@ contract RiskEnginePropertiesPlus is Test {
             ids,
             shortPrem,
             longPrem,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1))
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1))
         );
 
         // Left = requirement, Right = balance
@@ -522,8 +522,8 @@ contract RiskEnginePropertiesPlus is Test {
             u,
             z,
             z,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1)),
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1)),
             DEC
         );
         bool rightSide = E.isAccountSolvent(
@@ -533,8 +533,8 @@ contract RiskEnginePropertiesPlus is Test {
             u,
             z,
             z,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1)),
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1)),
             DEC
         );
         assertTrue(leftSide || rightSide, "at least one solvent");
@@ -547,8 +547,8 @@ contract RiskEnginePropertiesPlus is Test {
             u,
             z,
             z,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1)),
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1)),
             9_000_000
         );
         bool s2 = E.isAccountSolvent(
@@ -558,8 +558,8 @@ contract RiskEnginePropertiesPlus is Test {
             u,
             z,
             z,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1)),
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1)),
             10_000_000
         );
         bool s3 = E.isAccountSolvent(
@@ -569,8 +569,8 @@ contract RiskEnginePropertiesPlus is Test {
             u,
             z,
             z,
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1)),
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1)),
             11_000_000
         );
         assertFalse(
@@ -609,8 +609,8 @@ contract RiskEnginePropertiesPlus is Test {
             new TokenId[](0),
             LeftRightUnsigned.wrap(0),
             LeftRightUnsigned.wrap(0),
-            CollateralTracker(address(ct0)),
-            CollateralTracker(address(ct1))
+            CollateralTrackerV2(address(ct0)),
+            CollateralTrackerV2(address(ct1))
         );
     }
 }

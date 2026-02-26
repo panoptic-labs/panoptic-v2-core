@@ -72,7 +72,7 @@ import {TokenId} from "@types/TokenId.sol";
 /// @title Semi-Fungible Position Manager (ERC1155) - a gas-efficient Uniswap V3 position manager.
 /// @notice Wraps Uniswap V3 positions with up to 4 legs behind an ERC1155 token.
 /// @dev Replaces the NonfungiblePositionManager.sol (ERC721) from Uniswap Labs.
-contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyGuard {
+contract SemiFungiblePositionManagerV3 is ERC1155, Multicall, TransientReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/

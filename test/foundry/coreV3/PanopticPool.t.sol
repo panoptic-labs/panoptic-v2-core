@@ -21,23 +21,23 @@ import {SqrtPriceMath} from "v3-core/libraries/SqrtPriceMath.sol";
 import {PositionKey} from "v3-periphery/libraries/PositionKey.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
 import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
-import {PanopticPool} from "@contracts/PanopticPool.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {SemiFungiblePositionManagerV3} from "@contracts/SemiFungiblePositionManagerV3.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
-import {PanopticFactory} from "@contracts/PanopticFactory.sol";
+import {PanopticFactoryV3} from "@contracts/PanopticFactoryV3.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
 import {Constants} from "@libraries/Constants.sol";
 import {Pointer} from "@types/Pointer.sol";
 
-contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
-    constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory, 10 ** 13, 0) {}
+contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManagerV3 {
+    constructor(IUniswapV3Factory _factory) SemiFungiblePositionManagerV3(_factory, 10 ** 13, 0) {}
 }
 
-contract PanopticPoolHarness is PanopticPool {
+contract PanopticPoolHarness is PanopticPoolV2 {
     /// @notice get the positions hash of an account
     /// @param user the account to get the positions hash of
     /// @return _positionsHash positions hash of the account
@@ -100,8 +100,8 @@ contract PanopticPoolHarness is PanopticPool {
     }
 
     constructor(
-        SemiFungiblePositionManager _sfpm
-    ) PanopticPool(ISemiFungiblePositionManager(address(_sfpm))) {}
+        SemiFungiblePositionManagerV3 _sfpm
+    ) PanopticPoolV2(ISemiFungiblePositionManager(address(_sfpm))) {}
 }
 
 contract PanopticPoolTest is PositionUtils {
@@ -178,10 +178,10 @@ contract PanopticPoolTest is PositionUtils {
     LeftRightSigned $longAmounts;
     LeftRightSigned $shortAmounts;
 
-    PanopticFactory factory;
+    PanopticFactoryV3 factory;
     PanopticPoolHarness pp;
-    CollateralTracker ct0;
-    CollateralTracker ct1;
+    CollateralTrackerV2 ct0;
+    CollateralTrackerV2 ct1;
     IRiskEngine re;
 
     PanopticHelper ph;
@@ -328,7 +328,7 @@ contract PanopticPoolTest is PositionUtils {
     LeftRightSigned $netExchanged;
 
     function mintOptions(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory positionIdList,
         uint128 positionSize,
         uint24 effectiveLiquidityLimitX32,
@@ -351,7 +351,7 @@ contract PanopticPoolTest is PositionUtils {
     }
 
     function burnOptions(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId tokenId,
         TokenId[] memory positionIdList,
         int24 tickLimitLow,
@@ -371,7 +371,7 @@ contract PanopticPoolTest is PositionUtils {
     }
 
     function burnOptions(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory tokenIds,
         TokenId[] memory positionIdList,
         int24 tickLimitLow,
@@ -391,7 +391,7 @@ contract PanopticPoolTest is PositionUtils {
     }
 
     function liquidate(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory liquidatorList,
         address liquidatee,
         TokenId[] memory positionIdList
@@ -408,7 +408,7 @@ contract PanopticPoolTest is PositionUtils {
     }
 
     function forceExercise(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         address exercisee,
         TokenId tokenId,
         TokenId[] memory exerciseeListFinal,
@@ -433,7 +433,7 @@ contract PanopticPoolTest is PositionUtils {
     }
 
     function settlePremium(
-        PanopticPool pp,
+        PanopticPoolV2 pp,
         TokenId[] memory settlerList,
         TokenId[] memory settleeList,
         address exercisee,
@@ -515,7 +515,7 @@ contract PanopticPoolTest is PositionUtils {
     function _deployPanopticPool() internal {
         vm.startPrank(Deployer);
 
-        factory = new PanopticFactory(
+        factory = new PanopticFactoryV3(
             sfpm,
             V3FACTORY,
             poolReference,
@@ -645,7 +645,7 @@ contract PanopticPoolTest is PositionUtils {
 
         // deploy reference pool and collateral token
         poolReference = address(new PanopticPoolHarness(sfpm));
-        collateralReference = address(new CollateralTracker());
+        collateralReference = address(new CollateralTrackerV2());
     }
 
     /*//////////////////////////////////////////////////////////////

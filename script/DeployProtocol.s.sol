@@ -3,12 +3,12 @@ pragma solidity ^0.8.24;
 
 // Foundry
 import "forge-std/Script.sol";
-import {PanopticFactory} from "@contracts/PanopticFactoryV4.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {PanopticFactoryV4} from "@contracts/PanopticFactoryV4.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {RiskEngine, BuilderFactory} from "@contracts/RiskEngine.sol";
-import {PanopticPool} from "@contracts/PanopticPool.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
 import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManagerV4.sol";
+import {SemiFungiblePositionManagerV4} from "@contracts/SemiFungiblePositionManagerV4.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {Pointer, PointerLibrary} from "@types/Pointer.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
@@ -80,7 +80,7 @@ contract DeployProtocol is Script {
             }
         }
 
-        SemiFungiblePositionManager sfpm = new SemiFungiblePositionManager(
+        SemiFungiblePositionManagerV4 sfpm = new SemiFungiblePositionManagerV4(
             uniPoolManager,
             10 ** 13,
             10 ** 13,
@@ -98,11 +98,11 @@ contract DeployProtocol is Script {
         // risk engine HIGH
         new RiskEngine(4_500_000, 2_250_000, 128, 5_000_000, 9_000_000);
         */
-        new PanopticFactory(
+        new PanopticFactoryV4(
             sfpm,
             uniPoolManager,
-            address(new PanopticPool(ISemiFungiblePositionManager(address(sfpm)))),
-            address(new CollateralTracker()),
+            address(new PanopticPoolV2(ISemiFungiblePositionManager(address(sfpm)))),
+            address(new CollateralTrackerV2()),
             props,
             indices,
             pointers

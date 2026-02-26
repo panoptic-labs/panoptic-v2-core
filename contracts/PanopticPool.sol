@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 // Interfaces
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
 import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
 // Inherited implementations
@@ -26,7 +26,7 @@ import {OraclePack, OraclePackLibrary} from "@types/OraclePack.sol";
 /// @title The Panoptic Pool: Create permissionless options on a CLAMM.
 /// @author Axicon Labs Limited
 /// @notice Manages positions, collateral, liquidations and forced exercises.
-contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
+contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -235,14 +235,14 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
 
     /// @notice Get the collateral token corresponding to token0 of the Uniswap pool.
     /// @return Collateral token corresponding to token0 in Uniswap
-    function collateralToken0() public pure returns (CollateralTracker) {
-        return CollateralTracker(_getArgAddress(0));
+    function collateralToken0() public pure returns (CollateralTrackerV2) {
+        return CollateralTrackerV2(_getArgAddress(0));
     }
 
     /// @notice Get the collateral token corresponding to token1 of the Uniswap pool.
     /// @return Collateral token corresponding to token1 in Uniswap
-    function collateralToken1() public pure returns (CollateralTracker) {
-        return CollateralTracker(_getArgAddress(20));
+    function collateralToken1() public pure returns (CollateralTrackerV2) {
+        return CollateralTrackerV2(_getArgAddress(20));
     }
 
     /// @notice Get the address of the risk engine contract used by this Panoptic Pool.
@@ -408,8 +408,8 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
     /// @return assets0 The total amount of `token0` collateral owned by the account.
     /// @return assets1 The total amount of `token1` collateral owned by the account.
     function getAssetsOf(address account) public view returns (uint256 assets0, uint256 assets1) {
-        CollateralTracker ct0 = collateralToken0();
-        CollateralTracker ct1 = collateralToken1();
+        CollateralTrackerV2 ct0 = collateralToken0();
+        CollateralTrackerV2 ct1 = collateralToken1();
         assets0 = ct0.assetsOf(account);
         assets1 = ct1.assetsOf(account);
     }
@@ -895,7 +895,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         RiskParameters riskParameters,
         bool isCollateralToken0
     ) internal returns (uint32 utilization, int128 paid) {
-        CollateralTracker ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
+        CollateralTrackerV2 ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
         (utilization, paid) = ct.settleMint(
             optionOwner,
             longAmount,
@@ -1048,7 +1048,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
         RiskParameters riskParameters,
         bool isCollateralToken0
     ) internal returns (int128 paid) {
-        CollateralTracker ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
+        CollateralTrackerV2 ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
         paid = ct.settleBurn(
             optionOwner,
             longAmount,
@@ -1617,7 +1617,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
     /// @param delegatee The account to increase the balance of
     /// @param isCollateralToken0 The flag that determines if the call is to ct0 or ct1
     function _delegate(address delegatee, bool isCollateralToken0) internal {
-        CollateralTracker ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
+        CollateralTrackerV2 ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
 
         ct.delegate(delegatee);
     }
@@ -1626,7 +1626,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
     /// @param delegatee The account to decrease the balance of
     /// @param isCollateralToken0 The flag that determines if the call is to ct0 or ct1
     function _revoke(address delegatee, bool isCollateralToken0) internal {
-        CollateralTracker ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
+        CollateralTrackerV2 ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
 
         ct.revoke(delegatee);
     }
@@ -1636,7 +1636,7 @@ contract PanopticPool is Clone, Multicall, TransientReentrancyGuard {
     /// @param assets The amount of assets to refund. Positive means a transfer from refunder to refundee, vice versa for negative
     /// @param isCollateralToken0 The flag that determines if the call is to ct0 or ct1
     function _refund(address refunder, int256 assets, bool isCollateralToken0) internal {
-        CollateralTracker ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
+        CollateralTrackerV2 ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
 
         ct.refund(refunder, msg.sender, assets);
     }

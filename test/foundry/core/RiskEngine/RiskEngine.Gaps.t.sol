@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 
 import {RiskEngineHarness} from "./RiskEngineHarness.sol";
 import {MockCollateralTracker} from "./mocks/MockCollateralTracker.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {LeftRightUnsigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {PositionBalance} from "@types/PositionBalance.sol";

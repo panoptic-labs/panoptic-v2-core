@@ -72,7 +72,7 @@ import {PoolKey} from "v4-core/types/PoolKey.sol";
 /// @author Axicon Labs Limited
 /// @title Semi-Fungible Position Manager (ERC1155) - a gas-efficient Uniswap V4 position manager.
 /// @notice Wraps Uniswap V4 positions with up to 4 legs behind an ERC1155 token.
-contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyGuard {
+contract SemiFungiblePositionManagerV4 is ERC1155, Multicall, TransientReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/

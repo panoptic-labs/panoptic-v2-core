@@ -1,8 +1,8 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Script.sol";
-import {PanopticFactory} from "@contracts/PanopticFactoryV4.sol";
-import {PanopticPool} from "@contracts/PanopticPool.sol";
+import {PanopticFactoryV4} from "@contracts/PanopticFactoryV4.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
 import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {Currency} from "v4-core/types/Currency.sol";
@@ -11,7 +11,7 @@ import {IHooks} from "v4-core/interfaces/IHooks.sol";
 // forge script script/CreatePool.s.sol --rpc-url sepolia --turnkey --sender 0x62CB5f6E9F8Bca7032dDf993de8A02ae437D39b8
 contract CreatePool is Script {
     function run() public {
-        PanopticFactory factory = PanopticFactory(vm.envAddress("PANOPTIC_FACTORY_V4"));
+        PanopticFactoryV4 factory = PanopticFactoryV4(vm.envAddress("PANOPTIC_FACTORY_V4"));
         IRiskEngine riskEngine = IRiskEngine(vm.envAddress("RISK_ENGINE"));
 
         address currency0 = vm.envAddress("CURRENCY0");
@@ -38,7 +38,7 @@ contract CreatePool is Script {
         vm.startBroadcast();
 
         uint96 salt = 0;
-        PanopticPool newPool = factory.deployNewPool(key, riskEngine, salt);
+        PanopticPoolV2 newPool = factory.deployNewPool(key, riskEngine, salt);
 
         console.log("Successfully deployed Panoptic Pool at:", address(newPool));
 
