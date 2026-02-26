@@ -180,7 +180,7 @@ contract Misctest is Test, PositionUtils {
     OraclePack oraclePack;
     uint64 $poolId;
     uint64 poolId;
-    uint8 vegoid = 4;
+    uint8 vegoid = 8;
     uint256 medianData;
 
     uint256 assetsBefore0;
@@ -192,6 +192,8 @@ contract Misctest is Test, PositionUtils {
     uint256 basalCR;
     uint256 amountBorrowed;
     uint256 amountITM;
+    int256 $premium0;
+    int256 $premium1;
     int256 util;
     LeftRightUnsigned amountsMoved;
     uint256 remainingCR;
@@ -558,7 +560,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_short_packed() public {
-        uint256 positionCount = 8;
+        uint256 positionCount = (re.MAX_OPEN_LEGS()) / 4;
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
@@ -711,7 +713,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_short_soloLeg() public {
-        uint256 positionCount = 32;
+        uint256 positionCount = (re.MAX_OPEN_LEGS());
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
@@ -801,7 +803,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_long_packed() public {
-        uint256 positionCount = 8;
+        uint256 positionCount = (re.MAX_OPEN_LEGS() / 4);
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
@@ -1000,7 +1002,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_long_soloLeg() public {
-        uint256 positionCount = 32;
+        uint256 positionCount = (re.MAX_OPEN_LEGS());
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
@@ -3261,13 +3263,13 @@ contract Misctest is Test, PositionUtils {
 
             assertApproxEqAbs(
                 charlieDeltaPremia0,
-                owedPremia0,
+                (owedPremia0 * (10_000 - re.PREMIUM_FEE())) / 10_000,
                 1,
                 "charlie received exactly what they are owed due to settled token0"
             );
             assertApproxEqAbs(
                 charlieDeltaPremia1,
-                owedPremia1,
+                (owedPremia1 * (10_000 - re.PREMIUM_FEE())) / 10_000,
                 1,
                 "charlie received exactly what they are owed due to settled token0"
             );
@@ -3713,13 +3715,13 @@ contract Misctest is Test, PositionUtils {
 
             assertApproxEqAbs(
                 charlieDeltaPremia0,
-                owedPremia0,
+                (owedPremia0 * (10000 - re.PREMIUM_FEE())) / 10000,
                 1,
                 "charlie received exactly what they are owed due to settled token0"
             );
             assertApproxEqAbs(
                 charlieDeltaPremia1,
-                owedPremia1,
+                (owedPremia1 * (10000 - re.PREMIUM_FEE())) / 10000,
                 1,
                 "charlie received exactly what they are owed due to settled token0"
             );
@@ -4098,13 +4100,13 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             assetsBefore0 - ct0.convertToAssets(ct0.balanceOf(Buyers[0])),
-            33_453,
+            33_386,
             "Incorrect Buyer 1 1st Collect 0"
         );
 
         assertEq(
             assetsBefore1 - ct1.convertToAssets(ct1.balanceOf(Buyers[0])),
-            33_344_563,
+            33_276_737,
             "Incorrect Buyer 1 1st Collect 1: "
         );
 
@@ -4125,12 +4127,12 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            258_335,
+            256_686,
             "Incorrect Bob Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Bob)) - assetsBefore1,
-            258_335_862,
+            256_687_119,
             "Incorrect Bob Delta 1"
         );
 
@@ -4182,31 +4184,31 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             assetsBefore1Arr[0] - ct1.convertToAssets(ct1.balanceOf(Buyers[0])),
-            2_222,
+            2_218,
             "Incorrect Buyer 1 2nd Collect 1"
         );
 
         assertEq(
             assetsBefore0Arr[1] - ct0.convertToAssets(ct0.balanceOf(Buyers[1])),
-            11447,
+            11424,
             "Incorrect Buyer 2 2nd Collect 0"
         );
 
         assertEq(
             assetsBefore1Arr[1] - ct1.convertToAssets(ct1.balanceOf(Buyers[1])),
-            11117817,
+            11_095_203,
             "Incorrect Buyer 2 2nd Collect 1"
         );
 
         assertEq(
             assetsBefore0Arr[2] - ct0.convertToAssets(ct0.balanceOf(Buyers[2])),
-            11447,
+            11424,
             "Incorrect Buyer 3 2nd Collect 0"
         );
 
         assertEq(
             assetsBefore1Arr[2] - ct1.convertToAssets(ct1.balanceOf(Buyers[2])),
-            11117817,
+            11_095_203,
             "Incorrect Buyer 3 2nd Collect 1"
         );
 
@@ -4227,12 +4229,12 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
-            531_490,
+            527_929,
             "Incorrect Alice Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Alice)) - assetsBefore1,
-            531_491_038,
+            527_929_125,
             "Incorrect Alice Delta 1"
         );
 
@@ -4316,25 +4318,25 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             assetsBefore0Arr[1] - ct0.convertToAssets(ct0.balanceOf(Buyers[1])),
-            22_228,
+            22_184,
             "Incorrect Buyer 2 4th Collect 0"
         );
 
         assertEq(
             assetsBefore1Arr[1] - ct1.convertToAssets(ct1.balanceOf(Buyers[1])),
-            22_228_968,
+            22_183_752,
             "Incorrect Buyer 2 4th Collect 1:"
         );
 
         assertEq(
             assetsBefore0Arr[2] - ct0.convertToAssets(ct0.balanceOf(Buyers[2])),
-            22_228,
+            22_184,
             "Incorrect Buyer 3 4th Collect 0"
         );
 
         assertEq(
             assetsBefore1Arr[2] - ct1.convertToAssets(ct1.balanceOf(Buyers[2])),
-            22_228_968,
+            22_183_752,
             "Incorrect Buyer 3 4th Collect 1"
         );
 
@@ -4355,12 +4357,12 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
-            275_007,
+            272_511,
             "Incorrect Charlie Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Charlie)) - assetsBefore1,
-            275_007_589,
+            272_511_946,
             "Incorrect Charlie Delta 1"
         );
 
@@ -4410,14 +4412,14 @@ contract Misctest is Test, PositionUtils {
             // the positive premium is from the dummy short chunk
             assertEq(
                 int256(ct0.convertToAssets(ct0.balanceOf(Buyers[i]))) - int256(assetsBefore0),
-                i == 0 ? int256(107) : i == 1 ? int256(108) : int(99),
-                "Buyer paid premium twice"
+                i == 0 ? int256(105) : i == 1 ? int256(105) : int(96),
+                "Buyer paid premium twice 0"
             );
 
             assertEq(
                 ct1.convertToAssets(ct1.balanceOf(Buyers[i])) - assetsBefore1,
-                i < 2 ? 1086 : 1080,
-                "Buyer paid premium twice"
+                i == 0 ? 1074 : i < 2 ? 1075 : 1069,
+                "Buyer paid premium twice 1"
             );
         }
     }
@@ -4501,85 +4503,108 @@ contract Misctest is Test, PositionUtils {
             1_000_000_000
         );
 
-        int256 premium0 = 10388;
-        int256 premium1 = 10388989;
+        $premium0 = 10453;
+        $premium1 = 10452625;
 
-        console2.log("TWAP", pp.getTWAP());
         uint160 lastObservedPrice = Math.getSqrtRatioAtTick(pp.getTWAP());
 
         vm.startPrank(Alice);
 
-        uint256 settlerBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
-        uint256 settlerBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
 
         // shortage of token1 - succeeds and token1 is converted to token0
         editCollateral(ct1, Buyers[0], 0);
+        {
+            uint256 settleeBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[0]));
+            uint256 settleeBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[0]));
 
-        uint256 settleeBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[0]));
-        uint256 settleeBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[0]));
+            settlePremium(pp, $posIdLists[0], $posIdLists[1], Buyers[0], 0, true);
 
-        settlePremium(pp, $posIdLists[0], $posIdLists[1], Buyers[0], 0, true);
+            int256 balanceDelta0 = int256(ct0.convertToAssets(ct0.balanceOf(Buyers[0]))) -
+                int256(settleeBalanceBefore0);
+            int256 balanceDelta1 = int256(ct1.convertToAssets(ct1.balanceOf(Buyers[0]))) -
+                int256(settleeBalanceBefore1);
 
-        int256 balanceDelta0 = int256(ct0.convertToAssets(ct0.balanceOf(Buyers[0]))) -
-            int256(settleeBalanceBefore0);
-        int256 balanceDelta1 = int256(ct1.convertToAssets(ct1.balanceOf(Buyers[0]))) -
-            int256(settleeBalanceBefore1);
+            assertEq(
+                -balanceDelta0,
+                $premium0 +
+                    int256(
+                        PanopticMath.convert1to0RoundingUp(uint256($premium1), lastObservedPrice)
+                    ),
+                "Fail: balance delta0 does not match premium"
+            );
+            assertEq(balanceDelta1, 0);
 
-        assertEq(
-            -balanceDelta0,
-            premium0 +
-                int256(PanopticMath.convert1to0RoundingUp(uint256(premium1), lastObservedPrice)),
-            "Fail: balance delta0 does not match premium"
-        );
-        assertEq(balanceDelta1, 0);
+            // The commission burn redistributes value across all pool holders via the
+            // share-to-asset ratio change. The settler's effective balance change equals the
+            // premium minus commission leakage to non-settler holders.
+            // The leakage fraction (2/5) reflects the non-Alice share of the V4 pool.
+            // commission = premium - premium * 10000 / 10100
+            int256 comm0 = $premium0 -
+                ($premium0 * 10_000) /
+                (10_000 + int256(uint256(re.PREMIUM_FEE())));
+            int256 comm1 = $premium1 -
+                ($premium1 * 10_000) /
+                (10_000 + int256(uint256(re.PREMIUM_FEE())));
+            assertApproxEqAbs(
+                int256(assetsBefore0) - int256(ct0.convertToAssets(ct0.balanceOf(Alice))),
+                balanceDelta0 + $premium0 - (comm0 * 2) / 5,
+                1,
+                "bal0 a"
+            );
+            assertApproxEqAbs(
+                int256(assetsBefore1) - int256(ct1.convertToAssets(ct1.balanceOf(Alice))),
+                $premium1 - (comm1 * 2) / 5,
+                1,
+                "bal1 a"
+            );
+        }
 
-        assertEq(
-            int256(settlerBalanceBefore0) - int256(ct0.convertToAssets(ct0.balanceOf(Alice))),
-            balanceDelta0 + premium0,
-            "balance premium0"
-        );
-        assertEq(
-            int256(settlerBalanceBefore1) - int256(ct1.convertToAssets(ct1.balanceOf(Alice))),
-            premium1,
-            "balance premium1"
-        );
-
-        settlerBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
-        settlerBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
 
         // shortage of token0 - succeeds and token0 is converted to token1
         editCollateral(ct0, Buyers[1], 0);
+        {
+            uint256 settleeBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[1]));
+            uint256 settleeBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[1]));
 
-        settleeBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[1]));
-        settleeBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[1]));
+            settlePremium(pp, $posIdLists[0], $posIdLists[1], Buyers[1], 0, true);
 
-        settlePremium(pp, $posIdLists[0], $posIdLists[1], Buyers[1], 0, true);
+            int256 balanceDelta0 = int256(ct0.convertToAssets(ct0.balanceOf(Buyers[1]))) -
+                int256(settleeBalanceBefore0);
+            int256 balanceDelta1 = int256(ct1.convertToAssets(ct1.balanceOf(Buyers[1]))) -
+                int256(settleeBalanceBefore1);
 
-        balanceDelta0 =
-            int256(ct0.convertToAssets(ct0.balanceOf(Buyers[1]))) -
-            int256(settleeBalanceBefore0);
-        balanceDelta1 =
-            int256(ct1.convertToAssets(ct1.balanceOf(Buyers[1]))) -
-            int256(settleeBalanceBefore1);
+            assertEq(balanceDelta0, 0);
+            assertEq(
+                -balanceDelta1,
+                $premium1 +
+                    int256(
+                        PanopticMath.convert0to1RoundingUp(uint256($premium0), lastObservedPrice)
+                    )
+            );
 
-        assertEq(balanceDelta0, 0);
-        assertEq(
-            -balanceDelta1,
-            premium1 +
-                int256(PanopticMath.convert0to1RoundingUp(uint256(premium0), lastObservedPrice)),
-            "balancedelta1"
-        );
-
-        assertEq(
-            int256(settlerBalanceBefore0) - int256(ct0.convertToAssets(ct0.balanceOf(Alice))),
-            premium0 + 1,
-            "premium0"
-        );
-        assertEq(
-            int256(settlerBalanceBefore1) - int256(ct1.convertToAssets(ct1.balanceOf(Alice))),
-            balanceDelta1 + premium1,
-            "settlebakance"
-        );
+            int256 comm0 = $premium0 -
+                ($premium0 * 10_000) /
+                (10_000 + int256(uint256(re.PREMIUM_FEE())));
+            int256 comm1 = $premium1 -
+                ($premium1 * 10_000) /
+                (10_000 + int256(uint256(re.PREMIUM_FEE())));
+            assertApproxEqAbs(
+                int256(assetsBefore0) - int256(ct0.convertToAssets(ct0.balanceOf(Alice))),
+                $premium0 - (comm0 * 2) / 5,
+                1,
+                "bal0 b"
+            );
+            assertApproxEqAbs(
+                int256(assetsBefore1) - int256(ct1.convertToAssets(ct1.balanceOf(Alice))),
+                balanceDelta1 + $premium1 - (comm1 * 2) / 5,
+                1,
+                "bal1 b"
+            );
+        }
 
         // insolvent account - fails while revoking virtual shares
         editCollateral(ct0, Buyers[2], 0);
@@ -4723,12 +4748,12 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            250_000,
+            249_850,
             "Incorrect Bob Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Bob)) - assetsBefore1,
-            249_999_999,
+            248_499_997,
             "Incorrect Bob Delta 1"
         );
 
@@ -4776,12 +4801,12 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
-            533_333,
+            532_636,
             "Incorrect Alice Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Alice)) - assetsBefore1,
-            533_333_345,
+            529_738_672,
             "Incorrect Alice Delta 1"
         );
 
@@ -4812,12 +4837,12 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
-            275_000,
+            274_502,
             "Incorrect Charlie Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Charlie)) - assetsBefore1,
-            275_000_008,
+            272_504_601,
             "Incorrect Charlie Delta 1"
         );
     }
@@ -4887,7 +4912,7 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
 
-        ct0.withdraw(1_000_000 - 266269, Bob, Bob, $posIdList, true);
+        ct0.withdraw(1_000_000 - 220560, Bob, Bob, $posIdList, true);
     }
 
     function test_Fail_validateCollateralWithdrawable() public {
@@ -4918,7 +4943,7 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        editCollateral(ct0, Bob, ct0.convertToShares(264670));
+        editCollateral(ct0, Bob, ct0.convertToShares(206774));
         editCollateral(ct1, Bob, 0);
 
         vm.expectRevert(
@@ -4961,7 +4986,7 @@ contract Misctest is Test, PositionUtils {
         vm.expectRevert(
             abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
         );
-        ct0.withdraw(1_000_000 - 264670, Bob, Bob, $posIdList, true);
+        ct0.withdraw(1_000_000 - 206774, Bob, Bob, $posIdList, true);
     }
 
     function test_Fail_InsolventAtCurrentTick_itmPut() public {
@@ -5518,7 +5543,7 @@ contract Misctest is Test, PositionUtils {
         vm.expectRevert(
             abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(0), uint256(1))
         );
-        ct0.withdraw(1_000_000 - 264670, Alice, Bob, $posIdList, true);
+        ct0.withdraw(1_000_000 - 206774, Alice, Bob, $posIdList, true);
     }
 
     function test_Success_SafeMode_down() public {
@@ -6445,6 +6470,10 @@ contract Misctest is Test, PositionUtils {
                     } else if (receivedSelector == Errors.PositionTooLarge.selector) {
                         console2.log("PositionTooLarge at strike:", strike);
                         // Position size exceeds protocol limits
+                    } else if (receivedSelector == Errors.NotEnoughTokens.selector) {
+                        console2.log("NotEnoughTokens at strike:", strike);
+                    } else if (receivedSelector == Errors.CastingError.selector) {
+                        console2.log("CastingError at strike:", strike);
                     } else {
                         // Unexpected error
                         console2.logBytes4(receivedSelector);
@@ -6981,13 +7010,13 @@ contract Misctest is Test, PositionUtils {
         // old with itmSpreadFee = -864427
         assertEq(
             int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0),
-            -864427
+            -324426
         );
 
         // but she earns all of fees on token 1 since the premium accumulator did not overflow (!)
         assertEq(
             int256(ct1.convertToAssets(ct1.balanceOf(Alice))) - int256(balanceBefore1),
-            999_999_999_998
+            993_999_993_598
         );
     }
 
@@ -7546,7 +7575,7 @@ contract Misctest is Test, PositionUtils {
 
         if (tokenType == 0) {
             token0.approve(address(ct0), 1000);
-            ct0.deposit(600, Bob);
+            ct0.deposit(360, Bob);
         } else {
             token1.approve(address(ct1), 1000);
             //ct1.deposit(0, Bob);
@@ -8164,7 +8193,11 @@ contract Misctest is Test, PositionUtils {
             console2.log("values 0", valueBefore0, valueAfter0);
             console2.log("values 1", valueBefore1, valueAfter1);
             assertEq(valueBefore0, valueAfter0, "share price 0 stays the same");
-            assertEq(valueBefore1, valueAfter1, "share price 1 stays the same");
+            assertLt(
+                valueBefore1,
+                valueAfter1,
+                "share price 1 increases due to commission on streamia"
+            );
             console2.log("bob0-after", ct0.balanceOf(Bob));
             console2.log("bob1-after", ct1.balanceOf(Bob));
         }

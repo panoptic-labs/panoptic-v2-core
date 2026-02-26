@@ -38,7 +38,7 @@ contract PositionBalanceTest is Test {
         assertEq(harness.utilization1(x), int256(uint256(u)));
         assertEq(harness.tickAtMint(x), w);
         assertEq(harness.timestampAtMint(x), v);
-        assertEq(harness.blockAtMint(x), t);
+        assertEq(harness.blockAtMint(x), t % 2 ** 39);
         assertEq(harness.swapAtMint(x), b);
     }
 
@@ -55,7 +55,7 @@ contract PositionBalanceTest is Test {
         assertEq(harness.utilizations(x), z);
         assertEq(harness.tickAtMint(x), w);
         assertEq(harness.timestampAtMint(x), v);
-        assertEq(harness.blockAtMint(x), t);
+        assertEq(harness.blockAtMint(x), t % 2 ** 39);
         assertEq(harness.swapAtMint(x), b);
     }
 }

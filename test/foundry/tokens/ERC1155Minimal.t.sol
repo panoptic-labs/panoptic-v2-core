@@ -193,6 +193,7 @@ contract ERC1155Minimal is Test {
         uint256[10] memory amounts
     ) public {
         for (uint256 i = 0; i < ids.length; i++) {
+            ids[i] = uint256(keccak256(abi.encode(ids[i], i)));
             token.mint(ids[i], amounts[i]);
         }
         UnsafeRecipient unsafeRecipient = new UnsafeRecipient();

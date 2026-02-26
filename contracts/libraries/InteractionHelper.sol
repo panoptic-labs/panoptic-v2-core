@@ -13,7 +13,6 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {RiskParameters} from "@types/RiskParameters.sol";
-import {EfficientHash} from "@libraries/EfficientHash.sol";
 
 /// @title InteractionHelper - contains helper functions for external interactions such as approvals.
 /// @notice Used to delegate logic with multiple external calls.
@@ -137,13 +136,7 @@ library InteractionHelper {
                         tokenId.isLong(leg) == 1 &&
                         LeftRightSigned.unwrap(premiasByLeg[i][leg]) != 0
                     ) {
-                        bytes32 chunkKey = EfficientHash.efficientKeccak256(
-                            abi.encodePacked(
-                                tokenId.strike(leg),
-                                tokenId.width(leg),
-                                tokenId.tokenType(leg)
-                            )
-                        );
+                        bytes32 chunkKey = PanopticMath.getChunkKey(tokenId, leg);
 
                         emit PanopticPool.PremiumSettled(
                             liquidatee,

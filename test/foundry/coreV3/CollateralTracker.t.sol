@@ -446,7 +446,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     // store some data about the pool we are testing
     IUniswapV3Pool pool;
     uint64 poolId;
-    uint8 vegoid = 4;
+    uint8 vegoid = 8;
     uint256 isWETH;
     address token0;
     address token1;
@@ -7267,7 +7267,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             collateralToken0.withdraw(
-                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 1000 - 1,
+                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 100 - 1,
                 Alice,
                 Alice
             );
@@ -7382,7 +7382,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             collateralToken0.withdraw(
-                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 1000 - 1,
+                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 100 - 1,
                 Alice,
                 Alice
             );
@@ -8140,6 +8140,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             vm.assume(legUpperTick < maxTick);
             vm.assume(legLowerTick > minTick);
+            vm.assume(minTick >= -887272);
+            vm.assume(maxTick <= 887272);
+
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
             console2.log("");
@@ -11651,7 +11654,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
                 positionSize0 / 4,
-                false
+                true
             );
             bool hasLegsInRange;
             if ((currentTick < strike + rangeUp) && (currentTick >= strike - rangeDown)) {
@@ -11792,7 +11795,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
                 positionSize0 / 4,
-                false
+                true
             );
 
             bool hasLegsInRange;
