@@ -13,6 +13,7 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
+import {PositionBalance} from "@types/PositionBalance.sol";
 import {TokenId} from "@types/TokenId.sol";
 
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
@@ -792,6 +793,40 @@ library PanopticMath {
                 longs = LeftRightSigned.wrap(0).addToLeftSlot(
                     Math.toInt128(amountsMoved.leftSlot())
                 );
+            }
+        }
+    }
+
+    /// @notice Compute the total notional value of all loan positions (width=0, isLong=0) across a user's portfolio.
+    /// @dev Used during liquidation to clamp the bonus so that loans cannot inflate the `bal/2` cap in the bonus formula.
+    /// @dev Loan creation mints shares to the borrower, inflating their collateral balance without a corresponding
+    /// offset (unlike credits, which are neutralized by `creditAmounts` in `_getMargin`). This function isolates
+    /// the loan component so the liquidation bonus can be limited to half the *real* (non-loan) deposit.
+    /// @param positionBalanceArray The array of position balances for all open positions of the user
+    /// @param positionIdList The list of all option positions held by the user
+    /// @return loanAmounts LeftRight-packed total loan notional: right slot = token0 loans, left slot = token1 loans
+    function getTotalLoanAmounts(
+        PositionBalance[] memory positionBalanceArray,
+        TokenId[] memory positionIdList
+    ) internal pure returns (LeftRightUnsigned loanAmounts) {
+        unchecked {
+            for (uint256 i; i != positionBalanceArray.length; ++i) {
+                TokenId tokenId = positionIdList[i];
+                PositionBalance positionBalance = positionBalanceArray[i];
+                uint128 positionSize = positionBalance.positionSize();
+
+                uint256 numLegs = tokenId.countLegs();
+                for (uint256 index = 0; index != numLegs; ++index) {
+                    if (tokenId.width(index) == 0 && tokenId.isLong(index) == 0) {
+                        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
+                            tokenId,
+                            positionSize,
+                            index,
+                            false
+                        );
+                        loanAmounts = loanAmounts.add(amountsMoved);
+                    }
+                }
             }
         }
     }

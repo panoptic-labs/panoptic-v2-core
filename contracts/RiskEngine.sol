@@ -497,6 +497,7 @@ contract RiskEngine {
     /// @param atSqrtPriceX96 The oracle price used to swap tokens between the liquidator/liquidatee and determine solvency for the liquidatee
     /// @param netPaid The net amount of tokens paid/received by the liquidatee to close their portfolio of positions
     /// @param shortPremium Total owed premium (prorated by available settled tokens) across all short legs being liquidated
+    /// @param loanAmounts The net loan amounts
     /// @return The LeftRight-packed bonus amounts to be paid to the liquidator for both tokens (may be negative)
     /// @return The LeftRight-packed protocol loss (pre-haircut) for both tokens, i.e., the delta between the user's starting balance and expended tokens
     function getLiquidationBonus(
@@ -504,7 +505,8 @@ contract RiskEngine {
         LeftRightUnsigned tokenData1,
         uint160 atSqrtPriceX96,
         LeftRightSigned netPaid,
-        LeftRightUnsigned shortPremium
+        LeftRightUnsigned shortPremium,
+        LeftRightUnsigned loanAmounts
     ) external pure returns (LeftRightSigned, LeftRightSigned) {
         int256 bonus0;
         int256 bonus1;
@@ -519,6 +521,16 @@ contract RiskEngine {
 
                 bonus0 = Math.min(bal0 / 2, req0 > bal0 ? req0 - bal0 : 0).toInt256();
                 bonus1 = Math.min(bal1 / 2, req1 > bal1 ? req1 - bal1 : 0).toInt256();
+
+                uint256 loan0 = loanAmounts.rightSlot();
+                uint256 loan1 = loanAmounts.leftSlot();
+                // Invariant: 2 * bonus + loanAmounts <= bal  (all unsigned additions, no underflow)
+                if (bonus0 > 0 && 2 * uint256(bonus0) + loan0 > bal0) {
+                    bonus0 = bal0 >= loan0 ? int256((bal0 - loan0) / 2) : int256(0);
+                }
+                if (bonus1 > 0 && 2 * uint256(bonus1) + loan1 > bal1) {
+                    bonus1 = bal1 >= loan1 ? int256((bal1 - loan1) / 2) : int256(0);
+                }
             }
 
             // negative premium (owed to the liquidatee) is credited to the collateral balance
