@@ -824,7 +824,11 @@ library PanopticMath {
                             index,
                             false
                         );
-                        loanAmounts = loanAmounts.add(amountsMoved);
+                        if (tokenId.tokenType(index) == 0) {
+                            loanAmounts = loanAmounts.addToRightSlot(amountsMoved.rightSlot());
+                        } else {
+                            loanAmounts = loanAmounts.addToLeftSlot(amountsMoved.leftSlot());
+                        }
                     }
                 }
             }
