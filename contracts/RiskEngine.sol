@@ -144,13 +144,21 @@ contract RiskEngine {
     /// @dev i.e 90% -> 0.9 * 10_000_000 = 9_000_000.
     uint256 public constant SATURATED_POOL_UTIL = 9_000_000;
 
+    /// @notice Cross buffer parameter for token0.
     uint256 public immutable CROSS_BUFFER_0;
+
+    /// @notice Cross buffer parameter for token1.
     uint256 public immutable CROSS_BUFFER_1;
 
     address immutable BUILDER_FACTORY;
     bytes32 immutable BUILDER_INIT_CODE_HASH;
 
+    /// @notice Maximum number of open legs allowed.
     uint256 public constant MAX_OPEN_LEGS = 26;
+
+    /// @notice Max possible bonus during liquidations (currently 20% of balance)
+    /// @dev bonus formula is min(MAX_BONUS * balance / DECIMALS, required - balance)
+    uint256 public constant MAX_BONUS = 2_000_000;
 
     /*//////////////////////////////////////////////////////////////
                             IRM PARAMETERS
@@ -519,17 +527,25 @@ contract RiskEngine {
                 uint256 req0 = tokenData0.leftSlot();
                 uint256 req1 = tokenData1.leftSlot();
 
-                bonus0 = Math.min(bal0 / 2, req0 > bal0 ? req0 - bal0 : 0).toInt256();
-                bonus1 = Math.min(bal1 / 2, req1 > bal1 ? req1 - bal1 : 0).toInt256();
+                bonus0 = Math
+                    .min((bal0 * MAX_BONUS) / DECIMALS, req0 > bal0 ? req0 - bal0 : 0)
+                    .toInt256();
+                bonus1 = Math
+                    .min((bal1 * MAX_BONUS) / DECIMALS, req1 > bal1 ? req1 - bal1 : 0)
+                    .toInt256();
 
                 uint256 loan0 = loanAmounts.rightSlot();
                 uint256 loan1 = loanAmounts.leftSlot();
-                // Invariant: 2 * bonus + loanAmounts <= bal  (all unsigned additions, no underflow)
-                if (bonus0 > 0 && 2 * uint256(bonus0) + loan0 > bal0) {
-                    bonus0 = bal0 >= loan0 ? int256((bal0 - loan0) / 2) : int256(0);
+                // Invariant: bonus/MAX_BONUS + loanAmounts <= bal  (all unsigned additions, no underflow)
+                if (bonus0 > 0 && (DECIMALS * uint256(bonus0)) / MAX_BONUS + loan0 > bal0) {
+                    bonus0 = bal0 >= loan0
+                        ? int256((MAX_BONUS * (bal0 - loan0)) / DECIMALS)
+                        : int256(0);
                 }
-                if (bonus1 > 0 && 2 * uint256(bonus1) + loan1 > bal1) {
-                    bonus1 = bal1 >= loan1 ? int256((bal1 - loan1) / 2) : int256(0);
+                if (bonus1 > 0 && (DECIMALS * uint256(bonus1)) / MAX_BONUS + loan1 > bal1) {
+                    bonus1 = bal1 >= loan1
+                        ? int256((MAX_BONUS * (bal1 - loan1)) / DECIMALS)
+                        : int256(0);
                 }
             }
 

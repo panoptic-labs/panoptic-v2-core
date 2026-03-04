@@ -125,6 +125,9 @@ interface IRiskEngine {
     /// @notice Maximum number of open legs allowed.
     function MAX_OPEN_LEGS() external view returns (uint256);
 
+    /// @notice Max possible bonus during liquidations (currently 20% of balance)
+    function MAX_BONUS() external view returns (uint256);
+
     /*//////////////////////////////////////////////////////////////
                                 GUARDIAN
     //////////////////////////////////////////////////////////////*/
