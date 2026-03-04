@@ -520,7 +520,7 @@ contract RiskEngine {
         int256 bonus1;
         // keep everything checked to catch any under/overflow or miscastings
         {
-            // compute bonus as min(collateralBalance/2, required-collateralBalance)
+            // compute bonus as min(collateralBalance*MAX_BONUS/DECIMALS, required-collateralBalance), clamped to exclude loan-inflated balance
             {
                 uint256 bal0 = tokenData0.rightSlot();
                 uint256 bal1 = tokenData1.rightSlot();
