@@ -11,5 +11,6 @@
   },
   "lint-staged": {
     "*.{css,html,json,jsx,md,sass,scss,ts,tsx,vue,yaml,yml,sol}": "prettier --write"
-  }
+  },
+  "name": "panoptic-v2-core"
 }
