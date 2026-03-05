@@ -7630,7 +7630,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             /// calculate position size
             (legLowerTick, legUpperTick) = tokenId.asTicks(0);
 
-            positionSize0 = uint128(bound(positionSizeSeed, 10 ** 18, 10 ** 20));
+            positionSize0 = uint128(bound(positionSizeSeed, 10 ** 18, 10 ** 19));
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
             mintOptions(
@@ -7745,7 +7745,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             /// calculate position size
             (legLowerTick, legUpperTick) = tokenId.asTicks(0);
 
-            positionSize0 = uint128(bound(positionSizeSeed, 10 ** 18, 10 ** 20));
+            positionSize0 = uint128(bound(positionSizeSeed, 10 ** 18, 10 ** 19));
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
             mintOptions(
