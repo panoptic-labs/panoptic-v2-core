@@ -3304,7 +3304,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         console2.log("b-before", bobAssetsBefore);
 
         uint256 expectedBonus = Math.min(
-            bobAssetsBefore / 2,
+            (riskEngine.MAX_BONUS() * bobAssetsBefore) / 10_000_000,
             (tokenData0.leftSlot() - tokenData0.rightSlot())
         );
         console.log("expectedBonus", expectedBonus);
@@ -3477,7 +3477,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         console2.log("b-before", bobAssetsBefore);
 
         uint256 expectedBonus = Math.min(
-            (bobAssetsBefore - previewedInterest) / 2,
+            (riskEngine.MAX_BONUS() * (bobAssetsBefore - previewedInterest)) / DECIMALS,
             (tokenData0.leftSlot() - tokenData0.rightSlot())
         );
         console.log("expectedBonus", expectedBonus);
@@ -3771,7 +3771,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         console2.log("b-before", bobAssetsBefore);
 
         uint256 expectedBonus = Math.min(
-            bobAssetsBefore / 2,
+            (riskEngine.MAX_BONUS() * bobAssetsBefore) / 10_000_000,
             (previewedInterest - bobAssetsBefore)
         );
         console2.log("previewBob-before-liq", collateralToken0.previewOwedInterest(Bob));

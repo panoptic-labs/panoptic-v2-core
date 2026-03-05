@@ -9740,7 +9740,8 @@ contract PanopticPoolTest is PositionUtils {
                 $tokenData1,
                 Math.getSqrtRatioAtTick(TWAPtick),
                 $netExchanged,
-                $shortPremia
+                $shortPremia,
+                LeftRightUnsigned.wrap(0)
             );
 
             ($shortPremia, $longPremia, ) = pp.getAccumulatedFeesAndPositionsData(
@@ -9754,7 +9755,8 @@ contract PanopticPoolTest is PositionUtils {
                 $tokenData1,
                 Math.getSqrtRatioAtTick(TWAPtick),
                 $netExchanged,
-                $shortPremia
+                $shortPremia,
+                LeftRightUnsigned.wrap(0)
             );
 
             $bonus0 = bonusAmounts.rightSlot();
@@ -10384,7 +10386,8 @@ contract PanopticPoolTest is PositionUtils {
             $tokenData1,
             Math.getSqrtRatioAtTick(TWAPtick),
             $netExchanged,
-            $shortPremia
+            $shortPremia,
+            LeftRightUnsigned.wrap(0)
         );
 
         $bonus0 = bonusAmounts.rightSlot();

@@ -1676,10 +1676,10 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
             LeftRightUnsigned tokenData0;
             LeftRightUnsigned tokenData1;
             LeftRightUnsigned shortPremium;
+            PositionBalance[] memory positionBalanceArray = new PositionBalance[](
+                positionIdList.length
+            );
             {
-                PositionBalance[] memory positionBalanceArray = new PositionBalance[](
-                    positionIdList.length
-                );
                 LeftRightUnsigned longPremium;
                 (shortPremium, longPremium, positionBalanceArray) = _calculateAccumulatedPremia(
                     liquidatee,
@@ -1705,7 +1705,6 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
             _delegate(liquidatee, CALL_CT1);
 
             {
-                LeftRightUnsigned haircutTotal;
                 LeftRightSigned netPaid;
                 LeftRightSigned[4][] memory premiasByLeg;
                 // burn all options from the liquidatee
@@ -1723,15 +1722,22 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
 
                 LeftRightSigned collateralRemaining;
 
-                // compute bonus amounts using latest tick data
-                (bonusAmounts, collateralRemaining) = riskEngine().getLiquidationBonus(
-                    tokenData0,
-                    tokenData1,
-                    Math.getSqrtRatioAtTick(twapTick),
-                    netPaid,
-                    shortPremium
-                );
+                {
+                    LeftRightUnsigned loanAmounts = PanopticMath.getTotalLoanAmounts(
+                        positionBalanceArray,
+                        positionIdList
+                    );
 
+                    // compute bonus amounts using latest tick data
+                    (bonusAmounts, collateralRemaining) = riskEngine().getLiquidationBonus(
+                        tokenData0,
+                        tokenData1,
+                        Math.getSqrtRatioAtTick(twapTick),
+                        netPaid,
+                        shortPremium,
+                        loanAmounts
+                    );
+                }
                 // premia cannot be paid if there is protocol loss associated with the liquidatee
                 // otherwise, an economic exploit could occur if the liquidator and liquidatee collude to
                 // manipulate the fees in a liquidity area they control past the protocol loss threshold
@@ -1743,7 +1749,9 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
                 address _liquidatee = liquidatee;
                 int24 _twapTick = twapTick;
                 TokenId[] memory _positionIdList = positionIdList;
+
                 LeftRightSigned bonusDeltas;
+                LeftRightUnsigned haircutTotal;
                 LeftRightSigned[4][] memory haircutPerLeg;
                 (bonusDeltas, haircutTotal, haircutPerLeg) = riskEngine().haircutPremia(
                     _positionIdList,

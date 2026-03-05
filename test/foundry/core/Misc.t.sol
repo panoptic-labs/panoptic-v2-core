@@ -10510,4 +10510,226 @@ contract Misctest is Test, PositionUtils {
         console.log("");
         console.log("CONCLUSION: ALL fees collected during burn BYPASS haircut!");
     }
+
+    // ======== LIQ-008: Loan-Inflated Bonus Clamp Tests ========
+
+    /// @notice Test that the loan bonus clamp prevents profitable self-liquidation.
+    /// Attack: deposit D, take loan L=3D, create far-OTM short, price crashes, self-liquidate.
+    /// Without clamp: bonus = min(bal/2, req-bal) uses loan-inflated bal → profit.
+    /// With clamp: bonus capped at (bal - loanAmounts)/2 → guaranteed loss.
+    function test_Success_loanBonusClamp_sameToken() public {
+        // --- Step 1: Setup attacker (Bob) with minimal deposit ---
+        vm.startPrank(Bob);
+
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        uint256 deposit = 1_000_000;
+        token0.approve(address(ct0), deposit);
+        ct0.deposit(deposit, Bob);
+
+        // small token1 deposit for solvency
+        token1.approve(address(ct1), 1000);
+        ct1.deposit(1000, Bob);
+
+        uint256 bobBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Bob));
+        console2.log("Bob deposit (assets):", bobBalanceBefore0);
+
+        // --- Step 2: Create a loan (width=0, isLong=0) in token0 ---
+        {
+            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        // Loan: width=0, isLong=0, tokenType=0 (token0 loan)
+        // optionRatio=1, asset=0, riskPartner=0, strike=0
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0, // legIndex
+                1, // optionRatio
+                0, // asset
+                0, // isLong = 0 (short = loan)
+                0, // tokenType = 0 (token0)
+                0, // riskPartner
+                100, // strike
+                0 // width = 0 (loan)
+            )
+        );
+
+        uint256 loanSize = deposit * 3; // L = 3D
+        mintOptions(
+            pp,
+            $posIdList,
+            uint128(loanSize),
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        uint256 bobBalanceAfterLoan0 = ct0.convertToAssets(ct0.balanceOf(Bob));
+        console2.log("Bob balance after loan (assets):", bobBalanceAfterLoan0);
+        assertTrue(bobBalanceAfterLoan0 > bobBalanceBefore0, "Loan should inflate balance");
+
+        // --- Step 3: Create a far-OTM short put (width>0) that will go deep ITM ---
+        // Short put: isLong=0, tokenType=0, width=1 (narrow), far below current tick
+        int24 tickSpacing = uniPool.tickSpacing();
+        int24 shortStrike = int24(200) * tickSpacing; // far below tick=0
+
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1, // optionRatio
+                0, // asset
+                0, // isLong = 0 (short)
+                0, // tokenType = 0
+                0, // riskPartner
+                shortStrike,
+                2 // width = 1 (narrow range)
+            )
+        );
+
+        // Mint the short - use remaining solvency slack
+        mintOptions(
+            pp,
+            $posIdList,
+            500_000,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        console2.log("Bob balance after short (assets):", ct0.convertToAssets(ct0.balanceOf(Bob)));
+
+        // --- Step 4: Crash price to make the short deep ITM ---
+        vm.startPrank(Swapper);
+
+        // Add liquidity for the swap
+        swapperc.mint(uniPool, -800000, 800000, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -800000, 800000, 10 ** 18);
+
+        // Crash price
+        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(500_000));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(500_000));
+
+        // Advance oracle to catch up
+        for (uint256 j = 0; j < 10000; ++j) {
+            vm.warp(block.timestamp + 3600);
+            vm.roll(block.number + 10);
+            pp.pokeOracle();
+        }
+
+        (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+            .getOracleTicks();
+        twapTick = re.twapEMA(oraclePack);
+        console2.log("current tick:", currentTick);
+        console2.log("twap tick:", twapTick);
+
+        // --- Step 5: Liquidate (Alice acts as the accomplice liquidator) ---
+        vm.startPrank(Alice);
+        deal(ct0.asset(), Alice, 10_000_000);
+        deal(ct1.asset(), Alice, 10_000_000);
+        IERC20Partial(ct0.asset()).approve(address(ct0), 10_000_000);
+        IERC20Partial(ct1.asset()).approve(address(ct1), 10_000_000);
+
+        uint256 aliceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        uint256 aliceBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+        uint256 aliceAfter0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        uint256 aliceAfter1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+
+        // --- Step 6: Assert the clamp worked ---
+        // The bonus the liquidator received (could be in either token)
+        int256 liquidatorGain0 = int256(aliceAfter0) - int256(aliceBefore0);
+        int256 liquidatorGain1 = int256(aliceAfter1) - int256(aliceBefore1);
+
+        console2.log("Liquidator gain token0:", liquidatorGain0);
+        console2.log("Liquidator gain token1:", liquidatorGain1);
+        console2.log("Deposit was:", int256(deposit));
+
+        // Key assertion: the liquidator's total gain should NOT exceed the deposit
+        // Without the clamp, gain could be up to 2D (100% profit). With clamp, gain <= D/2.
+        // Use a generous bound to account for cross-collateral conversion and rounding
+        assertTrue(liquidatorGain0 <= int256(deposit), "loan clamp failed!");
+    }
+
+    /// @notice Test that the loan bonus clamp is inactive for accounts without loans.
+    /// The bonus formula should be unchanged for normal (non-loan) positions.
+    function test_Success_loanBonusClamp_noLoan_unchanged() public {
+        vm.startPrank(Bob);
+
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        uint256 deposit = 1_000_000;
+        token0.approve(address(ct0), deposit);
+        ct0.deposit(deposit, Bob);
+        token1.approve(address(ct1), 1000);
+        ct1.deposit(1000, Bob);
+
+        {
+            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        // Short put (no loan) — width=1, isLong=0, tokenType=0
+        int24 tickSpacing = uniPool.tickSpacing();
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, int24(200) * tickSpacing, 2)
+        );
+
+        mintOptions(
+            pp,
+            $posIdList,
+            2_500_000,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        // Crash price
+        vm.startPrank(Swapper);
+        swapperc.mint(uniPool, -800000, 800000, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -800000, 800000, 10 ** 18);
+        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(500_000));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(500_000));
+
+        for (uint256 j = 0; j < 10000; ++j) {
+            vm.warp(block.timestamp + 3600);
+            vm.roll(block.number + 10);
+            pp.pokeOracle();
+        }
+
+        // Liquidate
+        vm.startPrank(Alice);
+        deal(ct0.asset(), Alice, 10_000_000);
+        deal(ct1.asset(), Alice, 10_000_000);
+        IERC20Partial(ct0.asset()).approve(address(ct0), 10_000_000);
+        IERC20Partial(ct1.asset()).approve(address(ct1), 10_000_000);
+
+        uint256 aliceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        uint256 aliceBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+        uint256 aliceAfter0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        int256 liquidatorGain0 = int256(aliceAfter0) - int256(aliceBefore0);
+        uint256 aliceAfter1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+        int256 liquidatorGain1 = int256(aliceAfter1) - int256(aliceBefore1);
+
+        console2.log("No-loan liquidator gain token0:", liquidatorGain0);
+        console2.log("No-loan liquidator gain token1:", liquidatorGain1);
+
+        // Without a loan, the clamp is inactive (loanAmounts=0, so 2*bonus + 0 <= bal always holds).
+        // The bonus may be negative in one token and positive in the other due to cross-collateral conversion.
+        // We verify the liquidation completed (no revert) and the liquidator received SOME bonus in at least one token.
+        assertTrue(
+            liquidatorGain0 > 0 || liquidatorGain1 > 0,
+            "Liquidator should receive bonus in at least one token without loan"
+        );
+    }
 }
