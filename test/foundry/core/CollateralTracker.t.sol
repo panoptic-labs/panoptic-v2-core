@@ -262,7 +262,7 @@ contract RiskEngineHarness is RiskEngine {
     }
 
     function sellCollateralRatio(int256 utilization) external view returns (uint256) {
-        return _sellCollateralRatio(utilization);
+        return _sellCollateralRatio(utilization, 2_000_000);
     }
 
     function buyCollateralRatio(int256 utilization) external view returns (uint256) {
@@ -5494,6 +5494,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     /// @notice It should revert if a user tries to withdraw using a tokenId with no legs.
     function test_Fail_withdrawWhileInsolvent(address caller) public {
+        vm.assume(caller != address(0));
         _initWorld(0);
 
         // initalize a custom Panoptic pool
@@ -5543,6 +5544,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     /// @notice It should revert if a user tries to withdraw using a tokenId with no legs.
     function test_Fail_withdrawWhileInSafeMode(address caller) public {
+        vm.assume(caller != address(0));
         _initWorld(0);
 
         // initalize a custom Panoptic pool
@@ -5605,6 +5607,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     /// @notice It should revert if a user tries to withdraw using a tokenId with no legs.
     function test_Fail_withdraw_credited_shares(address caller) public {
+        vm.assume(caller != address(0));
         _initWorld(0);
 
         // initalize a custom Panoptic pool
@@ -6645,6 +6648,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     // access control on delegate/revoke/settlement functions
     function test_Fail_All_OnlyPanopticPool(uint256 x, address caller) public {
         _initWorld(x);
+        vm.assume(caller != address(0));
         vm.assume(caller != address(panopticPool));
 
         vm.prank(caller);
@@ -13208,6 +13212,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         TokenId _tokenId,
         uint128 positionSize
     ) internal {
+        vm.assume(caller != address(0));
         // take a snapshot at this storage state
         uint256 snapshot = vm.snapshot();
         vm.startPrank(address(panopticPool));

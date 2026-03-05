@@ -1422,10 +1422,14 @@ contract RiskEngine {
             // if the width is 0, then this is a loan/credit
             if (tokenId.width(index) == 0) {
                 if (isLong == 0) {
-                    // buying power requirement for a Loan position is 100% + MAINT_MARGIN_RATE
+                    // buying power requirement for a Loan position is 100% + maintenanceLoanMargin
+                    uint256 maintenanceLoanMargin = _sellCollateralRatio(
+                        poolUtilization,
+                        MAINT_MARGIN_RATE
+                    );
                     required = Math.mulDivRoundingUp(
                         amountMoved,
-                        MAINT_MARGIN_RATE + DECIMALS,
+                        maintenanceLoanMargin + DECIMALS,
                         DECIMALS
                     );
                 } else {
@@ -1741,7 +1745,7 @@ contract RiskEngine {
 
         if (isLong == 0) {
             // compute the sell collateral ratio, which depends on the pool utilization
-            baseCollateralRatio = _sellCollateralRatio(utilization);
+            baseCollateralRatio = _sellCollateralRatio(utilization, SELLER_COLLATERAL_RATIO);
 
             // compute required as amount*collateralRatio
             // can use unsafe because denominator is always nonzero
@@ -2078,9 +2082,11 @@ contract RiskEngine {
     /// @notice Get the base collateral requirement for a short leg at a given pool utilization.
     /// @dev This is computed at the time the position is minted.
     /// @param utilization The pool utilization of this collateral vault at the time the position is minted
+    /// @param minRatio The minimum (base) ratio
     /// @return sellCollateralRatio The sell collateral ratio at `utilization`
     function _sellCollateralRatio(
-        int256 utilization
+        int256 utilization,
+        uint256 minRatio
     ) internal pure returns (uint256 sellCollateralRatio) {
         // the sell ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
         //   (x0,y0) = (targetPoolUtilization,min_sell_ratio) and
@@ -2101,11 +2107,10 @@ contract RiskEngine {
                                    50%    90% 100%     UTILIZATION
         */
 
-        uint256 min_sell_ratio = SELLER_COLLATERAL_RATIO;
         /// if utilization is less than zero, this is the calculation for a strangle, which gets 2x the capital efficiency at low pool utilization
         if (utilization < 0) {
             unchecked {
-                min_sell_ratio /= 2;
+                minRatio /= 2;
                 utilization = -utilization;
             }
         }
@@ -2115,7 +2120,7 @@ contract RiskEngine {
         }
         // return the basal sell ratio if pool utilization is lower than target
         if (uint256(utilization) < TARGET_POOL_UTIL) {
-            return min_sell_ratio;
+            return minRatio;
         }
 
         // return 100% collateral ratio if utilization is above saturated pool utilization
@@ -2125,8 +2130,8 @@ contract RiskEngine {
 
         unchecked {
             return
-                min_sell_ratio +
-                ((DECIMALS - min_sell_ratio) * (uint256(utilization) - TARGET_POOL_UTIL)) /
+                minRatio +
+                ((DECIMALS - minRatio) * (uint256(utilization) - TARGET_POOL_UTIL)) /
                 (SATURATED_POOL_UTIL - TARGET_POOL_UTIL);
         }
     }

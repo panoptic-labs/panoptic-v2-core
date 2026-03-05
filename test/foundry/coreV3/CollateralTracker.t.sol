@@ -243,7 +243,7 @@ contract RiskEngineHarness is RiskEngine {
     }
 
     function sellCollateralRatio(int256 utilization) external view returns (uint256) {
-        return _sellCollateralRatio(utilization);
+        return _sellCollateralRatio(utilization, 2_000_000);
     }
 
     function buyCollateralRatio(int256 utilization) external view returns (uint256) {

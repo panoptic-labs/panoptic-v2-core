@@ -21,7 +21,14 @@ contract RiskEngineHarness is RiskEngine {
     // Internal → public test shims
 
     function sellCollateralRatio(int256 util) external view returns (uint256) {
-        return _sellCollateralRatio(util);
+        return _sellCollateralRatio(util, 2_000_000);
+    }
+
+    function sellCollateralRatioCustom(
+        int256 util,
+        uint256 minRatio
+    ) external view returns (uint256) {
+        return _sellCollateralRatio(util, minRatio);
     }
 
     function buyCollateralRatio(uint256 util) external view returns (uint256) {
