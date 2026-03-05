@@ -464,18 +464,18 @@ amt_back = floor(liq << 96 * (high - low) / high) / low      // Math:340-348
 - **Amplifiable:** Theoretically (many small mints), but gas >> value
 - **PoC:** Mint with `sharesToBurn=1` → `floor(1*6000/10000) + floor(1*3000/10000) = 0`, user retains full share
 
-### ROUND-003: settleLiquidation mintedShares Underflow
+### ROUND-003: settleLiquidation mintedShares Underflow — RESOLVED
 
 - **Severity:** Medium
 - **Category:** extraction
-- **File:line:** CT:1338-1344
-- **Rounding:** `mulDivCapped(...)` (floor) followed by unchecked subtraction
-- **Benefits (actual):** Liquidator
+- **File:line:** CT:1338-1346
+- **Status:** **RESOLVED** — Ternary guard added: `rawMinted > liquidateeBalance ? Math.min(rawMinted - liquidateeBalance, _totalSupply * DECIMALS) : 0`. The unchecked subtraction now only executes when `rawMinted > liquidateeBalance`, preventing the underflow entirely.
+- **Rounding:** `mulDivCapped(...)` (floor) followed by guarded subtraction
+- **Benefits (actual):** Protocol (mintedShares = 0 when rawMinted ≤ liquidateeBalance)
 - **Benefits (correct):** Protocol
-- **Preconditions:** `bonus > 0`, `bonusShares > liquidateeBalance`, small bonus relative to totalAssets
-- **Impact:** Potential overflow to large mintedShares (capped at `totalSupply * DECIMALS`)
-- **Amplifiable:** Yes (by choosing liquidation parameters)
-- **PoC:** Liquidation where `bonus=1 wei`, `liquidateeBalance=0`, `mulDivCapped(1, supply, assets-1) = 0`, subtraction `0 - 0 = 0` → actually fine. But if `liquidateeBalance > 0` and `mulDivCapped < liquidateeBalance`, wraps to huge number.
+- **Preconditions:** No longer exploitable
+- **Impact:** N/A (resolved)
+- **Amplifiable:** No
 
 ### ROUND-004: Collateral Ratio Floor Division
 
@@ -623,19 +623,18 @@ function test_commissionSplitMaxError() public {
 }
 ```
 
-### ROUND-003: settleLiquidation Underflow
+### ROUND-003: settleLiquidation Underflow — APPLIED
 
-**Patch:** Add a check before the unchecked subtraction.
+**Patch applied in codebase** at CT:1337-1347:
 
 ```solidity
-// CT:1337-1346 — Replace:
-uint256 mintedShares;
-uint256 rawMinted = Math.mulDivCapped(
-    uint256(bonus),
-    _totalSupply - liquidateeBalance,
-    uint256(Math.max(1, int256(totalAssets()) - bonus))
-);
 unchecked {
+    uint256 rawMinted = Math.mulDivCapped(
+        uint256(bonus),
+        _totalSupply - liquidateeBalance,
+        uint256(Math.max(1, int256(totalAssets()) - bonus))
+    );
+
     mintedShares = rawMinted > liquidateeBalance
         ? Math.min(rawMinted - liquidateeBalance, _totalSupply * DECIMALS)
         : 0;

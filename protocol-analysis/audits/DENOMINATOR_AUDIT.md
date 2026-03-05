@@ -341,6 +341,7 @@ Every call path goes through `convertToShares()` or `convertToAssets()` or direc
 - **Impact:** Premium accumulators saturate at uint128.max via `addCapped`. This freezes premium accumulation permanently for the affected chunk. Short sellers in that chunk stop earning premium; long holders stop owing premium.
 - **Adversary capability:** Requires controlling enough liquidity to remove all but 1 unit. Attacker needs existing short positions in the chunk to remove from.
 - **Cascading:** The frozen accumulator feeds into `_getAvailablePremium` (PP:2271), where `accumulated = (saturated_accum - grossPremiumLast) * totalLiquidity / 2^64`. With a saturated accumulator, `accumulated` becomes extremely large, making the available premium fraction `≈ premOwed * settled / huge_number ≈ 0`. This starves short sellers of available premium.
+- **Status:** **NOT APPLICABLE** — PanopticPool enforces a maximum removed fraction of 90% of total liquidity, so `netLiquidity` cannot reach 1 in practice.
 
 ### DENOM-004: settleLiquidation Quotient Amplification
 
@@ -469,13 +470,13 @@ function test_DENOM006_wDivToZeroZeroDenom() public {
 
 ## Summary Table
 
-| ID        | Severity | Category       | Location     | Denominator         | Adversary Control       | Guarded?                        |
-| --------- | -------- | -------------- | ------------ | ------------------- | ----------------------- | ------------------------------- |
-| DENOM-001 | Low      | div-by-zero    | RE:1864-1865 | notional/notionalP  | Yes (position params)   | No (comment claims safe)        |
-| DENOM-002 | Info     | div-by-zero    | RE:739,756   | longPremium slots   | No                      | Yes (if-check)                  |
-| DENOM-003 | Medium   | div-by-epsilon | SFPM:1337    | netLiquidity^2      | Yes (liquidity removal) | Partial (capped, not prevented) |
-| DENOM-004 | Low      | div-by-epsilon | CT:1343      | totalAssets()-bonus | Indirectly              | Yes (max(1,...) + Math.min)     |
-| DENOM-005 | Info     | div-by-epsilon | RE:1503,1525 | positionWidth       | Yes (position params)   | Yes (expValue caps result)      |
-| DENOM-006 | Info     | structural     | Math:1254    | y (parameter)       | N/A                     | No (callers safe)               |
-| DENOM-007 | Info     | potential      | OP:377-392   | EMA periods         | No (constant)           | No (construction)               |
-| DENOM-008 | Info     | div-by-zero    | PP:2156      | netLiquidity        | Yes                     | Yes (explicit revert)           |
+| ID        | Severity | Category       | Location     | Denominator         | Adversary Control       | Guarded?                                                      |
+| --------- | -------- | -------------- | ------------ | ------------------- | ----------------------- | ------------------------------------------------------------- |
+| DENOM-001 | Low      | div-by-zero    | RE:1864-1865 | notional/notionalP  | Yes (position params)   | No (comment claims safe)                                      |
+| DENOM-002 | Info     | div-by-zero    | RE:739,756   | longPremium slots   | No                      | Yes (if-check)                                                |
+| DENOM-003 | Medium   | div-by-epsilon | SFPM:1337    | netLiquidity^2      | Yes (liquidity removal) | **N/A** — max removed fraction is 90%, netLiq=1 not reachable |
+| DENOM-004 | Low      | div-by-epsilon | CT:1343      | totalAssets()-bonus | Indirectly              | Yes (max(1,...) + Math.min)                                   |
+| DENOM-005 | Info     | div-by-epsilon | RE:1503,1525 | positionWidth       | Yes (position params)   | Yes (expValue caps result)                                    |
+| DENOM-006 | Info     | structural     | Math:1254    | y (parameter)       | N/A                     | No (callers safe)                                             |
+| DENOM-007 | Info     | potential      | OP:377-392   | EMA periods         | No (constant)           | No (construction)                                             |
+| DENOM-008 | Info     | div-by-zero    | PP:2156      | netLiquidity        | Yes                     | Yes (explicit revert)                                         |

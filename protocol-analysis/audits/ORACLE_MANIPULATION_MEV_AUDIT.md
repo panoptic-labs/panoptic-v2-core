@@ -345,6 +345,7 @@ Same tick logic as `dispatch`. Stale oracle can allow withdrawals that should be
   - Liquidator can retry in subsequent blocks
   - Deeply insolvent accounts cannot be rescued even with large `currentTick` manipulation
 - **Chain-specific:** More impactful on L2s where the sequencer can sustain manipulation across blocks.
+- **Resolution:** **NOT APPLICABLE** — flash loans cannot sandwich another user's liquidation event. The attacker cannot atomically manipulate the price and block a third party's liquidation in the same transaction.
 
 ### ORACLE-002: Staleness-Enabled Liquidation Delay
 
@@ -359,6 +360,7 @@ Same tick logic as `dispatch`. Stale oracle can allow withdrawals that should be
   - `currentTick` provides a real-time check as one of the 4 ticks
   - Natural pool activity (dispatch, burns) also updates the oracle
 - **Chain-specific:** Most relevant on low-activity pools. On active pools with frequent mints/burns, oracle stays current.
+- **Resolution:** **NOT APPLICABLE** — same as ORACLE-001; flash loans cannot sandwich another user's liquidation event.
 
 ### ORACLE-003: Forced Safe Mode Dispatch Denial of Service
 

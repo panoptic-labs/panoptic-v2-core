@@ -188,19 +188,20 @@ uint128(
 
 ### C-2: `settleLiquidation` mintedShares Underflow Risk
 
-| Field                       | Value                                                                                                                                                                                   |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **ID**                      | ARITH-002                                                                                                                                                                               |
-| **Severity**                | Medium                                                                                                                                                                                  |
-| **Impact Class**            | 1 (value extraction) / 2 (solvency bypass)                                                                                                                                              |
-| **File:line**               | `CollateralTracker.sol:1338-1344`                                                                                                                                                       |
-| **Vulnerable expression**   | `Math.mulDivCapped(...) - liquidateeBalance` in unchecked                                                                                                                               |
-| **Why checks fail**         | No guarantee that `mulDivCapped result >= liquidateeBalance`. If bonus is small and totalAssets is large relative to bonus, the capped division can return a value < liquidateeBalance. |
-| **Preconditions**           | Liquidation where `bonus > 0`, `bonusShares > liquidateeBalance`, and `mulDivCapped(bonus, _totalSupply - liquidateeBalance, totalAssets() - bonus) < liquidateeBalance`                |
-| **Minimal attack sequence** | Create position near insolvency, get liquidated with small positive bonus                                                                                                               |
-| **Concrete impact**         | `mintedShares` wraps to ~`2^256 - small`, capped to `_totalSupply * DECIMALS`. Liquidator receives up to `_totalSupply * 10_000` new shares — massive dilution.                         |
-| **Mitigant**                | The `Math.min` cap limits to `_totalSupply * DECIMALS` which could still be very large                                                                                                  |
-| **Repeatable**              | Requires specific liquidation conditions                                                                                                                                                |
+| Field                       | Value                                                                                                                                                                                                                 |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **ID**                      | ARITH-002                                                                                                                                                                                                             |
+| **Severity**                | Medium                                                                                                                                                                                                                |
+| **Impact Class**            | 1 (value extraction) / 2 (solvency bypass)                                                                                                                                                                            |
+| **File:line**               | `CollateralTracker.sol:1338-1344`                                                                                                                                                                                     |
+| **Vulnerable expression**   | `Math.mulDivCapped(...) - liquidateeBalance` in unchecked                                                                                                                                                             |
+| **Why checks fail**         | No guarantee that `mulDivCapped result >= liquidateeBalance`. If bonus is small and totalAssets is large relative to bonus, the capped division can return a value < liquidateeBalance.                               |
+| **Preconditions**           | Liquidation where `bonus > 0`, `bonusShares > liquidateeBalance`, and `mulDivCapped(bonus, _totalSupply - liquidateeBalance, totalAssets() - bonus) < liquidateeBalance`                                              |
+| **Minimal attack sequence** | Create position near insolvency, get liquidated with small positive bonus                                                                                                                                             |
+| **Concrete impact**         | `mintedShares` wraps to ~`2^256 - small`, capped to `_totalSupply * DECIMALS`. Liquidator receives up to `_totalSupply * 10_000` new shares — massive dilution.                                                       |
+| **Mitigant**                | The `Math.min` cap limits to `_totalSupply * DECIMALS` which could still be very large                                                                                                                                |
+| **Repeatable**              | Requires specific liquidation conditions                                                                                                                                                                              |
+| **Status**                  | **RESOLVED** — The subtraction is now guarded by a ternary: `rawMinted > liquidateeBalance ? Math.min(rawMinted - liquidateeBalance, _totalSupply * DECIMALS) : 0` (CT:1344-1346). The underflow can no longer occur. |
 
 ### C-3: `tokenPaid` Addition Overflow in `settleMint`/`settleBurn`
 
@@ -288,9 +289,9 @@ if (remainder > 0) _burn(optionOwner, remainder);
 
 Same pattern at lines 1672-1689 for `settleBurn`.
 
-### E.2 Patch for C-2 (settleLiquidation underflow)
+### E.2 Patch for C-2 (settleLiquidation underflow) — APPLIED
 
-**CollateralTracker.sol:1338-1346** — Add underflow guard:
+**CollateralTracker.sol:1338-1346** — Underflow guard applied in codebase:
 
 ```solidity
 uint256 rawMinted = Math.mulDivCapped(
@@ -298,8 +299,8 @@ uint256 rawMinted = Math.mulDivCapped(
     _totalSupply - liquidateeBalance,
     uint256(Math.max(1, int256(totalAssets()) - bonus))
 );
-// PATCH: guard against underflow
-uint256 mintedShares = rawMinted > liquidateeBalance
+
+mintedShares = rawMinted > liquidateeBalance
     ? Math.min(rawMinted - liquidateeBalance, _totalSupply * DECIMALS)
     : 0;
 ```
@@ -382,9 +383,9 @@ function fuzz_settleLiquidationNoUnderflow(uint256 bonus, uint256 liquidateeBala
 
 ## F) RISK CLASSIFICATION SUMMARY
 
-| ID        | Severity      | Impact Class                      | Exploitable? | Repeatable? |
-| --------- | ------------- | --------------------------------- | ------------ | ----------- |
-| ARITH-001 | Low           | 1 (value extraction)              | Yes          | Yes         |
-| ARITH-002 | Medium        | 1/2 (value extraction / solvency) | Conditional  | Conditional |
-| ARITH-003 | Low           | 3 (DoS)                           | Unproven     | Unlikely    |
-| ARITH-004 | Informational | 1 (accounting drift)              | Mitigated    | N/A         |
+| ID        | Severity      | Impact Class                      | Exploitable? | Repeatable?  |
+| --------- | ------------- | --------------------------------- | ------------ | ------------ |
+| ARITH-001 | Low           | 1 (value extraction)              | Yes          | Yes          |
+| ARITH-002 | Medium        | 1/2 (value extraction / solvency) | **RESOLVED** | **RESOLVED** |
+| ARITH-003 | Low           | 3 (DoS)                           | Unproven     | Unlikely     |
+| ARITH-004 | Informational | 1 (accounting drift)              | Mitigated    | N/A          |

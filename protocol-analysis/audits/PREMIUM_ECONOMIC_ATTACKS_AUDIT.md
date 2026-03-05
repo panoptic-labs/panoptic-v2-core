@@ -511,6 +511,8 @@ The clamp to 0 would only trigger due to rounding errors in the floor divisions 
 
 **Effectiveness of mitigations**: Partially effective. The haircut still works for remaining sellers, but doesn't reach the front-runner.
 
+**Resolution**: Not a vulnerability — removing liquidity ahead of a loss event is permitted by design. Sellers are free to close positions at any time.
+
 ### PREM-002: Forced Premium Settlement as Liquidation Setup
 
 **Severity**: Low
@@ -565,6 +567,8 @@ The clamp to 0 would only trigger due to rounding errors in the floor divisions 
 - Positions are per-chunk; market can move to different tick ranges
 
 **Note**: This is the same as DENOM-003 from the denominator audit. Confirmed with full downstream trace.
+
+**Resolution**: **NOT APPLICABLE** — PanopticPool enforces a maximum removed fraction of 90% of total liquidity, so `netLiquidity` cannot reach 1 in practice. The attack precondition cannot be met.
 
 ### PREM-004: First-Mover Advantage in Premium Collection
 
@@ -768,14 +772,14 @@ Expected: Attack cost (33.33 ETH swap impact + fees) >> premium increase on targ
 
 ## Summary
 
-| ID       | Severity | Category     | Description                                                   | Fix                                             |
-| -------- | -------- | ------------ | ------------------------------------------------------------- | ----------------------------------------------- |
-| PREM-001 | Medium   | Timing       | Seller front-runs liquidation to avoid premium haircut        | Design-level; no simple fix                     |
-| PREM-002 | Low      | Manipulation | Forced premium settlement as liquidation setup (two-step)     | Mitigated by 4-tick solvency check              |
-| PREM-003 | Medium   | Starvation   | Accumulator freeze causes permanent chunk premium death       | Tighten maxSpread or add MIN_NET_LIQUIDITY      |
-| PREM-004 | Low      | Timing       | First-mover advantage in premium collection from shared pool  | Inherent to design; settleLongPremium mitigates |
-| PREM-005 | Info     | Design       | Short premium not settled during third-party force settlement | By design                                       |
-| PREM-006 | Low      | Starvation   | grossPremiumLast clamp creates phantom accumulated premium    | Rounding artifact; no fix needed                |
-| PREM-007 | Low      | Manipulation | Fee-driven solvency attack via premium accumulation           | Economically infeasible; no fix needed          |
+| ID       | Severity | Category     | Description                                                   | Fix                                                           |
+| -------- | -------- | ------------ | ------------------------------------------------------------- | ------------------------------------------------------------- |
+| PREM-001 | Medium   | Timing       | Seller front-runs liquidation to avoid premium haircut        | **By design** — removing liquidity ahead of loss is allowed   |
+| PREM-002 | Low      | Manipulation | Forced premium settlement as liquidation setup (two-step)     | Mitigated by 4-tick solvency check                            |
+| PREM-003 | Medium   | Starvation   | Accumulator freeze causes permanent chunk premium death       | **N/A** — max removed fraction is 90%, netLiq=1 not reachable |
+| PREM-004 | Low      | Timing       | First-mover advantage in premium collection from shared pool  | Inherent to design; settleLongPremium mitigates               |
+| PREM-005 | Info     | Design       | Short premium not settled during third-party force settlement | By design                                                     |
+| PREM-006 | Low      | Starvation   | grossPremiumLast clamp creates phantom accumulated premium    | Rounding artifact; no fix needed                              |
+| PREM-007 | Low      | Manipulation | Fee-driven solvency attack via premium accumulation           | Economically infeasible; no fix needed                        |
 
 **Key insight**: The premium system's primary vulnerability surface is **timing** (who settles first) rather than **arithmetic** (the math is sound). The settled/accumulated ratio creates a shared resource with first-mover advantage. The forced settlement mechanism (`settleLongPremium`) is the critical defense against premium accumulation attacks, and the haircut mechanism correctly socializes losses — but neither prevents a fast-moving seller from extracting before socialization occurs.

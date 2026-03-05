@@ -30,6 +30,8 @@ The most significant systemic concern is **loan-driven utilization manipulation*
 
 **Recommendation**: Add an explicit check in `_calculateCurrentInterestState` that `_unrealizedGlobalInterest < (1 << 106)`, reverting or clamping if exceeded.
 
+**Resolution**: **WILL NOT ADDRESS** — practical likelihood is extremely low (2^106 ≈ 8.1e31 exceeds realistic token supplies) and the scenario requires extended periods at maximum rates with no user interaction.
+
 ---
 
 ### LC-002 | Medium | Interest Rate Manipulation | Loan-driven utilization spike
@@ -76,6 +78,8 @@ This ramps the loan margin from 20% to 100% between `TARGET_POOL_UTIL` (66.67%) 
 
 With this change, the equilibrium ceiling for loan+withdrawal drops from 83.3% to ~72.1% (solving the quadratic where `u = 1/(1 + margin_rate(u))`). Attack costs at 90% utilization increase from 1.8× to 9.0× the pool size. The change reuses battle-tested curve logic with minimal code modification (one parameterized function, two call sites).
 
+**Resolution**: Mitigations already present (self-limiting attack cost, adaptive IRM ramp, 120% margin requirement, saturated pool utilization threshold).
+
 ---
 
 ### LC-003 | Medium | ITM Swap Interaction | Width==0 legs alter ITM swap amounts
@@ -87,6 +91,8 @@ Width==0 legs contribute to `itmAmounts` in the SFPM. When combined with width>0
 **Scenario**: Position with a short call (width>0, at-the-money) + short loan (width=0, tokenType=0). With inverted tick limits, the loan's `itm0 = -notional` combines with the call's ITM contribution, changing the net swap amount. The user may receive more or fewer tokens than expected from the ITM swap.
 
 **Recommendation**: Document this interaction clearly. Consider whether width==0 legs should be excluded from `itmAmounts` computation, since they don't represent actual AMM liquidity.
+
+**Resolution**: **INTENDED BEHAVIOR** — this interaction is by design and documented.
 
 ---
 

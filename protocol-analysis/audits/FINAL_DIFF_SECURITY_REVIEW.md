@@ -371,6 +371,7 @@ Other checks:
 - **Issue:** `GUARDIAN()`, `FACTORY()`, `OWNER()` declared but not implemented by RiskEngine selectors.
 - **Impact:** Integration call reverts.
 - **Fix:** Remove entries from interface or implement/forward corresponding functions.
+- **Resolution:** **WILL NOT ADDRESS**.
 
 ### FINAL-002 — BP_DECREASE_BUFFER may be insufficient for volatile pairs
 
@@ -380,6 +381,7 @@ Other checks:
 - **Issue:** `25/24` buffer can allow underwater transition after small adverse move.
 - **Impact:** Faster protocol-loss realization in volatility spikes.
 - **Fix:** Consider `13/12` or accept with explicit monitoring and governance playbook.
+- **Resolution:** **ACCEPTED RISK** — different risk engines are deployed for different asset pairs, allowing per-pair buffer tuning.
 
 ### FINAL-003 — crossBufferRatio cliff compounds with tight BP buffer
 
@@ -389,6 +391,7 @@ Other checks:
 - **Issue:** Sharp cross-margin decay from 90% to 95% utilization.
 - **Impact:** Cascading liquidation risk near saturation.
 - **Fix:** Smooth decay window (e.g., start at 80%) or explicitly accept/document risk.
+- **Resolution:** **NOT APPLICABLE** — utilization is set at origination and does not float, so cascading liquidation from utilization shifts cannot occur.
 
 ### FINAL-004 — Commission split leak persists (pre-existing)
 

@@ -515,6 +515,7 @@
      - But it does NOT prevent third-party shorts from withdrawing their already-accumulated premium before the haircut
      **Effectiveness**: Partial. Protects against liquidatee self-dealing but not third-party timing.
      **Repeatable**: Yes, on every liquidation with protocol loss and accumulated premium in affected chunks.
+     **Resolution**: Not a vulnerability — removing liquidity ahead of a loss event is permitted by design. Sellers are free to close positions at any time.
 
      ---
 
