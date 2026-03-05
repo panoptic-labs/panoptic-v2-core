@@ -6691,6 +6691,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function test_Fail_OnlyGuardian_lockPool(uint256 x, address caller) public {
         vm.assume(caller != address(0));
+        vm.assume(caller != Bob);
         {
             _initWorld(x);
 
@@ -6707,6 +6708,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function test_Fail_OnlyGuardian_unlockPool(uint256 x, address caller) public {
         vm.assume(caller != address(0));
+        vm.assume(caller != Bob);
         {
             _initWorld(x);
 
@@ -6726,6 +6728,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function test_Fail_OnlyGuardian_collect(uint256 x, address caller) public {
         vm.assume(caller != address(0));
+        vm.assume(caller != Bob);
         {
             _initWorld(x);
 
