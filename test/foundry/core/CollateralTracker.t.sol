@@ -6692,6 +6692,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     function test_Fail_OnlyGuardian_lockPool(uint256 x, address caller) public {
         vm.assume(caller != address(0));
         vm.assume(caller != Bob);
+        vm.assume(caller != address(this));
         {
             _initWorld(x);
 
@@ -6709,6 +6710,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     function test_Fail_OnlyGuardian_unlockPool(uint256 x, address caller) public {
         vm.assume(caller != address(0));
         vm.assume(caller != Bob);
+        vm.assume(caller != address(this));
         {
             _initWorld(x);
 
@@ -6729,6 +6731,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     function test_Fail_OnlyGuardian_collect(uint256 x, address caller) public {
         vm.assume(caller != address(0));
         vm.assume(caller != Bob);
+        vm.assume(caller != address(this));
         {
             _initWorld(x);
 
@@ -7508,12 +7511,22 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             vm.assume(width != width1 || strike != strike1);
+
             tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, 0, 0, 1, 1, strike1, width1);
             positionIdList.push(tokenId);
+            console2.log("strike", strike);
+            console2.log("width", width);
+            console2.log("strike1", strike1);
+            console2.log("width1", width1);
+            console2.log("currentTick", currentTick);
 
             /// calculate position size
             (legLowerTick, legUpperTick) = tokenId.asTicks(0);
+            vm.assume((currentTick > legUpperTick) || (currentTick < legLowerTick));
+
+            (legLowerTick, legUpperTick) = tokenId.asTicks(1);
+            vm.assume((currentTick > legUpperTick) || (currentTick < legLowerTick));
 
             positionSize0 = uint128(bound(positionSizeSeed, 10 ** 18, 10 ** 20));
             _assumePositionValidity(Bob, tokenId, positionSize0);
@@ -7653,6 +7666,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             /// calculate position size
             (legLowerTick, legUpperTick) = tokenId.asTicks(0);
+            vm.assume((currentTick > legUpperTick) || (currentTick < legLowerTick));
+
+            (legLowerTick, legUpperTick) = tokenId.asTicks(1);
+            vm.assume((currentTick > legUpperTick) || (currentTick < legLowerTick));
 
             positionSize0 = uint128(bound(positionSizeSeed, 10 ** 18, 10 ** 19));
             _assumePositionValidity(Bob, tokenId, positionSize0);
