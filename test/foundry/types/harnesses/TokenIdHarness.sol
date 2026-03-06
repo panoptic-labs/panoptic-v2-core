@@ -406,9 +406,8 @@ contract TokenIdHarness {
      * @notice Validate that a position `self` and its legs/chunks are exercisable.
      * @dev At least one long leg must be far-out-of-the-money (i.e. price is outside its range).
      * @param self the option position Id (tokenId)
-     * @param currentTick the current tick corresponding to the current price in the Univ3 pool.
      */
-    function validateIsExercisable(TokenId self, int24 currentTick) public pure {
-        TokenIdLibrary.validateIsExercisable(self, currentTick);
+    function validateIsExercisable(TokenId self) public pure returns (uint256) {
+        return TokenIdLibrary.validateIsExercisable(self);
     }
 }

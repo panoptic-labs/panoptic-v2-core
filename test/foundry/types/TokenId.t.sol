@@ -22,7 +22,7 @@ contract TokenIdTest is Test, PositionUtils {
 
     // mask to clear all width bits (12 bits, offset of 36 bits)
     uint256 internal constant CLEAR_WIDTH_MASK =
-        0xFFFFFFFFFFFF_000FFFFFFFFF_000FFFFFFFFF_000FFFFFFFFF_FFFFFFFFFFFFFFFF;
+        0xFFFFFFFFF_000FFFFFFFFF_000FFFFFFFFF_000FFFFFFFFF_FFFFFFFFFFFFFFFF;
 
     // mask to clear all strike bits (24 bits, starting offset of 12 bits)
     uint256 internal constant CLEAR_STRIKE_MASK =
@@ -915,41 +915,6 @@ contract TokenIdTest is Test, PositionUtils {
         harness.validate(tokenId);
     }
 
-    function test_Fail_validate_invalidWidth(
-        uint64 poolId,
-        uint256 optionRatioSeed,
-        uint256 assetSeed,
-        uint256 isLongSeed,
-        uint256 tokenTypeSeed,
-        int24 strikeSeed,
-        int256 widthSeed,
-        int24 poolStatusSeed
-    ) public {
-        TokenId tokenId;
-
-        // fuzzes a valid currentTick
-        setPoolStatus(poolStatusSeed);
-
-        // construct single leg token
-        tokenId = fuzzedPosition(
-            1, // total amount of legs
-            poolId,
-            optionRatioSeed,
-            assetSeed,
-            isLongSeed,
-            tokenTypeSeed,
-            strikeSeed,
-            widthSeed
-        );
-
-        // clear all width bits
-        tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_WIDTH_MASK);
-
-        /// will fail as tokenId's cannot have legs with width of zero
-        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 5));
-        harness.validate(tokenId);
-    }
-
     function test_Fail_validate_invalidStrikeMin(
         uint64 poolId,
         uint256 optionRatioSeed,
@@ -1068,417 +1033,6 @@ contract TokenIdTest is Test, PositionUtils {
         harness.validate(tokenId);
     }
 
-    function test_Fail_validate_riskRegularPos(
-        uint64 poolId,
-        uint256 optionRatioSeed,
-        uint256 assetSeed,
-        uint256 isLongSeed,
-        uint256 tokenTypeSeed,
-        int24 strikeSeed,
-        int256 widthSeed,
-        int24 poolStatusSeed
-    ) public {
-        TokenId tokenId;
-
-        // fuzzes a valid currentTick
-        setPoolStatus(poolStatusSeed);
-
-        //construct two leg token
-        tokenId = fuzzedPosition(
-            2, // total amount of legs
-            poolId,
-            optionRatioSeed,
-            assetSeed,
-            isLongSeed,
-            tokenTypeSeed,
-            strikeSeed,
-            widthSeed
-        );
-
-        /// create defined risk position
-        {
-            //clear all risk partner bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_RISK_PARTNER_MASK);
-
-            // leg 1 will have risk partner as leg 2
-            tokenId = harness.addRiskPartner(tokenId, 1, 0);
-
-            // leg 2 will have risk partner as leg 1
-            tokenId = harness.addRiskPartner(tokenId, 0, 1);
-        }
-
-        {
-            // clear all asset bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_NUMERAIRE_MASK);
-
-            // leg 1 asset 0
-            tokenId = harness.addAsset(tokenId, 0, 1);
-
-            // leg 2 asset 1
-            tokenId = harness.addAsset(tokenId, 0, 1);
-        }
-
-        /// create legs with differing option ratios
-        {
-            //clear all option ratio bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_OPTION_RATIO_MASK);
-
-            // leg 1 option pseudorandom option ratio
-            tokenId = harness.addOptionRatio(tokenId, 10, 0); // hardcode for now
-
-            // leg 2 option pseudorandom option ratio
-            tokenId = harness.addOptionRatio(tokenId, 1, 1);
-        }
-
-        /// create legs with same option ratio
-        {
-            //clear all option ratio bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_OPTION_RATIO_MASK);
-
-            // leg 1 option pseudorandom option ratio
-            tokenId = harness.addOptionRatio(tokenId, 1, 0); // hardcode for now
-
-            // leg 2 option pseudorandom option ratio
-            tokenId = harness.addOptionRatio(tokenId, 1, 1);
-        }
-
-        {
-            //clear all is long bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_IS_LONG_MASK);
-
-            // leg 1 will be short
-            tokenId = harness.addIsLong(tokenId, 0, 0);
-
-            // leg 2 will be short
-            tokenId = harness.addIsLong(tokenId, 0, 1);
-        }
-
-        {
-            //clear all risk partner bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_TOKEN_TYPE_MASK);
-
-            // leg 1 will be asset 1
-            tokenId = harness.addTokenType(tokenId, 1, 0);
-
-            // leg 2 will be asset 1
-            tokenId = harness.addTokenType(tokenId, 1, 1);
-        }
-
-        for (uint256 legIndex; legIndex < tokenId.countLegs(); legIndex++) {
-            for (uint256 j = legIndex + 1; j < tokenId.countLegs(); ++j) {
-                vm.assume(
-                    !(tokenId.strike(legIndex) == tokenId.strike(j) &&
-                        tokenId.width(legIndex) == tokenId.width(j) &&
-                        tokenId.tokenType(legIndex) == tokenId.tokenType(j))
-                );
-            }
-        }
-
-        // will fail as risk partners must have the same asset
-        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 4));
-        harness.validate(tokenId);
-    }
-
-    function test_Fail_validate_longStrangle(
-        uint64 poolId,
-        uint256 optionRatioSeed,
-        uint256 assetSeed,
-        uint256 isLongSeed,
-        uint256 tokenTypeSeed,
-        int24 strikeSeed,
-        int256 widthSeed,
-        int24 poolStatusSeed
-    ) public {
-        TokenId tokenId;
-
-        // fuzzes a valid currentTick
-        setPoolStatus(poolStatusSeed);
-
-        //construct two leg token
-        tokenId = fuzzedPosition(
-            2, // total amount of legs
-            poolId,
-            optionRatioSeed,
-            assetSeed,
-            isLongSeed,
-            tokenTypeSeed,
-            strikeSeed,
-            widthSeed
-        );
-
-        {
-            //clear all risk partner bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_RISK_PARTNER_MASK);
-
-            // leg 1 will have risk partner as leg 2
-            tokenId = harness.addRiskPartner(tokenId, 1, 0);
-
-            // leg 2 will have risk partner as leg 1
-            tokenId = harness.addRiskPartner(tokenId, 0, 1);
-        }
-
-        {
-            // clear all asset bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_NUMERAIRE_MASK);
-
-            // leg 1 asset 0
-            tokenId = harness.addAsset(tokenId, 0, 1);
-
-            // leg 2 asset 1
-            tokenId = harness.addAsset(tokenId, 0, 1);
-        }
-
-        /// create legs with same option ratio
-        {
-            //clear all option ratio bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_OPTION_RATIO_MASK);
-
-            // leg 1 option pseudorandom option ratio
-            tokenId = harness.addOptionRatio(tokenId, 1, 0); // hardcode for now
-
-            // leg 2 option pseudorandom option ratio
-            tokenId = harness.addOptionRatio(tokenId, 1, 1);
-        }
-
-        {
-            //clear all is long bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_IS_LONG_MASK);
-
-            // leg 1 will be long
-            tokenId = harness.addIsLong(tokenId, 1, 0);
-
-            // leg 2 will be long
-            tokenId = harness.addIsLong(tokenId, 1, 1);
-        }
-
-        {
-            //clear all risk partner bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_TOKEN_TYPE_MASK);
-
-            // leg 1 will be asset 0
-            tokenId = harness.addTokenType(tokenId, 0, 0);
-
-            // leg 2 will be asset 1
-            tokenId = harness.addTokenType(tokenId, 1, 1);
-        }
-
-        // will fail as risk partners must have the same asset
-        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 5));
-        harness.validate(tokenId);
-    }
-
-    function test_Fail_validate_synthPos(
-        uint64 poolId,
-        uint256 optionRatioSeed,
-        uint256 assetSeed,
-        uint256 isLongSeed,
-        uint256 tokenTypeSeed,
-        int24 strikeSeed,
-        int256 widthSeed,
-        int24 poolStatusSeed
-    ) public {
-        TokenId tokenId;
-
-        // fuzzes a valid currentTick
-        setPoolStatus(poolStatusSeed);
-
-        //construct two leg token
-        tokenId = fuzzedPosition(
-            2, // total amount of legs
-            poolId,
-            optionRatioSeed,
-            assetSeed,
-            isLongSeed,
-            tokenTypeSeed,
-            strikeSeed,
-            widthSeed
-        );
-
-        /// create defined risk position
-        {
-            //clear all risk partner bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_RISK_PARTNER_MASK);
-
-            // leg 1 will have risk partner as leg 2
-            tokenId = harness.addRiskPartner(tokenId, 1, 0);
-
-            // leg 2 will have risk partner as leg 1
-            tokenId = harness.addRiskPartner(tokenId, 0, 1);
-        }
-
-        {
-            // clear all asset bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_NUMERAIRE_MASK);
-
-            // leg 1 asset 0
-            tokenId = harness.addAsset(tokenId, 0, 1);
-
-            // leg 2 asset 1
-            tokenId = harness.addAsset(tokenId, 0, 1);
-        }
-
-        /// create legs with same option ratio
-        {
-            //clear all option ratio bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_OPTION_RATIO_MASK);
-
-            // leg 1 option pseudorandom option ratio
-            tokenId = harness.addOptionRatio(tokenId, 1, 0); // hardcode for now
-
-            // leg 2 option pseudorandom option ratio
-            tokenId = harness.addOptionRatio(tokenId, 1, 1);
-        }
-
-        {
-            //clear all is long bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_IS_LONG_MASK);
-
-            // leg 1 will be short
-            tokenId = harness.addIsLong(tokenId, 0, 0);
-
-            // leg 2 will be long
-            tokenId = harness.addIsLong(tokenId, 1, 1);
-        }
-
-        {
-            //clear all risk partner bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_TOKEN_TYPE_MASK);
-
-            // leg 1 will be asset 0
-            tokenId = harness.addTokenType(tokenId, 0, 0);
-
-            // leg 2 will be asset 1
-            tokenId = harness.addTokenType(tokenId, 1, 1);
-        }
-
-        // will fail as risk partners must have the same asset
-        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 5));
-        harness.validate(tokenId);
-    }
-
-    function test_Fail_validate_invalidPartnerAsset(
-        uint64 poolId,
-        uint256 optionRatioSeed,
-        uint256 assetSeed,
-        uint256 isLongSeed,
-        uint256 tokenTypeSeed,
-        int24 strikeSeed,
-        int256 widthSeed,
-        int24 poolStatusSeed
-    ) public {
-        TokenId tokenId;
-
-        // fuzzes a valid currentTick
-        setPoolStatus(poolStatusSeed);
-
-        //construct two leg token
-        tokenId = fuzzedPosition(
-            2, // total amount of legs
-            poolId,
-            optionRatioSeed,
-            assetSeed,
-            isLongSeed,
-            tokenTypeSeed,
-            strikeSeed,
-            widthSeed
-        );
-
-        /// create defined risk position
-        {
-            //clear all risk partner bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_RISK_PARTNER_MASK);
-
-            // leg 1 will have risk partner as leg 2
-            tokenId = harness.addRiskPartner(tokenId, 1, 0);
-
-            // leg 2 will have risk partner as leg 1
-            tokenId = harness.addRiskPartner(tokenId, 0, 1);
-        }
-
-        {
-            // clear all asset bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_NUMERAIRE_MASK);
-
-            // leg 1 asset 0
-            tokenId = harness.addAsset(tokenId, 0, 1);
-
-            // leg 2 asset 1
-            tokenId = harness.addAsset(tokenId, 1, 1);
-        }
-
-        // will fail as risk partners must have the same asset
-        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 3));
-        harness.validate(tokenId);
-    }
-
-    function test_Fail_validate_invalidPartnerRatio(
-        uint64 poolId,
-        uint256 optionRatioSeed,
-        uint256 assetSeed,
-        uint256 isLongSeed,
-        uint256 tokenTypeSeed,
-        int24 strikeSeed,
-        int256 widthSeed,
-        int24 poolStatusSeed
-    ) public {
-        TokenId tokenId;
-
-        // fuzzes a valid currentTick
-        setPoolStatus(poolStatusSeed);
-
-        //construct two leg token
-        tokenId = fuzzedPosition(
-            2, // total amount of legs
-            poolId,
-            optionRatioSeed,
-            assetSeed,
-            isLongSeed,
-            tokenTypeSeed,
-            strikeSeed,
-            widthSeed
-        );
-
-        /// create defined risk position
-        {
-            //clear all risk partner bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_RISK_PARTNER_MASK);
-
-            // leg 1 will have risk partner as leg 2
-            tokenId = harness.addRiskPartner(tokenId, 1, 0);
-
-            // leg 2 will have risk partner as leg 1
-            tokenId = harness.addRiskPartner(tokenId, 0, 1);
-        }
-
-        /// create legs with the same asset
-        {
-            // clear all asset bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_NUMERAIRE_MASK);
-
-            // leg 1 asset 1
-            tokenId = harness.addAsset(tokenId, 1, 0);
-
-            // leg 2 asset 1
-            tokenId = harness.addAsset(tokenId, 1, 1);
-        }
-
-        /// create legs with differing option ratios
-        {
-            //clear all option ratio bits
-            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_OPTION_RATIO_MASK);
-
-            // leg 1 option pseudorandom option ratio
-            tokenId = harness.addOptionRatio(tokenId, 10, 0); // hardcode for now
-
-            // leg 2 option pseudorandom option ratio
-            tokenId = harness.addOptionRatio(tokenId, 1, 1);
-        }
-
-        // will fail as risk partners must have the same option ratio
-        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 3));
-        harness.validate(tokenId);
-    }
-
     /*//////////////////////////////////////////////////////////////
                         VALIDATE IS EXERCISABLE
     //////////////////////////////////////////////////////////////*/
@@ -1531,7 +1085,7 @@ contract TokenIdTest is Test, PositionUtils {
             tokenId = harness.addIsLong(tokenId, 1, i);
         }
 
-        harness.validateIsExercisable(tokenId, currentTick);
+        assertEq(harness.validateIsExercisable(tokenId), 1);
     }
 
     function test_Success_validateIsExercisable_aboveTick(
@@ -1583,7 +1137,7 @@ contract TokenIdTest is Test, PositionUtils {
             tokenId = harness.addIsLong(tokenId, 1, i);
         }
 
-        harness.validateIsExercisable(tokenId, currentTick);
+        assertEq(harness.validateIsExercisable(tokenId), 1);
     }
 
     function test_Fail_validateIsExercisable_shortPos(
@@ -1616,8 +1170,7 @@ contract TokenIdTest is Test, PositionUtils {
         // clear isLong
         tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_IS_LONG_MASK);
 
-        vm.expectRevert(Errors.NoLegsExercisable.selector);
-        harness.validateIsExercisable(tokenId, currentTick);
+        assertEq(harness.validateIsExercisable(tokenId), 0);
     }
 
     function test_Fail_validateIsExercisable_inRange(
@@ -1670,8 +1223,46 @@ contract TokenIdTest is Test, PositionUtils {
             tokenId = harness.addIsLong(tokenId, 1, i);
         }
 
-        vm.expectRevert(Errors.NoLegsExercisable.selector);
-        harness.validateIsExercisable(tokenId, currentTick);
+        assertEq(harness.validateIsExercisable(tokenId), 1);
+    }
+
+    function test_Fail_validateIsExercisable_loans(
+        uint64 poolId,
+        uint256 optionRatioSeed,
+        uint256 assetSeed,
+        uint256 isLongSeed,
+        uint256 tokenTypeSeed,
+        int24 strikeSeed,
+        int256 widthSeed,
+        int24 poolStatusSeed
+    ) public {
+        TokenId tokenId;
+
+        // fuzzes a valid currentTick
+        setPoolStatus(poolStatusSeed);
+
+        //construct one leg token
+        tokenId = fuzzedPosition(
+            4, // total amount of legs
+            poolId,
+            optionRatioSeed,
+            assetSeed,
+            isLongSeed,
+            tokenTypeSeed,
+            strikeSeed,
+            widthSeed
+        );
+
+        // clear width (all loans)
+        tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_WIDTH_MASK);
+        // clear isLong
+        tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_IS_LONG_MASK);
+        // l
+        for (uint256 i; i < 4; i++) {
+            tokenId = harness.addIsLong(tokenId, 1, i);
+        }
+
+        assertEq(harness.validateIsExercisable(tokenId), 0);
     }
 
     /*//////////////////////////////////////////////////////////////

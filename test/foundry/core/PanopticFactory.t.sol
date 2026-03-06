@@ -4,10 +4,12 @@ pragma solidity ^0.8.24;
 // Foundry
 import "forge-std/Test.sol";
 // Panoptic Core
-import {PanopticFactory} from "@contracts/PanopticFactory.sol";
-import {PanopticPool} from "@contracts/PanopticPool.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
+import {PanopticFactoryV4} from "@contracts/PanopticFactoryV4.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
+import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
+import {SemiFungiblePositionManagerV4} from "@contracts/SemiFungiblePositionManagerV4.sol";
 // Panoptic Libraries
 import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {Constants} from "@libraries/Constants.sol";
@@ -19,29 +21,37 @@ import {Errors} from "@libraries/Errors.sol";
 import {Pointer, PointerLibrary} from "@types/Pointer.sol";
 // Panoptic Interfaces
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
+import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
 // Uniswap
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
-import {IUniswapV3Factory} from "v3-core/interfaces/IUniswapV3Factory.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {PoolAddress} from "v3-periphery/libraries/PoolAddress.sol";
 import {CallbackValidation} from "v3-periphery/libraries/CallbackValidation.sol";
 import {TransferHelper} from "v3-periphery/libraries/TransferHelper.sol";
 import {Base64} from "solady/utils/Base64.sol";
+import {PoolManager} from "v4-core/PoolManager.sol";
 import {JSONParserLib} from "solady/utils/JSONParserLib.sol";
+import {ClonesWithImmutableArgs} from "clones-with-immutable-args/ClonesWithImmutableArgs.sol";
+import {V4RouterSimple} from "../testUtils/V4RouterSimple.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
+import {PoolId} from "v4-core/types/PoolId.sol";
+import {Currency} from "v4-core/types/Currency.sol";
 
-contract PanopticFactoryHarness is PanopticFactory {
+contract PanopticFactoryHarness is PanopticFactoryV4 {
     constructor(
-        SemiFungiblePositionManager _SFPM,
-        IUniswapV3Factory _univ3Factory,
+        SemiFungiblePositionManagerV4 _SFPM,
+        IPoolManager _manager,
         address poolReference,
         address collateralReference,
         bytes32[] memory properties,
         uint256[][] memory indices,
         Pointer[][] memory pointers
     )
-        PanopticFactory(
+        PanopticFactoryV4(
             _SFPM,
-            _univ3Factory,
+            _manager,
             poolReference,
             collateralReference,
             properties,
@@ -53,6 +63,10 @@ contract PanopticFactoryHarness is PanopticFactory {
     function getPoolReference() external view returns (address) {
         return POOL_REFERENCE;
     }
+
+    function create3Address(bytes32 salt) external view returns (address) {
+        return ClonesWithImmutableArgs.addressOfClone3(salt);
+    }
 }
 
 contract PanopticFactoryTest is Test {
@@ -62,11 +76,13 @@ contract PanopticFactoryTest is Test {
     // Mainnet WETH smart contract address
     address _WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
-    // Mainnet factory address
-    IUniswapV3Factory V3FACTORY = IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
+    IPoolManager manager = IPoolManager(address(new PoolManager(address(0))));
+
+    V4RouterSimple routerV4 = new V4RouterSimple(manager);
 
     // deploy the semiFungiblePositionManager
-    SemiFungiblePositionManager sfpm = new SemiFungiblePositionManager(V3FACTORY, 10 ** 13, 0);
+    SemiFungiblePositionManagerV4 sfpm =
+        new SemiFungiblePositionManagerV4(manager, 10 ** 13, 10 ** 13, 0);
 
     address Deployer = makeAddr("Deployer");
 
@@ -118,7 +134,8 @@ contract PanopticFactoryTest is Test {
     address token1;
     uint24 fee;
     int24 tickSpacing;
-
+    IRiskEngine riskEngine;
+    PoolKey poolKey;
     // the amount that's deployed when initializing the SFPM against a new AMM pool.
     uint128 constant FULL_RANGE_LIQUIDITY_AMOUNT_WETH = 0.1 ether;
     uint128 constant FULL_RANGE_LIQUIDITY_AMOUNT_TOKEN = 1e6;
@@ -147,6 +164,17 @@ contract PanopticFactoryTest is Test {
         fee = _pool.fee();
         tickSpacing = _pool.tickSpacing();
 
+        poolKey = PoolKey(
+            Currency.wrap(token0),
+            Currency.wrap(token1),
+            fee,
+            tickSpacing,
+            IHooks(address(0))
+        );
+
+        (uint160 currentSqrtPriceX96, , , , , , ) = pool.slot0();
+        manager.initialize(poolKey, currentSqrtPriceX96);
+
         // give test contract a sufficient amount of tokens to deploy a new pool
         deal(token0, address(this), INITIAL_MOCK_TOKENS);
         deal(token1, address(this), INITIAL_MOCK_TOKENS);
@@ -171,6 +199,10 @@ contract PanopticFactoryTest is Test {
 
         bytes[] memory bytecodes = vm.parseJsonBytesArray(metadata, ".bytecodes");
         address[] memory pointerAddresses = new address[](bytecodes.length);
+
+        riskEngine = IRiskEngine(
+            address(new RiskEngine(10_000_000, 10_000_000, address(0), address(0)))
+        );
 
         for (uint256 i = 0; i < bytecodes.length; i++) {
             bytes memory code = bytecodes[i];
@@ -203,16 +235,28 @@ contract PanopticFactoryTest is Test {
         }
 
         string[] memory propsStr = vm.parseJsonStringArray(metadata, ".properties");
+        console2.log("properties count", propsStr.length);
+
         bytes32[] memory props = new bytes32[](propsStr.length);
         for (uint256 i = 0; i < propsStr.length; i++) {
             props[i] = bytes32(bytes(propsStr[i]));
         }
 
-        string[][] memory indicesStr = abi.decode(vm.parseJson(metadata, ".indices"), (string[][]));
+        // indices: read each inner string[] directly
+        string[][] memory indicesStr = new string[][](propsStr.length);
+        for (uint256 i = 0; i < propsStr.length; i++) {
+            // Build ".indices[i]" and parse that inner string[]
+            string memory path = string.concat(".indices[", vm.toString(i), "]");
+            indicesStr[i] = vm.parseJsonStringArray(metadata, path);
+            // optional: console2.log("indices[", i, "] len", indicesStr[i].length);
+        }
+
+        // convert to uint256[][]
         uint256[][] memory indices = new uint256[][](indicesStr.length);
         for (uint256 i = 0; i < indicesStr.length; i++) {
             indices[i] = new uint256[](indicesStr[i].length);
             for (uint256 j = 0; j < indicesStr[i].length; j++) {
+                // your JSON numbers are decimal strings (even the huge ones), so parseUint is correct
                 indices[i][j] = vm.parseUint(indicesStr[i][j]);
             }
         }
@@ -220,9 +264,9 @@ contract PanopticFactoryTest is Test {
         // Deploy factory
         panopticFactory = new PanopticFactoryHarness(
             sfpm,
-            V3FACTORY,
-            address(new PanopticPool(sfpm)),
-            address(new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000)),
+            manager,
+            address(new PanopticPoolV2(ISemiFungiblePositionManager(address(sfpm)))),
+            address(new CollateralTrackerV2()),
             props,
             indices,
             pointers
@@ -239,23 +283,22 @@ contract PanopticFactoryTest is Test {
         _initWorld(x);
 
         // Compute clone determinsitic Panoptic Factory address
-        address poolReference = panopticFactory.getPoolReference();
-        address preComputedPool = predictDeterministicAddress(
-            poolReference,
+        //address poolReference = panopticFactory.getPoolReference();
+        address preComputedPool = panopticFactory.create3Address(
             bytes32(
                 abi.encodePacked(
                     uint80(uint160(address(this)) >> 80),
-                    uint80(uint160(address(pool)) >> 80),
+                    uint40(uint256(PoolId.unwrap(poolKey.toId())) >> 120),
+                    uint40(uint160(address(riskEngine)) >> 120),
                     salt
                 )
-            ),
-            address(panopticFactory)
+            )
         );
 
         {
             // Deploy pool
             // links the Uniswap V3 pool to the Panoptic pool
-            PanopticPool deployedPool = panopticFactory.deployNewPool(token0, token1, fee, salt);
+            PanopticPoolV2 deployedPool = panopticFactory.deployNewPool(poolKey, riskEngine, salt);
 
             // see if pool exists at the precomputed address
             uint256 size;
@@ -263,19 +306,16 @@ contract PanopticFactoryTest is Test {
                 size := extcodesize(preComputedPool)
             }
             // check if bytecode is greater than 0
-            assertGt(size, 0);
+            assertGt(size, 0, "bytecode");
 
             // check if pool is linked to the correct panoptic pool in factory
-            assertEq(address(panopticFactory.getPanopticPool(pool)), address(deployedPool));
-            // see if correct pool was linked in the panopticPool
-            IUniswapV3Pool linkedPool = PanopticPool(preComputedPool).univ3pool();
-            address linkedPoolAddress = address(PanopticPool(preComputedPool).univ3pool());
-            assertEq(address(pool), linkedPoolAddress);
-
-            // check the pool has the correct parameters
-            assertEq(token0, linkedPool.token0());
-            assertEq(token1, linkedPool.token1());
-            assertEq(fee, linkedPool.fee());
+            assertEq(
+                address(panopticFactory.getPanopticPool(poolKey, riskEngine)),
+                address(deployedPool),
+                "getPanopticPool"
+            );
+            // see if correct poolKey
+            assertEq(PanopticPoolV2(preComputedPool).poolKey(), abi.encode(poolKey), "linkedPool");
         }
     }
 
@@ -285,8 +325,8 @@ contract PanopticFactoryTest is Test {
         uint96 salt = uint96(block.timestamp);
 
         // Deploy invalid pool (uninitalized tokens and fee)
-        vm.expectRevert(Errors.UniswapPoolNotInitialized.selector);
-        panopticFactory.deployNewPool(token0, token1, fee, salt);
+        vm.expectRevert(Errors.PoolNotInitialized.selector);
+        panopticFactory.deployNewPool(poolKey, riskEngine, salt);
     }
 
     // Revert if deploying a Panoptic Pool that has already been initalized
@@ -299,12 +339,12 @@ contract PanopticFactoryTest is Test {
         uint96 salt = uint96(block.timestamp);
 
         // Deploy pool
-        panopticFactory.deployNewPool(token0, token1, fee, salt);
+        panopticFactory.deployNewPool(poolKey, riskEngine, salt);
 
         // Attempt to deploy pool again
-        vm.expectRevert(Errors.PoolAlreadyInitialized.selector);
+        vm.expectRevert(Errors.AlreadyInitialized.selector);
         unchecked {
-            panopticFactory.deployNewPool(token0, token1, fee, salt + 1);
+            panopticFactory.deployNewPool(poolKey, riskEngine, salt + 1);
         }
     }
 
@@ -315,7 +355,7 @@ contract PanopticFactoryTest is Test {
     function test_Success_tokenURI_decodes() public {
         _initalizeWorldState(pools[1]);
         uint96 salt = uint96(block.timestamp);
-        PanopticPool deployedPool = panopticFactory.deployNewPool(token0, token1, fee, salt);
+        PanopticPoolV2 deployedPool = panopticFactory.deployNewPool(poolKey, riskEngine, salt);
         uint256 panopticPoolAddress = uint256(uint160(address(deployedPool)));
         bytes memory uri = bytes(panopticFactory.tokenURI(panopticPoolAddress));
         uint256 prefixLength = bytes("data:application/json;base64,").length;
@@ -331,6 +371,95 @@ contract PanopticFactoryTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                            RISK ENGINES
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Tests that deploying a pool with a zero-address risk engine reverts.
+    function test_Fail_deployNewPool_zeroAddressRiskEngine() public {
+        _initalizeWorldState(pools[0]);
+
+        uint96 salt = 12345;
+
+        // Expect a revert, assuming you create an error like `ZeroAddressNotAllowed()`
+        vm.expectRevert(Errors.ZeroAddress.selector);
+        panopticFactory.deployNewPool(
+            poolKey,
+            IRiskEngine(address(0)), // Pass address(0) casted to the type
+            salt
+        );
+    }
+
+    /// @notice Tests the core feature of the RiskEngine refactor: deploying multiple pools
+    /// for the same Uniswap pair by using different RiskEngine contracts.
+    function test_Success_deployMultiplePools_differentRiskEngines() public {
+        // Arrange: Setup world state and create a second, distinct RiskEngine
+        _initalizeWorldState(pools[0]); // Use a fixed pool, no fuzzing needed
+
+        // Create a second risk engine with slightly different parameters
+        IRiskEngine riskEngineB = IRiskEngine(
+            address(new RiskEngine(4_000_000, 5_000_000, address(0), address(0)))
+        );
+
+        uint96 salt = 12345;
+
+        // Act: Deploy two Panoptic pools for the same Uniswap pool but with different risk engines
+        PanopticPoolV2 poolA = panopticFactory.deployNewPool(
+            poolKey,
+            riskEngine, // The default risk engine from setUp
+            salt
+        );
+
+        PanopticPoolV2 poolB = panopticFactory.deployNewPool(
+            poolKey,
+            riskEngineB, // The new, second risk engine
+            salt // We can even use the same salt to prove the riskEngine makes it unique
+        );
+
+        // Assert: Verify that two distinct pools were created and configured correctly
+
+        // 1. The two pool addresses must be different.
+        assertNotEq(address(poolA), address(poolB), "Pool addresses should be different");
+
+        // 2. The factory's getter should return the correct pool for each risk engine.
+        assertEq(
+            address(panopticFactory.getPanopticPool(poolKey, riskEngine)),
+            address(poolA),
+            "Factory should map default riskEngine to poolA"
+        );
+        assertEq(
+            address(panopticFactory.getPanopticPool(poolKey, riskEngineB)),
+            address(poolB),
+            "Factory should map riskEngineB to poolB"
+        );
+
+        // 3. Each pool should be linked to its correct, respective risk engine.
+        assertEq(
+            address(poolA.riskEngine()),
+            address(riskEngine),
+            "Pool A should use default riskEngine"
+        );
+        assertEq(
+            address(poolB.riskEngine()),
+            address(riskEngineB),
+            "Pool B should use riskEngineB"
+        );
+        PoolId poolAId = abi.decode(poolA.poolKey(), (PoolKey)).toId();
+        PoolId poolBId = abi.decode(poolB.poolKey(), (PoolKey)).toId();
+
+        // 4. Sanity check: both pools should still point to the same underlying Uniswap pool.
+        assertEq(
+            abi.encode(poolAId),
+            abi.encode(poolKey.toId()),
+            "Pool A should have correct univ3pool"
+        );
+        assertEq(
+            abi.encode(poolBId),
+            abi.encode(poolKey.toId()),
+            "Pool B should have correct univ3pool"
+        );
+    }
+
+    /*//////////////////////////////////////////////////////////////
                     MINE POOL ADDRESS TESTS
     //////////////////////////////////////////////////////////////*/
 
@@ -341,8 +470,8 @@ contract PanopticFactoryTest is Test {
         address randomAddress,
         uint256 minTargetRarity
     ) public {
-        // limit minTargetRarity to 1-2 leading zeroes for test efficiency
-        minTargetRarity = bound(minTargetRarity, 1, 2);
+        // limit minTargetRarity to 1-3 leading zeroes for test efficiency
+        minTargetRarity = bound(minTargetRarity, 1, 3);
 
         nonce = uint96(bound(nonce, 0, type(uint96).max - 1001));
 
@@ -356,31 +485,33 @@ contract PanopticFactoryTest is Test {
         // mine pool address
         (uint96 bestSalt, uint256 highestRarity) = panopticFactory.minePoolAddress(
             randomAddress,
-            address(pool),
+            poolKey,
+            address(riskEngine),
             nonce,
-            50_000,
+            250_000,
             minTargetRarity
         );
 
+        console2.log("min", minTargetRarity);
         assertEq(
             highestRarity,
             PanopticMath.numberOfLeadingHexZeros(
-                predictDeterministicAddress(
-                    panopticFactory.getPoolReference(),
+                panopticFactory.create3Address(
                     bytes32(
                         abi.encodePacked(
                             uint80(uint160(randomAddress) >> 80),
-                            uint80(uint160(address(pool)) >> 80),
+                            uint40(uint256(PoolId.unwrap(poolKey.toId())) >> 120),
+                            uint40(uint160(address(riskEngine)) >> 120),
                             bestSalt
                         )
-                    ),
-                    address(panopticFactory)
+                    )
                 )
-            )
+            ),
+            "rarity check"
         );
 
         // check highestRarity address was reached or surpassed
-        assertGe(highestRarity, minTargetRarity);
+        assertGe(highestRarity, minTargetRarity, "rarity");
     }
 
     /*//////////////////////////////////////////////////////////////

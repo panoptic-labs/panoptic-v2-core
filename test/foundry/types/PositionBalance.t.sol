@@ -21,32 +21,41 @@ contract PositionBalanceTest is Test {
         harness = new PositionBalanceHarness();
     }
 
-    function test_Success_storeBalanceData(uint128 y, uint16 z, uint16 u, uint96 w) public view {
+    function test_Success_storeBalanceData(
+        uint128 y,
+        uint16 z,
+        uint16 u,
+        int24 w,
+        uint32 v,
+        uint40 t,
+        bool b
+    ) public view {
         uint32 utilizations = uint32(z) + (uint32(u) << 16);
-        PositionBalance x = harness.storeBalanceData(y, utilizations, w);
+        PositionBalance x = harness.storeBalanceData(y, utilizations, w, v, t, b);
         assertEq(harness.positionSize(x), y);
         assertEq(harness.utilizations(x), utilizations);
         assertEq(harness.utilization0(x), int256(uint256(z)));
         assertEq(harness.utilization1(x), int256(uint256(u)));
-        assertEq(harness.tickData(x), w);
+        assertEq(harness.tickAtMint(x), w);
+        assertEq(harness.timestampAtMint(x), v);
+        assertEq(harness.blockAtMint(x), t % 2 ** 39);
+        assertEq(harness.swapAtMint(x), b);
     }
 
-    function test_Success_storeBalanceData_utilizations(uint128 y, uint32 z, uint96 u) public view {
-        PositionBalance x = harness.storeBalanceData(y, z, u);
+    function test_Success_storeBalanceData_utilizations(
+        uint128 y,
+        uint32 z,
+        int24 w,
+        uint32 v,
+        uint40 t,
+        bool b
+    ) public view {
+        PositionBalance x = harness.storeBalanceData(y, z, w, v, t, b);
         assertEq(harness.positionSize(x), y);
         assertEq(harness.utilizations(x), z);
-        assertEq(harness.tickData(x), u);
-    }
-
-    function test_Success_packTickData(int24 y, int24 z, int24 u, int24 w) public view {
-        uint96 x = harness.packTickData(y, z, u, w);
-
-        console2.log("x", x);
-        PositionBalance p = harness.storeBalanceData(uint128(0), uint32(0), x);
-
-        assertEq(harness.currentTick(p), y);
-        assertEq(harness.fastOracleTick(p), z);
-        assertEq(harness.slowOracleTick(p), u);
-        assertEq(harness.lastObservedTick(p), w);
+        assertEq(harness.tickAtMint(x), w);
+        assertEq(harness.timestampAtMint(x), v);
+        assertEq(harness.blockAtMint(x), t % 2 ** 39);
+        assertEq(harness.swapAtMint(x), b);
     }
 }

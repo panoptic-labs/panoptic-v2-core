@@ -5,7 +5,7 @@ pragma solidity ^0.8.24;
 /// @author Axicon Labs Limited
 /// @author Modified from Solmate (https://github.com/transmissions11/solmate/blob/v7/src/tokens/ERC20.sol)
 /// @dev The metadata must be set in the inheriting contract.
-/// @dev Do not manually set balances without updating totalSupply, as the sum of all user balances must not exceed it.
+/// @dev Do not manually set balances without updating _internalSupply, as the sum of all user balances must not exceed it.
 abstract contract ERC20Minimal {
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
@@ -27,9 +27,9 @@ abstract contract ERC20Minimal {
                               ERC20 STORAGE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice The total supply of tokens.
+    /// @notice The internal supply of tokens.
     /// @dev This cannot exceed the max uint256 value.
-    uint256 public totalSupply;
+    uint256 internal _internalSupply;
 
     /// @notice Token balances for each user.
     mapping(address account => uint256 balance) public balanceOf;
@@ -125,7 +125,9 @@ abstract contract ERC20Minimal {
         unchecked {
             balanceOf[to] += amount;
         }
-        totalSupply += amount;
+
+        // keep checked to prevent overflows
+        _internalSupply += amount;
 
         emit Transfer(address(0), to, amount);
     }
@@ -136,11 +138,8 @@ abstract contract ERC20Minimal {
     function _burn(address from, uint256 amount) internal {
         balanceOf[from] -= amount;
 
-        // Cannot underflow because a user's balance
-        // will never be larger than the total supply.
-        unchecked {
-            totalSupply -= amount;
-        }
+        // keep checked to prevent underflows
+        _internalSupply -= amount;
 
         emit Transfer(from, address(0), amount);
     }

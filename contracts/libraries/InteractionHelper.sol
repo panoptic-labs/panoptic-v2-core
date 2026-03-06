@@ -2,12 +2,17 @@
 pragma solidity ^0.8.24;
 
 // Interfaces
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
+import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
 // Libraries
 import {PanopticMath} from "@libraries/PanopticMath.sol";
+import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
+import {TokenId} from "@types/TokenId.sol";
+import {RiskParameters} from "@types/RiskParameters.sol";
 
 /// @title InteractionHelper - contains helper functions for external interactions such as approvals.
 /// @notice Used to delegate logic with multiple external calls.
@@ -19,22 +24,28 @@ library InteractionHelper {
     /// @param sfpm The SemiFungiblePositionManager being approved for both token0 and token1
     /// @param ct0 The CollateralTracker (token0) being approved for token0
     /// @param ct1 The CollateralTracker (token1) being approved for token1
-    /// @param token0 The token0 (in Uniswap) being approved for
-    /// @param token1 The token1 (in Uniswap) being approved for
+    /// @param poolManager The Uniswap V4 pool manager address (zero address if using V3)
     function doApprovals(
-        SemiFungiblePositionManager sfpm,
-        CollateralTracker ct0,
-        CollateralTracker ct1,
-        address token0,
-        address token1
+        ISemiFungiblePositionManager sfpm,
+        CollateralTrackerV2 ct0,
+        CollateralTrackerV2 ct1,
+        address poolManager
     ) external {
-        // Approve transfers of Panoptic Pool funds by SFPM
-        IERC20Partial(token0).approve(address(sfpm), type(uint256).max);
-        IERC20Partial(token1).approve(address(sfpm), type(uint256).max);
+        address token0 = ct0.token0();
+        address token1 = ct0.token1();
+        if (poolManager == address(0)) {
+            // Approve transfers of Panoptic Pool funds by SFPM
+            IERC20Partial(token0).approve(address(sfpm), type(uint256).max);
+            IERC20Partial(token1).approve(address(sfpm), type(uint256).max);
 
-        // Approve transfers of Panoptic Pool funds by Collateral token
-        IERC20Partial(token0).approve(address(ct0), type(uint256).max);
-        IERC20Partial(token1).approve(address(ct1), type(uint256).max);
+            // Approve transfers of Panoptic Pool funds by Collateral token
+            IERC20Partial(token0).approve(address(ct0), type(uint256).max);
+            IERC20Partial(token1).approve(address(ct1), type(uint256).max);
+        } else {
+            IPoolManager(poolManager).setOperator(address(sfpm), true);
+            IPoolManager(poolManager).setOperator(address(ct0), true);
+            IPoolManager(poolManager).setOperator(address(ct1), true);
+        }
     }
 
     /// @notice Computes the name of a CollateralTracker based on the token composition and fee of the underlying Uniswap Pool.
@@ -86,12 +97,83 @@ library InteractionHelper {
     /// @param token The address of the underlying token used to compute the decimals
     /// @return The decimals of the token
     function computeDecimals(address token) external view returns (uint8) {
+        // handle native ETH
+        if (token == address(0)) return 18;
         // not guaranteed that token supports metadata extension
         // so we need to let call fail and return placeholder if not
         try IERC20Metadata(token).decimals() returns (uint8 _decimals) {
             return _decimals;
         } catch {
             return 0;
+        }
+    }
+
+    /// @notice Settles haircut premia and burns collateral shares during liquidation when protocol loss occurs.
+    /// @dev Updates settled token accumulators for haircut long legs and burns collateral shares equal to the total haircut amount via settleBurn().
+    /// @param liquidatee The address of the user being liquidated whose premia is being haircut
+    /// @param positionIdList The list of all positions held by the liquidatee being closed
+    /// @param haircutTotal The total premium clawed back from the liquidatee across all positions (rightSlot: token0, leftSlot: token1)
+    /// @param haircutPerLeg The haircut amount for each leg of each position in the positionIdList
+    /// @param premiasByLeg The original premium owed to (positive) or paid by (negative) the liquidatee for each leg before haircut
+    /// @param ct0 The CollateralTracker for token0, used to burn shares corresponding to token0 haircut
+    /// @param ct1 The CollateralTracker for token1, used to burn shares corresponding to token1 haircut
+    /// @param settledTokens Storage mapping tracking accumulated premia for each liquidity chunk (indexed by chunk key)
+    function settleAmounts(
+        address liquidatee,
+        TokenId[] memory positionIdList,
+        LeftRightUnsigned haircutTotal,
+        LeftRightSigned[4][] memory haircutPerLeg,
+        LeftRightSigned[4][] memory premiasByLeg,
+        CollateralTrackerV2 ct0,
+        CollateralTrackerV2 ct1,
+        mapping(bytes32 chunkKey => LeftRightUnsigned settledTokens) storage settledTokens
+    ) external {
+        unchecked {
+            for (uint256 i = 0; i != positionIdList.length; i++) {
+                TokenId tokenId = positionIdList[i];
+                for (uint256 leg = 0; leg != tokenId.countLegs(); ++leg) {
+                    if (
+                        tokenId.isLong(leg) == 1 &&
+                        LeftRightSigned.unwrap(premiasByLeg[i][leg]) != 0
+                    ) {
+                        bytes32 chunkKey = PanopticMath.getChunkKey(tokenId, leg);
+
+                        emit PanopticPoolV2.PremiumSettled(
+                            liquidatee,
+                            tokenId,
+                            leg,
+                            LeftRightSigned.wrap(0).sub(haircutPerLeg[i][leg])
+                        );
+
+                        // The long premium is not committed to storage during the liquidation, so we add the entire adjusted amount
+                        // for the haircut directly to the accumulator
+                        settledTokens[chunkKey] = settledTokens[chunkKey].add(
+                            (LeftRightSigned.wrap(0).sub(premiasByLeg[i][leg])).subRect(
+                                haircutPerLeg[i][leg]
+                            )
+                        );
+                    }
+                }
+            }
+
+            if (haircutTotal.rightSlot() != 0)
+                ct0.settleBurn(
+                    liquidatee,
+                    0,
+                    0,
+                    0,
+                    int128(haircutTotal.rightSlot()),
+                    RiskParameters.wrap(0)
+                );
+            if (haircutTotal.leftSlot() != 0)
+                ct1.settleBurn(
+                    liquidatee,
+                    0,
+                    0,
+                    0,
+                    int128(haircutTotal.leftSlot()),
+                    RiskParameters.wrap(0)
+                );
         }
     }
 }

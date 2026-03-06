@@ -10,6 +10,25 @@ import {Errors} from "@libraries/Errors.sol";
 /// @dev Caution! This library won't check that a token has code, responsibility is delegated to the caller.
 library SafeTransferLib {
     /*//////////////////////////////////////////////////////////////
+                             ETH OPERATIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Safely transfers ETH to a specified address.
+    /// @param to The address to transfer ETH to
+    /// @param amount The amount of ETH to transfer
+    function safeTransferETH(address to, uint256 amount) internal {
+        bool success;
+
+        assembly {
+            // Transfer the ETH and store if it succeeded or not.
+            success := call(gas(), to, amount, 0, 0, 0, 0)
+        }
+
+        if (!success)
+            revert Errors.TransferFailed(address(0), address(this), amount, address(this).balance);
+    }
+
+    /*//////////////////////////////////////////////////////////////
                             ERC20 OPERATIONS
     //////////////////////////////////////////////////////////////*/
 
@@ -42,7 +61,10 @@ library SafeTransferLib {
             )
         }
 
-        if (!success) revert Errors.TransferFailed();
+        if (!success) {
+            uint256 balance = balanceOfOrZero(token, from);
+            revert Errors.TransferFailed(token, from, amount, balance);
+        }
     }
 
     /// @notice Safely transfers ERC20 tokens to a specified address.
@@ -72,6 +94,31 @@ library SafeTransferLib {
             )
         }
 
-        if (!success) revert Errors.TransferFailed();
+        if (!success) {
+            uint256 balance = balanceOfOrZero(token, address(this));
+            revert Errors.TransferFailed(token, address(this), amount, balance);
+        }
+    }
+
+    /// @notice Safely queries the balance of an ERC20 token, returning zero if the call fails.
+    /// @param token The address of the ERC20 token
+    /// @param who The address to query the balance for
+    /// @return bal The balance of the address, or zero if the call fails or returns invalid data
+    function balanceOfOrZero(address token, address who) internal view returns (uint256 bal) {
+        assembly ("memory-safe") {
+            let p := mload(0x40)
+            mstore(p, 0x70a0823100000000000000000000000000000000000000000000000000000000) // balanceOf(address)
+            mstore(add(p, 4), who)
+            // staticcall: token is already warm due to the prior call
+            if iszero(staticcall(gas(), token, p, 36, 0, 32)) {
+                bal := 0
+            }
+            // accept only full 32-byte returns; else treat as zero
+            if lt(returndatasize(), 32) {
+                bal := 0
+            }
+            // load into bal
+            bal := mload(0)
+        }
     }
 }

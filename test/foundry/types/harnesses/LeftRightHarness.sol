@@ -31,7 +31,7 @@ contract LeftRightHarness {
         return r;
     }
 
-    /// @dev All toRightSlot functions add bits to the right slot without clearing it first
+    /// @dev All addToRightSlot functions add bits to the right slot without clearing it first
     /// @dev Typically, the slot is already clear when writing to it, but if it is not, the bits will be added to the existing bits
     /// @dev Therefore, the assumption must not be made that the bits will be cleared while using these helpers
 
@@ -41,11 +41,11 @@ contract LeftRightHarness {
      * @param right the bit pattern to write into the full pattern in the right half.
      * @return self with incoming right added (not overwritten, but added) to its right 128 bits.
      */
-    function toRightSlot(
+    function addToRightSlot(
         LeftRightUnsigned self,
         uint128 right
     ) public pure returns (LeftRightUnsigned) {
-        LeftRightUnsigned r = LeftRightLibrary.toRightSlot(self, right);
+        LeftRightUnsigned r = LeftRightLibrary.addToRightSlot(self, right);
         return r;
     }
 
@@ -55,8 +55,11 @@ contract LeftRightHarness {
      * @param right the bit pattern to write into the full pattern in the right half.
      * @return self with right added to its right 128 bits.
      */
-    function toRightSlot(LeftRightSigned self, int128 right) public pure returns (LeftRightSigned) {
-        LeftRightSigned r = LeftRightLibrary.toRightSlot(self, right);
+    function addToRightSlot(
+        LeftRightSigned self,
+        int128 right
+    ) public pure returns (LeftRightSigned) {
+        LeftRightSigned r = LeftRightLibrary.addToRightSlot(self, right);
         return r;
     }
 
@@ -84,7 +87,7 @@ contract LeftRightHarness {
         return r;
     }
 
-    /// @dev All toLeftSlot functions add bits to the left slot without clearing it first
+    /// @dev All addToLeftSlot functions add bits to the left slot without clearing it first
     /// @dev Typically, the slot is already clear when writing to it, but if it is not, the bits will be added to the existing bits
     /// @dev Therefore, the assumption must not be made that the bits will be cleared while using these helpers
 
@@ -94,11 +97,11 @@ contract LeftRightHarness {
      * @param left the bit pattern to write into the full pattern in the right half.
      * @return self with left added to its left 128 bits.
      */
-    function toLeftSlot(
+    function addToLeftSlot(
         LeftRightUnsigned self,
         uint128 left
     ) public pure returns (LeftRightUnsigned) {
-        LeftRightUnsigned r = LeftRightLibrary.toLeftSlot(self, left);
+        LeftRightUnsigned r = LeftRightLibrary.addToLeftSlot(self, left);
         return r;
     }
 
@@ -108,8 +111,11 @@ contract LeftRightHarness {
      * @param left the bit pattern to write into the full pattern in the right half.
      * @return self with left added to its left 128 bits.
      */
-    function toLeftSlot(LeftRightSigned self, int128 left) public pure returns (LeftRightSigned) {
-        LeftRightSigned r = LeftRightLibrary.toLeftSlot(self, left);
+    function addToLeftSlot(
+        LeftRightSigned self,
+        int128 left
+    ) public pure returns (LeftRightSigned) {
+        LeftRightSigned r = LeftRightLibrary.addToLeftSlot(self, left);
         return r;
     }
 

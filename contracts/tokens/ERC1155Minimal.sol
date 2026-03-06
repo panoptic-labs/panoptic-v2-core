@@ -140,7 +140,7 @@ abstract contract ERC1155 {
         uint256 id;
         uint256 amount;
 
-        for (uint256 i = 0; i < ids.length; ) {
+        for (uint256 i = 0; i != ids.length; ) {
             id = ids[i];
             amount = amounts[i];
 
@@ -184,7 +184,7 @@ abstract contract ERC1155 {
         // Unchecked because the only math done is incrementing
         // the array index counter which cannot possibly overflow.
         unchecked {
-            for (uint256 i = 0; i < owners.length; ++i) {
+            for (uint256 i = 0; i != owners.length; ++i) {
                 balances[i] = balanceOf[owners[i]][ids[i]];
             }
         }
@@ -231,7 +231,7 @@ abstract contract ERC1155 {
 
     /// @notice Internal utility to burn tokens from a user's account.
     /// @param from The user to burn tokens from
-    /// @param id The ERC1155 token id to mint
+    /// @param id The ERC1155 token id to burn
     /// @param amount The amount of tokens to burn
     function _burn(address from, uint256 id, uint256 amount) internal {
         balanceOf[from][id] -= amount;

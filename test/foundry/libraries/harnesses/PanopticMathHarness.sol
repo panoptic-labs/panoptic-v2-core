@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
-
 // Internal
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 // Uniswap
@@ -9,6 +8,7 @@ import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
+import {OraclePack, OraclePackLibrary} from "@types/OraclePack.sol";
 
 import "forge-std/Test.sol";
 
@@ -29,6 +29,19 @@ contract PanopticMathHarness is Test {
         return liquidityChunk;
     }
 
+    function getChunkKey(TokenId tokenId, uint256 leg) public pure returns (bytes32) {
+        return PanopticMath.getChunkKey(tokenId, leg);
+    }
+
+    function getChunkKey(
+        int24 tickLower,
+        int24 tickUpper,
+        int24 tickSpacing,
+        uint256 tokenType
+    ) public pure returns (bytes32) {
+        return PanopticMath.getChunkKey(tickLower, tickUpper, tickSpacing, tokenType);
+    }
+
     /// @notice Extract the tick range specified by `strike` and `width` for the given `tickSpacing`, if valid.
     /// @param strike the strike price of the option
     /// @param width the width of the option
@@ -44,11 +57,6 @@ contract PanopticMathHarness is Test {
         return (tickLower, tickUpper);
     }
 
-    function getPoolId(address univ3pool, int24 tickSpacing) public pure returns (uint64) {
-        uint64 poolId = PanopticMath.getPoolId(univ3pool, tickSpacing);
-        return poolId;
-    }
-
     function incrementPoolPattern(uint64 poolId) public pure returns (uint64) {
         uint64 _poolId = PanopticMath.incrementPoolPattern(poolId);
         return _poolId;
@@ -56,10 +64,11 @@ contract PanopticMathHarness is Test {
 
     function computeExercisedAmounts(
         TokenId tokenId,
-        uint128 positionSize
+        uint128 positionSize,
+        bool opening
     ) public pure returns (LeftRightSigned, LeftRightSigned) {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            .computeExercisedAmounts(tokenId, positionSize);
+            .computeExercisedAmounts(tokenId, positionSize, opening);
         return (longAmounts, shortAmounts);
     }
 
@@ -102,12 +111,14 @@ contract PanopticMathHarness is Test {
     function _getAmountsMoved(
         TokenId tokenId,
         uint128 positionSize,
-        uint256 legIndex
+        uint256 legIndex,
+        bool opening
     ) public pure returns (LeftRightUnsigned) {
         LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
             tokenId,
             positionSize,
-            legIndex
+            legIndex,
+            opening
         );
         return amountsMoved;
     }
@@ -116,9 +127,10 @@ contract PanopticMathHarness is Test {
     function getAmountsMoved(
         TokenId tokenId,
         uint128 positionSize,
-        uint256 legIndex
+        uint256 legIndex,
+        bool opening
     ) public view returns (LeftRightUnsigned) {
-        try this._getAmountsMoved(tokenId, positionSize, legIndex) returns (
+        try this._getAmountsMoved(tokenId, positionSize, legIndex, opening) returns (
             LeftRightUnsigned contractsNotional
         ) {
             return contractsNotional;
@@ -131,12 +143,14 @@ contract PanopticMathHarness is Test {
     function _calculateIOAmounts(
         TokenId tokenId,
         uint128 positionSize,
-        uint256 legIndex
+        uint256 legIndex,
+        bool opening
     ) public pure returns (LeftRightSigned, LeftRightSigned) {
-        (LeftRightSigned longs, LeftRightSigned shorts) = PanopticMath._calculateIOAmounts(
+        (LeftRightSigned longs, LeftRightSigned shorts) = PanopticMath.calculateIOAmounts(
             tokenId,
             positionSize,
-            legIndex
+            legIndex,
+            opening
         );
         return (longs, shorts);
     }
@@ -144,9 +158,10 @@ contract PanopticMathHarness is Test {
     function calculateIOAmounts(
         TokenId tokenId,
         uint128 positionSize,
-        uint256 legIndex
+        uint256 legIndex,
+        bool opening
     ) public view returns (LeftRightSigned, LeftRightSigned) {
-        try this._calculateIOAmounts(tokenId, positionSize, legIndex) returns (
+        try this.calculateIOAmounts(tokenId, positionSize, legIndex, opening) returns (
             LeftRightSigned longs,
             LeftRightSigned shorts
         ) {
@@ -199,5 +214,22 @@ contract PanopticMathHarness is Test {
     ) public pure returns (int24 rangeDown, int24 rangeUp) {
         (int24 result0, int24 result1) = PanopticMath.getRangesFromStrike(width, tickSpacing);
         return (result0, result1);
+    }
+
+    function int12toInt24(uint256 x) public pure returns (int24) {
+        return OraclePackLibrary.int12toInt24(x);
+    }
+
+    function computeInternalMedian(
+        OraclePack oraclePack,
+        int24 currentTick
+    ) public view returns (int24, OraclePack) {
+        return
+            OraclePackLibrary.computeInternalMedian(
+                oraclePack,
+                currentTick,
+                uint96(180 + (600 << 24) + (3600 << 48) + (21600 << 72)),
+                149
+            );
     }
 }

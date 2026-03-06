@@ -11,7 +11,7 @@ contract MetadataStore {
     /// @notice Stores metadata pointers for future retrieval.
     /// @dev Can hold 2-deep object structures.
     /// @dev Examples include `{"A": ["B", "C"]}` and `{"A": {"B": "C"}}`.
-    /// @dev The first and second keys can be up-to-32-char strings (or array indices.
+    /// @dev The first and second keys can be up-to-32-char strings (or array indices).
     /// @dev Values are pointers to a certain section of contract code: [address, start, length].
     /// @dev The maximum size of a value is theoretically unlimited, but depends on the effective contract size limit for a given chain.
     mapping(bytes32 property => mapping(uint256 index => Pointer pointer)) internal metadata;
@@ -25,8 +25,8 @@ contract MetadataStore {
         uint256[][] memory indices,
         Pointer[][] memory pointers
     ) {
-        for (uint256 i = 0; i < properties.length; i++) {
-            for (uint256 j = 0; j < indices[i].length; j++) {
+        for (uint256 i = 0; i != properties.length; i++) {
+            for (uint256 j = 0; j != indices[i].length; j++) {
                 metadata[properties[i]][indices[i][j]] = pointers[i][j];
             }
         }

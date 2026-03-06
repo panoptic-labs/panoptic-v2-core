@@ -3,9 +3,9 @@ pragma solidity ^0.8.24;
 
 // Interfaces
 import {PanopticMath} from "@libraries/PanopticMath.sol";
-import {PanopticPool} from "@contracts/PanopticPool.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
 // Inherited implementations
-import {ERC721} from "solmate/tokens/ERC721.sol";
+import {ERC721} from "solmate/src/tokens/ERC721.sol";
 import {MetadataStore} from "@base/MetadataStore.sol";
 // Custom types
 import {Pointer} from "@types/Pointer.sol";
@@ -30,7 +30,7 @@ contract FactoryNFT is MetadataStore, ERC721 {
         Pointer[][] memory pointers
     )
         MetadataStore(properties, indices, pointers)
-        ERC721("Panoptic V1 Factory Deployer NFTs", "PANOPTIC-NFT")
+        ERC721("Panoptic V2 Factory Deployer NFTs", "PANOPTIC-NFT")
     {}
 
     /// @notice Returns the metadata URI for a given `tokenId`.
@@ -44,9 +44,13 @@ contract FactoryNFT is MetadataStore, ERC721 {
         return
             constructMetadata(
                 panopticPool,
-                PanopticMath.safeERC20Symbol(PanopticPool(panopticPool).univ3pool().token0()),
-                PanopticMath.safeERC20Symbol(PanopticPool(panopticPool).univ3pool().token1()),
-                PanopticPool(panopticPool).univ3pool().fee()
+                PanopticMath.safeERC20Symbol(
+                    PanopticPoolV2(panopticPool).collateralToken0().token0()
+                ),
+                PanopticMath.safeERC20Symbol(
+                    PanopticPoolV2(panopticPool).collateralToken0().token1()
+                ),
+                PanopticPoolV2(panopticPool).collateralToken0().poolFee()
             );
     }
 
@@ -262,7 +266,7 @@ contract FactoryNFT is MetadataStore, ERC721 {
         // the sum of all character widths in `chars`
         uint256 offset;
 
-        for (uint256 i = 0; i < bytes(chars).length; ++i) {
+        for (uint256 i = 0; i != bytes(chars).length; ++i) {
             // character widths are hardcoded in the metadata
             uint256 charOffset = uint256(
                 bytes32(metadata[bytes32("charOffsets")][uint256(bytes32(bytes(chars)[i]))].data())

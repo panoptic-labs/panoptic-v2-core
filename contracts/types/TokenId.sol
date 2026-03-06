@@ -21,16 +21,17 @@ using TokenIdLibrary for TokenId global;
 // From the LSB to the MSB:
 // ===== 1 time (same for all legs) ==============================================================
 //      Property         Size      Offset      Comment
-// (0) univ3pool        48bits     0bits      : first 6 bytes of the Uniswap V3 pool address (first 48 bits; little-endian), plus a pseudorandom number in the event of a collision
-// (1) tickSpacing      16bits     48bits     : tickSpacing for the univ3pool. Up to 16 bits
+// (0) univ3pool        40bits     0bits      : first 5 bytes representing the Uniswap pool  (first 40 bits; little-endian), plus an incrementing number in the event of a collision
+// (1) vegoid           8bits      40bits     : vegoid for the sfpm pool
+// (2) tickSpacing      16bits     48bits     : tickSpacing for the univ3pool. Up to 16 bits
 // ===== 4 times (one for each leg) ==============================================================
-// (2) asset             1bit      0bits      : Specifies the asset (0: token0, 1: token1)
-// (3) optionRatio       7bits     1bits      : number of contracts per leg
-// (4) isLong            1bit      8bits      : long==1 means liquidity is removed, long==0 -> liquidity is added
-// (5) tokenType         1bit      9bits      : put/call: which token is moved when deployed (0 -> token0, 1 -> token1)
-// (6) riskPartner       2bits     10bits     : normally its own index. Partner in defined risk position otherwise
-// (7) strike           24bits     12bits     : strike price; defined as (tickUpper + tickLower) / 2
-// (8) width            12bits     36bits     : width; defined as (tickUpper - tickLower) / tickSpacing
+// (3) asset             1bit      0bits      : Specifies the asset (0: token0, 1: token1)
+// (4) optionRatio       7bits     1bits      : number of contracts per leg
+// (5) isLong            1bit      8bits      : long==1 means liquidity is removed, long==0 -> liquidity is added
+// (6) tokenType         1bit      9bits      : put/call: which token is moved when deployed (0 -> token0, 1 -> token1)
+// (7) riskPartner       2bits     10bits     : normally its own index. Partner in defined risk position otherwise
+// (8) strike           24bits     12bits     : strike price; defined as (tickUpper + tickLower) / 2
+// (9) width            12bits     36bits     : width; defined as (tickUpper - tickLower) / tickSpacing
 // Total                48bits                : Each leg takes up this many bits
 // ===============================================================================================
 //
@@ -39,9 +40,9 @@ using TokenIdLibrary for TokenId global;
 //                        (strike price tick of the 3rd leg)
 //                            |             (width of the 2nd leg)
 //                            |                   |
-// (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)   (8)(7)(6)(5)(4)(3)(2)        (1)           (0)
-//  <---- 48 bits ---->    <---- 48 bits ---->    <---- 48 bits ---->     <---- 48 bits ---->   <- 16 bits ->   <- 48 bits ->
-//         Leg 4                  Leg 3                  Leg 2                   Leg 1           tickSpacing Uniswap Pool Pattern
+// (9)(8)(7)(6)(5)(4)(3)  (9)(8)(7)(6)(5)(4)(3)  (9)(8)(7)(6)(5)(4)(3)   (9)(8)(7)(6)(5)(4)(3)       (2)          (1)           (0)
+//  <---- 48 bits ---->    <---- 48 bits ---->    <---- 48 bits ---->     <---- 48 bits ---->   <- 16 bits -> <- 8 bits ->  <- 40 bits ->
+//         Leg 4                  Leg 3                  Leg 2                   Leg 1           tickSpacing   vegoid    Uniswap Pool Pattern
 //
 //  <--- most significant bit                                                                             least significant bit --->
 //
@@ -87,6 +88,15 @@ library TokenIdLibrary {
     function poolId(TokenId self) internal pure returns (uint64) {
         unchecked {
             return uint64(TokenId.unwrap(self));
+        }
+    }
+
+    /// @notice The vegoid of this option position.
+    /// @param self The TokenId to extract `vegoid` from
+    /// @return The `vegoid` of the Uniswap V3 pool
+    function vegoid(TokenId self) internal pure returns (uint8) {
+        unchecked {
+            return uint8((TokenId.unwrap(self) >> 40) % 2 ** 8);
         }
     }
 
@@ -153,7 +163,7 @@ library TokenIdLibrary {
     /// @notice Get the strike price tick of the nth leg (with index `legIndex`).
     /// @param self The TokenId to extract `strike` at `legIndex` from
     /// @param legIndex The leg index of this position (in {0,1,2,3})
-    /// @return The strike price (the underlying price of the leg)
+    /// @return The strike price tick of the leg
     function strike(TokenId self, uint256 legIndex) internal pure returns (int24) {
         unchecked {
             return int24(int256(TokenId.unwrap(self) >> (64 + legIndex * 48 + 12)));
@@ -360,25 +370,6 @@ library TokenIdLibrary {
     function flipToBurnToken(TokenId self) internal pure returns (TokenId) {
         unchecked {
             // NOTE: This is a hack to avoid blowing up the contract size.
-            // We copy the logic from the countLegs function, using it here adds 5K to the contract size with IR for some reason
-            // Strip all bits except for the option ratios
-            uint256 optionRatios = TokenId.unwrap(self) & OPTION_RATIO_MASK;
-
-            // The legs are filled in from least to most significant
-            // Each comparison here is to the start of the next leg's option ratio
-            // Since only the option ratios remain, we can be sure that no bits above the start of the inactive legs will be 1
-            if (optionRatios < 2 ** 64) {
-                optionRatios = 0;
-            } else if (optionRatios < 2 ** 112) {
-                optionRatios = 1;
-            } else if (optionRatios < 2 ** 160) {
-                optionRatios = 2;
-            } else if (optionRatios < 2 ** 208) {
-                optionRatios = 3;
-            } else {
-                optionRatios = 4;
-            }
-
             // We need to ensure that only active legs are flipped
             // In order to achieve this, we shift our long bit mask to the right by (4-# active legs)
             // i.e the whole mask is used to flip all legs with 4 legs, but only the first leg is flipped with 1 leg so we shift by 3 legs
@@ -386,7 +377,7 @@ library TokenIdLibrary {
             return
                 TokenId.wrap(
                     TokenId.unwrap(self) ^
-                        ((LONG_MASK >> (48 * (4 - optionRatios))) & CLEAR_POOLID_MASK)
+                        ((LONG_MASK >> (48 * (4 - self.countLegs()))) & CLEAR_POOLID_MASK)
                 );
         }
     }
@@ -419,24 +410,17 @@ library TokenIdLibrary {
     /// @notice Return the number of active legs in the option position.
     /// @dev ASSUMPTION: For any leg, the option ratio is always > 0 (the leg always has a number of contracts associated with it).
     /// @param self The TokenId to count active legs for
-    /// @return The number of active legs in `self` (in the range {0,...,4})
-    function countLegs(TokenId self) internal pure returns (uint256) {
+    /// @return numLegs The number of active legs in `self` (in the range {0,...,4})
+    function countLegs(TokenId self) internal pure returns (uint256 numLegs) {
         // Strip all bits except for the option ratios
-        uint256 optionRatios = TokenId.unwrap(self) & OPTION_RATIO_MASK;
+        uint256 optionRatios = (TokenId.unwrap(self) & OPTION_RATIO_MASK) >> 64;
 
-        // The legs are filled in from least to most significant
-        // Each comparison here is to the start of the next leg's option ratio section
-        // Since only the option ratios remain, we can be sure that no bits above the start of the inactive legs will be 1
-        if (optionRatios < 2 ** 64) {
-            return 0;
-        } else if (optionRatios < 2 ** 112) {
-            return 1;
-        } else if (optionRatios < 2 ** 160) {
-            return 2;
-        } else if (optionRatios < 2 ** 208) {
-            return 3;
+        unchecked {
+            // forge-lint: disable-next-line(incorrect-shift)
+            while (optionRatios >= (1 << (48 * numLegs))) {
+                ++numLegs;
+            }
         }
-        return 4;
     }
 
     /// @notice Clear a leg in an option position at `legIndex`.
@@ -493,7 +477,8 @@ library TokenIdLibrary {
         unchecked {
             // extract strike, width, and tokenType
             uint256 chunkData = (TokenId.unwrap(self) & CHUNK_MASK) >> 64;
-            for (uint256 i = 0; i < 4; ++i) {
+            uint256 numLegs = self.countLegs();
+            for (uint256 i = 0; i != 4; ++i) {
                 if (self.optionRatio(i) == 0) {
                     // final leg in this position identified;
                     // make sure any leg above this are zero as well
@@ -505,84 +490,48 @@ library TokenIdLibrary {
                 }
 
                 // prevent legs touching the same chunks - all chunks in the position must be discrete
-                uint256 numLegs = self.countLegs();
-                for (uint256 j = i + 1; j < numLegs; ++j) {
+                for (uint256 j = i + 1; j != numLegs; ++j) {
                     if (uint48(chunkData >> (48 * i)) == uint48(chunkData >> (48 * j))) {
                         revert Errors.InvalidTokenIdParameter(6);
                     }
                 }
 
-                // The width cannot be 0; the minimum is 1
-                if ((self.width(i) == 0)) revert Errors.InvalidTokenIdParameter(5);
                 // Strike cannot be MIN_TICK or MAX_TICK
                 if (
-                    (self.strike(i) == Constants.MIN_V3POOL_TICK) ||
-                    (self.strike(i) == Constants.MAX_V3POOL_TICK)
+                    (self.strike(i) == Constants.MIN_POOL_TICK) ||
+                    (self.strike(i) == Constants.MAX_POOL_TICK)
                 ) revert Errors.InvalidTokenIdParameter(4);
 
                 // In the following, we check whether the risk partner of this leg is itself
                 // or another leg in this position.
-                // Handles case where riskPartner(i) != i ==> leg i has a risk partner that is another leg
                 uint256 riskPartnerIndex = self.riskPartner(i);
+                if (riskPartnerIndex > (numLegs - 1)) {
+                    revert Errors.InvalidTokenIdParameter(3);
+                }
                 if (riskPartnerIndex != i) {
                     // Ensures that risk partners are mutual
                     if (self.riskPartner(riskPartnerIndex) != i)
                         revert Errors.InvalidTokenIdParameter(3);
-
-                    // Ensures that risk partners have 1) the same asset, and 2) the same ratio
-                    if (
-                        (self.asset(riskPartnerIndex) != self.asset(i)) ||
-                        (self.optionRatio(riskPartnerIndex) != self.optionRatio(i))
-                    ) revert Errors.InvalidTokenIdParameter(3);
-
-                    // long/short status of associated legs
-                    uint256 _isLong = self.isLong(i);
-                    uint256 isLongP = self.isLong(riskPartnerIndex);
-
-                    // token type status of associated legs (call/put)
-                    uint256 _tokenType = self.tokenType(i);
-                    uint256 tokenTypeP = self.tokenType(riskPartnerIndex);
-
-                    // if the position is the same i.e both long calls, short puts etc.
-                    // then this is a regular position, not a defined risk position
-                    if ((_isLong == isLongP) && (_tokenType == tokenTypeP))
-                        revert Errors.InvalidTokenIdParameter(4);
-
-                    // if the two token long-types and the tokenTypes are both different (one is a short call, the other a long put, e.g.), this is a synthetic position
-                    // A synthetic long or short is more capital efficient than each leg separated because the long+short premia accumulate proportionally
-                    // unlike short strangles, long strangles also cannot be partnered, because there is no reduction in risk (both legs can earn premia simultaneously)
-                    if (((_isLong != isLongP) || _isLong == 1) && (_tokenType != tokenTypeP))
-                        revert Errors.InvalidTokenIdParameter(5);
                 }
             }
         }
     }
 
-    /// @notice Validate that a position `self` and its legs/chunks are exercisable.
-    /// @dev At least one long leg must be far-out-of-the-money (i.e. price is outside its range).
-    /// @dev Reverts if the position is not exercisable.
-    /// @param self The TokenId to validate for exercisability
-    /// @param currentTick The current tick corresponding to the current price in the Uniswap V3 pool
-    function validateIsExercisable(TokenId self, int24 currentTick) internal pure {
+    /// @notice Check whether a position `self` contains at least one exercisable long leg.
+    /// @dev A leg is considered exercisable if it is:
+    ///      - long (isLong == 1), and
+    ///      - not a loan/credit leg (width != 0).
+    /// @dev This function does NOT check moneyness or price ranges.
+    /// @return hasExercisableLong Returns 1 if such a leg exists, 0 otherwise.
+    function validateIsExercisable(TokenId self) internal pure returns (uint256) {
         unchecked {
             uint256 numLegs = self.countLegs();
-            for (uint256 i = 0; i < numLegs; ++i) {
-                (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(
-                    self.width(i),
-                    self.tickSpacing()
-                );
-
-                int24 _strike = self.strike(i);
-                // check if the price is outside this chunk
-                if ((currentTick >= _strike + rangeUp) || (currentTick < _strike - rangeDown)) {
-                    // if this leg is long and the price beyond the leg's range:
-                    // this exercised ID, `self`, appears valid
-                    if (self.isLong(i) == 1) return; // validated
-                }
+            for (uint256 i = 0; i != numLegs; ++i) {
+                if (self.isLong(i) == 1 && self.width(i) != 0) return 1; // validated
             }
         }
 
         // Fail if position has no legs that is far-out-of-the-money
-        revert Errors.NoLegsExercisable();
+        return 0;
     }
 }

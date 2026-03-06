@@ -3,15 +3,17 @@ pragma solidity ^0.8.24;
 
 // Foundry
 import "forge-std/Script.sol";
-import {PanopticFactory} from "@contracts/PanopticFactory.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
-import {PanopticPool} from "@contracts/PanopticPool.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
-import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
-import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
+import {PanopticFactoryV4} from "@contracts/PanopticFactoryV4.sol";
+import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
+import {RiskEngine, BuilderFactory} from "@contracts/RiskEngine.sol";
+import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
+import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
+import {SemiFungiblePositionManagerV4} from "@contracts/SemiFungiblePositionManagerV4.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {Pointer, PointerLibrary} from "@types/Pointer.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 
+// forge script script/DeployProtocol.s.sol --rpc-url sepolia --turnkey --sender 0x62CB5f6E9F8Bca7032dDf993de8A02ae437D39b8
 contract DeployProtocol is Script {
     struct PointerInfo {
         uint256 codeIndex;
@@ -20,12 +22,10 @@ contract DeployProtocol is Script {
     }
 
     function run() public {
-        uint256 DEPLOYER_PRIVATE_KEY = vm.envUint("DEPLOYER_PRIVATE_KEY");
+        // 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543: sepolia
+        IPoolManager uniPoolManager = IPoolManager(vm.envAddress("UNIV4_POOL_MANAGER"));
 
-        // 0x0227628f3f023bb0b980b67d528571c95c6dac1c: sepolia
-        IUniswapV3Factory uniFactory = IUniswapV3Factory(vm.envAddress("UNIV3_FACTORY"));
-
-        vm.startBroadcast(DEPLOYER_PRIVATE_KEY);
+        vm.startBroadcast();
 
         string memory metadata = vm.readFile("./metadata/out/MetadataPackage.json");
 
@@ -67,8 +67,11 @@ contract DeployProtocol is Script {
         for (uint256 i = 0; i < propsStr.length; i++) {
             props[i] = bytes32(bytes(propsStr[i]));
         }
-
-        string[][] memory indicesStr = abi.decode(vm.parseJson(metadata, ".indices"), (string[][]));
+        string[][] memory indicesStr = new string[][](propsStr.length);
+        for (uint256 i = 0; i < propsStr.length; i++) {
+            string memory path = string.concat(".indices[", vm.toString(i), "]");
+            indicesStr[i] = vm.parseJsonStringArray(metadata, path);
+        }
         uint256[][] memory indices = new uint256[][](indicesStr.length);
         for (uint256 i = 0; i < indicesStr.length; i++) {
             indices[i] = new uint256[](indicesStr[i].length);
@@ -77,18 +80,35 @@ contract DeployProtocol is Script {
             }
         }
 
-        SemiFungiblePositionManager sfpm = new SemiFungiblePositionManager(uniFactory, 10 ** 13, 0);
-        new PanopticFactory(
+        SemiFungiblePositionManagerV4 sfpm = new SemiFungiblePositionManagerV4(
+            uniPoolManager,
+            10 ** 13,
+            10 ** 13,
+            0
+        );
+
+        BuilderFactory builderFactory = new BuilderFactory(msg.sender);
+
+        // risk engine MED
+        new RiskEngine(10_000_000, 10_000_000, address(builderFactory), address(msg.sender));
+
+        /*
+        // risk engine LOW
+        new RiskEngine(500_000, 250_000, 128, 5_000_000, 9_000_000);
+        // risk engine HIGH
+        new RiskEngine(4_500_000, 2_250_000, 128, 5_000_000, 9_000_000);
+        */
+        new PanopticFactoryV4(
             sfpm,
-            uniFactory,
-            address(new PanopticPool(sfpm)),
-            address(new CollateralTracker(10, 2_000, 1_000, -128, 5_000, 9_000, 20_000)),
+            uniPoolManager,
+            address(new PanopticPoolV2(ISemiFungiblePositionManager(address(sfpm)))),
+            address(new CollateralTrackerV2()),
             props,
             indices,
             pointers
         );
 
-        new PanopticHelper(sfpm);
+        //new PanopticHelper(ISemiFungiblePositionManager(address(sfpm)));
 
         // factory.tokenURI(0x00c34C41289e6c433723542BB1Eba79c6919504EDD);
         vm.stopBroadcast();
