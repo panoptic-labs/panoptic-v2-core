@@ -32,6 +32,8 @@ Panoptic has been presented at conferences and was conceived with the first Pano
 
 ## Core Contracts
 
+![Contract Architecture](assets/ContractArchitecture.svg)
+
 ### SemiFungiblePositionManager
 
 A gas-efficient alternative to Uniswap's NonFungiblePositionManager that manages complex, multi-leg Uniswap positions encoded in ERC1155 tokenIds, performs swaps allowing users to mint positions with only one type of token, and, most crucially, supports the minting of both typical LP positions where liquidity is added to Uniswap and "long" positions where Uniswap liquidity is burnt. While the SFPM is enshrined as a core component of the protocol and we consider it to be the "engine" of Panoptic, it is also a public good that we hope savvy Uniswap LPs will grow to find an essential tool and upgrade for managing their liquidity. Separate implementations exist for Uniswap V3 (`SemiFungiblePositionManagerV3`) and V4 (`SemiFungiblePositionManagerV4`).
