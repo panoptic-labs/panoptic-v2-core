@@ -7554,8 +7554,32 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 true
             );
 
+            uint256 aliceBefore1 = collateralToken1.balanceOf(Alice);
+            uint256 snapshot = vm.snapshot();
+
+            mintOptions(
+                panopticPool,
+                positionIdList1,
+                positionSize0 / 2,
+                type(uint24).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+            uint256 aliceAfter1 = collateralToken1.balanceOf(Alice);
+
+            vm.revertTo(snapshot);
+
+            uint256 aliceDelta1 = aliceAfter1 > aliceBefore1
+                ? aliceAfter1 - aliceBefore1
+                : aliceBefore1 - aliceAfter1;
+            console2.log("short.r", shortAmounts.leftSlot());
+            console2.log("delta1", aliceDelta1);
+
             collateralToken1.withdraw(
-                collateralToken1.maxWithdraw(Alice) - uint128(shortAmounts.leftSlot()) / 1000 - 1,
+                collateralToken1.maxWithdraw(Alice) -
+                    collateralToken1.convertToAssets(aliceDelta1) -
+                    10,
                 Alice,
                 Alice
             );
@@ -7669,8 +7693,29 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 true
             );
 
+            uint256 aliceBefore0 = collateralToken0.balanceOf(Alice);
+            uint256 snapshot = vm.snapshot();
+
+            mintOptions(
+                panopticPool,
+                positionIdList1,
+                positionSize0 / 2,
+                type(uint24).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+            uint256 aliceAfter0 = collateralToken0.balanceOf(Alice);
+
+            vm.revertTo(snapshot);
+
+            uint256 aliceDelta0 = aliceAfter0 > aliceBefore0
+                ? aliceAfter0 - aliceBefore0
+                : aliceBefore0 - aliceAfter0;
             collateralToken0.withdraw(
-                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 100 - 1,
+                collateralToken0.maxWithdraw(Alice) -
+                    collateralToken0.convertToAssets(aliceDelta0) -
+                    10,
                 Alice,
                 Alice
             );
@@ -7784,12 +7829,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 true
             );
 
-            collateralToken0.withdraw(
-                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 100 - 1,
-                Alice,
-                Alice
-            );
-
+            uint256 aliceBefore0 = collateralToken0.balanceOf(Alice);
             uint256 snapshot = vm.snapshot();
 
             mintOptions(
@@ -7802,8 +7842,18 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 true
             );
             uint256 inAMMOffset = collateralToken0._inAMM();
+            uint256 aliceAfter0 = collateralToken0.balanceOf(Alice);
 
             vm.revertTo(snapshot);
+
+            uint256 aliceDelta0 = aliceAfter0 > aliceBefore0
+                ? aliceAfter0 - aliceBefore0
+                : aliceBefore0 - aliceAfter0;
+            collateralToken0.withdraw(
+                collateralToken0.maxWithdraw(Alice) - aliceDelta0 - 10,
+                Alice,
+                Alice
+            );
 
             // set utilization before minting
             // take into account the offsets as states are updated before utilization is checked for the mint
