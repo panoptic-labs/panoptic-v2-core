@@ -3,12 +3,15 @@ pragma solidity ^0.8.24;
 
 // Foundry
 import "forge-std/Script.sol";
+import {PanopticFactoryV3} from "@contracts/PanopticFactoryV3.sol";
 import {PanopticFactoryV4} from "@contracts/PanopticFactoryV4.sol";
 import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {RiskEngine, BuilderFactory} from "@contracts/RiskEngine.sol";
 import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
 import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
+import {SemiFungiblePositionManagerV3} from "@contracts/SemiFungiblePositionManagerV3.sol";
 import {SemiFungiblePositionManagerV4} from "@contracts/SemiFungiblePositionManagerV4.sol";
+import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {Pointer, PointerLibrary} from "@types/Pointer.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
@@ -24,6 +27,7 @@ contract DeployProtocol is Script {
     function run() public {
         // 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543: sepolia
         IPoolManager uniPoolManager = IPoolManager(vm.envAddress("UNIV4_POOL_MANAGER"));
+        IUniswapV3Factory uniV3Factory = IUniswapV3Factory(vm.envAddress("UNIV3_FACTORY"));
 
         vm.startBroadcast();
 
@@ -98,11 +102,29 @@ contract DeployProtocol is Script {
         // risk engine HIGH
         new RiskEngine(4_500_000, 2_250_000, 128, 5_000_000, 9_000_000);
         */
+        address collateralTracker = address(new CollateralTrackerV2());
+
         new PanopticFactoryV4(
             sfpm,
             uniPoolManager,
             address(new PanopticPoolV2(ISemiFungiblePositionManager(address(sfpm)))),
-            address(new CollateralTrackerV2()),
+            collateralTracker,
+            props,
+            indices,
+            pointers
+        );
+
+        SemiFungiblePositionManagerV3 sfpmV3 = new SemiFungiblePositionManagerV3(
+            uniV3Factory,
+            10 ** 13,
+            10 ** 13
+        );
+
+        new PanopticFactoryV3(
+            sfpmV3,
+            uniV3Factory,
+            address(new PanopticPoolV2(ISemiFungiblePositionManager(address(sfpmV3)))),
+            collateralTracker,
             props,
             indices,
             pointers
