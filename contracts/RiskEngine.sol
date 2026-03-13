@@ -1238,6 +1238,66 @@ contract RiskEngine {
         }
     }
 
+    /// @notice Get the collateral requirement for each individual position in a list.
+    /// @dev Returns net collateral requirements (required - credits) per position, packed as LeftRightUnsigned (token0: right, token1: left).
+    /// @param positionBalanceArray The list of all open positions, stored as `[balance/poolUtilizationAtMint, ...]`
+    /// @param positionIdList The list of all option positions
+    /// @param atTick The tick at which to evaluate positions
+    /// @return collateralRequirements Net collateral required per position `[requirement_0, requirement_1, ...]`
+    function getPerPositionCollateralRequirements(
+        PositionBalance[] calldata positionBalanceArray,
+        TokenId[] calldata positionIdList,
+        int24 atTick
+    ) external pure returns (LeftRightUnsigned[] memory collateralRequirements) {
+        PositionBalance globalUtilizations = _getGlobalUtilization(positionBalanceArray);
+        uint256 len = positionBalanceArray.length;
+        collateralRequirements = new LeftRightUnsigned[](len);
+
+        for (uint256 i; i != len; ) {
+            TokenId tokenId = positionIdList[i];
+            uint128 positionSize = positionBalanceArray[i].positionSize();
+
+            uint256 req0;
+            uint256 req1;
+            {
+                uint256 credits0;
+                uint256 credits1;
+                unchecked {
+                    int16 utilization0 = int16(globalUtilizations.utilization0());
+                    (req0, credits0) = _getRequiredCollateralAtTickSinglePosition(
+                        tokenId,
+                        positionSize,
+                        atTick,
+                        utilization0,
+                        true
+                    );
+                }
+                unchecked {
+                    int16 utilization1 = int16(globalUtilizations.utilization1());
+                    (req1, credits1) = _getRequiredCollateralAtTickSinglePosition(
+                        tokenId,
+                        positionSize,
+                        atTick,
+                        utilization1,
+                        false
+                    );
+                }
+                // net credits against requirements
+                req0 = req0 > credits0 ? req0 - credits0 : 0;
+                req1 = req1 > credits1 ? req1 - credits1 : 0;
+            }
+
+            collateralRequirements[i] = LeftRightUnsigned
+                .wrap(0)
+                .addToRightSlot(req0.toUint128())
+                .addToLeftSlot(req1.toUint128());
+
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
     /// @notice Get the total required amount of collateral tokens of a user/account across all active positions to stay above the margin requirement.
     /// @dev Returns the token amounts required for the entire account with active positions in `positionIdList` (list of tokenIds).
     /// @param positionBalanceArray The list of all open positions held by the `optionOwner`, stored as `[balance/poolUtilizationAtMint, ...]`

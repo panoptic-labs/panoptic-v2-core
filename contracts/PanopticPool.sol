@@ -472,29 +472,52 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
         );
     }
 
-    /// @notice Returns the total amount of premium accumulated for a list of positions and a list containing the corresponding `PositionBalance` information for each position.
+    /// @notice Returns accumulated premium, position balances, per-position collateral requirements, and per-position net premia.
     /// @param user Address of the user that owns the positions
+    /// @param includePendingPremium If true, include pending (unsettled) premium; if false, only settled
     /// @param positionIdList List of positions. Written as `[tokenId1, tokenId2, ...]`
-    /// @param includePendingPremium If true, include premium that is owed to the user but has not yet settled; if false, only include premium that is available to collect
-    /// @return The total amount of premium owed (which may `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
-    /// @return The total amount of premium owed by the long legs in `positionIdList` (token0: right slot, token1: left slot)
-    /// @return A list of `PositionBalance` data (balance and pool utilization/oracle ticks at last mint) for each position, of the form `[PositionBalance_0, PositionBalance_1, ...]`
-    function getAccumulatedFeesAndPositionsData(
+    /// @return shortPremium Total premium owed to short legs (token0: right, token1: left)
+    /// @return longPremium Total premium owed by long legs (token0: right, token1: left)
+    /// @return positionBalances PositionBalance data for each position
+    /// @return collateralRequirements Net collateral required per position (token0: right, token1: left)
+    /// @return netPremiaPerPosition Net premia per position: short minus long (token0: right, token1: left)
+    function getFullPositionsData(
         address user,
         bool includePendingPremium,
         TokenId[] calldata positionIdList
-    ) external view returns (LeftRightUnsigned, LeftRightUnsigned, PositionBalance[] memory) {
-        // Get the current tick of the Uniswap pool
+    )
+        external
+        view
+        returns (
+            LeftRightUnsigned shortPremium,
+            LeftRightUnsigned longPremium,
+            PositionBalance[] memory positionBalances,
+            LeftRightUnsigned[] memory collateralRequirements,
+            LeftRightSigned[] memory netPremiaPerPosition
+        )
+    {
+        LeftRightUnsigned[2] memory shortLongPremium;
         int24 currentTick = getCurrentTick();
-        // Compute the accumulated premia for all tokenId in positionIdList (includes short+long premium)
-        return
-            _calculateAccumulatedPremia(
-                user,
-                positionIdList,
-                COMPUTE_PREMIA_AS_COLLATERAL,
-                includePendingPremium,
-                currentTick
-            );
+        (shortLongPremium, positionBalances, netPremiaPerPosition) = _calculateAccumulatedPremia(
+            user,
+            positionIdList,
+            COMPUTE_PREMIA_AS_COLLATERAL,
+            includePendingPremium,
+            currentTick,
+            true
+        );
+        collateralRequirements = riskEngine().getPerPositionCollateralRequirements(
+            positionBalances,
+            positionIdList,
+            currentTick
+        );
+        return (
+            shortLongPremium[0],
+            shortLongPremium[1],
+            positionBalances,
+            collateralRequirements,
+            netPremiaPerPosition
+        );
     }
 
     /// @notice Calculate the accumulated premia owed from the option buyer to the option seller.
@@ -503,30 +526,32 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
     /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
     /// @param includePendingPremium If true, include premium that is owed to the user but has not yet settled; if false, only include premium that is available to collect
     /// @param atTick The current tick of the Uniswap pool
-    /// @return shortPremium The total amount of premium owed (which may `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
-    /// @return longPremium The total amount of premium owed by the long legs in `positionIdList` (token0: right slot, token1: left slot)
+    /// @return shortLongPremium The total amount of premium owed (which may `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
     /// @return balances A list of balances and pool utilization for each position, of the form `[[tokenId0, balances0], [tokenId1, balances1], ...]`
     function _calculateAccumulatedPremia(
         address user,
         TokenId[] calldata positionIdList,
         bool usePremiaAsCollateral,
         bool includePendingPremium,
-        int24 atTick
+        int24 atTick,
+        bool perPositionPremia
     )
         internal
         view
         returns (
-            LeftRightUnsigned shortPremium,
-            LeftRightUnsigned longPremium,
-            PositionBalance[] memory balances
+            LeftRightUnsigned[2] memory shortLongPremium,
+            PositionBalance[] memory balances,
+            LeftRightSigned[] memory netPremiaPerPosition
         )
     {
-        uint256 pLength = positionIdList.length;
-        balances = new PositionBalance[](pLength);
-
+        {
+            uint256 pLength = positionIdList.length;
+            balances = new PositionBalance[](pLength);
+            if (perPositionPremia) netPremiaPerPosition = new LeftRightSigned[](pLength);
+        }
         address c_user = user;
         // loop through each option position/tokenId
-        for (uint256 k = 0; k != pLength; ) {
+        for (uint256 k = 0; k != positionIdList.length; ) {
             TokenId tokenId = positionIdList[k];
 
             {
@@ -546,6 +571,7 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
                     atTick
                 );
 
+            LeftRightSigned netPremia;
             uint256 numLegs = tokenId.countLegs();
             for (uint256 leg = 0; leg != numLegs; ) {
                 if (tokenId.width(leg) != 0) {
@@ -554,40 +580,53 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
                             bytes32 chunkKey = PanopticMath.getChunkKey(tokenId, leg);
 
                             (uint256 totalLiquidity, , ) = _getLiquidities(tokenId, leg);
-                            shortPremium = shortPremium.add(
-                                _getAvailablePremium(
-                                    totalLiquidity,
-                                    s_settledTokens[chunkKey],
-                                    s_grossPremiumLast[chunkKey],
-                                    LeftRightUnsigned.wrap(
-                                        uint256(LeftRightSigned.unwrap(premiaByLeg[leg]))
-                                    ),
-                                    premiumAccumulatorsByLeg[leg]
-                                )
+                            LeftRightUnsigned availablePremium = _getAvailablePremium(
+                                totalLiquidity,
+                                s_settledTokens[chunkKey],
+                                s_grossPremiumLast[chunkKey],
+                                LeftRightUnsigned.wrap(
+                                    uint256(LeftRightSigned.unwrap(premiaByLeg[leg]))
+                                ),
+                                premiumAccumulatorsByLeg[leg]
                             );
+                            shortLongPremium[0] = shortLongPremium[0].add(availablePremium);
+                            if (perPositionPremia) {
+                                netPremia = netPremia.add(
+                                    LeftRightSigned.wrap(
+                                        int256(LeftRightUnsigned.unwrap(availablePremium))
+                                    )
+                                );
+                            }
                         } else {
-                            shortPremium = shortPremium.add(
+                            shortLongPremium[0] = shortLongPremium[0].add(
                                 LeftRightUnsigned.wrap(
                                     uint256(LeftRightSigned.unwrap(premiaByLeg[leg]))
                                 )
                             );
+                            if (perPositionPremia) {
+                                netPremia = netPremia.add(premiaByLeg[leg]);
+                            }
                         }
                     } else {
-                        longPremium = LeftRightUnsigned.wrap(
+                        shortLongPremium[1] = LeftRightUnsigned.wrap(
                             uint256(
                                 LeftRightSigned.unwrap(
                                     LeftRightSigned
-                                        .wrap(int256(LeftRightUnsigned.unwrap(longPremium)))
+                                        .wrap(int256(LeftRightUnsigned.unwrap(shortLongPremium[1])))
                                         .sub(premiaByLeg[leg])
                                 )
                             )
                         );
+                        if (perPositionPremia) {
+                            netPremia = netPremia.sub(premiaByLeg[leg]);
+                        }
                     }
                 }
                 unchecked {
                     ++leg;
                 }
             }
+            if (perPositionPremia) netPremiaPerPosition[k] = netPremia;
 
             unchecked {
                 ++k;
@@ -895,7 +934,7 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
         RiskParameters riskParameters,
         bool isCollateralToken0
     ) internal returns (uint32 utilization, int128 paid) {
-        CollateralTrackerV2 ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
+        CollateralTrackerV2 ct = _getCt(isCollateralToken0);
         (utilization, paid) = ct.settleMint(
             optionOwner,
             longAmount,
@@ -903,6 +942,10 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
             ammDeltaAmount,
             riskParameters
         );
+    }
+
+    function _getCt(bool isCollateralToken0) internal view returns (CollateralTrackerV2) {
+        return isCollateralToken0 ? collateralToken0() : collateralToken1();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1048,7 +1091,7 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
         RiskParameters riskParameters,
         bool isCollateralToken0
     ) internal returns (int128 paid) {
-        CollateralTrackerV2 ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
+        CollateralTrackerV2 ct = _getCt(isCollateralToken0);
         paid = ct.settleBurn(
             optionOwner,
             longAmount,
@@ -1617,7 +1660,7 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
     /// @param delegatee The account to increase the balance of
     /// @param isCollateralToken0 The flag that determines if the call is to ct0 or ct1
     function _delegate(address delegatee, bool isCollateralToken0) internal {
-        CollateralTrackerV2 ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
+        CollateralTrackerV2 ct = _getCt(isCollateralToken0);
 
         ct.delegate(delegatee);
     }
@@ -1626,7 +1669,7 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
     /// @param delegatee The account to decrease the balance of
     /// @param isCollateralToken0 The flag that determines if the call is to ct0 or ct1
     function _revoke(address delegatee, bool isCollateralToken0) internal {
-        CollateralTrackerV2 ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
+        CollateralTrackerV2 ct = _getCt(isCollateralToken0);
 
         ct.revoke(delegatee);
     }
@@ -1636,7 +1679,7 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
     /// @param assets The amount of assets to refund. Positive means a transfer from refunder to refundee, vice versa for negative
     /// @param isCollateralToken0 The flag that determines if the call is to ct0 or ct1
     function _refund(address refunder, int256 assets, bool isCollateralToken0) internal {
-        CollateralTrackerV2 ct = isCollateralToken0 ? collateralToken0() : collateralToken1();
+        CollateralTrackerV2 ct = _getCt(isCollateralToken0);
 
         ct.refund(refunder, msg.sender, assets);
     }
@@ -1675,26 +1718,26 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
         {
             LeftRightUnsigned tokenData0;
             LeftRightUnsigned tokenData1;
-            LeftRightUnsigned shortPremium;
+            LeftRightUnsigned[2] memory shortLongPremium;
             PositionBalance[] memory positionBalanceArray = new PositionBalance[](
                 positionIdList.length
             );
             {
-                LeftRightUnsigned longPremium;
-                (shortPremium, longPremium, positionBalanceArray) = _calculateAccumulatedPremia(
+                (shortLongPremium, positionBalanceArray, ) = _calculateAccumulatedPremia(
                     liquidatee,
                     positionIdList,
                     COMPUTE_PREMIA_AS_COLLATERAL,
                     ONLY_AVAILABLE_PREMIUM,
-                    currentTick
+                    currentTick,
+                    false
                 );
                 (tokenData0, tokenData1, ) = riskEngine().getMargin(
                     positionBalanceArray,
                     twapTick,
                     liquidatee,
                     positionIdList,
-                    shortPremium,
-                    longPremium,
+                    shortLongPremium[0],
+                    shortLongPremium[1],
                     collateralToken0(),
                     collateralToken1()
                 );
@@ -1734,7 +1777,7 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
                         tokenData1,
                         Math.getSqrtRatioAtTick(twapTick),
                         netPaid,
-                        shortPremium,
+                        shortLongPremium[0],
                         loanAmounts
                     );
                 }
@@ -1838,14 +1881,18 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
         LeftRightSigned refundAmounts = _getRefundAmounts(account, exerciseFees, twapTick);
 
+        _refundRevoke(account, refundAmounts);
+
+        emit ForcedExercised(msg.sender, account, tokenId, exerciseFees);
+    }
+
+    function _refundRevoke(address account, LeftRightSigned refundAmounts) internal {
         // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
         _refund(account, refundAmounts.rightSlot(), CALL_CT0);
         _refund(account, refundAmounts.leftSlot(), CALL_CT1);
         // revoke the virtual shares that were delegated after settling the difference with the exercisor
         _revoke(account, CALL_CT0);
         _revoke(account, CALL_CT1);
-
-        emit ForcedExercised(msg.sender, account, tokenId, exerciseFees);
     }
 
     /// @notice Settle unpaid premium on a position owned by `owner`.
@@ -1871,11 +1918,7 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
 
         LeftRightSigned refundAmounts = _getRefundAmounts(owner, LeftRightSigned.wrap(0), twapTick);
         // allow the caller to settle tokens owed to the protocol by the settlee in exchange for the surplus token
-        _refund(owner, refundAmounts.rightSlot(), CALL_CT0);
-        _refund(owner, refundAmounts.leftSlot(), CALL_CT1);
-
-        _revoke(owner, CALL_CT0);
-        _revoke(owner, CALL_CT1);
+        _refundRevoke(owner, refundAmounts);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1902,15 +1945,16 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
         uint256 buffer
     ) internal view returns (uint256) {
         (
-            LeftRightUnsigned shortPremium,
-            LeftRightUnsigned longPremium,
-            PositionBalance[] memory positionBalanceArray
+            LeftRightUnsigned[2] memory shortLongPremium,
+            PositionBalance[] memory positionBalanceArray,
+
         ) = _calculateAccumulatedPremia(
                 account,
                 positionIdList,
                 usePremiaAsCollateral,
                 ONLY_AVAILABLE_PREMIUM,
-                currentTick
+                currentTick,
+                false
             );
 
         // if safeMode is ON, make the collateral requirements for 100% utilizations: no cross-margining, fully covered positions
@@ -1937,8 +1981,8 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
                         atTicks[i],
                         positionIdList,
                         positionBalanceArray,
-                        shortPremium,
-                        longPremium,
+                        shortLongPremium[0],
+                        shortLongPremium[1],
                         buffer
                     )
                 ) ++solvent;
@@ -2122,13 +2166,14 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
     /// @return Utilization of token0 at mint
     /// @return Utilization of token1 at mint
     /// @return Size of the position
+    /*
     function positionData(
         address user,
         TokenId tokenId
     ) external view returns (bool, uint256, uint256, int24, int256, int256, uint128) {
         return s_positionBalance[user][tokenId].unpackAll();
     }
-
+    */
     /// @notice Get the oracle price used to check solvency in liquidations.
     /// @return twapTick The current oracle price used to check solvency in liquidations
     function getTWAP() public view returns (int24 twapTick) {

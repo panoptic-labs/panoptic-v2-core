@@ -57,8 +57,10 @@ contract PanopticHelper {
         (
             LeftRightUnsigned shortPremium,
             LeftRightUnsigned longPremium,
-            PositionBalance[] memory positionBalanceArray
-        ) = pool.getAccumulatedFeesAndPositionsData(account, false, positionIdList);
+            PositionBalance[] memory positionBalanceArray,
+            ,
+
+        ) = pool.getFullPositionsData(account, false, positionIdList);
 
         PanopticPoolV2 _pool = pool;
         // Query the current and required collateral amounts for the two tokens
@@ -94,8 +96,11 @@ contract PanopticHelper {
         TokenId[] calldata positionIdList
     ) external view returns (int256 value0, int256 value1) {
         // Compute premia for all options (includes short+long premium)
-        (, , PositionBalance[] memory positionBalanceArray) = pool
-            .getAccumulatedFeesAndPositionsData(account, false, positionIdList);
+        (, , PositionBalance[] memory positionBalanceArray, , ) = pool.getFullPositionsData(
+            account,
+            false,
+            positionIdList
+        );
 
         for (uint256 k = 0; k < positionIdList.length; ) {
             TokenId tokenId = positionIdList[k];
@@ -149,8 +154,11 @@ contract PanopticHelper {
         TokenId[] memory tokenIdList = new TokenId[](1);
         tokenIdList[0] = tokenId;
 
-        (, , PositionBalance[] memory positionBalanceArray) = pool
-            .getAccumulatedFeesAndPositionsData(account, false, tokenIdList);
+        (, , PositionBalance[] memory positionBalanceArray, , ) = pool.getFullPositionsData(
+            account,
+            false,
+            tokenIdList
+        );
 
         PositionBalance balanceAndUtilization = positionBalanceArray[0];
 
