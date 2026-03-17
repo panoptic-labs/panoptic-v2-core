@@ -3116,7 +3116,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Alice);
         {
-            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+            (LeftRightUnsigned shortPremium, , , , ) = pp.getFullPositionsData(
                 Alice,
                 true,
                 $posIdLists[0]
@@ -3137,7 +3137,7 @@ contract Misctest is Test, PositionUtils {
                 ct1.balanceOf(Alice)
             );
 
-            (shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(Alice, true, $posIdLists[0]);
+            (shortPremium, , , , ) = pp.getFullPositionsData(Alice, true, $posIdLists[0]);
 
             // has 0 owed premium because it was settled at 0 in settlePremium
             assertEq(shortPremium.rightSlot(), 0);
@@ -3178,7 +3178,7 @@ contract Misctest is Test, PositionUtils {
         {
             vm.startPrank(Bob);
 
-            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+            (LeftRightUnsigned shortPremium, , , , ) = pp.getFullPositionsData(
                 Bob,
                 true,
                 $posIdLists[0]
@@ -3231,7 +3231,7 @@ contract Misctest is Test, PositionUtils {
         uint256 charlieDeltaPremia1;
 
         {
-            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+            (LeftRightUnsigned shortPremium, , , , ) = pp.getFullPositionsData(
                 Charlie,
                 true,
                 $posIdLists[0]
@@ -3388,7 +3388,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Alice);
 
-        (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+        (LeftRightUnsigned shortPremium, , , , ) = pp.getFullPositionsData(
             Alice,
             true,
             $posIdLists[0]
@@ -3546,7 +3546,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Alice);
         {
-            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+            (LeftRightUnsigned shortPremium, , , , ) = pp.getFullPositionsData(
                 Alice,
                 true,
                 $posIdLists[0]
@@ -3567,7 +3567,7 @@ contract Misctest is Test, PositionUtils {
                 ct1.balanceOf(Alice)
             );
 
-            (shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(Alice, true, $posIdLists[0]);
+            (shortPremium, , , , ) = pp.getFullPositionsData(Alice, true, $posIdLists[0]);
 
             // has 0 owed premium because it was settled at 0 in settlePremium
             assertEq(shortPremium.rightSlot(), 0);
@@ -3630,7 +3630,7 @@ contract Misctest is Test, PositionUtils {
         {
             vm.startPrank(Bob);
 
-            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+            (LeftRightUnsigned shortPremium, , , , ) = pp.getFullPositionsData(
                 Bob,
                 true,
                 $posIdLists[0]
@@ -3683,7 +3683,7 @@ contract Misctest is Test, PositionUtils {
         uint256 charlieDeltaPremia1;
 
         {
-            (LeftRightUnsigned shortPremium, , ) = pp.getAccumulatedFeesAndPositionsData(
+            (LeftRightUnsigned shortPremium, , , , ) = pp.getFullPositionsData(
                 Charlie,
                 true,
                 $posIdLists[0]
@@ -6405,8 +6405,8 @@ contract Misctest is Test, PositionUtils {
                 // SUCCESS CASE - mintOptions didn't revert
                 console2.log("Found non-reverting strike:", strike);
 
-                (, , PositionBalance[] memory positionBalanceArray) = pp
-                    .getAccumulatedFeesAndPositionsData(Bob, false, mintList);
+                (, , PositionBalance[] memory positionBalanceArray, , ) = pp
+                    .getFullPositionsData(Bob, false, mintList);
 
                 (, currentTick, , , , , ) = uniPool.slot0();
 
@@ -6568,8 +6568,8 @@ contract Misctest is Test, PositionUtils {
                 mintList[0] = $tokenIdLong;
                 try pp.dispatch(mintList, mintList, sizeList, tickAndSpreadLimits, true, 0) {
                     console2.log("Found non-reverting strike:", strike);
-                    (, , PositionBalance[] memory positionBalanceArray) = pp
-                        .getAccumulatedFeesAndPositionsData(Alice, false, mintList);
+                    (, , PositionBalance[] memory positionBalanceArray, , ) = pp
+                        .getFullPositionsData(Alice, false, mintList);
 
                     (, currentTick, , , , , ) = uniPool.slot0();
 
@@ -6762,8 +6762,8 @@ contract Misctest is Test, PositionUtils {
                 mintList[0] = $tokenIdLong;
                 try pp.dispatch(mintList, mintList, sizeList, tickAndSpreadLimits, true, 0) {
                     console2.log("Found non-reverting strike:", $strike);
-                    (, , PositionBalance[] memory positionBalanceArray) = pp
-                        .getAccumulatedFeesAndPositionsData(Alice, false, mintList);
+                    (, , PositionBalance[] memory positionBalanceArray, , ) = pp
+                        .getFullPositionsData(Alice, false, mintList);
 
                     (, currentTick, , , , , ) = uniPool.slot0();
 
@@ -10350,7 +10350,7 @@ contract Misctest is Test, PositionUtils {
         console.log("");
         console.log("=== STEP 3: MEASURE STATE BEFORE LIQUIDATION ===");
 
-        (LeftRightUnsigned shortPremiumBefore, , ) = pp.getAccumulatedFeesAndPositionsData(
+        (LeftRightUnsigned shortPremiumBefore, , , , ) = pp.getFullPositionsData(
             Alice,
             true,
             alicePosIdList
