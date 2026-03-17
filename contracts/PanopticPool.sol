@@ -944,7 +944,7 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
         );
     }
 
-    function _getCt(bool isCollateralToken0) internal view returns (CollateralTrackerV2) {
+    function _getCt(bool isCollateralToken0) internal pure returns (CollateralTrackerV2) {
         return isCollateralToken0 ? collateralToken0() : collateralToken1();
     }
 
