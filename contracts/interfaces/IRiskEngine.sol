@@ -353,6 +353,17 @@ interface IRiskEngine {
             PositionBalance globalUtilizations
         );
 
+    /// @notice Get the collateral requirement for each individual position in a list.
+    /// @param positionBalanceArray The list of all open positions, stored as `[balance/poolUtilizationAtMint, ...]`
+    /// @param positionIdList The list of all option positions
+    /// @param atTick The tick at which to evaluate positions
+    /// @return collateralRequirements Net collateral required per position `[requirement_0, requirement_1, ...]`
+    function getPerPositionCollateralRequirements(
+        PositionBalance[] calldata positionBalanceArray,
+        TokenId[] calldata positionIdList,
+        int24 atTick
+    ) external pure returns (LeftRightUnsigned[] memory collateralRequirements);
+
     /*//////////////////////////////////////////////////////////////
                         ADAPTIVE INTEREST RATE MODEL
     //////////////////////////////////////////////////////////////*/
