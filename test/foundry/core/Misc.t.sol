@@ -10732,4 +10732,198 @@ contract Misctest is Test, PositionUtils {
             "Liquidator should receive bonus in at least one token without loan"
         );
     }
+
+    function test_Success_getFullPositionsData_collateralRequirements() public {
+        {
+            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        // mint OTM short call position
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
+
+        vm.startPrank(Alice);
+        mintOptions(
+            pp,
+            $posIdList,
+            1_000_000,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        // get full positions data including collateral requirements
+        (
+            ,
+            ,
+            PositionBalance[] memory positionBalances,
+            LeftRightUnsigned[] memory collateralRequirements,
+
+        ) = pp.getFullPositionsData(Alice, false, $posIdList);
+
+        // independently compute collateral requirements via risk engine
+        int24 tick = pp.getCurrentTick();
+        LeftRightUnsigned[] memory expectedCollateral = re.getPerPositionCollateralRequirements(
+            positionBalances,
+            $posIdList,
+            tick
+        );
+
+        // validate collateral requirements match
+        assertEq(collateralRequirements.length, expectedCollateral.length, "length mismatch");
+        assertEq(
+            collateralRequirements[0].rightSlot(),
+            expectedCollateral[0].rightSlot(),
+            "rightSlot mismatch"
+        );
+        assertEq(
+            collateralRequirements[0].leftSlot(),
+            expectedCollateral[0].leftSlot(),
+            "leftSlot mismatch"
+        );
+
+        // short position should have non-zero collateral requirement
+        assertTrue(
+            collateralRequirements[0].rightSlot() > 0 || collateralRequirements[0].leftSlot() > 0,
+            "collateral requirement should be non-zero for short position"
+        );
+    }
+
+    function test_Success_getFullPositionsData_netPremiaPerPosition() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        {
+            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        // mint OTM short call position
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
+
+        vm.startPrank(Alice);
+        mintOptions(
+            pp,
+            $posIdList,
+            1_000_000,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        // before fee accrual: net premia should be zero
+        {
+            (
+                ,
+                ,
+                ,
+                ,
+                LeftRightSigned[] memory netPremiaPerPosition
+            ) = pp.getFullPositionsData(Alice, true, $posIdList);
+
+            assertEq(netPremiaPerPosition.length, 1, "length should be 1");
+            assertEq(
+                LeftRightSigned.unwrap(netPremiaPerPosition[0]),
+                0,
+                "net premia should be zero before fee accrual"
+            );
+        }
+
+        // have Bob mint the same position (creates utilization) and a long to generate premia
+        vm.startPrank(Bob);
+        mintOptions(
+            pp,
+            $posIdList,
+            1_000_000_000,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        $tempIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1));
+        $tempIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 15, 1));
+        mintOptions(
+            pp,
+            $tempIdList,
+            900_000_000,
+            type(uint24).max,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        // accrue fees by swapping through the position's range
+        vm.startPrank(Swapper);
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
+        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(10) + 1);
+
+        accruePoolFeesInRange(
+            manager,
+            poolKey,
+            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
+            1_000_000_000_000_000_000_000,
+            1_000_000_000_000
+        );
+
+        swapperc.swapTo(uniPool, 2 ** 96);
+        routerV4.swapTo(address(0), poolKey, 2 ** 96);
+
+        // poke by minting/burning with Charlie
+        vm.startPrank(Charlie);
+        mintOptions(
+            pp,
+            $posIdList,
+            250_000_000,
+            type(uint24).max,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+        burnOptions(
+            pp,
+            $posIdList[0],
+            new TokenId[](0),
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        // after fee accrual: verify net premia consistency
+        {
+            (
+                LeftRightUnsigned shortPremium,
+                LeftRightUnsigned longPremium,
+                ,
+                ,
+                LeftRightSigned[] memory netPremiaPerPosition
+            ) = pp.getFullPositionsData(Alice, true, $posIdList);
+
+            assertEq(netPremiaPerPosition.length, 1, "length should be 1");
+
+            // for a single short-only position with includePendingPremium=true:
+            // netPremiaPerPosition[0] == shortPremium (as signed) since there are no long legs
+            assertEq(
+                LeftRightSigned.unwrap(netPremiaPerPosition[0]),
+                int256(uint256(LeftRightUnsigned.unwrap(shortPremium))),
+                "net premia should equal short premium for single short position"
+            );
+
+            // short premium should be non-zero after fee accrual
+            assertTrue(
+                shortPremium.rightSlot() > 0 || shortPremium.leftSlot() > 0,
+                "short premium should be non-zero after fee accrual"
+            );
+
+            // long premium should be zero for a short-only position
+            assertEq(longPremium.rightSlot(), 0, "long premium right should be zero");
+            assertEq(longPremium.leftSlot(), 0, "long premium left should be zero");
+        }
+    }
 }
