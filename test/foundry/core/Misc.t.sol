@@ -10926,4 +10926,186 @@ contract Misctest is Test, PositionUtils {
             assertEq(longPremium.leftSlot(), 0, "long premium left should be zero");
         }
     }
+
+    function test_Success_getFullPositionsData_netPremiaPerPosition_ShortAndLong() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        {
+            poolId =
+                uint40(uint256(PoolId.unwrap(poolKey.toId()))) +
+                uint64(uint256(vegoid) << 40);
+            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        }
+
+        // short call at strike=15, width=1
+        TokenId shortTokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            15,
+            1
+        );
+        // long call at the same strike (removes liquidity)
+        TokenId longTokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            15,
+            1
+        );
+
+        // Bob mints large short position to provide liquidity
+        vm.startPrank(Bob);
+        $tempIdList.push(shortTokenId);
+        mintOptions(
+            pp,
+            $tempIdList,
+            1_000_000_000,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        // Alice mints short position
+        vm.startPrank(Alice);
+        $posIdList.push(shortTokenId);
+        mintOptions(
+            pp,
+            $posIdList,
+            1_000_000,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        // Alice mints long position (buys into existing liquidity)
+        $posIdList.push(longTokenId);
+        mintOptions(
+            pp,
+            $posIdList,
+            500_000,
+            type(uint24).max,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        // Bob also mints a long to create utilization and drive premia generation
+        $tempIdList.push(longTokenId);
+        vm.startPrank(Bob);
+        mintOptions(
+            pp,
+            $tempIdList,
+            900_000_000,
+            type(uint24).max,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        // accrue fees by swapping through the position's range
+        vm.startPrank(Swapper);
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
+        routerV4.swapTo(
+            address(0),
+            poolKey,
+            TickMath.getSqrtRatioAtTick(10) + 1
+        );
+
+        accruePoolFeesInRange(
+            manager,
+            poolKey,
+            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
+            1_000_000_000_000_000_000_000,
+            1_000_000_000_000
+        );
+
+        swapperc.swapTo(uniPool, 2 ** 96);
+        routerV4.swapTo(address(0), poolKey, 2 ** 96);
+
+        // poke settlements via Charlie
+        {
+            vm.startPrank(Charlie);
+            TokenId[] memory charlieList = new TokenId[](1);
+            charlieList[0] = shortTokenId;
+            mintOptions(
+                pp,
+                charlieList,
+                250_000_000,
+                type(uint24).max,
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
+            );
+            burnOptions(
+                pp,
+                shortTokenId,
+                new TokenId[](0),
+                Constants.MAX_POOL_TICK,
+                Constants.MIN_POOL_TICK,
+                true
+            );
+        }
+
+        // verify net premia with both short and long positions
+        {
+            (
+                LeftRightUnsigned shortPremium,
+                LeftRightUnsigned longPremium,
+                ,
+                ,
+                LeftRightSigned[] memory netPremiaPerPosition
+            ) = pp.getFullPositionsData(Alice, true, $posIdList);
+
+            assertEq(netPremiaPerPosition.length, 2, "should have 2 positions");
+
+            // both premia should be non-zero after fee accrual
+            assertTrue(
+                shortPremium.rightSlot() > 0 || shortPremium.leftSlot() > 0,
+                "short premium should be non-zero after fee accrual"
+            );
+            assertTrue(
+                longPremium.rightSlot() > 0 || longPremium.leftSlot() > 0,
+                "long premium should be non-zero after fee accrual"
+            );
+
+            // position 0 (short-only): net premia == shortPremium (positive)
+            assertEq(
+                LeftRightSigned.unwrap(netPremiaPerPosition[0]),
+                int256(uint256(LeftRightUnsigned.unwrap(shortPremium))),
+                "short position net premia should equal short premium"
+            );
+
+            // position 1 (long-only): each slot of net premia should be the negation of longPremium
+            // Before fix: netPremia.sub(premiaByLeg[leg]) where premiaByLeg is negative
+            //   → sub(negative) = +|longPremium| (WRONG: positive)
+            // After fix: netPremia.add(premiaByLeg[leg]) where premiaByLeg is negative
+            //   → add(negative) = -|longPremium| (CORRECT: negative)
+            // Note: compare per-slot because LeftRight packing means
+            // -int256(packed(a, b)) != packed(-a, -b)
+            assertEq(
+                netPremiaPerPosition[1].rightSlot(),
+                -int128(uint128(longPremium.rightSlot())),
+                "long position net premia right slot should be negated"
+            );
+            assertEq(
+                netPremiaPerPosition[1].leftSlot(),
+                -int128(uint128(longPremium.leftSlot())),
+                "long position net premia left slot should be negated"
+            );
+        }
+    }
 }

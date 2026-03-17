@@ -618,7 +618,7 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
                             )
                         );
                         if (perPositionPremia) {
-                            netPremia = netPremia.sub(premiaByLeg[leg]);
+                            netPremia = netPremia.add(premiaByLeg[leg]);
                         }
                     }
                 }
