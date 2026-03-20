@@ -77,7 +77,7 @@
       "optimizeRuns": 9999999,
       "links": ["PanopticMath"]
     },
-    "CollateralTracker": {
+    "CollateralTrackerV2": {
       "path": "./contracts/CollateralTracker.sol",
       "deployment": {
         "address": "0x000000000001931ac40ff8b16F08E47D2A7CD650",
@@ -104,8 +104,8 @@
         [
           "@SemiFungiblePositionManagerV3",
           "$UNIV3_FACTORY",
-          "@PanopticPool",
-          "@CollateralTracker",
+          "@PanopticPoolV2",
+          "@CollateralTrackerV2",
           "$MD_PROPERTIES",
           "$MD_INDICES",
           "$MD_POINTERS"
@@ -113,7 +113,7 @@
         ["address", "address", "address", "address", "bytes32[]", "uint256[][]", "uint256[][]"]
       ]
     },
-    "PanopticPool": {
+    "PanopticPoolV2": {
       "path": "./contracts/PanopticPool.sol",
       "deployment": {
         "address": "0x0000000000001B1A7fe31692d107cAA42fb06862",

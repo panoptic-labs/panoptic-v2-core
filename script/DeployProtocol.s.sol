@@ -16,7 +16,10 @@ import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {Pointer, PointerLibrary} from "@types/Pointer.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 
+// TEST RUN:
 // forge script script/DeployProtocol.s.sol --rpc-url sepolia --turnkey --sender 0x62CB5f6E9F8Bca7032dDf993de8A02ae437D39b8
+// DEPLOY + VERIFY
+// forge script script/DeployProtocol.s.sol --rpc-url sepolia --turnkey --sender 0x62CB5f6E9F8Bca7032dDf993de8A02ae437D39b8 --broadcast --verify  --etherscan-api-key $ETHERSCAN_API_KEY
 contract DeployProtocol is Script {
     struct PointerInfo {
         uint256 codeIndex;
