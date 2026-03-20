@@ -86,9 +86,9 @@ contract DeployProtocol is Script {
 
         SemiFungiblePositionManagerV4 sfpm = new SemiFungiblePositionManagerV4(
             uniPoolManager,
-            10 ** 13,
-            10 ** 13,
-            0
+            21 * 10 ** 20,
+            21 * 10 ** 20,
+            10000
         );
 
         BuilderFactory builderFactory = new BuilderFactory(msg.sender);
@@ -116,8 +116,8 @@ contract DeployProtocol is Script {
 
         SemiFungiblePositionManagerV3 sfpmV3 = new SemiFungiblePositionManagerV3(
             uniV3Factory,
-            10 ** 13,
-            10 ** 13
+            21 * 10 ** 20,
+            10000
         );
 
         new PanopticFactoryV3(
