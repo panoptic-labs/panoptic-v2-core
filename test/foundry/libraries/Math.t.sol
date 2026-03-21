@@ -300,6 +300,59 @@ contract MathTest is Test {
         );
     }
 
+    function test_getApproxTickWithMaxAmount_SaturatedReturnsMaxTick(
+        uint256 ts_seed
+    ) public pure {
+        int24 ts = int24(int256(bound(ts_seed, 1, 32767)));
+        uint128 lMax = Math.getMaxLiquidityPerTick(ts);
+
+        // Use an amount large enough to saturate mulDivCapped
+        uint256 denominator = uint256(lMax) *
+            (Math.getSqrtRatioAtTick(ts) - 2 ** 96);
+        uint256 amount = (denominator >> 96) + 1;
+
+        int24 res = Math.getApproxTickWithMaxAmount(amount, ts, lMax);
+        assertEq(res, int24(887272));
+    }
+
+    function test_getApproxTickWithMaxAmount_LargeSupply(
+        uint256 ts_seed
+    ) public pure {
+        int24 ts = int24(int256(bound(ts_seed, 1, 32767)));
+        uint128 lMax = Math.getMaxLiquidityPerTick(ts);
+
+        // Simulate a high-supply token (e.g. 1e39)
+        uint256 amount = 10 ** 39;
+
+        int24 res = Math.getApproxTickWithMaxAmount(amount, ts, lMax);
+
+        // Should return MAX_POOL_TICK, not a small value like 1
+        assertEq(res, int24(887272));
+    }
+
+    function test_getApproxTickWithMaxAmount_BelowSaturation(
+        uint256 ts_seed
+    ) public pure {
+        int24 ts = int24(int256(bound(ts_seed, 1, 32767)));
+        uint128 lMax = Math.getMaxLiquidityPerTick(ts);
+
+        // Use an amount just below the saturation threshold
+        uint256 denominator = uint256(lMax) *
+            (Math.getSqrtRatioAtTick(ts) - 2 ** 96);
+        uint256 threshold = denominator >> 96;
+
+        // Skip if threshold is too small to test below it
+        if (threshold < 2) return;
+
+        uint256 amount = threshold - 1;
+
+        int24 res = Math.getApproxTickWithMaxAmount(amount, ts, lMax);
+
+        // Should NOT return MAX_POOL_TICK — the normal path should handle it
+        assertLt(res, int24(887272));
+        assertGt(res, 0);
+    }
+
     function test_Success_getMaxLiquidityPerTick(int256 x) public pure {
         x = bound(x, 1, 32767);
         console2.log("Math act", Math.getMaxLiquidityPerTick(int24(x)));

@@ -151,6 +151,13 @@ library Math {
         uint256 maxLiquidityPerTick
     ) internal pure returns (int24) {
         unchecked {
+            uint256 denominator = maxLiquidityPerTick *
+                (Math.getSqrtRatioAtTick(tickSpacing) - 2 ** 96);
+
+            // If amount fills more than one tick's worth of liquidity,
+            // every tick is expensive to grief — no restriction needed.
+            if (amount >= denominator >> 96) return Constants.MAX_POOL_TICK;
+
             // abs(max_error) ≈ 2^-13 * log₂(√1.0001)⁻¹ ≈ -1.70234
             return
                 int24(
@@ -159,8 +166,7 @@ library Math {
                             Math.mulDivCapped(
                                 amount,
                                 2 ** 224,
-                                (maxLiquidityPerTick *
-                                    (Math.getSqrtRatioAtTick(tickSpacing) - 2 ** 96)),
+                                denominator,
                                 128
                             ),
                             13
