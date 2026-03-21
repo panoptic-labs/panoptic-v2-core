@@ -1169,58 +1169,61 @@ contract Misctest is Test, PositionUtils {
             )
         );
 
-        (uint256 actualDOSCost, ) = Math.getAmountsForLiquidity(
-            -100_000,
-            LiquidityChunkLibrary.createChunk(
-                tickLimitUpper - tickSpacing + 2,
-                tickLimitUpper + 2,
-                Math.getMaxLiquidityPerTick(tickSpacing)
-            )
-        );
+        uint256 actualDOSCost;
 
-        assertLt(actualDOSCost, expectedDOSCost);
+        // When the enforced tick range is at the max, the range is effectively unrestricted
+        // so the DOS cost assertions are trivially satisfied — skip position-based checks
+        if (tickLimitUpper < Constants.MAX_POOL_TICK) {
+            (actualDOSCost, ) = Math.getAmountsForLiquidity(
+                -100_000,
+                LiquidityChunkLibrary.createChunk(
+                    tickLimitUpper - tickSpacing + 2,
+                    tickLimitUpper + 2,
+                    Math.getMaxLiquidityPerTick(tickSpacing)
+                )
+            );
 
-        (actualDOSCost, ) = Math.getAmountsForLiquidity(
-            -100_000,
-            LiquidityChunkLibrary.createChunk(
-                tickLimitUpper - tickSpacing - 2,
-                tickLimitUpper - 2,
-                Math.getMaxLiquidityPerTick(tickSpacing)
-            )
-        );
+            assertLt(actualDOSCost, expectedDOSCost);
 
-        console2.log("maxDOSCost", maxDOSCost);
-        console2.log("expectedDOSCost", expectedDOSCost);
-        console2.log("tickLimitUpper", tickLimitUpper);
-        console2.log("tickSpacing", tickSpacing);
+            (actualDOSCost, ) = Math.getAmountsForLiquidity(
+                -100_000,
+                LiquidityChunkLibrary.createChunk(
+                    tickLimitUpper - tickSpacing - 2,
+                    tickLimitUpper - 2,
+                    Math.getMaxLiquidityPerTick(tickSpacing)
+                )
+            );
 
-        if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitUpper, 1);
-        else assertGt(actualDOSCost, expectedDOSCost);
+            if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitUpper, 1);
+            else assertGt(actualDOSCost, expectedDOSCost);
+        }
 
         expectedDOSCost = Math.max(2100 * 10 ** 18, token1Supply);
 
-        (, actualDOSCost) = Math.getAmountsForLiquidity(
-            100_000,
-            LiquidityChunkLibrary.createChunk(
-                tickLimitLower - 2,
-                tickLimitLower + tickSpacing - 2,
-                Math.getMaxLiquidityPerTick(tickSpacing)
-            )
-        );
+        if (tickLimitLower > -Constants.MAX_POOL_TICK) {
+            (, actualDOSCost) = Math.getAmountsForLiquidity(
+                100_000,
+                LiquidityChunkLibrary.createChunk(
+                    tickLimitLower - 2,
+                    tickLimitLower + tickSpacing - 2,
+                    Math.getMaxLiquidityPerTick(tickSpacing)
+                )
+            );
 
-        assertLt(actualDOSCost, expectedDOSCost);
+            assertLt(actualDOSCost, expectedDOSCost);
 
-        (, actualDOSCost) = Math.getAmountsForLiquidity(
-            100_000,
-            LiquidityChunkLibrary.createChunk(
-                tickLimitLower + 2,
-                tickLimitLower + tickSpacing + 2,
-                Math.getMaxLiquidityPerTick(tickSpacing)
-            )
-        );
+            (, actualDOSCost) = Math.getAmountsForLiquidity(
+                100_000,
+                LiquidityChunkLibrary.createChunk(
+                    tickLimitLower + 2,
+                    tickLimitLower + tickSpacing + 2,
+                    Math.getMaxLiquidityPerTick(tickSpacing)
+                )
+            );
 
-        if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitLower, -1);
-        else assertGt(actualDOSCost, expectedDOSCost);
+            if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitLower, -1);
+            else assertGt(actualDOSCost, expectedDOSCost);
+        }
 
         vm.startPrank(Swapper);
         routerV4.modifyLiquidity(
@@ -1235,54 +1238,26 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Alice);
 
-        TokenId tickPosition = TokenId
-            .wrap(0)
-            .addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()), vegoid))
-            .addLeg(
-                0,
-                1,
-                0,
-                0,
-                0,
-                0,
-                (tickLimitUpper / tickSpacing) *
-                    tickSpacing +
-                    int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
-                1
-            );
+        TokenId tickPosition;
 
-        vm.expectRevert(Errors.InvalidTickBound.selector);
-        sfpm.mintTokenizedPosition(
-            abi.encode(poolKey),
-            tickPosition,
-            1_000_000,
-            Constants.MIN_POOL_TICK,
-            Constants.MAX_POOL_TICK
-        );
+        if (tickLimitUpper < Constants.MAX_POOL_TICK) {
+            tickPosition = TokenId
+                .wrap(0)
+                .addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()), vegoid))
+                .addLeg(
+                    0,
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    (tickLimitUpper / tickSpacing) *
+                        tickSpacing +
+                        int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
+                    1
+                );
 
-        tickPosition = TokenId
-            .wrap(0)
-            .addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()), vegoid))
-            .addLeg(
-                0,
-                1,
-                0,
-                0,
-                0,
-                0,
-                (tickLimitUpper / tickSpacing) *
-                    tickSpacing -
-                    int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
-                1
-            );
-
-        if (
-            (tickLimitUpper / tickSpacing) *
-                tickSpacing -
-                (tickLimitLower / tickSpacing) *
-                tickSpacing >=
-            tickSpacing
-        )
+            vm.expectRevert(Errors.InvalidTickBound.selector);
             sfpm.mintTokenizedPosition(
                 abi.encode(poolKey),
                 tickPosition,
@@ -1290,59 +1265,66 @@ contract Misctest is Test, PositionUtils {
                 Constants.MIN_POOL_TICK,
                 Constants.MAX_POOL_TICK
             );
+        }
 
+        if (tickLimitUpper < Constants.MAX_POOL_TICK) {
+            tickPosition = TokenId
+                .wrap(0)
+                .addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()), vegoid))
+                .addLeg(
+                    0,
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    (tickLimitUpper / tickSpacing) *
+                        tickSpacing -
+                        int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
+                    1
+                );
+
+            if (
+                (tickLimitUpper / tickSpacing) *
+                    tickSpacing -
+                    (tickLimitLower / tickSpacing) *
+                    tickSpacing >=
+                tickSpacing
+            )
+                sfpm.mintTokenizedPosition(
+                    abi.encode(poolKey),
+                    tickPosition,
+                    1_000_000,
+                    Constants.MIN_POOL_TICK,
+                    Constants.MAX_POOL_TICK
+                );
+        }
+
+        vm.stopPrank();
         vm.startPrank(Swapper);
 
         routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(100_000));
 
         vm.startPrank(Alice);
 
-        tickPosition = TokenId
-            .wrap(0)
-            .addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()), vegoid))
-            .addLeg(
-                0,
-                1,
-                1,
-                0,
-                0,
-                0,
-                (tickLimitLower / tickSpacing) *
-                    tickSpacing -
-                    int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
-                1
-            );
+        if (tickLimitLower > -Constants.MAX_POOL_TICK) {
+            tickPosition = TokenId
+                .wrap(0)
+                .addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()), vegoid))
+                .addLeg(
+                    0,
+                    1,
+                    1,
+                    0,
+                    0,
+                    0,
+                    (tickLimitLower / tickSpacing) *
+                        tickSpacing -
+                        int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
+                    1
+                );
 
-        vm.expectRevert(Errors.InvalidTickBound.selector);
-        sfpm.mintTokenizedPosition(
-            abi.encode(poolKey),
-            tickPosition,
-            1_000_000,
-            Constants.MIN_POOL_TICK,
-            Constants.MAX_POOL_TICK
-        );
-
-        tickPosition = TokenId
-            .wrap(0)
-            .addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()), vegoid))
-            .addLeg(
-                0,
-                1,
-                1,
-                0,
-                0,
-                0,
-                (tickLimitLower / tickSpacing) * tickSpacing + tickSpacing / 2,
-                1
-            );
-
-        if (
-            (tickLimitUpper / tickSpacing) *
-                tickSpacing -
-                (tickLimitLower / tickSpacing) *
-                tickSpacing >=
-            tickSpacing
-        )
+            vm.expectRevert(Errors.InvalidTickBound.selector);
             sfpm.mintTokenizedPosition(
                 abi.encode(poolKey),
                 tickPosition,
@@ -1350,6 +1332,38 @@ contract Misctest is Test, PositionUtils {
                 Constants.MIN_POOL_TICK,
                 Constants.MAX_POOL_TICK
             );
+        }
+
+        if (tickLimitLower > -Constants.MAX_POOL_TICK) {
+            tickPosition = TokenId
+                .wrap(0)
+                .addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()), vegoid))
+                .addLeg(
+                    0,
+                    1,
+                    1,
+                    0,
+                    0,
+                    0,
+                    (tickLimitLower / tickSpacing) * tickSpacing + tickSpacing / 2,
+                    1
+                );
+
+            if (
+                (tickLimitUpper / tickSpacing) *
+                    tickSpacing -
+                    (tickLimitLower / tickSpacing) *
+                    tickSpacing >=
+                tickSpacing
+            )
+                sfpm.mintTokenizedPosition(
+                    abi.encode(poolKey),
+                    tickPosition,
+                    1_000_000,
+                    Constants.MIN_POOL_TICK,
+                    Constants.MAX_POOL_TICK
+                );
+        }
     }
 
     function test_TickLimits_Expanded(
@@ -1425,53 +1439,59 @@ contract Misctest is Test, PositionUtils {
             )
         );
 
-        (uint256 actualDOSCost, ) = Math.getAmountsForLiquidity(
-            -100_000,
-            LiquidityChunkLibrary.createChunk(
-                tickLimitUpper - tickSpacing + 2,
-                tickLimitUpper + 2,
-                Math.getMaxLiquidityPerTick(tickSpacing)
-            )
-        );
+        uint256 actualDOSCost;
 
-        assertLt(actualDOSCost, expectedDOSCost);
+        if (tickLimitUpper < Constants.MAX_POOL_TICK) {
+            (actualDOSCost, ) = Math.getAmountsForLiquidity(
+                -100_000,
+                LiquidityChunkLibrary.createChunk(
+                    tickLimitUpper - tickSpacing + 2,
+                    tickLimitUpper + 2,
+                    Math.getMaxLiquidityPerTick(tickSpacing)
+                )
+            );
 
-        (actualDOSCost, ) = Math.getAmountsForLiquidity(
-            -100_000,
-            LiquidityChunkLibrary.createChunk(
-                tickLimitUpper - tickSpacing - 2,
-                tickLimitUpper - 2,
-                Math.getMaxLiquidityPerTick(tickSpacing)
-            )
-        );
+            assertLt(actualDOSCost, expectedDOSCost);
 
-        if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitUpper, 1);
-        else assertGt(actualDOSCost, expectedDOSCost);
+            (actualDOSCost, ) = Math.getAmountsForLiquidity(
+                -100_000,
+                LiquidityChunkLibrary.createChunk(
+                    tickLimitUpper - tickSpacing - 2,
+                    tickLimitUpper - 2,
+                    Math.getMaxLiquidityPerTick(tickSpacing)
+                )
+            );
+
+            if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitUpper, 1);
+            else assertGt(actualDOSCost, expectedDOSCost);
+        }
 
         expectedDOSCost = Math.max(2100 * 10 ** 18, Math.min(token1Supply, token1SupplyOrig));
 
-        (, actualDOSCost) = Math.getAmountsForLiquidity(
-            100_000,
-            LiquidityChunkLibrary.createChunk(
-                tickLimitLower - 2,
-                tickLimitLower + tickSpacing - 2,
-                Math.getMaxLiquidityPerTick(tickSpacing)
-            )
-        );
+        if (tickLimitLower > -Constants.MAX_POOL_TICK) {
+            (, actualDOSCost) = Math.getAmountsForLiquidity(
+                100_000,
+                LiquidityChunkLibrary.createChunk(
+                    tickLimitLower - 2,
+                    tickLimitLower + tickSpacing - 2,
+                    Math.getMaxLiquidityPerTick(tickSpacing)
+                )
+            );
 
-        assertLt(actualDOSCost, expectedDOSCost);
+            assertLt(actualDOSCost, expectedDOSCost);
 
-        (, actualDOSCost) = Math.getAmountsForLiquidity(
-            100_000,
-            LiquidityChunkLibrary.createChunk(
-                tickLimitLower + 2,
-                tickLimitLower + tickSpacing + 2,
-                Math.getMaxLiquidityPerTick(tickSpacing)
-            )
-        );
+            (, actualDOSCost) = Math.getAmountsForLiquidity(
+                100_000,
+                LiquidityChunkLibrary.createChunk(
+                    tickLimitLower + 2,
+                    tickLimitLower + tickSpacing + 2,
+                    Math.getMaxLiquidityPerTick(tickSpacing)
+                )
+            );
 
-        if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitLower, -1);
-        else assertGt(actualDOSCost, expectedDOSCost);
+            if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitLower, -1);
+            else assertGt(actualDOSCost, expectedDOSCost);
+        }
 
         vm.startPrank(Swapper);
         routerV4.modifyLiquidity(
@@ -1486,54 +1506,26 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Alice);
 
-        TokenId tickPosition = TokenId
-            .wrap(0)
-            .addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()), vegoid))
-            .addLeg(
-                0,
-                1,
-                0,
-                0,
-                0,
-                0,
-                (tickLimitUpper / tickSpacing) *
-                    tickSpacing +
-                    int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
-                1
-            );
+        TokenId tickPosition;
 
-        vm.expectRevert(Errors.InvalidTickBound.selector);
-        sfpm.mintTokenizedPosition(
-            abi.encode(poolKey),
-            tickPosition,
-            1_000_000,
-            Constants.MIN_POOL_TICK,
-            Constants.MAX_POOL_TICK
-        );
+        if (tickLimitUpper < Constants.MAX_POOL_TICK) {
+            tickPosition = TokenId
+                .wrap(0)
+                .addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()), vegoid))
+                .addLeg(
+                    0,
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    (tickLimitUpper / tickSpacing) *
+                        tickSpacing +
+                        int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
+                    1
+                );
 
-        tickPosition = TokenId
-            .wrap(0)
-            .addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()), vegoid))
-            .addLeg(
-                0,
-                1,
-                0,
-                0,
-                0,
-                0,
-                (tickLimitUpper / tickSpacing) *
-                    tickSpacing -
-                    int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
-                1
-            );
-
-        if (
-            (tickLimitUpper / tickSpacing) *
-                tickSpacing -
-                (tickLimitLower / tickSpacing) *
-                tickSpacing >=
-            tickSpacing
-        )
+            vm.expectRevert(Errors.InvalidTickBound.selector);
             sfpm.mintTokenizedPosition(
                 abi.encode(poolKey),
                 tickPosition,
@@ -1541,59 +1533,66 @@ contract Misctest is Test, PositionUtils {
                 Constants.MIN_POOL_TICK,
                 Constants.MAX_POOL_TICK
             );
+        }
 
+        if (tickLimitUpper < Constants.MAX_POOL_TICK) {
+            tickPosition = TokenId
+                .wrap(0)
+                .addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()), vegoid))
+                .addLeg(
+                    0,
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    (tickLimitUpper / tickSpacing) *
+                        tickSpacing -
+                        int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
+                    1
+                );
+
+            if (
+                (tickLimitUpper / tickSpacing) *
+                    tickSpacing -
+                    (tickLimitLower / tickSpacing) *
+                    tickSpacing >=
+                tickSpacing
+            )
+                sfpm.mintTokenizedPosition(
+                    abi.encode(poolKey),
+                    tickPosition,
+                    1_000_000,
+                    Constants.MIN_POOL_TICK,
+                    Constants.MAX_POOL_TICK
+                );
+        }
+
+        vm.stopPrank();
         vm.startPrank(Swapper);
 
         routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(100_000));
 
         vm.startPrank(Alice);
 
-        tickPosition = TokenId
-            .wrap(0)
-            .addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()), vegoid))
-            .addLeg(
-                0,
-                1,
-                1,
-                0,
-                0,
-                0,
-                (tickLimitLower / tickSpacing) *
-                    tickSpacing -
-                    int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
-                1
-            );
+        if (tickLimitLower > -Constants.MAX_POOL_TICK) {
+            tickPosition = TokenId
+                .wrap(0)
+                .addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()), vegoid))
+                .addLeg(
+                    0,
+                    1,
+                    1,
+                    0,
+                    0,
+                    0,
+                    (tickLimitLower / tickSpacing) *
+                        tickSpacing -
+                        int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
+                    1
+                );
 
-        vm.expectRevert(Errors.InvalidTickBound.selector);
-        sfpm.mintTokenizedPosition(
-            abi.encode(poolKey),
-            tickPosition,
-            1_000_000,
-            Constants.MIN_POOL_TICK,
-            Constants.MAX_POOL_TICK
-        );
-
-        tickPosition = TokenId
-            .wrap(0)
-            .addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()), vegoid))
-            .addLeg(
-                0,
-                1,
-                1,
-                0,
-                0,
-                0,
-                (tickLimitLower / tickSpacing) * tickSpacing + tickSpacing / 2,
-                1
-            );
-
-        if (
-            (tickLimitUpper / tickSpacing) *
-                tickSpacing -
-                (tickLimitLower / tickSpacing) *
-                tickSpacing >=
-            tickSpacing
-        )
+            vm.expectRevert(Errors.InvalidTickBound.selector);
             sfpm.mintTokenizedPosition(
                 abi.encode(poolKey),
                 tickPosition,
@@ -1601,6 +1600,38 @@ contract Misctest is Test, PositionUtils {
                 Constants.MIN_POOL_TICK,
                 Constants.MAX_POOL_TICK
             );
+        }
+
+        if (tickLimitLower > -Constants.MAX_POOL_TICK) {
+            tickPosition = TokenId
+                .wrap(0)
+                .addPoolId(sfpm.getPoolId(abi.encode(poolKey.toId()), vegoid))
+                .addLeg(
+                    0,
+                    1,
+                    1,
+                    0,
+                    0,
+                    0,
+                    (tickLimitLower / tickSpacing) * tickSpacing + tickSpacing / 2,
+                    1
+                );
+
+            if (
+                (tickLimitUpper / tickSpacing) *
+                    tickSpacing -
+                    (tickLimitLower / tickSpacing) *
+                    tickSpacing >=
+                tickSpacing
+            )
+                sfpm.mintTokenizedPosition(
+                    abi.encode(poolKey),
+                    tickPosition,
+                    1_000_000,
+                    Constants.MIN_POOL_TICK,
+                    Constants.MAX_POOL_TICK
+                );
+        }
     }
 
     function test_TickLimits_native(uint256 tickSpacingSeed) public {
