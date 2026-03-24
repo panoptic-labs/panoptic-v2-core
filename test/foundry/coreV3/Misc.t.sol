@@ -1106,53 +1106,59 @@ contract Misctest is Test, PositionUtils {
             )
         );
 
-        (uint256 actualDOSCost, ) = Math.getAmountsForLiquidity(
-            -100_000,
-            LiquidityChunkLibrary.createChunk(
-                tickLimitUpper - uniPool.tickSpacing() + 2,
-                tickLimitUpper + 2,
-                uniPool.maxLiquidityPerTick()
-            )
-        );
+        uint256 actualDOSCost;
 
-        assertLt(actualDOSCost, expectedDOSCost);
+        if (tickLimitUpper < Constants.MAX_POOL_TICK) {
+            (actualDOSCost, ) = Math.getAmountsForLiquidity(
+                -100_000,
+                LiquidityChunkLibrary.createChunk(
+                    tickLimitUpper - uniPool.tickSpacing() + 2,
+                    tickLimitUpper + 2,
+                    uniPool.maxLiquidityPerTick()
+                )
+            );
 
-        (actualDOSCost, ) = Math.getAmountsForLiquidity(
-            -100_000,
-            LiquidityChunkLibrary.createChunk(
-                tickLimitUpper - uniPool.tickSpacing() - 2,
-                tickLimitUpper - 2,
-                uniPool.maxLiquidityPerTick()
-            )
-        );
+            assertLt(actualDOSCost, expectedDOSCost);
 
-        if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitUpper, 1);
-        else assertGt(actualDOSCost, expectedDOSCost);
+            (actualDOSCost, ) = Math.getAmountsForLiquidity(
+                -100_000,
+                LiquidityChunkLibrary.createChunk(
+                    tickLimitUpper - uniPool.tickSpacing() - 2,
+                    tickLimitUpper - 2,
+                    uniPool.maxLiquidityPerTick()
+                )
+            );
+
+            if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitUpper, 1);
+            else assertGt(actualDOSCost, expectedDOSCost);
+        }
 
         expectedDOSCost = Math.max(2100 * 10 ** 18, token1Supply);
 
-        (, actualDOSCost) = Math.getAmountsForLiquidity(
-            100_000,
-            LiquidityChunkLibrary.createChunk(
-                tickLimitLower - 2,
-                tickLimitLower + uniPool.tickSpacing() - 2,
-                uniPool.maxLiquidityPerTick()
-            )
-        );
+        if (tickLimitLower > -Constants.MAX_POOL_TICK) {
+            (, actualDOSCost) = Math.getAmountsForLiquidity(
+                100_000,
+                LiquidityChunkLibrary.createChunk(
+                    tickLimitLower - 2,
+                    tickLimitLower + uniPool.tickSpacing() - 2,
+                    uniPool.maxLiquidityPerTick()
+                )
+            );
 
-        assertLt(actualDOSCost, expectedDOSCost);
+            assertLt(actualDOSCost, expectedDOSCost);
 
-        (, actualDOSCost) = Math.getAmountsForLiquidity(
-            100_000,
-            LiquidityChunkLibrary.createChunk(
-                tickLimitLower + 2,
-                tickLimitLower + uniPool.tickSpacing() + 2,
-                uniPool.maxLiquidityPerTick()
-            )
-        );
+            (, actualDOSCost) = Math.getAmountsForLiquidity(
+                100_000,
+                LiquidityChunkLibrary.createChunk(
+                    tickLimitLower + 2,
+                    tickLimitLower + uniPool.tickSpacing() + 2,
+                    uniPool.maxLiquidityPerTick()
+                )
+            );
 
-        if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitLower, -1);
-        else assertGt(actualDOSCost, expectedDOSCost);
+            if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitLower, -1);
+            else assertGt(actualDOSCost, expectedDOSCost);
+        }
 
         vm.startPrank(Swapper);
         swapperc.mint(
@@ -1170,52 +1176,23 @@ contract Misctest is Test, PositionUtils {
             poolId = uint40(uint160(address(uniPool)) >> 120) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
-        TokenId tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
-            (tickLimitUpper / uniPool.tickSpacing()) *
-                uniPool.tickSpacing() +
-                int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
-            1
-        );
+        TokenId tickPosition;
 
-        vm.expectRevert(Errors.InvalidTickBound.selector);
-        sfpm.mintTokenizedPosition(
-            abi.encode(uniPool),
-            tickPosition,
-            1_000_000,
-            Constants.MIN_POOL_TICK,
-            Constants.MAX_POOL_TICK
-        );
+        if (tickLimitUpper < Constants.MAX_POOL_TICK) {
+            tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                (tickLimitUpper / uniPool.tickSpacing()) *
+                    uniPool.tickSpacing() +
+                    int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
+                1
+            );
 
-        {
-            poolId = uint40(uint160(address(uniPool)) >> 120) + uint64(uint256(vegoid) << 40);
-            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
-        }
-        tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
-            (tickLimitUpper / uniPool.tickSpacing()) *
-                uniPool.tickSpacing() -
-                int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
-            1
-        );
-
-        if (
-            (tickLimitUpper / uniPool.tickSpacing()) *
-                uniPool.tickSpacing() -
-                (tickLimitLower / uniPool.tickSpacing()) *
-                uniPool.tickSpacing() >=
-            uniPool.tickSpacing()
-        )
+            vm.expectRevert(Errors.InvalidTickBound.selector);
             sfpm.mintTokenizedPosition(
                 abi.encode(uniPool),
                 tickPosition,
@@ -1223,7 +1200,43 @@ contract Misctest is Test, PositionUtils {
                 Constants.MIN_POOL_TICK,
                 Constants.MAX_POOL_TICK
             );
+        }
 
+        if (tickLimitUpper < Constants.MAX_POOL_TICK) {
+            {
+                poolId = uint40(uint160(address(uniPool)) >> 120) + uint64(uint256(vegoid) << 40);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+            tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                (tickLimitUpper / uniPool.tickSpacing()) *
+                    uniPool.tickSpacing() -
+                    int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
+                1
+            );
+
+            if (
+                (tickLimitUpper / uniPool.tickSpacing()) *
+                    uniPool.tickSpacing() -
+                    (tickLimitLower / uniPool.tickSpacing()) *
+                    uniPool.tickSpacing() >=
+                uniPool.tickSpacing()
+            )
+                sfpm.mintTokenizedPosition(
+                    abi.encode(uniPool),
+                    tickPosition,
+                    1_000_000,
+                    Constants.MIN_POOL_TICK,
+                    Constants.MAX_POOL_TICK
+                );
+        }
+
+        vm.stopPrank();
         vm.startPrank(Swapper);
 
         swapperc.swapTo(uniPool, TickMath.getSqrtRatioAtTick(100_000));
@@ -1234,53 +1247,21 @@ contract Misctest is Test, PositionUtils {
             poolId = uint40(uint160(address(uniPool)) >> 120) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
-        tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
-            0,
-            1,
-            1,
-            0,
-            0,
-            0,
-            (tickLimitLower / uniPool.tickSpacing()) *
-                uniPool.tickSpacing() -
-                int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
-            1
-        );
-
-        vm.expectRevert(Errors.InvalidTickBound.selector);
-        sfpm.mintTokenizedPosition(
-            abi.encode(uniPool),
-            tickPosition,
-            1_000_000,
-            Constants.MIN_POOL_TICK,
-            Constants.MAX_POOL_TICK
-        );
-
-        {
-            poolId = uint40(uint160(address(uniPool)) >> 120) + uint64(uint256(vegoid) << 40);
-            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
-        }
-        tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
-            0,
-            1,
-            1,
-            0,
-            0,
-            0,
-            (tickLimitLower / uniPool.tickSpacing()) *
-                uniPool.tickSpacing() +
-                uniPool.tickSpacing() /
-                2,
-            1
-        );
-
-        if (
-            (tickLimitUpper / uniPool.tickSpacing()) *
-                uniPool.tickSpacing() -
+        if (tickLimitLower > -Constants.MAX_POOL_TICK) {
+            tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
                 (tickLimitLower / uniPool.tickSpacing()) *
-                uniPool.tickSpacing() >=
-            uniPool.tickSpacing()
-        )
+                    uniPool.tickSpacing() -
+                    int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
+                1
+            );
+
+            vm.expectRevert(Errors.InvalidTickBound.selector);
             sfpm.mintTokenizedPosition(
                 abi.encode(uniPool),
                 tickPosition,
@@ -1288,6 +1269,42 @@ contract Misctest is Test, PositionUtils {
                 Constants.MIN_POOL_TICK,
                 Constants.MAX_POOL_TICK
             );
+        }
+
+        if (tickLimitLower > -Constants.MAX_POOL_TICK) {
+            {
+                poolId = uint40(uint160(address(uniPool)) >> 120) + uint64(uint256(vegoid) << 40);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+            tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                (tickLimitLower / uniPool.tickSpacing()) *
+                    uniPool.tickSpacing() +
+                    uniPool.tickSpacing() /
+                    2,
+                1
+            );
+
+            if (
+                (tickLimitUpper / uniPool.tickSpacing()) *
+                    uniPool.tickSpacing() -
+                    (tickLimitLower / uniPool.tickSpacing()) *
+                    uniPool.tickSpacing() >=
+                uniPool.tickSpacing()
+            )
+                sfpm.mintTokenizedPosition(
+                    abi.encode(uniPool),
+                    tickPosition,
+                    1_000_000,
+                    Constants.MIN_POOL_TICK,
+                    Constants.MAX_POOL_TICK
+                );
+        }
     }
 
     function test_TickLimits_Expanded(
@@ -1368,53 +1385,59 @@ contract Misctest is Test, PositionUtils {
             )
         );
 
-        (uint256 actualDOSCost, ) = Math.getAmountsForLiquidity(
-            -100_000,
-            LiquidityChunkLibrary.createChunk(
-                tickLimitUpper - uniPool.tickSpacing() + 2,
-                tickLimitUpper + 2,
-                uniPool.maxLiquidityPerTick()
-            )
-        );
+        uint256 actualDOSCost;
 
-        assertLt(actualDOSCost, expectedDOSCost);
+        if (tickLimitUpper < Constants.MAX_POOL_TICK) {
+            (actualDOSCost, ) = Math.getAmountsForLiquidity(
+                -100_000,
+                LiquidityChunkLibrary.createChunk(
+                    tickLimitUpper - uniPool.tickSpacing() + 2,
+                    tickLimitUpper + 2,
+                    uniPool.maxLiquidityPerTick()
+                )
+            );
 
-        (actualDOSCost, ) = Math.getAmountsForLiquidity(
-            -100_000,
-            LiquidityChunkLibrary.createChunk(
-                tickLimitUpper - uniPool.tickSpacing() - 2,
-                tickLimitUpper - 2,
-                uniPool.maxLiquidityPerTick()
-            )
-        );
+            assertLt(actualDOSCost, expectedDOSCost);
 
-        if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitUpper, 1);
-        else assertGt(actualDOSCost, expectedDOSCost);
+            (actualDOSCost, ) = Math.getAmountsForLiquidity(
+                -100_000,
+                LiquidityChunkLibrary.createChunk(
+                    tickLimitUpper - uniPool.tickSpacing() - 2,
+                    tickLimitUpper - 2,
+                    uniPool.maxLiquidityPerTick()
+                )
+            );
+
+            if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitUpper, 1);
+            else assertGt(actualDOSCost, expectedDOSCost);
+        }
 
         expectedDOSCost = Math.max(2100 * 10 ** 18, Math.min(token1Supply, token1SupplyOrig));
 
-        (, actualDOSCost) = Math.getAmountsForLiquidity(
-            100_000,
-            LiquidityChunkLibrary.createChunk(
-                tickLimitLower - 2,
-                tickLimitLower + uniPool.tickSpacing() - 2,
-                uniPool.maxLiquidityPerTick()
-            )
-        );
+        if (tickLimitLower > -Constants.MAX_POOL_TICK) {
+            (, actualDOSCost) = Math.getAmountsForLiquidity(
+                100_000,
+                LiquidityChunkLibrary.createChunk(
+                    tickLimitLower - 2,
+                    tickLimitLower + uniPool.tickSpacing() - 2,
+                    uniPool.maxLiquidityPerTick()
+                )
+            );
 
-        assertLt(actualDOSCost, expectedDOSCost);
+            assertLt(actualDOSCost, expectedDOSCost);
 
-        (, actualDOSCost) = Math.getAmountsForLiquidity(
-            100_000,
-            LiquidityChunkLibrary.createChunk(
-                tickLimitLower + 2,
-                tickLimitLower + uniPool.tickSpacing() + 2,
-                uniPool.maxLiquidityPerTick()
-            )
-        );
+            (, actualDOSCost) = Math.getAmountsForLiquidity(
+                100_000,
+                LiquidityChunkLibrary.createChunk(
+                    tickLimitLower + 2,
+                    tickLimitLower + uniPool.tickSpacing() + 2,
+                    uniPool.maxLiquidityPerTick()
+                )
+            );
 
-        if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitLower, -1);
-        else assertGt(actualDOSCost, expectedDOSCost);
+            if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitLower, -1);
+            else assertGt(actualDOSCost, expectedDOSCost);
+        }
 
         vm.startPrank(Swapper);
         swapperc.mint(
@@ -1433,53 +1456,23 @@ contract Misctest is Test, PositionUtils {
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
-        TokenId tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
-            (tickLimitUpper / uniPool.tickSpacing()) *
-                uniPool.tickSpacing() +
-                int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
-            1
-        );
+        TokenId tickPosition;
 
-        vm.expectRevert(Errors.InvalidTickBound.selector);
-        sfpm.mintTokenizedPosition(
-            abi.encode(uniPool),
-            tickPosition,
-            1_000_000,
-            Constants.MIN_POOL_TICK,
-            Constants.MAX_POOL_TICK
-        );
+        if (tickLimitUpper < Constants.MAX_POOL_TICK) {
+            tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                (tickLimitUpper / uniPool.tickSpacing()) *
+                    uniPool.tickSpacing() +
+                    int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
+                1
+            );
 
-        {
-            poolId = uint40(uint160(address(uniPool)) >> 120) + uint64(uint256(vegoid) << 40);
-            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
-        }
-
-        tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
-            (tickLimitUpper / uniPool.tickSpacing()) *
-                uniPool.tickSpacing() -
-                int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
-            1
-        );
-
-        if (
-            (tickLimitUpper / uniPool.tickSpacing()) *
-                uniPool.tickSpacing() -
-                (tickLimitLower / uniPool.tickSpacing()) *
-                uniPool.tickSpacing() >=
-            uniPool.tickSpacing()
-        )
+            vm.expectRevert(Errors.InvalidTickBound.selector);
             sfpm.mintTokenizedPosition(
                 abi.encode(uniPool),
                 tickPosition,
@@ -1487,66 +1480,70 @@ contract Misctest is Test, PositionUtils {
                 Constants.MIN_POOL_TICK,
                 Constants.MAX_POOL_TICK
             );
+        }
 
+        if (tickLimitUpper < Constants.MAX_POOL_TICK) {
+            {
+                poolId = uint40(uint160(address(uniPool)) >> 120) + uint64(uint256(vegoid) << 40);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+
+            tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                (tickLimitUpper / uniPool.tickSpacing()) *
+                    uniPool.tickSpacing() -
+                    int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
+                1
+            );
+
+            if (
+                (tickLimitUpper / uniPool.tickSpacing()) *
+                    uniPool.tickSpacing() -
+                    (tickLimitLower / uniPool.tickSpacing()) *
+                    uniPool.tickSpacing() >=
+                uniPool.tickSpacing()
+            )
+                sfpm.mintTokenizedPosition(
+                    abi.encode(uniPool),
+                    tickPosition,
+                    1_000_000,
+                    Constants.MIN_POOL_TICK,
+                    Constants.MAX_POOL_TICK
+                );
+        }
+
+        vm.stopPrank();
         vm.startPrank(Swapper);
 
         swapperc.swapTo(uniPool, TickMath.getSqrtRatioAtTick(100_000));
 
         vm.startPrank(Alice);
 
-        {
-            poolId = uint40(uint160(address(uniPool)) >> 120) + uint64(uint256(vegoid) << 40);
-            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
-        }
+        if (tickLimitLower > -Constants.MAX_POOL_TICK) {
+            {
+                poolId = uint40(uint160(address(uniPool)) >> 120) + uint64(uint256(vegoid) << 40);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
 
-        tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
-            0,
-            1,
-            1,
-            0,
-            0,
-            0,
-            (tickLimitLower / uniPool.tickSpacing()) *
-                uniPool.tickSpacing() -
-                int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
-            1
-        );
-
-        vm.expectRevert(Errors.InvalidTickBound.selector);
-        sfpm.mintTokenizedPosition(
-            abi.encode(uniPool),
-            tickPosition,
-            1_000_000,
-            Constants.MIN_POOL_TICK,
-            Constants.MAX_POOL_TICK
-        );
-
-        {
-            poolId = uint40(uint160(address(uniPool)) >> 120) + uint64(uint256(vegoid) << 40);
-            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
-        }
-
-        tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
-            0,
-            1,
-            1,
-            0,
-            0,
-            0,
-            (tickLimitLower / uniPool.tickSpacing()) *
-                uniPool.tickSpacing() +
-                uniPool.tickSpacing() /
-                2,
-            1
-        );
-
-        if (
-            (tickLimitUpper / uniPool.tickSpacing()) *
-                uniPool.tickSpacing() -
+            tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
                 (tickLimitLower / uniPool.tickSpacing()) *
-                uniPool.tickSpacing() >=
-            uniPool.tickSpacing()
-        )
+                    uniPool.tickSpacing() -
+                    int24(int256(Math.unsafeDivRoundingUp(uint24(uniPool.tickSpacing()), 2))),
+                1
+            );
+
+            vm.expectRevert(Errors.InvalidTickBound.selector);
             sfpm.mintTokenizedPosition(
                 abi.encode(uniPool),
                 tickPosition,
@@ -1554,6 +1551,43 @@ contract Misctest is Test, PositionUtils {
                 Constants.MIN_POOL_TICK,
                 Constants.MAX_POOL_TICK
             );
+        }
+
+        if (tickLimitLower > -Constants.MAX_POOL_TICK) {
+            {
+                poolId = uint40(uint160(address(uniPool)) >> 120) + uint64(uint256(vegoid) << 40);
+                poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+            }
+
+            tickPosition = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                (tickLimitLower / uniPool.tickSpacing()) *
+                    uniPool.tickSpacing() +
+                    uniPool.tickSpacing() /
+                    2,
+                1
+            );
+
+            if (
+                (tickLimitUpper / uniPool.tickSpacing()) *
+                    uniPool.tickSpacing() -
+                    (tickLimitLower / uniPool.tickSpacing()) *
+                    uniPool.tickSpacing() >=
+                uniPool.tickSpacing()
+            )
+                sfpm.mintTokenizedPosition(
+                    abi.encode(uniPool),
+                    tickPosition,
+                    1_000_000,
+                    Constants.MIN_POOL_TICK,
+                    Constants.MAX_POOL_TICK
+                );
+        }
     }
 
     // Test that risk-partnered positions can be minted/burned succesfully

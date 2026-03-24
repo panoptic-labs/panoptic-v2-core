@@ -16,7 +16,10 @@ import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {Pointer, PointerLibrary} from "@types/Pointer.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 
+// TEST RUN:
 // forge script script/DeployProtocol.s.sol --rpc-url sepolia --turnkey --sender 0x62CB5f6E9F8Bca7032dDf993de8A02ae437D39b8
+// DEPLOY + VERIFY
+// forge script script/DeployProtocol.s.sol --rpc-url sepolia --turnkey --sender 0x62CB5f6E9F8Bca7032dDf993de8A02ae437D39b8 --broadcast --verify  --etherscan-api-key $ETHERSCAN_API_KEY
 contract DeployProtocol is Script {
     struct PointerInfo {
         uint256 codeIndex;
@@ -86,9 +89,9 @@ contract DeployProtocol is Script {
 
         SemiFungiblePositionManagerV4 sfpm = new SemiFungiblePositionManagerV4(
             uniPoolManager,
-            10 ** 13,
-            10 ** 13,
-            0
+            21 * 10 ** 20,
+            21 * 10 ** 20,
+            10000
         );
 
         BuilderFactory builderFactory = new BuilderFactory(msg.sender);
@@ -116,8 +119,8 @@ contract DeployProtocol is Script {
 
         SemiFungiblePositionManagerV3 sfpmV3 = new SemiFungiblePositionManagerV3(
             uniV3Factory,
-            10 ** 13,
-            10 ** 13
+            21 * 10 ** 20,
+            10000
         );
 
         new PanopticFactoryV3(

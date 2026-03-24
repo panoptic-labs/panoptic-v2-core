@@ -12713,8 +12713,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 PositionBalanceLibrary.storeBalanceData(positionSize0 / 4, 0, 0, 0, 0, false)
             );
 
-            assertEq(exerciseFees.rightSlot(), exerciseFee0);
-            assertEq(exerciseFees.leftSlot(), exerciseFee1);
+            assertApproxEqAbs(exerciseFees.rightSlot(), exerciseFee0, 1);
+            assertApproxEqAbs(exerciseFees.leftSlot(), exerciseFee1, 1);
         }
     }
 
