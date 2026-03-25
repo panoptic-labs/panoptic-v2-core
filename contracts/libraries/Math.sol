@@ -163,12 +163,7 @@ library Math {
                 int24(
                     int256(
                         Math.log_Sqrt1p0001MantissaRect(
-                            Math.mulDivCapped(
-                                amount,
-                                2 ** 224,
-                                denominator,
-                                128
-                            ),
+                            Math.mulDivCapped(amount, 2 ** 224, denominator, 128),
                             13
                         )
                     )
