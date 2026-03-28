@@ -65,6 +65,9 @@ interface IRiskEngine {
     /// @notice Address allowed to override the automatically computed safe mode.
     function GUARDIAN() external view returns (address);
 
+    /// @notice Address of the builder factory.
+    function BUILDER_FACTORY() external view returns (address);
+
     /// @notice Decimals for computation (1 millitick precision).
     function DECIMALS() external view returns (uint256);
 

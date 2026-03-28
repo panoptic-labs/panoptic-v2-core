@@ -300,24 +300,19 @@ contract MathTest is Test {
         );
     }
 
-    function test_getApproxTickWithMaxAmount_SaturatedReturnsMaxTick(
-        uint256 ts_seed
-    ) public pure {
+    function test_getApproxTickWithMaxAmount_SaturatedReturnsMaxTick(uint256 ts_seed) public pure {
         int24 ts = int24(int256(bound(ts_seed, 1, 32767)));
         uint128 lMax = Math.getMaxLiquidityPerTick(ts);
 
         // Use an amount large enough to saturate mulDivCapped
-        uint256 denominator = uint256(lMax) *
-            (Math.getSqrtRatioAtTick(ts) - 2 ** 96);
+        uint256 denominator = uint256(lMax) * (Math.getSqrtRatioAtTick(ts) - 2 ** 96);
         uint256 amount = (denominator >> 96) + 1;
 
         int24 res = Math.getApproxTickWithMaxAmount(amount, ts, lMax);
         assertEq(res, int24(887272));
     }
 
-    function test_getApproxTickWithMaxAmount_LargeSupply(
-        uint256 ts_seed
-    ) public pure {
+    function test_getApproxTickWithMaxAmount_LargeSupply(uint256 ts_seed) public pure {
         int24 ts = int24(int256(bound(ts_seed, 1, 32767)));
         uint128 lMax = Math.getMaxLiquidityPerTick(ts);
 
@@ -330,15 +325,12 @@ contract MathTest is Test {
         assertEq(res, int24(887272));
     }
 
-    function test_getApproxTickWithMaxAmount_BelowSaturation(
-        uint256 ts_seed
-    ) public pure {
+    function test_getApproxTickWithMaxAmount_BelowSaturation(uint256 ts_seed) public pure {
         int24 ts = int24(int256(bound(ts_seed, 1, 32767)));
         uint128 lMax = Math.getMaxLiquidityPerTick(ts);
 
         // Use an amount just below the saturation threshold
-        uint256 denominator = uint256(lMax) *
-            (Math.getSqrtRatioAtTick(ts) - 2 ** 96);
+        uint256 denominator = uint256(lMax) * (Math.getSqrtRatioAtTick(ts) - 2 ** 96);
         uint256 threshold = denominator >> 96;
 
         // Skip if threshold is too small to test below it
