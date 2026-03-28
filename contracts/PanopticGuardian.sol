@@ -12,73 +12,6 @@ interface IERC20BalanceOf {
     function balanceOf(address account) external view returns (uint256);
 }
 
-/// @notice External interface for the guardian contract.
-interface IPanopticGuardian {
-    /// @notice Instantly locks a pool.
-    /// @param pool The pool to lock.
-    function lockPool(PanopticPoolV2 pool) external;
-
-    /// @notice Instantly locks a pool as an authorized builder admin.
-    /// @param pool The pool to lock.
-    /// @param builderCode The builder code whose canonical wallet must recognize the caller.
-    function lockPoolAsBuilder(PanopticPoolV2 pool, uint256 builderCode) external;
-
-    /// @notice Starts the unlock timelock for a pool.
-    /// @param pool The pool to unlock after the delay.
-    function requestUnlock(PanopticPoolV2 pool) external;
-
-    /// @notice Executes a matured unlock request.
-    /// @param pool The pool to unlock.
-    function executeUnlock(PanopticPoolV2 pool) external;
-
-    /// @notice Cancels a pending unlock request.
-    /// @param pool The pool whose pending unlock should be cancelled.
-    function cancelUnlock(PanopticPoolV2 pool) external;
-
-    /// @notice Revokes or restores a builder admin's lock authority.
-    /// @param admin The builder admin to update.
-    /// @param revoked True to revoke the admin, false to restore it.
-    function setBuilderAdminRevoked(address admin, bool revoked) external;
-
-    /// @notice Deploys a canonical builder wallet.
-    /// @param builderCode The builder code to deploy.
-    /// @param builderAdmin The admin that will control the deployed wallet.
-    /// @return wallet The deployed wallet address.
-    function deployBuilder(
-        uint256 builderCode,
-        address builderAdmin,
-        BuilderFactory builderFactory
-    ) external returns (address wallet);
-
-    /// @notice Collects tokens from a RiskEngine to a recipient.
-    /// @param riskEngine The RiskEngine to collect from.
-    /// @param token The token to collect.
-    /// @param recipient The recipient of the collected tokens.
-    /// @param amount The amount to collect, or zero to collect the RiskEngine's full balance.
-    function collect(
-        IRiskEngine riskEngine,
-        address token,
-        address recipient,
-        uint256 amount
-    ) external;
-
-    /// @notice Returns whether an account is an authorized, non-revoked builder admin.
-    /// @param account The account to check.
-    /// @param pool The pool whose RiskEngine is used for builder validation.
-    /// @param builderCode The builder code to resolve.
-    /// @return True if the account is an authorized builder admin.
-    function isBuilderAdmin(
-        address account,
-        PanopticPoolV2 pool,
-        uint256 builderCode
-    ) external view returns (bool);
-
-    /// @notice Returns whether a pool's pending unlock can be executed.
-    /// @param pool The pool to check.
-    /// @return True if the pool has a pending unlock and its ETA has passed.
-    function isPoolUnlockReady(PanopticPoolV2 pool) external view returns (bool);
-}
-
 /// @notice PanopticGuardian contract for Panoptic RiskEngines and their shared BuilderFactory.
 /// @dev Locking is immediate for the guardian admin and authorized builder admins. Unlocking is
 /// delayed by a fixed timelock and reserved to the guardian admin. The contract also owns the
@@ -88,7 +21,7 @@ interface IPanopticGuardian {
 /// prevents governance attacks but means key compromise or factory bugs require redeploying
 /// the PanopticGuardian and updating all RiskEngine pointers. Both `GUARDIAN_ADMIN` and `TREASURER`
 /// should be multisig wallets with appropriate signer thresholds to mitigate this risk.
-contract PanopticGuardian is IPanopticGuardian {
+contract PanopticGuardian {
     /// @notice Reverts when the caller is not the immutable guardian admin.
     error NotGuardianAdmin();
 
@@ -100,10 +33,6 @@ contract PanopticGuardian is IPanopticGuardian {
 
     /// @notice Reverts when a required address argument is the zero address.
     error ZeroAddress();
-
-    /// @notice Reverts when an address expected to contain code does not.
-    /// @param target The address that was expected to be a deployed contract.
-    error NotContract(address target);
 
     /// @notice Reverts when a builder code is zero or outside the supported range.
     error InvalidBuilderCode();
@@ -120,11 +49,6 @@ contract PanopticGuardian is IPanopticGuardian {
     /// @notice Reverts when an unlock is executed before its timelock expires.
     /// @param eta The timestamp at which the unlock becomes executable.
     error UnlockNotReady(uint256 eta);
-
-    /// @notice Reverts when a RiskEngine does not recognize this guardian.
-    /// @param riskEngine The RiskEngine that failed validation.
-    /// @param guardian The guardian address expected by the check.
-    error RiskEngineDoesNotRecognizeGuardian(address riskEngine, address guardian);
 
     /// @notice Emitted when a pool is locked.
     /// @param pool The locked pool.
@@ -196,7 +120,7 @@ contract PanopticGuardian is IPanopticGuardian {
         _;
     }
 
-    function _onlyGuardianAdmin() internal {
+    function _onlyGuardianAdmin() internal view {
         if (msg.sender != GUARDIAN_ADMIN) revert NotGuardianAdmin();
     }
 
@@ -206,9 +130,11 @@ contract PanopticGuardian is IPanopticGuardian {
         _;
     }
 
-    function _onlyTreasurer() internal {
+    function _onlyTreasurer() internal view {
         if (msg.sender != TREASURER) revert NotTreasurer();
     }
+
+    /// LOCKS
 
     /// @notice Instantly locks a pool as the guardian admin.
     /// @dev Any pending unlock is cancelled before the RiskEngine call.
@@ -236,8 +162,6 @@ contract PanopticGuardian is IPanopticGuardian {
     /// @param pool The pool to lock.
     /// @param builderCode The builder code used to resolve the caller's canonical wallet.
     function lockPoolAsBuilder(PanopticPoolV2 pool, uint256 builderCode) external {
-        _requirePool(pool);
-
         IRiskEngine riskEngine = _getRiskEngine(pool);
         if (!_isAuthorizedBuilder(msg.sender, riskEngine, builderCode))
             revert NotAuthorizedBuilder();
@@ -277,7 +201,6 @@ contract PanopticGuardian is IPanopticGuardian {
     /// @notice Cancels a pending unlock request.
     /// @param pool The pool whose pending unlock should be cancelled.
     function cancelUnlock(PanopticPoolV2 pool) external onlyGuardianAdmin {
-        _requirePool(pool);
         if (unlockEta[pool] == 0) revert NoPendingUnlock();
 
         unlockEta[pool] = 0;
@@ -299,6 +222,8 @@ contract PanopticGuardian is IPanopticGuardian {
         }
     }
 
+    /// DEPLOY BUILDER WALLET
+
     /// @notice Deploys the canonical builder wallet for a builder code.
     /// @param builderCode The builder code to deploy.
     /// @param builderAdmin The admin that will control the deployed wallet.
@@ -310,19 +235,17 @@ contract PanopticGuardian is IPanopticGuardian {
     ) external onlyGuardianAdmin returns (address wallet) {
         if (builderCode == 0 || builderCode > type(uint48).max) revert InvalidBuilderCode();
         if (builderAdmin == address(0)) revert ZeroAddress();
-
-        _requireContract(address(builderFactory));
         if (builderFactory.OWNER() != address(this)) revert NotFactoryAdmin();
 
         // casting to uint48 is safe because builderCode is range-checked above
-        // forge-lint: disable-next-line(unsafe-typecast)
         uint48 builderCode48 = uint48(builderCode);
 
         wallet = builderFactory.deployBuilder(builderCode48, builderAdmin);
-        _requireContract(wallet);
 
         emit BuilderDeployed(builderCode, wallet);
     }
+
+    /// PROTOCOL FEE
 
     /// @notice Collects tokens from a RiskEngine to a recipient.
     /// @dev When `amount` is zero, the guardian snapshots the RiskEngine's token balance before
@@ -340,7 +263,6 @@ contract PanopticGuardian is IPanopticGuardian {
         address recipient,
         uint256 amount
     ) external onlyTreasurer {
-        _requireRecognizedRiskEngine(address(riskEngine));
         if (token == address(0) || recipient == address(0)) revert ZeroAddress();
 
         uint256 collectedAmount = amount;
@@ -354,6 +276,8 @@ contract PanopticGuardian is IPanopticGuardian {
         emit TokensCollected(token, recipient, collectedAmount);
     }
 
+    /// READS
+
     /// @notice Returns whether an account is an authorized, non-revoked builder admin.
     /// @param account The account to check.
     /// @param pool The pool whose RiskEngine is used for builder validation.
@@ -364,11 +288,7 @@ contract PanopticGuardian is IPanopticGuardian {
         PanopticPoolV2 pool,
         uint256 builderCode
     ) external view returns (bool) {
-        if (address(pool) == address(0) || address(pool).code.length == 0) {
-            return false;
-        }
-
-        IRiskEngine riskEngine = pool.riskEngine();
+        IRiskEngine riskEngine = _getRiskEngine(pool);
         return _isAuthorizedBuilder(account, riskEngine, builderCode);
     }
 
@@ -393,9 +313,6 @@ contract PanopticGuardian is IPanopticGuardian {
         uint256 builderCode
     ) internal view returns (bool) {
         if (caller == address(0) || builderCode == 0 || builderAdminRevoked[caller]) {
-            return false;
-        }
-        if (!_isRecognizedRiskEngine(address(riskEngine))) {
             return false;
         }
 
@@ -439,17 +356,8 @@ contract PanopticGuardian is IPanopticGuardian {
     /// @notice Returns a pool's RiskEngine after validating both contracts and guardian wiring.
     /// @param pool The pool to inspect.
     /// @return riskEngine The pool's validated RiskEngine.
-    function _getRiskEngine(PanopticPoolV2 pool) internal view returns (IRiskEngine riskEngine) {
-        _requirePool(pool);
+    function _getRiskEngine(PanopticPoolV2 pool) internal pure returns (IRiskEngine riskEngine) {
         riskEngine = pool.riskEngine();
-        _requireRecognizedRiskEngine(address(riskEngine));
-    }
-
-    /// @notice Reverts unless a pool address is non-zero and contains code.
-    /// @param pool The pool to validate.
-    function _requirePool(PanopticPoolV2 pool) internal view {
-        if (address(pool) == address(0)) revert ZeroAddress();
-        _requireContract(address(pool));
     }
 
     /// @notice Cancels a pending unlock if one exists.
@@ -459,34 +367,5 @@ contract PanopticGuardian is IPanopticGuardian {
             unlockEta[pool] = 0;
             emit UnlockCancelled(pool);
         }
-    }
-
-    /// @notice Reverts unless a RiskEngine recognizes this guardian.
-    /// @param riskEngine The RiskEngine to validate.
-    function _requireRecognizedRiskEngine(address riskEngine) internal view {
-        if (!_isRecognizedRiskEngine(riskEngine)) {
-            revert RiskEngineDoesNotRecognizeGuardian(riskEngine, address(this));
-        }
-    }
-
-    /// @notice Returns whether a RiskEngine recognizes this guardian.
-    /// @param riskEngine The RiskEngine to check.
-    /// @return True if the RiskEngine contains code and reports this contract as its guardian.
-    function _isRecognizedRiskEngine(address riskEngine) internal view returns (bool) {
-        if (riskEngine == address(0) || riskEngine.code.length == 0) {
-            return false;
-        }
-
-        (bool success, bytes memory data) = riskEngine.staticcall(
-            abi.encodeCall(IRiskEngine.GUARDIAN, ())
-        );
-
-        return success && data.length >= 32 && abi.decode(data, (address)) == address(this);
-    }
-
-    /// @notice Reverts unless an address contains deployed code.
-    /// @param target The address to validate.
-    function _requireContract(address target) internal view {
-        if (target.code.length == 0) revert NotContract(target);
     }
 }
