@@ -71,7 +71,7 @@ contract RiskEngine {
     /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
     int256 public constant MAX_TICKS_DELTA = 953;
 
-    /// @notice The maximum allowed delta between the currentTick and the Uniswap TWAP tick during a dispatch/dispatchFrom call (~5% down, ~5.26% up).
+    /// @notice The maximum allowed delta between the currentTick and the TWAP tick during a dispatch/dispatchFrom call (~5% down, ~5.26% up).
     /// @dev Mitigates manipulation of the currentTick that causes positions to be force exercised at a less favorable price.
     uint16 public constant MAX_TWAP_DELTA_DISPATCH = 513;
 
@@ -115,11 +115,11 @@ contract RiskEngine {
 
     /// @notice The protocol split, in basis points, when a builder code is present.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 public constant PROTOCOL_SPLIT = 6_000;
+    uint16 public constant PROTOCOL_SPLIT = 5_000;
 
     /// @notice The builder split, in basis points, when a builder code is present
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 public constant BUILDER_SPLIT = 3_000;
+    uint16 public constant BUILDER_SPLIT = 4_000;
 
     /// @notice Required collateral ratios for selling options, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 20% -> 0.2 * 10_000_000 = 2_000_000.
@@ -130,10 +130,10 @@ contract RiskEngine {
     uint256 public constant BUYER_COLLATERAL_RATIO = 1_000_000;
 
     /// @notice Required collateral margin for loans in excess of notional, fraction of 1, scaled by 10_000_000.
-    uint256 public constant MAINT_MARGIN_RATE = 2_000_000;
+    uint256 public constant MAINT_MARGIN_RATE = 1_000_000;
 
-    /// @notice Basal cost (in bps of notional) to force exercise an out-of-range position.
-    uint256 public constant FORCE_EXERCISE_COST = 102_400;
+    /// @notice Basal cost (in bps of notional) to force exercise an out-of-range position. 30bps
+    uint256 public constant FORCE_EXERCISE_COST = 30_000;
 
     // Targets a pool utilization (balance between buying and selling)
     /// @notice Target pool utilization below which buying+selling is optimal, fraction of 1, scaled by 10_000_000.

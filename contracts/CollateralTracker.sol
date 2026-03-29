@@ -1341,6 +1341,7 @@ contract CollateralTrackerV2 is Clone, ERC20Minimal, Multicall, TransientReentra
                         uint256(Math.max(1, int256(totalAssets()) - bonus))
                     );
 
+                    // Never dilute existing shares by more than DECIMALS = 10_000 during liquidation events
                     mintedShares = rawMinted > liquidateeBalance
                         ? Math.min(rawMinted - liquidateeBalance, _totalSupply * DECIMALS)
                         : 0;
