@@ -1,7 +1,51 @@
-import subprocess
 import json
 import os
-import eth_abi
+import subprocess
+import sys
+from pathlib import Path
+
+CONFIG_PATH = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("build-config.json")
+default_output_name = (
+    "deployment-info.json"
+    if CONFIG_PATH.name == "build-config.json"
+    else f"deployment-info-{CONFIG_PATH.stem.removeprefix('build-config-')}.json"
+)
+OUTPUT_PATH = Path(sys.argv[2]) if len(sys.argv) > 2 else Path(default_output_name)
+
+
+def _format_abi_arg(type_name, value):
+    if type_name.endswith("[]"):
+        inner_type = type_name[:-2]
+        return "[" + ",".join(_format_abi_arg(inner_type, item) for item in value) + "]"
+
+    if type_name == "bytes32":
+        if isinstance(value, str) and value.startswith("0x"):
+            return value
+        if isinstance(value, (bytes, bytearray)):
+            return "0x" + bytes(value).ljust(32, b"\x00").hex()
+        raise TypeError(f"unsupported bytes32 value: {value!r}")
+
+    if type_name == "address":
+        return value
+
+    return str(value)
+
+
+def _abi_encode(types, values):
+    signature = "f(" + ",".join(types) + ")"
+    encoded = subprocess.run(
+        [
+            "cast",
+            "abi-encode",
+            signature,
+            *[_format_abi_arg(type_name, value) for type_name, value in zip(types, values)],
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    return encoded.removeprefix("0x")
 
 print("\033[95mCompiling metadata...")
 
@@ -14,7 +58,7 @@ print("\033[92mOK")
 
 print("\033[95mBuilding contracts...")
 
-with open("build-config.json", "r") as file:
+with open(CONFIG_PATH, "r") as file:
     config = json.load(file)
 
 # propagate metadata to environment
@@ -55,6 +99,8 @@ for deployment, code in zip(config["dataContracts"], metadata["bytecodes"]):
 for contract_name, options in config["logicContracts"].items():
     subprocess.run(["forge", "clean"], check=True)
 
+    artifact_name = options.get("artifactName", contract_name)
+
     command = [
         "forge",
         "build",
@@ -72,19 +118,21 @@ for contract_name, options in config["logicContracts"].items():
 
     if "links" in options:
         for lib in options["links"]:
+            lib_options = config["logicContracts"][lib]
+            lib_artifact_name = lib_options.get("artifactName", lib)
             command.append("--libraries")
             command.append(
-                config["logicContracts"][lib]["path"]
+                lib_options["path"]
                 + ":"
-                + lib
+                + lib_artifact_name
                 + ":"
-                + config["logicContracts"][lib]["deployment"]["address"]
+                + lib_options["deployment"]["address"]
             )
 
     subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
 
     with open(
-        os.path.join("out", os.path.basename(options["path"]), f"{contract_name}.json"),
+        os.path.join("out", os.path.basename(options["path"]), f"{artifact_name}.json"),
         "r",
     ) as output_json_file:
         deploymentInfo["logicContracts"].append(
@@ -106,12 +154,12 @@ for contract_name, options in config["logicContracts"].items():
                     ]["deployment"]["address"]
                 elif arg[0] == "$":
                     options["constructorArgs"][0][i] = config["env"][arg[1:]]
-        deploymentInfo["logicContracts"][len(deploymentInfo["logicContracts"]) - 1]["initcode"] += eth_abi.encode(
-            options["constructorArgs"][1], options["constructorArgs"][0]
-        ).hex()
+        deploymentInfo["logicContracts"][len(deploymentInfo["logicContracts"]) - 1][
+            "initcode"
+        ] += _abi_encode(options["constructorArgs"][1], options["constructorArgs"][0])
 
     print(f"\033[96m{contract_name}:", "\033[92mOK")
 
-with open("deployment-info.json", "w+") as output_file:
+with open(OUTPUT_PATH, "w+") as output_file:
     json.dump(deploymentInfo, output_file)
-    print("\033[95minitcodes written to deployment-info.json")
+    print(f"\033[95minitcodes written to {OUTPUT_PATH}")

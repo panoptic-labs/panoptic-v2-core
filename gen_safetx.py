@@ -1,10 +1,14 @@
-import json 
+import json
 import os
+import sys
 
-with open("deployment-info.json", "r") as file:
+deployment_info_path = sys.argv[1] if len(sys.argv) > 1 else "deployment-info.json"
+output_dir = sys.argv[2] if len(sys.argv) > 2 else "./safe-txns"
+
+with open(deployment_info_path, "r") as file:
     deploymentInfo = json.load(file)
 
-os.makedirs('./safe-txns', exist_ok=True)
+os.makedirs(output_dir, exist_ok=True)
 
 for idx, contract in enumerate(deploymentInfo["dataContracts"]):
     safeTx = {
@@ -73,7 +77,7 @@ for idx, contract in enumerate(deploymentInfo["dataContracts"]):
         ]
     }
 
-    with open(f"./safe-txns/dataDeploy_{idx}.json", "w") as output_file:
+    with open(f"{output_dir}/dataDeploy_{idx}.json", "w") as output_file:
         json.dump(safeTx, output_file)
 
 for idx, contract in enumerate(deploymentInfo["logicContracts"]):
@@ -143,5 +147,5 @@ for idx, contract in enumerate(deploymentInfo["logicContracts"]):
         ]
     }
 
-    with open(f"./safe-txns/deploy_{idx}_{contract["contractName"]}.json", "w") as output_file:
+    with open(f"{output_dir}/deploy_{idx}_{contract["contractName"]}.json", "w") as output_file:
         json.dump(safeTx, output_file)
