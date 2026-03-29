@@ -179,21 +179,19 @@ contract GuardianTest is Test {
         recognizedPool = new MockPanopticPool(IRiskEngine(address(recognizedRiskEngine)));
     }
 
-    function testRequestUnlockRevertsForForeignRiskEngine() external {
+    function testRequestUnlockSchedulesEvenForForeignRiskEngine() external {
         MockRiskEngine foreignRiskEngine = new MockRiskEngine(address(0xDEAD));
         MockPanopticPool foreignPool = new MockPanopticPool(
             IRiskEngine(address(foreignRiskEngine))
         );
 
         vm.prank(GUARDIAN_ADMIN);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                PanopticGuardian.RiskEngineDoesNotRecognizeGuardian.selector,
-                address(foreignRiskEngine),
-                address(guardian)
-            )
-        );
         guardian.requestUnlock(PanopticPoolV2(address(foreignPool)));
+
+        assertEq(
+            guardian.unlockEta(PanopticPoolV2(address(foreignPool))),
+            block.timestamp + guardian.UNLOCK_DELAY()
+        );
     }
 
     function testIsBuilderAdminReturnsFalseForUnknownBuilderCode() external view {
