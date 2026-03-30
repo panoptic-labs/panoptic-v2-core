@@ -68,7 +68,10 @@ library Errors {
     /// @notice PanopticPool: The leg is not long, so premium cannot be settled through `settleLongPremium`
     error NotALongLeg();
 
-    /// @notice builderWallet: can only be called by the Builder
+    /// @notice BuilderWallet: an arbitrary call via execute() failed without a revert reason
+    error ExecuteFailed();
+
+    /// @notice BuilderWallet: can only be called by the Builder
     error NotBuilder();
 
     /// @notice PanopticPool: There is not enough available liquidity in the chunk for one of the long legs to be created (or for one of the short legs to be closed)

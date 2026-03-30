@@ -3,6 +3,8 @@ pragma solidity ^0.8.24;
 
 import {Errors} from "@libraries/Errors.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
+import {IERC1271} from "@openzeppelin/contracts/interfaces/IERC1271.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 /*//////////////////////////////////////////////////////////////
                        BUILDER WALLETS
@@ -23,6 +25,12 @@ contract BuilderWallet {
     /// @param to The address that received the tokens
     /// @param amount The amount of tokens swept
     event TokensSwept(address indexed token, address indexed to, uint256 amount);
+
+    /// @notice Emitted when a call is executed from the wallet
+    /// @param target The address of the contract called
+    /// @param value The amount of ETH sent with the call
+    /// @param data The calldata sent to the target
+    event Executed(address indexed target, uint256 value, bytes data);
 
     /// @notice Constructs a new BuilderWallet instance
     /// @param builderFactory The address of the BuilderFactory contract that deployed this wallet
@@ -57,6 +65,50 @@ contract BuilderWallet {
         token.safeTransfer(to, bal);
         emit TokensSwept(token, to, bal);
     }
+
+    /// @notice Executes an arbitrary call from this wallet
+    /// @dev Only callable by the builder admin
+    /// @param target The address to call
+    /// @param value The amount of ETH to send with the call
+    /// @param data The calldata to send to the target
+    /// @return result The return data from the call
+    function execute(
+        address target,
+        uint256 value,
+        bytes calldata data
+    ) external returns (bytes memory result) {
+        if (msg.sender != builderAdmin) revert Errors.NotBuilder();
+
+        bool success;
+        (success, result) = target.call{value: value}(data);
+
+        if (!success) {
+            if (result.length == 0) revert Errors.ExecuteFailed();
+            assembly {
+                revert(add(result, 0x20), mload(result))
+            }
+        }
+
+        emit Executed(target, value, data);
+    }
+
+    /// @notice Validates a signature according to ERC-1271
+    /// @dev Handles both EOA and smart contract admins via SignatureChecker
+    /// @param hash The hash of the data being signed
+    /// @param signature The signature bytes
+    /// @return magicValue 0x1626ba7e if valid, 0xffffffff if invalid
+    function isValidSignature(
+        bytes32 hash,
+        bytes calldata signature
+    ) external view returns (bytes4) {
+        return
+            SignatureChecker.isValidSignatureNow(builderAdmin, hash, signature)
+                ? IERC1271.isValidSignature.selector
+                : bytes4(0xffffffff);
+    }
+
+    /// @notice Allows the wallet to receive ETH
+    receive() external payable {}
 }
 
 library Create2Lib {
@@ -131,7 +183,7 @@ contract BuilderFactory {
 
         wallet = Create2Lib.deploy(0, salt, initCode);
         // now set the admin in storage (not part of init code)
-        BuilderWallet(wallet).init(builderAdmin);
+        BuilderWallet(payable(wallet)).init(builderAdmin);
 
         emit BuilderWalletDeployed(builderCode, wallet, builderAdmin);
     }

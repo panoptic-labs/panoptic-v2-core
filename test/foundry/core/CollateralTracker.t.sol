@@ -6974,7 +6974,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint48 _builderCode = 3555421077;
             BuilderWallet builderWallet = BuilderWallet(
-                builderFactory.deployBuilder(uint48(_builderCode), Bob)
+                payable(builderFactory.deployBuilder(uint48(_builderCode), Bob))
             );
 
             console2.log("builderWallet", address(builderWallet));
@@ -7056,11 +7056,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         address wallet = builderFactory.deployBuilder(builderCode, builderAdmin);
 
         // Verify initial setup worked
-        assertEq(BuilderWallet(wallet).builderAdmin(), builderAdmin);
+        assertEq(BuilderWallet(payable(wallet)).builderAdmin(), builderAdmin);
 
         // Attempt to reinitialize - should fail
         vm.expectRevert(Errors.AlreadyInitialized.selector);
-        BuilderWallet(wallet).init(Alice);
+        BuilderWallet(payable(wallet)).init(Alice);
 
         vm.stopPrank();
     }

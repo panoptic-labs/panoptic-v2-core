@@ -327,7 +327,7 @@ contract PanopticGuardian {
             return false;
         }
 
-        try BuilderWallet(wallet).builderAdmin() returns (address builderAdmin) {
+        try BuilderWallet(payable(wallet)).builderAdmin() returns (address builderAdmin) {
             return builderAdmin == caller;
         } catch {
             return false;
