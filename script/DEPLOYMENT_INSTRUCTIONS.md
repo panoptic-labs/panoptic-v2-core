@@ -7,6 +7,7 @@ It is written for an engineer who needs to:
 - review the deterministic deployment setup
 - regenerate release artifacts
 - generate Safe transaction batches
+- verify deployment addresses
 - execute the deployment in a controlled order
 
 ## Scope
@@ -18,6 +19,7 @@ This runbook covers the deterministic contract deployment flow driven by:
 - `build_release.py`
 - `gen_safetx.py`
 - `script/select_vanity_addresses.py`
+- `script/verify_deployment.py`
 
 This does not cover post-deployment operational tasks such as pool creation or trade simulation from:
 
@@ -26,9 +28,7 @@ This does not cover post-deployment operational tasks such as pool creation or t
 
 ## Current assumptions
 
-- The Safe transaction generator is mainnet-specific today.
-- `gen_safetx.py` hard-codes `chainId = 1`.
-- `gen_safetx.py` hard-codes the deterministic deploy recipient as `0x82BF455e9ebd6a541EF10b683dE1edCaf05cE7A1`.
+- `gen_safetx.py` defaults to mainnet (`chainId = 1`) and recipient `0x82BF455e9ebd6a541EF10b683dE1edCaf05cE7A1`. Both can be overridden with `--chain-id` and `--recipient`.
 - `build_release.py` auto-generates metadata-derived `MD_*` values from `metadata/out/MetadataPackage.json`. Those values do not need to be entered manually in the build configs.
 - The split configs currently share the same addresses for:
   - `dataContracts`
@@ -125,12 +125,23 @@ Important selector behavior:
 - In `disjoint` mode, every slot gets a separate vanity address.
 - The selector automatically excludes addresses already used by legacy `build-config.json`, unless that file is one of the explicit selector targets.
 
+Protecting deployed addresses:
+
+If some addresses have already been deployed on-chain, create a freeze file listing those addresses (one per line) and pass it with `--freeze`:
+
+```bash
+python3 script/select_vanity_addresses.py --freeze deployed-addresses.txt --in-place
+```
+
+The selector will skip any slot whose current config address appears in the freeze file. Use `--force` to override the freeze check with a warning.
+
 Examples:
 
 ```bash
 python3 script/select_vanity_addresses.py --max-rarity 314649014
 python3 script/select_vanity_addresses.py --mode disjoint --in-place
 python3 script/select_vanity_addresses.py --exclude-config some-other-config.json
+python3 script/select_vanity_addresses.py --freeze deployed-addresses.txt --force --in-place
 ```
 
 ## Step 2: Review the config changes
@@ -153,6 +164,15 @@ python3 script/select_vanity_addresses.py
 ```
 
 ## Step 3: Build deployment artifacts
+
+Preview the build without running forge, bun, or writing any files:
+
+```bash
+python3 build_release.py --dry-run build-config-v3.json
+python3 build_release.py --dry-run build-config-v4.json
+```
+
+This prints a summary table of each contract's name, address, optimizer runs, library links, and constructor arg types.
 
 Generate initcode bundles from each config:
 
@@ -211,7 +231,15 @@ Generate Safe JSON bundles from the deployment info:
 
 ```bash
 python3 gen_safetx.py deployment-info-v3.json safe-txns-v3
-python3 gen_safetx.py deployment-info-v4.json safe-txns-v4
+python3 gen_safetx.py deployment-info-v4.json safe-txns-v4 --check-duplicates-against deployment-info-v3.json
+```
+
+The `--check-duplicates-against` flag loads another deployment-info file and warns about any overlapping addresses. This helps identify shared contracts that should only be deployed once.
+
+For non-mainnet deployments, override the chain ID and recipient:
+
+```bash
+python3 gen_safetx.py deployment-info-v3.json safe-txns-v3 --chain-id 11155111 --recipient 0xYourTestnetSafe
 ```
 
 This produces one Safe JSON file per deployment.
@@ -233,12 +261,15 @@ Each Safe JSON contains two calls:
 
 Both calls target the deployer contract at `0x000000000000b361194cfe6312EE3210d53C15AA`.
 
+Each Safe JSON includes a `sourceHash` in its metadata, which is a SHA256 hash of the source deployment-info entry. This can be used to verify that a Safe JSON was generated from a specific deployment-info revision.
+
 ## Step 6: Review Safe batches
 
 Before execution, confirm:
 
-- every file has `chainId = 1`
+- every file has the expected `chainId`
 - file names and `meta.name` match the intended contract
+- `meta.sourceHash` matches a fresh hash of the corresponding deployment-info entry
 - the target address in each deployment matches the expected vanity address
 - shared deployments are not going to be submitted twice
 
@@ -252,7 +283,31 @@ python3 -m json.tool safe-txns-v3/deploy_0_PanopticMath.json
 
 Adjust the example file name above to match the actual output.
 
-## Step 7: Execute deployment
+## Step 7: Verify deployment addresses
+
+Verify that each address in the deployment-info files matches the expected CREATE3 derivation:
+
+```bash
+python3 script/verify_deployment.py deployment-info-v3.json
+python3 script/verify_deployment.py deployment-info-v4.json
+```
+
+Cross-check deployment-info against the build config to catch mismatches in addresses, salts, or nonces:
+
+```bash
+python3 script/verify_deployment.py deployment-info-v3.json --config build-config-v3.json
+python3 script/verify_deployment.py deployment-info-v4.json --config build-config-v4.json
+```
+
+After deployment, verify that bytecode is present on-chain:
+
+```bash
+python3 script/verify_deployment.py deployment-info-v3.json --rpc-url https://eth-mainnet.alchemyapi.io/v2/YOUR_KEY
+```
+
+The script exits non-zero if any check fails.
+
+## Step 8: Execute deployment
 
 Execution order matters.
 
@@ -288,10 +343,12 @@ An engineer reviewing this deployment should explicitly verify:
 - the selected vanity addresses are acceptable and intentionally assigned
 - the rarity cap used for selection is acceptable
 - shared vs disjoint deployment strategy is intentional
-- hard-coded mainnet and recipient values in `gen_safetx.py` are correct
+- `--chain-id` and `--recipient` values passed to `gen_safetx.py` are correct for the target network
 - optimizer runs in each build config are still valid for the current code
 - constructor arguments resolve to the intended linked deployments
 - no stale contract path, artifact, or library link remains in the config
+- `sourceHash` in each Safe JSON matches the deployment-info entry it was generated from
+- `script/verify_deployment.py` passes for all deployment-info files
 
 ## Full command sequence
 
@@ -299,20 +356,28 @@ Shared deployment flow:
 
 ```bash
 python3 script/select_vanity_addresses.py --in-place
+python3 build_release.py --dry-run build-config-v3.json
+python3 build_release.py --dry-run build-config-v4.json
 python3 build_release.py build-config-v3.json
 python3 build_release.py build-config-v4.json
 python3 gen_safetx.py deployment-info-v3.json safe-txns-v3
-python3 gen_safetx.py deployment-info-v4.json safe-txns-v4
+python3 gen_safetx.py deployment-info-v4.json safe-txns-v4 --check-duplicates-against deployment-info-v3.json
+python3 script/verify_deployment.py deployment-info-v3.json --config build-config-v3.json
+python3 script/verify_deployment.py deployment-info-v4.json --config build-config-v4.json
 ```
 
 Fully disjoint deployment flow:
 
 ```bash
 python3 script/select_vanity_addresses.py --mode disjoint --in-place
+python3 build_release.py --dry-run build-config-v3.json
+python3 build_release.py --dry-run build-config-v4.json
 python3 build_release.py build-config-v3.json
 python3 build_release.py build-config-v4.json
 python3 gen_safetx.py deployment-info-v3.json safe-txns-v3
-python3 gen_safetx.py deployment-info-v4.json safe-txns-v4
+python3 gen_safetx.py deployment-info-v4.json safe-txns-v4 --check-duplicates-against deployment-info-v3.json
+python3 script/verify_deployment.py deployment-info-v3.json --config build-config-v3.json
+python3 script/verify_deployment.py deployment-info-v4.json --config build-config-v4.json
 ```
 
 ## Notes

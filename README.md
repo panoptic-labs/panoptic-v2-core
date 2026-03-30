@@ -236,7 +236,8 @@ At a high level, the release process is:
 1. Select or update vanity addresses in the build configs.
 2. Build deterministic initcode bundles for v3 and v4.
 3. Generate Safe transaction batches from those bundles.
-4. Execute the shared and version-specific deployments in the correct order.
+4. Verify deployment addresses.
+5. Execute the shared and version-specific deployments in the correct order.
 
 Vanity-address selection can be previewed or applied with:
 
@@ -245,7 +246,13 @@ python3 script/select_vanity_addresses.py
 python3 script/select_vanity_addresses.py --in-place
 ```
 
-By default, the selector reads from `script/vanity-addresses.tsv`, applies a rarity cap, and updates the split configs. Review the diff before generating artifacts.
+By default, the selector reads from `script/vanity-addresses.tsv`, applies a rarity cap, and updates the split configs. Use `--freeze <file>` to protect already-deployed addresses from being reassigned. Review the diff before generating artifacts.
+
+Preview a build without running forge or writing files:
+
+```bash
+python3 build_release.py --dry-run build-config-v3.json
+```
 
 Generate deterministic deployment bundles with:
 
@@ -263,12 +270,21 @@ Generate Safe transaction batches with:
 
 ```bash
 python3 gen_safetx.py deployment-info-v3.json safe-txns-v3
-python3 gen_safetx.py deployment-info-v4.json safe-txns-v4
+python3 gen_safetx.py deployment-info-v4.json safe-txns-v4 --check-duplicates-against deployment-info-v3.json
+```
+
+Use `--chain-id` and `--recipient` to override the default mainnet chain ID and multisig address.
+
+Verify that deployment-info addresses match their expected CREATE3 derivations:
+
+```bash
+python3 script/verify_deployment.py deployment-info-v3.json
+python3 script/verify_deployment.py deployment-info-v4.json --config build-config-v4.json
 ```
 
 Important notes:
 
-- `gen_safetx.py` currently emits mainnet (`chainId = 1`) Safe payloads.
+- `gen_safetx.py` defaults to mainnet (`chainId = 1`) Safe payloads; override with `--chain-id`.
 - The split configs currently share some deterministic deployments, so duplicate shared deployments must not be executed twice.
 - `build_release.py` uses `cast abi-encode`; `eth_abi` is no longer required.
 

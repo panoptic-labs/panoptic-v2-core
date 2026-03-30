@@ -99,6 +99,17 @@ def _parse_args() -> argparse.Namespace:
         default=DEFAULT_MAX_RARITY,
         help=f"exclude vanity entries with rarity above this cap; defaults to {DEFAULT_MAX_RARITY}",
     )
+    parser.add_argument(
+        "--freeze",
+        type=Path,
+        default=None,
+        help="path to a file listing addresses (one per line) that must not be reassigned",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="override freeze checks and allow reassigning frozen addresses",
+    )
     return parser.parse_args()
 
 
@@ -229,7 +240,34 @@ def main():
             f"not enough vanity entries after exclusions: need {len(targets)}, found {len(entries)}"
         )
 
-    assignments = list(zip(targets, entries))
+    frozen_addresses = set()
+    if args.freeze:
+        frozen_addresses = {
+            line.strip().lower()
+            for line in args.freeze.read_text().splitlines()
+            if line.strip()
+        }
+
+    all_assignments = list(zip(targets, entries))
+
+    assignments = []
+    for target, entry in all_assignments:
+        loc = target.locations[0]
+        config = config_map[loc.config_path]
+        if loc.kind == "data":
+            current_addr = config["dataContracts"][loc.key]["address"].lower()
+        else:
+            current_addr = config["logicContracts"][loc.key]["deployment"]["address"].lower()
+
+        if current_addr in frozen_addresses and _normalize_address(entry.address) != current_addr:
+            if args.force:
+                print(f"\033[93mWARNING (forced): reassigning frozen address {current_addr} for {target.name}\033[0m")
+                assignments.append((target, entry))
+            else:
+                print(f"\033[91mSKIPPED: {target.name} has frozen address {current_addr}, use --force to override\033[0m")
+                continue
+        else:
+            assignments.append((target, entry))
 
     for target, entry in assignments:
         print(f"{target.name}\t{entry.address}\t{entry.rarity}\t{entry.salt}\t{entry.nonce}")
