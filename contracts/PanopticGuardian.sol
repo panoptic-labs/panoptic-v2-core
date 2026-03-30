@@ -353,9 +353,9 @@ contract PanopticGuardian {
         return abi.decode(data, (uint256));
     }
 
-    /// @notice Returns a pool's RiskEngine after validating both contracts and guardian wiring.
+    /// @notice Returns the RiskEngine address embedded in a pool's immutable clone arguments.
     /// @param pool The pool to inspect.
-    /// @return riskEngine The pool's validated RiskEngine.
+    /// @return riskEngine The pool's RiskEngine.
     function _getRiskEngine(PanopticPoolV2 pool) internal pure returns (IRiskEngine riskEngine) {
         riskEngine = pool.riskEngine();
     }
