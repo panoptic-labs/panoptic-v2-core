@@ -6436,8 +6436,11 @@ contract Misctest is Test, PositionUtils {
                 // SUCCESS CASE - mintOptions didn't revert
                 console2.log("Found non-reverting strike:", strike);
 
-                (, , PositionBalance[] memory positionBalanceArray, , ) = pp
-                    .getFullPositionsData(Bob, false, mintList);
+                (, , PositionBalance[] memory positionBalanceArray, , ) = pp.getFullPositionsData(
+                    Bob,
+                    false,
+                    mintList
+                );
 
                 (, currentTick, , , , , ) = uniPool.slot0();
 
@@ -10850,13 +10853,11 @@ contract Misctest is Test, PositionUtils {
 
         // before fee accrual: net premia should be zero
         {
-            (
-                ,
-                ,
-                ,
-                ,
-                LeftRightSigned[] memory netPremiaPerPosition
-            ) = pp.getFullPositionsData(Alice, true, $posIdList);
+            (, , , , LeftRightSigned[] memory netPremiaPerPosition) = pp.getFullPositionsData(
+                Alice,
+                true,
+                $posIdList
+            );
 
             assertEq(netPremiaPerPosition.length, 1, "length should be 1");
             assertEq(
@@ -10967,34 +10968,14 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(swapperc), type(uint128).max);
 
         {
-            poolId =
-                uint40(uint256(PoolId.unwrap(poolKey.toId()))) +
-                uint64(uint256(vegoid) << 40);
+            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
             poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
         }
 
         // short call at strike=15, width=1
-        TokenId shortTokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
-            0,
-            1,
-            1,
-            0,
-            0,
-            0,
-            15,
-            1
-        );
+        TokenId shortTokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 1);
         // long call at the same strike (removes liquidity)
-        TokenId longTokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
-            0,
-            1,
-            1,
-            1,
-            0,
-            0,
-            15,
-            1
-        );
+        TokenId longTokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 15, 1);
 
         // Bob mints large short position to provide liquidity
         vm.startPrank(Bob);
@@ -11050,11 +11031,7 @@ contract Misctest is Test, PositionUtils {
         // accrue fees by swapping through the position's range
         vm.startPrank(Swapper);
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
-        routerV4.swapTo(
-            address(0),
-            poolKey,
-            TickMath.getSqrtRatioAtTick(10) + 1
-        );
+        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(10) + 1);
 
         accruePoolFeesInRange(
             manager,

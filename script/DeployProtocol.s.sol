@@ -6,7 +6,9 @@ import "forge-std/Script.sol";
 import {PanopticFactoryV3} from "@contracts/PanopticFactoryV3.sol";
 import {PanopticFactoryV4} from "@contracts/PanopticFactoryV4.sol";
 import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
-import {RiskEngine, BuilderFactory} from "@contracts/RiskEngine.sol";
+import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {BuilderFactory} from "@contracts/Builder.sol";
+import {PanopticGuardian} from "@contracts/PanopticGuardian.sol";
 import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
 import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
 import {SemiFungiblePositionManagerV3} from "@contracts/SemiFungiblePositionManagerV3.sol";
@@ -94,10 +96,15 @@ contract DeployProtocol is Script {
             10000
         );
 
-        BuilderFactory builderFactory = new BuilderFactory(msg.sender);
+        PanopticGuardian panopticGuardian = new PanopticGuardian(
+            address(msg.sender),
+            address(msg.sender)
+        );
+
+        BuilderFactory builderFactory = new BuilderFactory(address(panopticGuardian));
 
         // risk engine MED
-        new RiskEngine(10_000_000, 10_000_000, address(builderFactory), address(msg.sender));
+        new RiskEngine(10_000_000, 10_000_000, address(panopticGuardian), address(builderFactory));
 
         /*
         // risk engine LOW

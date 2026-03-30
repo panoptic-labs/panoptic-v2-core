@@ -5902,8 +5902,11 @@ contract Misctest is Test, PositionUtils {
                 // SUCCESS CASE - mintOptions didn't revert
                 console2.log("Found non-reverting strike:", strike);
 
-                (, , PositionBalance[] memory positionBalanceArray, , ) = pp
-                    .getFullPositionsData(Bob, false, mintList);
+                (, , PositionBalance[] memory positionBalanceArray, , ) = pp.getFullPositionsData(
+                    Bob,
+                    false,
+                    mintList
+                );
 
                 (, currentTick, , , , , ) = uniPool.slot0();
 
@@ -9178,13 +9181,11 @@ contract Misctest is Test, PositionUtils {
 
         // before fee accrual: net premia should be zero
         {
-            (
-                ,
-                ,
-                ,
-                ,
-                LeftRightSigned[] memory netPremiaPerPosition
-            ) = pp.getFullPositionsData(Alice, true, $posIdList);
+            (, , , , LeftRightSigned[] memory netPremiaPerPosition) = pp.getFullPositionsData(
+                Alice,
+                true,
+                $posIdList
+            );
 
             assertEq(netPremiaPerPosition.length, 1, "length should be 1");
             assertEq(

@@ -2134,22 +2134,14 @@ contract PanopticPoolTest is PositionUtils {
 
         accruePoolFeesInRange(manager, poolKey, expectedLiq, premiaSeed[0], premiaSeed[1]);
 
-        ($shortPremia, $longPremia, , , ) = pp.getFullPositionsData(
-            Alice,
-            false,
-            posIdList
-        );
+        ($shortPremia, $longPremia, , , ) = pp.getFullPositionsData(Alice, false, posIdList);
 
         // we have not settled any accrued premium yet, so the calculated amount (excluding pending premium) should be 0
         assertEq(LeftRightUnsigned.unwrap($shortPremia), 0);
         assertEq(LeftRightUnsigned.unwrap($longPremia), 0);
 
         // if we include pending premium, the amount should be the same as the accrued premium
-        ($shortPremia, $longPremia, , , ) = pp.getFullPositionsData(
-            Alice,
-            true,
-            posIdList
-        );
+        ($shortPremia, $longPremia, , , ) = pp.getFullPositionsData(Alice, true, posIdList);
 
         assertApproxEqAbs(
             uint256(
@@ -8188,11 +8180,7 @@ contract PanopticPoolTest is PositionUtils {
         updateITMAmountsBurn(numLegs, tokenTypes);
         //updateIntrinsicValueBurn(longAmountsAlice, shortAmountsAlice);
 
-        ($shortPremia, $longPremia, , , ) = pp.getFullPositionsData(
-            Alice,
-            true,
-            posIdList
-        );
+        ($shortPremia, $longPremia, , , ) = pp.getFullPositionsData(Alice, true, posIdList);
 
         {
             int256 intrinsic0;
@@ -9727,11 +9715,7 @@ contract PanopticPoolTest is PositionUtils {
         $liquidatorAssetBalance0 = IERC20Partial(token0).balanceOf(Charlie);
         $liquidatorAssetBalance1 = IERC20Partial(token1).balanceOf(Charlie);
 
-        ($shortPremia, $longPremia, , , ) = pp.getFullPositionsData(
-            Alice,
-            false,
-            $posIdLists[1]
-        );
+        ($shortPremia, $longPremia, , , ) = pp.getFullPositionsData(Alice, false, $posIdLists[1]);
 
         {
             LeftRightSigned bonusAmounts;
@@ -10374,11 +10358,7 @@ contract PanopticPoolTest is PositionUtils {
         $liquidatorAssetBalance0 = IERC20Partial(token0).balanceOf(Charlie);
         $liquidatorAssetBalance1 = IERC20Partial(token1).balanceOf(Charlie);
 
-        ($shortPremia, $longPremia, , , ) = pp.getFullPositionsData(
-            Alice,
-            false,
-            $posIdLists[1]
-        );
+        ($shortPremia, $longPremia, , , ) = pp.getFullPositionsData(Alice, false, $posIdLists[1]);
 
         LeftRightSigned bonusAmounts;
         (bonusAmounts, ) = re.getLiquidationBonus(
