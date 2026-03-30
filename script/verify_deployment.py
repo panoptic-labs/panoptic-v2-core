@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Verify that deployment-info addresses match expected CREATE3 derivations."""
+"""Verify that deployment-info addresses match expected vanity address derivations.
+
+Uses the sub-zero VanityMarket (https://github.com/Philogy/sub-zero-contracts) address
+derivation: CREATE2 for the deploy proxy, then CREATE at nonce+1 for the final address.
+"""
 
 import argparse
 import json
@@ -8,8 +12,8 @@ import sys
 from pathlib import Path
 
 DEPLOYER = "0x000000000000b361194cfe6312EE3210d53C15AA"
-# keccak256(hex"67363d3d37363d34f03d5260086018f3") — Solady CREATE3 proxy bytecode hash
-PROXY_BYTECODE_HASH = "21c35dbe1b344a2488cf3321d6ce542f8e9f305544ff09e4993a62319a497c1f"
+# keccak256 of the sub-zero deploy proxy initcode (49 bytes)
+PROXY_INITCODE_HASH = "1decbcf04b355d500cbc3bd83c892545b4df34bd5b2c9d91b9f7f8165e2095c3"
 
 
 def _cast_keccak(hex_data: str) -> str:
@@ -20,22 +24,37 @@ def _cast_keccak(hex_data: str) -> str:
     return result.stdout.strip().removeprefix("0x")
 
 
-def compute_create3_address(deployer: str, salt: str) -> str:
-    """Compute the CREATE3-deployed address from deployer and salt.
+def _rlp_create_address(proxy_hex: str, nonce: int) -> str:
+    """RLP-encode [proxy, nonce] for CREATE address derivation."""
+    if nonce == 0:
+        return "d694" + proxy_hex + "80"
+    elif nonce <= 0x7F:
+        return "d694" + proxy_hex + format(nonce, "02x")
+    elif nonce <= 0xFF:
+        return "d794" + proxy_hex + "81" + format(nonce, "02x")
+    else:
+        raise ValueError(f"nonce too large for single-byte RLP: {nonce}")
 
-    Step 1: proxy = CREATE2(deployer, salt, PROXY_BYTECODE_HASH)
-    Step 2: deployed = CREATE(proxy, nonce=1)
+
+def compute_vanity_address(deployer: str, salt: str, nonce: int) -> str:
+    """Compute the sub-zero VanityMarket deployed address.
+
+    Step 1: proxy = CREATE2(deployer, salt, PROXY_INITCODE_HASH)
+    Step 2: deployed = CREATE(proxy, nonce + 1)
+
+    The nonce parameter is a nonce *increment*. Contract nonces start at 1 (EIP-161),
+    so the actual CREATE nonce is nonce + 1.
     """
     deployer_hex = deployer.lower().removeprefix("0x").zfill(40)
     salt_hex = salt.lower().removeprefix("0x").zfill(64)
 
-    # CREATE2: keccak256(0xff ++ deployer ++ salt ++ bytecode_hash)
-    create2_input = "0xff" + deployer_hex + salt_hex + PROXY_BYTECODE_HASH
+    # CREATE2: keccak256(0xff ++ deployer ++ salt ++ initcode_hash)
+    create2_input = "ff" + deployer_hex + salt_hex + PROXY_INITCODE_HASH
     proxy_hash = _cast_keccak("0x" + create2_input)
-    proxy = proxy_hash[-40:]  # last 20 bytes
+    proxy = proxy_hash[-40:]
 
-    # CREATE (RLP): keccak256(0xd6 ++ 0x94 ++ proxy ++ 0x01)
-    rlp_input = "d694" + proxy + "01"
+    # CREATE: keccak256(RLP([proxy, nonce + 1]))
+    rlp_input = _rlp_create_address(proxy, nonce + 1)
     deployed_hash = _cast_keccak("0x" + rlp_input)
     deployed = deployed_hash[-40:]
 
@@ -44,7 +63,7 @@ def compute_create3_address(deployer: str, salt: str) -> str:
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Verify deployment-info addresses against CREATE3 derivations."
+        description="Verify deployment-info addresses against sub-zero VanityMarket derivations."
     )
     parser.add_argument(
         "deployment_info",
@@ -126,8 +145,8 @@ def main():
 
         print()
 
-    # CREATE3 address verification
-    print("CREATE3 address verification:")
+    # Address derivation verification
+    print("Address derivation verification:")
     all_contracts = []
     for idx, dc in enumerate(info.get("dataContracts", [])):
         all_contracts.append((f"dataContracts[{idx}]", dc))
@@ -137,7 +156,7 @@ def main():
     for label, contract in all_contracts:
         total += 1
         expected = contract["address"].lower()
-        computed = compute_create3_address(args.deployer, contract["salt"]).lower()
+        computed = compute_vanity_address(args.deployer, contract["salt"], contract["nonce"]).lower()
         if computed == expected:
             print(f"\033[92mOK\033[0m    {label}: {expected}")
         else:

@@ -275,7 +275,7 @@ python3 gen_safetx.py deployment-info-v4.json safe-txns-v4 --check-duplicates-ag
 
 Use `--chain-id` and `--recipient` to override the default mainnet chain ID and multisig address.
 
-Verify that deployment-info addresses match their expected CREATE3 derivations:
+Verify that deployment-info addresses match their expected vanity address derivations:
 
 ```bash
 python3 script/verify_deployment.py deployment-info-v3.json

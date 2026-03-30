@@ -248,10 +248,9 @@ def main():
             if line.strip()
         }
 
-    all_assignments = list(zip(targets, entries))
-
-    assignments = []
-    for target, entry in all_assignments:
+    # Separate frozen targets before pairing so their entries are not wasted.
+    eligible_targets = []
+    for target in targets:
         loc = target.locations[0]
         config = config_map[loc.config_path]
         if loc.kind == "data":
@@ -259,15 +258,16 @@ def main():
         else:
             current_addr = config["logicContracts"][loc.key]["deployment"]["address"].lower()
 
-        if current_addr in frozen_addresses and _normalize_address(entry.address) != current_addr:
+        if current_addr in frozen_addresses:
             if args.force:
-                print(f"\033[93mWARNING (forced): reassigning frozen address {current_addr} for {target.name}\033[0m")
-                assignments.append((target, entry))
+                print(f"\033[93mWARNING (forced): will reassign frozen address {current_addr} for {target.name}\033[0m")
+                eligible_targets.append(target)
             else:
                 print(f"\033[91mSKIPPED: {target.name} has frozen address {current_addr}, use --force to override\033[0m")
-                continue
         else:
-            assignments.append((target, entry))
+            eligible_targets.append(target)
+
+    assignments = list(zip(eligible_targets, entries))
 
     for target, entry in assignments:
         print(f"{target.name}\t{entry.address}\t{entry.rarity}\t{entry.salt}\t{entry.nonce}")

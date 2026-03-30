@@ -285,7 +285,7 @@ Adjust the example file name above to match the actual output.
 
 ## Step 7: Verify deployment addresses
 
-Verify that each address in the deployment-info files matches the expected CREATE3 derivation:
+Verify that each address in the deployment-info files matches the expected vanity address derivation:
 
 ```bash
 python3 script/verify_deployment.py deployment-info-v3.json
