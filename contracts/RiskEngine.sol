@@ -69,7 +69,7 @@ contract RiskEngine {
     uint96 public constant EMA_PERIODS = uint96(60 + (120 << 24) + (240 << 48) + (960 << 72));
     /// @notice The maximum allowed cumulative delta between the fast & slow oracle tick, the current & slow oracle tick, and the last-observed & slow oracle tick.
     /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
-    int256 public constant MAX_TICKS_DELTA = 953;
+    int256 public constant MAX_TICKS_DELTA = 724;
 
     /// @notice The maximum allowed delta between the currentTick and the TWAP tick during a dispatch/dispatchFrom call (~5% down, ~5.26% up).
     /// @dev Mitigates manipulation of the currentTick that causes positions to be force exercised at a less favorable price.
@@ -82,7 +82,7 @@ contract RiskEngine {
 
     /// @notice Multiplier in basis points for the collateral requirement in the event of a buying power decrease, such as minting or force exercising another user.
     /// @dev must fit inside a uint26
-    uint32 public constant BP_DECREASE_BUFFER = 10_416_667;
+    uint32 public constant BP_DECREASE_BUFFER = 10_666_667;
 
     /// @notice Decimals for WAD calculations.
     int256 internal constant WAD = 1e18;
