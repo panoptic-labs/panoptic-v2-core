@@ -1,0 +1,119 @@
+{
+  "env": {
+    "UNIV3_FACTORY": "0x1F98431c8aD98523631AE4a59f267346ea31F984"
+  },
+  "dataContracts": [
+    {
+      "address": "0x000000000000010Dd64d8fA43F47dCA1fC566C1d",
+      "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a154610bbd7d1957008fe78a3c",
+      "nonce": 11
+    },
+    {
+      "address": "0x000000000000012CE154Fcf812A95F5111a6A636",
+      "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1aed74f546cb2c502671da386",
+      "nonce": 9
+    },
+    {
+      "address": "0x0000000000000190c42e22C0f3b72bb8f988b0e6",
+      "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a117f487b133125e00ab8d6f12",
+      "nonce": 31
+    },
+    {
+      "address": "0x00000000000001C0d43b34Ca07ebD7f936ef7939",
+      "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1bdd93cbf20ea0303efa8f55f",
+      "nonce": 24
+    },
+    {
+      "address": "0x000000000000023A18A513D0bcD41261b1E578aD",
+      "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1edcd2aa4a28eea01cc24e594",
+      "nonce": 2
+    },
+    {
+      "address": "0x00000000000002823ec69d5AD4370E60706c1c0c",
+      "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a188cf2b73bc68ab02d5d0c35c",
+      "nonce": 27
+    },
+    {
+      "address": "0x000000000000031d296bBA22f188472157eEb01f",
+      "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1d2bd066494ca6702a0735c6c",
+      "nonce": 24
+    }
+  ],
+  "logicContracts": {
+    "PanopticMath": {
+      "path": "./contracts/libraries/PanopticMath.sol",
+      "deployment": {
+        "address": "0x000000000000039Dc5De710B8F7A6a33df0399c8",
+        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1798e102b3f2b8e037f792d29",
+        "nonce": 22
+      },
+      "optimizeRuns": 9999999
+    },
+    "InteractionHelper": {
+      "path": "./contracts/libraries/InteractionHelper.sol",
+      "deployment": {
+        "address": "0x000000000000047534b9E1D528ED997169865a64",
+        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a112d5cd9dd5333000adeb0150",
+        "nonce": 28
+      },
+      "optimizeRuns": 9999999,
+      "links": ["PanopticMath"]
+    },
+    "CollateralTrackerV2": {
+      "path": "./contracts/CollateralTracker.sol",
+      "deployment": {
+        "address": "0x000000000000048a877bF34C0cF3F25510667a1e",
+        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1a589fdba3c446401fc2e7389",
+        "nonce": 27
+      },
+      "optimizeRuns": 9999999,
+      "links": ["InteractionHelper"]
+    },
+    "PanopticPoolV2": {
+      "path": "./contracts/PanopticPool.sol",
+      "deployment": {
+        "address": "0x00000000000005C3287f136Ef5AF56c68Ea6849f",
+        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a15527f95c2938780063bb3da3",
+        "nonce": 4
+      },
+      "optimizeRuns": 399,
+      "links": ["InteractionHelper", "PanopticMath"],
+      "constructorArgs": [["@SemiFungiblePositionManagerV3"], ["address"]]
+    },
+    "SemiFungiblePositionManagerV3": {
+      "path": "./contracts/SemiFungiblePositionManagerV3.sol",
+      "deployment": {
+        "address": "0x00000000000005DC84562AA4c45c2E1c653Ca815",
+        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1d22758cf9e502201e6c7b919",
+        "nonce": 29
+      },
+      "optimizeRuns": 9999999,
+      "constructorArgs": [
+        ["$UNIV3_FACTORY", 2100000000000000000000, 10000],
+        ["address", "uint256", "uint256"]
+      ]
+    },
+    "PanopticFactoryV3": {
+      "path": "./contracts/PanopticFactoryV3.sol",
+      "deployment": {
+        "address": "0x00000000000000D58aafF4A29b63f4727dDEb32C",
+        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a12102d03e7a3714038b7628b6",
+        "nonce": 4
+      },
+      "optimizeRuns": 9999999,
+      "links": ["PanopticMath"],
+      "constructorArgs": [
+        [
+          "@SemiFungiblePositionManagerV3",
+          "$UNIV3_FACTORY",
+          "@PanopticPoolV2",
+          "@CollateralTrackerV2",
+          "$MD_PROPERTIES",
+          "$MD_INDICES",
+          "$MD_POINTERS"
+        ],
+        ["address", "address", "address", "address", "bytes32[]", "uint256[][]", "uint256[][]"]
+      ]
+    }
+  }
+}

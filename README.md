@@ -224,26 +224,71 @@ forge coverage --report lcov && genhtml lcov.info --branch-coverage --output-dir
 
 ## Deployment (Release)
 
-Panoptic can also be deployed at a preconfigured set of addresses on mainnet. The canonical initcodes are saved in `deployment-info.json` and can be updated by running the following commands:
+The release deployment flow is now driven by split configs:
+
+- `build-config-v3.json`
+- `build-config-v4.json`
+
+The full operator runbook lives at [`script/DEPLOYMENT_INSTRUCTIONS.md`](script/DEPLOYMENT_INSTRUCTIONS.md).
+
+At a high level, the release process is:
+
+1. Select or update vanity addresses in the build configs.
+2. Build deterministic initcode bundles for v3 and v4.
+3. Generate Safe transaction batches from those bundles.
+4. Verify deployment addresses.
+5. Execute the shared and version-specific deployments in the correct order.
+
+Vanity-address selection can be previewed or applied with:
 
 ```bash
-curl -fsSL https://bun.sh/install | bash
-pip install eth_abi
-python3 build_release.py
+python3 script/select_vanity_addresses.py
+python3 script/select_vanity_addresses.py --in-place
 ```
 
-The configuration file `build-config.json` can be modified with the desired set of addresses and constructor arguments for each contract. The `env`
-section contains deployment variables expected to change, such as the `UNIV3_FACTORY` address.
+By default, the selector reads from `script/vanity-addresses.tsv`, applies a rarity cap, and updates the split configs. Use `--freeze <file>` to protect already-deployed addresses from being reassigned. Review the diff before generating artifacts.
 
-Each `address` and `salt` pair specified by `build-config.json` can be deployed through the `CREATE3` factory at `0x000000000000b361194cfe6312EE3210d53C15AA`. All salts in the current configuration are owned by `vault.panoptic.eth`.
-
-The following command can be run to generate the Safe transaction batches required to deploy Panoptic with the code in `deployment-info.json` from a Safe multisig that owns salts:
+Preview a build without running forge or writing files:
 
 ```bash
-python3 gen_safetx.py
+python3 build_release.py --dry-run build-config-v3.json
 ```
 
-The generated batches for each contract will be saved in individual JSON files in the `safe-txns` directory. These can be uploaded to a Gnosis Safe for execution via the "Transaction Builder" app. To ensure an accurate deployment process, each transaction batch should be queued in alphabetical order and checked against `deployment-info.json` for correctness prior to execution.
+Generate deterministic deployment bundles with:
+
+```bash
+python3 build_release.py build-config-v3.json
+python3 build_release.py build-config-v4.json
+```
+
+This produces:
+
+- `deployment-info-v3.json`
+- `deployment-info-v4.json`
+
+Generate Safe transaction batches with:
+
+```bash
+python3 gen_safetx.py deployment-info-v3.json safe-txns-v3
+python3 gen_safetx.py deployment-info-v4.json safe-txns-v4 --check-duplicates-against deployment-info-v3.json
+```
+
+Use `--chain-id` and `--recipient` to override the default mainnet chain ID and multisig address.
+
+Verify that deployment-info addresses match their expected vanity address derivations:
+
+```bash
+python3 script/verify_deployment.py deployment-info-v3.json
+python3 script/verify_deployment.py deployment-info-v4.json --config build-config-v4.json
+```
+
+Important notes:
+
+- `gen_safetx.py` defaults to mainnet (`chainId = 1`) Safe payloads; override with `--chain-id`.
+- The split configs currently share some deterministic deployments, so duplicate shared deployments must not be executed twice.
+- `build_release.py` uses `cast abi-encode`; `eth_abi` is no longer required.
+
+For the exact review and execution sequence, use [`script/DEPLOYMENT_INSTRUCTIONS.md`](script/DEPLOYMENT_INSTRUCTIONS.md).
 
 ## Deployment (Legacy)
 
