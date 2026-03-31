@@ -1341,8 +1341,15 @@ contract CollateralTrackerV2 is Clone, ERC20Minimal, Multicall, TransientReentra
                         uint256(Math.max(1, int256(totalAssets()) - bonus))
                     );
 
+                    // Cap minted shares to 10x the current total supply per liquidation event.
+                    // This path is only reached when the liquidatee's remaining shares cannot cover
+                    // the liquidator bonus, forcing new shares to be minted (socializing the loss to PLPs).
+                    // The rawMinted formula has a denominator of (totalAssets - bonus) which approaches
+                    // zero when the vault is nearly depleted, causing rawMinted to blow up.
+                    // The 10x cap prevents catastrophic dilution while still allowing the liquidation
+                    // to proceed without reverting. Any minting on this path is protocol loss.
                     mintedShares = rawMinted > liquidateeBalance
-                        ? Math.min(rawMinted - liquidateeBalance, _totalSupply * DECIMALS)
+                        ? Math.min(rawMinted - liquidateeBalance, _totalSupply * 10)
                         : 0;
                 }
 

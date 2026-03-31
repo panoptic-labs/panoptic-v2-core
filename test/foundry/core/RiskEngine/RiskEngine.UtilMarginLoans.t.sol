@@ -22,7 +22,7 @@ contract RiskEngineUtilMarginLoans is Test {
     MockCollateralTracker internal ct1;
 
     uint256 constant DEC = 10_000_000;
-    uint256 constant MAINT = 2_000_000; // MAINT_MARGIN_RATE = 20%
+    uint256 constant MAINT = 1_000_000; // MAINT_MARGIN_RATE = 20%
     uint256 constant SELLER = 2_000_000; // SELLER_COLLATERAL_RATIO = 20%
     uint256 constant TARGET = 6_666_667; // TARGET_POOL_UTIL (scaled by 1000 internally)
     uint256 constant SATURATED = 9_000_000; // SATURATED_POOL_UTIL
