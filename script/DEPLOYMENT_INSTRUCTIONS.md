@@ -35,6 +35,9 @@ This does not cover post-deployment operational tasks such as pool creation or t
   - `PanopticMath`
   - `InteractionHelper`
   - `CollateralTrackerV2`
+  - `PanopticGuardian`
+  - `BuilderFactory`
+  - `RiskEngine`
 - Because of that sharing, if both v3 and v4 are deployed from the current configs, the shared contracts must only be deployed once.
 
 ## Required tooling
@@ -72,7 +75,7 @@ Generated outputs:
 
 Each build config has:
 
-- `env`: deployment-time constants such as Uniswap addresses, guardian, and builder factory owner
+- `env`: deployment-time constants such as Uniswap addresses, guardian admin, and treasurer
 - `dataContracts`: deterministic metadata storage deployments with `address`, `salt`, and `nonce`
 - `logicContracts`: deterministic logic deployments with:
   - `path`
@@ -122,6 +125,9 @@ Important selector behavior:
   - `PanopticMath`
   - `InteractionHelper`
   - `CollateralTrackerV2`
+  - `PanopticGuardian`
+  - `BuilderFactory`
+  - `RiskEngine`
 - In `disjoint` mode, every slot gets a separate vanity address.
 - The selector automatically excludes addresses already used by legacy `build-config.json`, unless that file is one of the explicit selector targets.
 
@@ -323,6 +329,9 @@ If using the current shared configs, the shared logic contracts are:
 - `PanopticMath`
 - `InteractionHelper`
 - `CollateralTrackerV2`
+- `PanopticGuardian`
+- `BuilderFactory`
+- `RiskEngine`
 
 Operational rule:
 
