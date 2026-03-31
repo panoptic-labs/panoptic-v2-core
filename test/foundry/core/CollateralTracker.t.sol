@@ -12420,7 +12420,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 hasLegsInRange = true;
             }
 
-            int256 feeUp = hasLegsInRange ? -int256(102400) : -int256(1000);
+            int256 feeUp = hasLegsInRange
+                ? -int256(riskEngine.FORCE_EXERCISE_COST())
+                : -int256(1000);
 
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);
@@ -12561,7 +12563,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 hasLegsInRange = true;
             }
 
-            int256 feeUp = hasLegsInRange ? -int256(102400) : -int256(1000);
+            int256 feeUp = hasLegsInRange
+                ? -int256(riskEngine.FORCE_EXERCISE_COST())
+                : -int256(1000);
 
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);
@@ -12703,7 +12707,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 hasLegsInRange = true;
             }
 
-            int256 feeUp = hasLegsInRange ? -int256(102400) : -int256(1000);
+            int256 feeUp = hasLegsInRange
+                ? -int256(riskEngine.FORCE_EXERCISE_COST())
+                : -int256(1000);
 
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);
@@ -12845,7 +12851,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 hasLegsInRange = true;
             }
 
-            int256 feeUp = hasLegsInRange ? -int256(102400) : -int256(1000);
+            int256 feeUp = hasLegsInRange
+                ? -int256(riskEngine.FORCE_EXERCISE_COST())
+                : -int256(1000);
 
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);
