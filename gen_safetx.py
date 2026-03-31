@@ -2,23 +2,68 @@ import argparse
 import hashlib
 import json
 import os
+import sys
 
-parser = argparse.ArgumentParser(description="Generate Safe transaction JSON batches from deployment info.")
-parser.add_argument("deployment_info", nargs="?", default="deployment-info.json",
-                    help="path to deployment-info JSON (default: deployment-info.json)")
-parser.add_argument("output_dir", nargs="?", default="./safe-txns",
-                    help="output directory for Safe JSON files (default: ./safe-txns)")
-parser.add_argument("--chain-id", default="1",
-                    help="chain ID for Safe transactions (default: 1)")
-parser.add_argument("--recipient", default="0x82BF455e9ebd6a541EF10b683dE1edCaf05cE7A1",
-                    help="recipient address for mint transactions")
-parser.add_argument("--check-duplicates-against", default=None, metavar="PATH",
-                    help="path to another deployment-info JSON; warns if any addresses overlap")
-parser.add_argument("--exclude-addresses-from", default=None, metavar="PATH",
-                    help="path to another deployment-info JSON; exclude overlapping contracts from output")
-parser.add_argument("--gas-limit", default=30_000_000, type=int,
-                    help="max estimated gas per batch (default: 30000000)")
-args = parser.parse_args()
+top_parser = argparse.ArgumentParser(description="Generate Safe transaction JSON batches from deployment info.")
+subparsers = top_parser.add_subparsers(dest="command")
+
+# Default "generate" command (also runs when no subcommand given)
+gen_parser = subparsers.add_parser("generate", help="Generate Safe batches from deployment info")
+gen_parser.add_argument("deployment_info", nargs="?", default="deployment-info.json",
+                        help="path to deployment-info JSON (default: deployment-info.json)")
+gen_parser.add_argument("output_dir", nargs="?", default="./safe-txns",
+                        help="output directory for Safe JSON files (default: ./safe-txns)")
+gen_parser.add_argument("--chain-id", default="1",
+                        help="chain ID for Safe transactions (default: 1)")
+gen_parser.add_argument("--recipient", default="0x82BF455e9ebd6a541EF10b683dE1edCaf05cE7A1",
+                        help="recipient address for mint transactions")
+gen_parser.add_argument("--check-duplicates-against", default=None, metavar="PATH",
+                        help="path to another deployment-info JSON; warns if any addresses overlap")
+gen_parser.add_argument("--exclude-addresses-from", default=None, metavar="PATH",
+                        help="path to another deployment-info JSON; exclude overlapping contracts from output")
+gen_parser.add_argument("--gas-limit", default=30_000_000, type=int,
+                        help="max estimated gas per batch (default: 30000000)")
+
+# Merge command
+merge_parser = subparsers.add_parser("merge", help="Merge multiple Safe batch JSON files into one")
+merge_parser.add_argument("inputs", nargs="+", help="Safe batch JSON files to merge")
+merge_parser.add_argument("-o", "--output", required=True, help="output file path")
+
+# If first arg isn't a subcommand, assume "generate"
+if len(sys.argv) > 1 and sys.argv[1] not in ("generate", "merge", "-h", "--help"):
+    args = gen_parser.parse_args(sys.argv[1:])
+    args.command = None
+else:
+    args = top_parser.parse_args()
+
+if args.command == "merge":
+    merged_transactions = []
+    merged_contracts = []
+    chain_id = None
+    for path in args.inputs:
+        with open(path) as f:
+            batch = json.load(f)
+        if chain_id is None:
+            chain_id = batch.get("chainId", "1")
+        merged_transactions.extend(batch["transactions"])
+        merged_contracts.extend(batch.get("meta", {}).get("contracts", []))
+
+    merged = {
+        "version": "1.0",
+        "chainId": chain_id,
+        "meta": {
+            "name": ", ".join(merged_contracts) if merged_contracts else "Merged batch",
+            "contracts": merged_contracts,
+        },
+        "transactions": merged_transactions,
+    }
+    os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
+    with open(args.output, "w") as f:
+        json.dump(merged, f, indent=2)
+    print(f"\033[92m{args.output}\033[0m: merged {len(args.inputs)} files, {len(merged_transactions)} transactions")
+    for c in merged_contracts:
+        print(f"  - {c}")
+    sys.exit(0)
 
 with open(args.deployment_info, "r") as file:
     deploymentInfo = json.load(file)

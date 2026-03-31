@@ -233,61 +233,68 @@ python3 -m json.tool deployment-info-v4.json > /tmp/deployment-info-v4.pretty.js
 
 ## Step 5: Generate Safe transaction batches
 
-Generate Safe JSON bundles from the deployment info:
+`gen_safetx.py` groups contracts into gas-aware batches (default limit: 30M gas per batch). Each contract produces two calls (`mint` + `deploy`) targeting the CREATE3 deployer at `0x000000000000b361194cfe6312EE3210d53C15AA`.
+
+### Generate batches
+
+Generate v4 batches first (includes all shared contracts), then v3 with `--exclude-addresses-from` to skip contracts already covered by v4:
 
 ```bash
-python3 gen_safetx.py deployment-info-v3.json safe-txns-v3
-python3 gen_safetx.py deployment-info-v4.json safe-txns-v4 --check-duplicates-against deployment-info-v3.json
+python3 gen_safetx.py deployment-info-v4.json safe-txns-v4
+python3 gen_safetx.py deployment-info-v3.json safe-txns-v3 --exclude-addresses-from deployment-info-v4.json
 ```
 
-The `--check-duplicates-against` flag loads another deployment-info file and warns about any overlapping addresses. This helps identify shared contracts that should only be deployed once.
+This produces numbered batch files like `safe-txns-v4/batch_0.json`, `safe-txns-v4/batch_1.json`, etc. The v3 output only contains v3-specific contracts (PanopticPoolV2, SemiFungiblePositionManagerV3, PanopticFactoryV3).
 
-For non-mainnet deployments, override the chain ID and recipient:
+### Merge batches
+
+If the last v4 batch and the v3 batch both fit within a single block, merge them to reduce the number of Safe signatures required:
 
 ```bash
-python3 gen_safetx.py deployment-info-v3.json safe-txns-v3 --chain-id 11155111 --recipient 0xYourTestnetSafe
+python3 gen_safetx.py merge safe-txns-v4/batch_2.json safe-txns-v3/batch_0.json -o safe-txns/batch_2_combined.json
 ```
 
-This produces one Safe JSON file per deployment.
+### Expected output (3 Safe transactions total)
 
-For data contracts:
+| File                              | Contents                                                                                                                                 | ~Gas |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| `safe-txns-v4/batch_0.json`       | Data contracts + PanopticMath                                                                                                            | ~28M |
+| `safe-txns-v4/batch_1.json`       | InteractionHelper, CollateralTrackerV2, PanopticGuardian, BuilderFactory, RiskEngine, SemiFungiblePositionManagerV4, PanopticPoolV2 (v4) | ~24M |
+| `safe-txns/batch_2_combined.json` | PanopticFactoryV4 + PanopticPoolV2 (v3), SemiFungiblePositionManagerV3, PanopticFactoryV3                                                | ~21M |
 
-- `safe-txns-v3/dataDeploy_*.json`
-- `safe-txns-v4/dataDeploy_*.json`
+Execute these three files in order. Each requires one multisig signature round.
 
-For logic contracts:
+### Options
 
-- `safe-txns-v3/deploy_*.json`
-- `safe-txns-v4/deploy_*.json`
+- `--gas-limit N`: override the per-batch gas limit (default: 30000000)
+- `--exclude-addresses-from PATH`: skip contracts whose addresses appear in another deployment-info file
+- `--check-duplicates-against PATH`: warn about overlapping addresses without excluding them
+- `--chain-id ID`: chain ID for Safe transactions (default: 1)
+- `--recipient ADDR`: recipient address for mint transactions
 
-Each Safe JSON contains two calls:
+For non-mainnet deployments:
 
-- `mint`
-- `deploy`
-
-Both calls target the deployer contract at `0x000000000000b361194cfe6312EE3210d53C15AA`.
-
-Each Safe JSON includes a `sourceHash` in its metadata, which is a SHA256 hash of the source deployment-info entry. This can be used to verify that a Safe JSON was generated from a specific deployment-info revision.
+```bash
+python3 gen_safetx.py deployment-info-v4.json safe-txns-v4 --chain-id 11155111 --recipient 0xYourTestnetSafe
+```
 
 ## Step 6: Review Safe batches
 
 Before execution, confirm:
 
 - every file has the expected `chainId`
-- file names and `meta.name` match the intended contract
-- `meta.sourceHash` matches a fresh hash of the corresponding deployment-info entry
-- the target address in each deployment matches the expected vanity address
-- shared deployments are not going to be submitted twice
+- `meta.contracts` lists the expected contracts in each batch
+- the total number of batches and their gas estimates are reasonable
+- shared deployments appear only once across all batches
+- merged batches contain the expected combination of contracts
 
 Recommended review commands:
 
 ```bash
-ls safe-txns-v3
 ls safe-txns-v4
-python3 -m json.tool safe-txns-v3/deploy_0_PanopticMath.json
+ls safe-txns-v3
+python3 -m json.tool safe-txns-v4/batch_0.json | head -20
 ```
-
-Adjust the example file name above to match the actual output.
 
 ## Step 7: Verify deployment addresses
 
@@ -315,35 +322,15 @@ The script exits non-zero if any check fails.
 
 ## Step 8: Execute deployment
 
-Execution order matters.
+Execution order matters. Batches must be executed sequentially because later contracts reference earlier ones via constructor arguments.
 
-Recommended order:
+Import each batch JSON into the Safe web interface and execute in order:
 
-1. Deploy all shared `dataContracts` once.
-2. Deploy shared logic contracts once.
-3. Deploy v3-specific contracts.
-4. Deploy v4-specific contracts.
+1. `safe-txns-v4/batch_0.json` — data contracts + PanopticMath
+2. `safe-txns-v4/batch_1.json` — remaining shared logic + v4-specific SFPM and PanopticPool
+3. `safe-txns/batch_2_combined.json` — PanopticFactoryV4 + all v3-specific contracts
 
-If using the current shared configs, the shared logic contracts are:
-
-- `PanopticMath`
-- `InteractionHelper`
-- `CollateralTrackerV2`
-- `PanopticGuardian`
-- `BuilderFactory`
-- `RiskEngine`
-
-Operational rule:
-
-- Do not execute duplicate Safe files for shared contracts a second time from the other batch.
-
-Practical approach:
-
-1. Import and execute the shared/data portion from either v3 or v4.
-2. Skip duplicate shared deployments in the second batch.
-3. Execute only the version-specific deployments that remain.
-
-If you want completely independent batches with no overlap, rerun vanity assignment in `disjoint` mode and then regenerate `deployment-info-*` and `safe-txns-*`.
+Each batch is a single multisig transaction containing multiple internal calls.
 
 ## Suggested review checklist
 
@@ -361,33 +348,31 @@ An engineer reviewing this deployment should explicitly verify:
 
 ## Full command sequence
 
-Shared deployment flow:
-
 ```bash
+# 1. (Optional) Reassign vanity addresses for data contracts
 python3 script/select_vanity_addresses.py --in-place
-python3 build_release.py --dry-run build-config-v3.json
+
+# 2. Preview builds
 python3 build_release.py --dry-run build-config-v4.json
-python3 build_release.py build-config-v3.json
+python3 build_release.py --dry-run build-config-v3.json
+
+# 3. Build deployment artifacts
 python3 build_release.py build-config-v4.json
-python3 gen_safetx.py deployment-info-v3.json safe-txns-v3
-python3 gen_safetx.py deployment-info-v4.json safe-txns-v4 --check-duplicates-against deployment-info-v3.json
-python3 script/verify_deployment.py deployment-info-v3.json --config build-config-v3.json
+python3 build_release.py build-config-v3.json
+
+# 4. Generate Safe batches (v4 includes shared, v3 excludes shared)
+python3 gen_safetx.py deployment-info-v4.json safe-txns-v4
+python3 gen_safetx.py deployment-info-v3.json safe-txns-v3 --exclude-addresses-from deployment-info-v4.json
+
+# 5. Merge v4 tail + v3 into a single batch
+python3 gen_safetx.py merge safe-txns-v4/batch_2.json safe-txns-v3/batch_0.json -o safe-txns/batch_2_combined.json
+
+# 6. Verify
 python3 script/verify_deployment.py deployment-info-v4.json --config build-config-v4.json
+python3 script/verify_deployment.py deployment-info-v3.json --config build-config-v3.json
 ```
 
-Fully disjoint deployment flow:
-
-```bash
-python3 script/select_vanity_addresses.py --mode disjoint --in-place
-python3 build_release.py --dry-run build-config-v3.json
-python3 build_release.py --dry-run build-config-v4.json
-python3 build_release.py build-config-v3.json
-python3 build_release.py build-config-v4.json
-python3 gen_safetx.py deployment-info-v3.json safe-txns-v3
-python3 gen_safetx.py deployment-info-v4.json safe-txns-v4 --check-duplicates-against deployment-info-v3.json
-python3 script/verify_deployment.py deployment-info-v3.json --config build-config-v3.json
-python3 script/verify_deployment.py deployment-info-v4.json --config build-config-v4.json
-```
+The merge step assumes v4 produces 3 batches and v3 produces 1 batch. If the gas limit or contract set changes, adjust the batch file names accordingly.
 
 ## Notes
 
