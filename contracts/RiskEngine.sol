@@ -132,7 +132,7 @@ contract RiskEngine {
     /// @notice Required collateral margin for loans in excess of notional, fraction of 1, scaled by 10_000_000.
     uint256 public constant MAINT_MARGIN_RATE = 1_000_000;
 
-    /// @notice Basal cost (in bps of notional) to force exercise an out-of-range position. 30bps
+    /// @notice Basal cost (in bps of notional) applied by exerciseCost() when at least one long leg is in-range; fully out-of-the-money positions use ONE_BPS instead. 30bps
     uint256 public constant FORCE_EXERCISE_COST = 30_000;
 
     // Targets a pool utilization (balance between buying and selling)

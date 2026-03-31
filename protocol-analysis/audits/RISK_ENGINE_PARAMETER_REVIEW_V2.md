@@ -339,12 +339,12 @@ For 3 months idle at max rate:
 **Finding:** For pools idle at extreme rates (>100% annualized) for months, `wTaylorCompounded` underestimates interest by >1%. The crossover to >1% error occurs at approximately:
 
 - y ≈ 0.53 → rate × time in WAD
-- At 200% target (800% effective): time ≈ 0.53 / (800% / 31.5M seconds) ≈ **~18 hours**
-- At 50% target (200% effective): time ≈ ~264,000 seconds ≈ **~3 days**
+- At 200% target (800% effective): per-second rate = 8.0/31.5M = 2.537e-7; time = 0.53/2.537e-7 ≈ 2,089,000s ≈ **~24 days**
+- At 50% target (200% effective): per-second rate = 2.0/31.5M = 6.34e-8; time = 0.53/6.34e-8 ≈ 8,360,000s ≈ **~97 days**
 
 The error favors borrowers (interest undercharged), which is a mild protocol loss risk.
 
-**Severity:** YELLOW — the combination of extreme rates AND extended inactivity is unlikely but possible on long-tail pools. The Taylor error benefits borrowers at the protocol's expense.
+**Severity:** GREEN — the >1% error crossover requires ~24 days of inactivity at 800% effective rate (or ~97 days at 200%). At such punitive rates, economic pressure to interact with the pool is extreme, making multi-week inactivity implausible. At typical rates (4–16%), even months of inactivity produce <0.1% error.
 
 ### D.6 Deep ITM/OTM Force Exercise
 
@@ -389,7 +389,7 @@ At max spread, longs pay ~2.125× the base premium. This is moderate and accepta
 1. **RiskParameters packing:** All values fit their bit-widths with headroom. No precision loss from packing.
 
    - NOTIONAL_FEE (1) fits in 14 bits (max 16,383): no truncation.
-   - BP_DECREASE_BUFFER (10,416,667) fits in 26 bits (max 67,108,863): no truncation.
+   - BP_DECREASE_BUFFER (10,666,667) fits in 26 bits (max 67,108,863): no truncation.
    - MAX_SPREAD (90,000) fits in 22 bits (max 4,194,303): no truncation.
 
 2. **MarketState rateAtTarget (38 bits):** Max storable = 274,877,906,943. MAX_RATE_AT_TARGET = 63,419,583,967. Headroom: 4.33×. The `uint40` intermediate cast in `updateRateAtTarget()` (40 bits → then masked to 38) provides safe conversion.
@@ -460,13 +460,13 @@ See D.5 for the detailed analysis. Summary table of `wTaylorCompounded` error:
 | 1 hour   | y ≈ 0.0009           | <0.001%                         |
 | 1 day    | y ≈ 0.022            | 0.004%                          |
 | 1 week   | y ≈ 0.153            | 0.07%                           |
-| 18 hours | y ≈ 0.53             | **~1.0%** (crossover threshold) |
+| ~24 days | y ≈ 0.53             | **~1.0%** (crossover threshold) |
 | 1 month  | y ≈ 0.658            | 0.97%                           |
 | 3 months | y ≈ 1.97             | **16.0%**                       |
 
 The error always **underestimates** interest (borrower-favorable, protocol-unfavorable).
 
-**Severity:** YELLOW at extreme rates. At initial/typical rates (4–16%), even months of inactivity produce <0.1% error.
+**Severity:** GREEN — the >1% crossover at max rate requires ~24 days idle, which is implausible given the economic pressure from punitive rates. At typical rates (4–16%), even months of inactivity produce <0.1% error.
 
 ### D.13 CROSS_BUFFER Asymmetry
 
@@ -633,7 +633,7 @@ In this regime:
 | --- | ------------------------------------------------------------ | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | **Safe mode detection lag for sustained medium-speed moves** | MAX_TICKS_DELTA (724), EMA_PERIODS                        | Instant crashes >7.5% now trigger safe mode immediately (improved from 10%). Linear 8-12% moves over 60-90s may still not trigger via EMA conditions; the Euclidean norm backstop partially covers this. | **Monitor:** safe mode activation count vs. actual volatility events. **Falsify:** if 8%+ moves consistently trigger safe mode within 30s, this concern is invalidated.                                    |
 | 2   | **Init-maint gap at low utilization**                        | BP_DECREASE_BUFFER (16/15), SELLER_COLLATERAL_RATIO       | 1.33% of notional gap at base SCR means a ~2.67% move for delta-0.5 positions crosses from init to maint margin. Adequate on L2 with responsive bots. Maps to 90.9% LTV → 85% LLTV for loans.            | **Monitor:** liquidation shortfall rate (fraction of liquidations with protocol loss). **Target:** <1% of liquidations should result in protocol loss.                                                     |
-| 3   | **Taylor compounding error at extreme rates + inactivity**   | wTaylorCompounded, IRM_MAX_ELAPSED_TIME                   | If a pool with MAX_RATE_AT_TARGET rates is idle for >18 hours, interest is undercharged by >1%, benefiting borrowers at protocol expense.                                                                | **Monitor:** max deltaTime between interactions per pool. **Alert:** if any pool exceeds 6 hours without interaction at >100% rate.                                                                        |
+| 3   | **Taylor compounding error at extreme rates + inactivity**   | wTaylorCompounded, IRM_MAX_ELAPSED_TIME                   | At 800% effective rate, >1% error requires ~24 days idle; at 200% effective, ~97 days. Punitive rates make such inactivity implausible. Low practical risk.                                              | **Monitor:** max deltaTime between interactions per pool. **Alert:** if any pool exceeds 7 days without interaction at >100% rate.                                                                         |
 | 4   | **Utilization-at-mint allows stale SCR**                     | TARGET_POOL_UTIL, SATURATED_POOL_UTIL, globalUtilizations | Positions minted at low utilization retain low SCR permanently. A utilization surge doesn't retroactively increase margin requirements for these positions.                                              | **Monitor:** distribution of utilization-at-mint for open positions vs. current utilization. **Alert:** if >20% of open interest was minted at <TARGET_POOL_UTIL while current util > SATURATED_POOL_UTIL. |
 | 5   | **MAX_BONUS may be insufficient for small positions on L1**  | MAX_BONUS                                                 | 20% of a small balance may not cover liquidation gas on L1. Unprofitable liquidations lead to delayed cleanup and growing protocol loss.                                                                 | **Monitor:** position size distribution. **Alert:** if median position size yields bonus < estimated liquidation gas cost.                                                                                 |
 
@@ -649,15 +649,9 @@ In this regime:
 
 **Assessment:** Appropriate for launch. No further change needed.
 
-### G.2 Taylor Error Mitigation (Risk #3)
+### G.2 Taylor Error Mitigation (Risk #3) — DOWNGRADED
 
-**Option A:** Cap `deltaTime` in CollateralTracker's `_calculateCurrentInterestState()` at a value where Taylor error < 0.1% (e.g., 86,400s = 1 day at worst-case rates). If deltaTime > cap, accrue in multiple steps.
-
-**Option B:** Use `sTaylorCompounded` (4 terms) instead of `wTaylorCompounded` (3 terms) for interest accrual. The 4th term reduces error at y=2.0 from 16% to ~3%.
-
-**Suggested:** Option A is simpler and more robust. Cap at 86,400s.
-**Timing:** Pre-launch if feasible; or post-launch with monitoring (the risk is low probability at current rates).
-**Mutability:** Requires CollateralTracker code change.
+After correcting the unit conversion, the >1% error crossover requires ~24 days of inactivity at the maximum effective rate (800%) or ~97 days at 200%. At such punitive rates, pool inactivity for weeks is economically implausible. **No code change recommended.** Monitor pool interaction frequency post-launch as a precaution.
 
 ### G.3 Safe Mode Sensitivity (Risk #1) — PARTIALLY RESOLVED
 
@@ -685,7 +679,7 @@ No parameter change recommended — this is an intentional design choice that pr
 
 | Test                    | Parameters              | Boundary Values                                                            |
 | ----------------------- | ----------------------- | -------------------------------------------------------------------------- |
-| Safe mode trigger       | MAX_TICKS_DELTA         | currentTick - spotEMA = 723 (no trigger), 724 (trigger), 725 (trigger)     |
+| Safe mode trigger       | MAX_TICKS_DELTA         | currentTick - spotEMA = 724 (no trigger), 725 (trigger), 726 (trigger)     |
 | SCR ramp start          | TARGET_POOL_UTIL        | utilization = 6666 (base SCR), 6667 (ramp starts)                          |
 | SCR ramp end            | SATURATED_POOL_UTIL     | utilization = 8999 (ramp), 9000 (100% SCR)                                 |
 | Cross buffer cutoff     | CROSS_BUFFER            | utilization = 9499 (small buffer), 9500 (zero)                             |
