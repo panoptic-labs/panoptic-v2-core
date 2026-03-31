@@ -54,6 +54,24 @@ def _normalize_address(address: str) -> str:
     return address.lower()
 
 
+def _leading_zero_hex_chars(address: str) -> int:
+    """Count leading zero hex characters after 0x prefix."""
+    hex_str = address.lower().removeprefix("0x")
+    count = 0
+    for ch in hex_str:
+        if ch == "0":
+            count += 1
+        else:
+            break
+    return count
+
+
+# Data contracts use addresses with exactly this many leading zero hex chars
+DATA_CONTRACT_LEADING_ZEROS = 12
+# Logic contracts use addresses with more leading zero hex chars
+LOGIC_MIN_LEADING_ZEROS = 13
+
+
 def _default_configs() -> list[Path]:
     defaults = [Path("build-config-v3.json"), Path("build-config-v4.json")]
     return [path for path in defaults if path.exists()]
@@ -228,18 +246,18 @@ def main():
     for path in exclude_paths:
         excluded_addresses.update(_iter_config_addresses(_load_json(path)))
 
-    entries = [
+    all_entries = [
         entry
         for entry in _load_vanity_entries(args.vanity_tsv)
         if _normalize_address(entry.address) not in excluded_addresses
         and entry.rarity <= args.max_rarity
     ]
-    targets = _build_targets(configs, args.mode)
 
-    if len(entries) < len(targets):
-        raise SystemExit(
-            f"not enough vanity entries after exclusions: need {len(targets)}, found {len(entries)}"
-        )
+    # Split entries into two pools: lower-quality for data contracts, higher-quality for logic
+    data_entries = [e for e in all_entries if _leading_zero_hex_chars(e.address) == DATA_CONTRACT_LEADING_ZEROS]
+    logic_entries = [e for e in all_entries if _leading_zero_hex_chars(e.address) >= LOGIC_MIN_LEADING_ZEROS]
+
+    targets = _build_targets(configs, args.mode)
 
     frozen_addresses = set()
     if args.freeze:
@@ -250,7 +268,8 @@ def main():
         }
 
     # Separate frozen targets before pairing so their entries are not wasted.
-    eligible_targets = []
+    eligible_data_targets = []
+    eligible_logic_targets = []
     for target in targets:
         loc = target.locations[0]
         config = config_map[loc.config_path]
@@ -262,15 +281,32 @@ def main():
         if current_addr in frozen_addresses:
             if args.force:
                 print(f"\033[93mWARNING (forced): will reassign frozen address {current_addr} for {target.name}\033[0m")
-                eligible_targets.append(target)
             else:
                 print(f"\033[91mSKIPPED: {target.name} has frozen address {current_addr}, use --force to override\033[0m")
+                continue
+
+        if loc.kind == "data":
+            eligible_data_targets.append(target)
         else:
-            eligible_targets.append(target)
+            eligible_logic_targets.append(target)
 
-    assignments = list(zip(eligible_targets, entries))
+    if len(data_entries) < len(eligible_data_targets):
+        raise SystemExit(
+            f"not enough vanity entries for data contracts: need {len(eligible_data_targets)}, "
+            f"found {len(data_entries)} (with {DATA_CONTRACT_LEADING_ZEROS} leading zero bytes)"
+        )
+    if len(logic_entries) < len(eligible_logic_targets):
+        raise SystemExit(
+            f"not enough vanity entries for logic contracts: need {len(eligible_logic_targets)}, "
+            f"found {len(logic_entries)} (with >= {LOGIC_MIN_LEADING_ZEROS} leading zero bytes)"
+        )
 
-    for target, entry in assignments:
+    for target, entry in zip(eligible_data_targets, data_entries):
+        print(f"{target.name}\t{entry.address}\t{entry.rarity}\t{entry.salt}\t{entry.nonce}")
+        for location in target.locations:
+            _apply_entry(config_map[location.config_path], location, entry)
+
+    for target, entry in zip(eligible_logic_targets, logic_entries):
         print(f"{target.name}\t{entry.address}\t{entry.rarity}\t{entry.salt}\t{entry.nonce}")
         for location in target.locations:
             _apply_entry(config_map[location.config_path], location, entry)
