@@ -20,6 +20,7 @@ This runbook covers the deterministic contract deployment flow driven by:
 - `gen_safetx.py`
 - `script/select_vanity_addresses.py`
 - `script/verify_deployment.py`
+- `script/verify_etherscan.py`
 
 This does not cover post-deployment operational tasks such as pool creation or trade simulation from:
 
@@ -28,7 +29,7 @@ This does not cover post-deployment operational tasks such as pool creation or t
 
 ## Current assumptions
 
-- `gen_safetx.py` defaults to mainnet (`chainId = 1`) and recipient `0x82BF455e9ebd6a541EF10b683dE1edCaf05cE7A1`. Both can be overridden with `--chain-id` and `--recipient`.
+- `gen_safetx.py` defaults to mainnet (`chainId = 1`), overridable with `--chain-id`. The mint recipient is derived from the first 20 bytes of each salt (the Safe address embedded in the salt).
 - `build_release.py` auto-generates metadata-derived `MD_*` values from `metadata/out/MetadataPackage.json`. Those values do not need to be entered manually in the build configs.
 - The split configs currently share the same addresses for:
   - `dataContracts`
@@ -233,7 +234,9 @@ python3 -m json.tool deployment-info-v4.json > /tmp/deployment-info-v4.pretty.js
 
 ## Step 5: Generate Safe transaction batches
 
-`gen_safetx.py` groups contracts into gas-aware batches (default limit: 30M gas per batch). Each contract produces two calls (`mint` + `deploy`) targeting the CREATE3 deployer at `0x000000000000b361194cfe6312EE3210d53C15AA`.
+`gen_safetx.py` groups contracts into gas-aware batches. Each contract produces two calls (`mint` + `deploy`) targeting the CREATE3 deployer at `0x000000000000b361194cfe6312EE3210d53C15AA`.
+
+EIP-7825 limits individual transactions to 2^24 (16,777,216) gas. The script's gas estimates are conservative (~75% of actual), so the default `--gas-limit` is set to keep actual gas usage safely under 16.7M per batch.
 
 ### Generate batches
 
@@ -248,34 +251,25 @@ This produces numbered batch files like `safe-txns-v4/batch_0.json`, `safe-txns-
 
 ### Merge batches
 
-If the last v4 batch and the v3 batch both fit within a single block, merge them to reduce the number of Safe signatures required:
+If two batches together fit within the EIP-7825 gas limit (16.7M), merge them to reduce the number of Safe signatures required:
 
 ```bash
-python3 gen_safetx.py merge safe-txns-v4/batch_2.json safe-txns-v3/batch_0.json -o safe-txns/batch_2_combined.json
+python3 gen_safetx.py merge safe-txns-v4/batch_N.json safe-txns-v3/batch_0.json -o safe-txns/combined.json
 ```
 
-### Expected output (3 Safe transactions total)
-
-| File                              | Contents                                                                                                                                 | ~Gas |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---- |
-| `safe-txns-v4/batch_0.json`       | Data contracts + PanopticMath                                                                                                            | ~28M |
-| `safe-txns-v4/batch_1.json`       | InteractionHelper, CollateralTrackerV2, PanopticGuardian, BuilderFactory, RiskEngine, SemiFungiblePositionManagerV4, PanopticPoolV2 (v4) | ~24M |
-| `safe-txns/batch_2_combined.json` | PanopticFactoryV4 + PanopticPoolV2 (v3), SemiFungiblePositionManagerV3, PanopticFactoryV3                                                | ~21M |
-
-Execute these three files in order. Each requires one multisig signature round.
+Review the batch listing printed by `gen_safetx.py` to decide which batches can be merged. Execute all batch files in order — each requires one multisig signature round.
 
 ### Options
 
-- `--gas-limit N`: override the per-batch gas limit (default: 30000000)
+- `--gas-limit N`: override the per-batch estimated gas limit
 - `--exclude-addresses-from PATH`: skip contracts whose addresses appear in another deployment-info file
 - `--check-duplicates-against PATH`: warn about overlapping addresses without excluding them
 - `--chain-id ID`: chain ID for Safe transactions (default: 1)
-- `--recipient ADDR`: recipient address for mint transactions
 
 For non-mainnet deployments:
 
 ```bash
-python3 gen_safetx.py deployment-info-v4.json safe-txns-v4 --chain-id 11155111 --recipient 0xYourTestnetSafe
+python3 gen_safetx.py deployment-info-v4.json safe-txns-v4 --chain-id 11155111
 ```
 
 ## Step 6: Review Safe batches
@@ -324,13 +318,47 @@ The script exits non-zero if any check fails.
 
 Execution order matters. Batches must be executed sequentially because later contracts reference earlier ones via constructor arguments.
 
-Import each batch JSON into the Safe web interface and execute in order:
+Import each batch JSON into the Safe web interface and execute in order. Each batch is a single multisig transaction containing multiple internal calls. The number of batches depends on the `--gas-limit` setting — review the output of `gen_safetx.py` for the exact batch listing.
 
-1. `safe-txns-v4/batch_0.json` — data contracts + PanopticMath
-2. `safe-txns-v4/batch_1.json` — remaining shared logic + v4-specific SFPM and PanopticPool
-3. `safe-txns/batch_2_combined.json` — PanopticFactoryV4 + all v3-specific contracts
+Due to EIP-7825, each transaction is limited to 2^24 (16,777,216) gas. If the Safe app shows "Cannot estimate" for gas, use Tenderly to simulate the transaction and manually set the gas limit in the Safe UI.
 
-Each batch is a single multisig transaction containing multiple internal calls.
+## Step 9: Verify source code on Etherscan
+
+After all contracts are deployed on-chain, verify their source code on Etherscan using `script/verify_etherscan.py`. This script reads the build config and runs `forge verify-contract` for each logic contract with the correct compiler version, optimizer runs, library links, and constructor arguments.
+
+Preview the verification commands without running them:
+
+```bash
+python3 script/verify_etherscan.py build-config-v4.json --dry-run
+python3 script/verify_etherscan.py build-config-v3.json --dry-run
+```
+
+Run verification:
+
+```bash
+python3 script/verify_etherscan.py build-config-v4.json --etherscan-api-key $ETHERSCAN_API_KEY
+python3 script/verify_etherscan.py build-config-v3.json --etherscan-api-key $ETHERSCAN_API_KEY
+```
+
+To verify only specific contracts:
+
+```bash
+python3 script/verify_etherscan.py build-config-v4.json --contracts PanopticGuardian RiskEngine --etherscan-api-key $ETHERSCAN_API_KEY
+```
+
+For non-mainnet deployments, pass `--chain-id`:
+
+```bash
+python3 script/verify_etherscan.py build-config-v4.json --chain-id 11155111 --etherscan-api-key $ETHERSCAN_API_KEY
+```
+
+For alternative block explorers (e.g. Blockscout), use `--verifier-url`:
+
+```bash
+python3 script/verify_etherscan.py build-config-v4.json --verifier-url https://explorer.example.com/api --etherscan-api-key $ETHERSCAN_API_KEY
+```
+
+The script exits non-zero if any verification fails. Shared contracts (PanopticMath, InteractionHelper, CollateralTrackerV2, PanopticGuardian, BuilderFactory, RiskEngine) only need to be verified once — running against either v3 or v4 config is sufficient since they share the same addresses.
 
 ## Suggested review checklist
 
@@ -339,7 +367,7 @@ An engineer reviewing this deployment should explicitly verify:
 - the selected vanity addresses are acceptable and intentionally assigned
 - the rarity cap used for selection is acceptable
 - shared vs disjoint deployment strategy is intentional
-- `--chain-id` and `--recipient` values passed to `gen_safetx.py` are correct for the target network
+- `--chain-id` passed to `gen_safetx.py` is correct for the target network
 - optimizer runs in each build config are still valid for the current code
 - constructor arguments resolve to the intended linked deployments
 - no stale contract path, artifact, or library link remains in the config
@@ -364,17 +392,26 @@ python3 build_release.py build-config-v3.json
 python3 gen_safetx.py deployment-info-v4.json safe-txns-v4
 python3 gen_safetx.py deployment-info-v3.json safe-txns-v3 --exclude-addresses-from deployment-info-v4.json
 
-# 5. Merge v4 tail + v3 into a single batch
-python3 gen_safetx.py merge safe-txns-v4/batch_2.json safe-txns-v3/batch_0.json -o safe-txns/batch_2_combined.json
+# 5. (Optional) Merge small batches to reduce signature rounds
+python3 gen_safetx.py merge safe-txns-v4/batch_N.json safe-txns-v3/batch_0.json -o safe-txns/combined.json
 
-# 6. Verify
+# 6. Verify addresses
 python3 script/verify_deployment.py deployment-info-v4.json --config build-config-v4.json
 python3 script/verify_deployment.py deployment-info-v3.json --config build-config-v3.json
+
+# 7. (After deployment) Verify bytecode on-chain
+python3 script/verify_deployment.py deployment-info-v4.json --rpc-url $RPC_URL
+python3 script/verify_deployment.py deployment-info-v3.json --rpc-url $RPC_URL
+
+# 8. (After deployment) Verify source on Etherscan
+python3 script/verify_etherscan.py build-config-v4.json --etherscan-api-key $ETHERSCAN_API_KEY
+python3 script/verify_etherscan.py build-config-v3.json --etherscan-api-key $ETHERSCAN_API_KEY
 ```
 
-The merge step assumes v4 produces 3 batches and v3 produces 1 batch. If the gas limit or contract set changes, adjust the batch file names accordingly.
+The merge step batch file names depend on how many batches are generated. Review the `gen_safetx.py` output and adjust accordingly.
 
 ## Notes
 
 - Do not use legacy `build-config.json` for the split v2 release flow unless you intentionally want the old single-config path.
 - If any config changes after `deployment-info-*.json` or `safe-txns-*` are generated, regenerate those outputs. Do not mix artifacts from different config revisions.
+- EIP-7825 (live as of Pectra) limits transactions to 2^24 gas. Keep `--gas-limit` conservative since the script's estimates are ~75% of actual gas usage.

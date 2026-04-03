@@ -15,14 +15,12 @@ gen_parser.add_argument("output_dir", nargs="?", default="./safe-txns",
                         help="output directory for Safe JSON files (default: ./safe-txns)")
 gen_parser.add_argument("--chain-id", default="1",
                         help="chain ID for Safe transactions (default: 1)")
-gen_parser.add_argument("--recipient", default="0x82BF455e9ebd6a541EF10b683dE1edCaf05cE7A1",
-                        help="recipient address for mint transactions")
 gen_parser.add_argument("--check-duplicates-against", default=None, metavar="PATH",
                         help="path to another deployment-info JSON; warns if any addresses overlap")
 gen_parser.add_argument("--exclude-addresses-from", default=None, metavar="PATH",
                         help="path to another deployment-info JSON; exclude overlapping contracts from output")
-gen_parser.add_argument("--gas-limit", default=30_000_000, type=int,
-                        help="max estimated gas per batch (default: 30000000)")
+gen_parser.add_argument("--gas-limit", default=11_000_000, type=int,
+                        help="max estimated gas per batch (default: 11000000)")
 
 # Merge command
 merge_parser = subparsers.add_parser("merge", help="Merge multiple Safe batch JSON files into one")
@@ -49,7 +47,6 @@ if args.command == "merge":
         merged_contracts.extend(batch.get("meta", {}).get("contracts", []))
 
     merged = {
-        "version": "1.0",
         "chainId": chain_id,
         "meta": {
             "name": ", ".join(merged_contracts) if merged_contracts else "Merged batch",
@@ -59,7 +56,7 @@ if args.command == "merge":
     }
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
     with open(args.output, "w") as f:
-        json.dump(merged, f, indent=2)
+        json.dump(merged, f)
     print(f"\033[92m{args.output}\033[0m: merged {len(args.inputs)} files, {len(merged_transactions)} transactions")
     for c in merged_contracts:
         print(f"  - {c}")
@@ -115,6 +112,7 @@ def _estimate_gas(contract):
 
 def _make_tx_pair(contract):
     salt_int = str(int(contract["salt"], 16))
+    recipient = contract["salt"][:42]
     return [
         {
             "to": DEPLOYER,
@@ -122,7 +120,7 @@ def _make_tx_pair(contract):
             "data": None,
             "contractMethod": MINT_METHOD,
             "contractInputsValues": {
-                "to": args.recipient,
+                "to": recipient,
                 "id": salt_int,
                 "nonce": str(contract["nonce"]),
             },
@@ -150,7 +148,6 @@ def _write_batch(batch_idx, name, contracts_with_names):
         contract_names.append(label)
 
     safeTx = {
-        "version": "1.0",
         "chainId": args.chain_id,
         "meta": {
             "name": name,
@@ -161,7 +158,7 @@ def _write_batch(batch_idx, name, contracts_with_names):
 
     filename = f"{args.output_dir}/batch_{batch_idx}.json"
     with open(filename, "w") as output_file:
-        json.dump(safeTx, output_file, indent=2)
+        json.dump(safeTx, output_file)
 
     print(f"\033[92m{filename}\033[0m: {name}")
     for label in contract_names:
@@ -170,7 +167,7 @@ def _write_batch(batch_idx, name, contracts_with_names):
 
 
 # Collect all contracts with labels, respecting exclusions
-entries = []  # list of (label, contract_dict, gas)
+entries = []
 
 for idx, contract in enumerate(deploymentInfo["dataContracts"]):
     if contract["address"].lower() in excluded_addresses:
@@ -204,11 +201,10 @@ if current_batch:
 # Write batches
 for idx, batch in enumerate(batches):
     labels = [label for label, _ in batch]
-    # Generate a descriptive name from the batch contents
     has_data = any(l.startswith("dataContracts") for l in labels)
     logic_names = [l for l in labels if not l.startswith("dataContracts")]
     if has_data and not logic_names:
-        name = f"Data contracts"
+        name = "Data contracts"
     elif has_data:
         name = f"Data contracts + {', '.join(logic_names)}"
     else:
