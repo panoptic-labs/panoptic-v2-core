@@ -16,9 +16,11 @@ This runbook covers the deterministic contract deployment flow driven by:
 
 - `build-config-v3.json`
 - `build-config-v4.json`
+- `build-config-RiskEngine.json`
 - `build_release.py`
 - `gen_safetx.py`
 - `script/select_vanity_addresses.py`
+- `script/optimize_runs.py`
 - `script/verify_deployment.py`
 - `script/verify_etherscan.py`
 
@@ -26,6 +28,10 @@ This does not cover post-deployment operational tasks such as pool creation or t
 
 - `script/CreatePool.s.sol`
 - `script/SellOptions.s.sol`
+
+If you need to mine `deployNewPool` salts for Panoptic pool vanity addresses, use the local multithreaded miner in `script/pool-address-miner/`.
+
+If you need to mine `builderCode` values whose CREATE2 wallet addresses fit inside a `uint128` (for fee routing via `dispatch`), use the builder code miner in `script/builder-code-miner/`.
 
 ## Current assumptions
 
@@ -77,7 +83,8 @@ Generated outputs:
 Each build config has:
 
 - `env`: deployment-time constants such as Uniswap addresses, guardian admin, and treasurer
-- `dataContracts`: deterministic metadata storage deployments with `address`, `salt`, and `nonce`
+- `dataContracts`: deterministic metadata storage deployments with `address`, `salt`, and `nonce` (can be empty or omitted for configs that don't deploy data contracts)
+- `sharedCreationCode` (optional): groups of contracts that must be compiled with the same optimizer runs because they embed the same inner contract's creation code. See [Shared creation code](#shared-creation-code) below.
 - `logicContracts`: deterministic logic deployments with:
   - `path`
   - `deployment.address`
@@ -87,7 +94,23 @@ Each build config has:
   - optional `links`
   - optional `constructorArgs`
 
+Constructor arguments support `@ContractName` references (resolved to that contract's deployment address from the same config) and `$ENV_VAR` references (resolved from the `env` block). For partial redeployments where a referenced contract is not being redeployed, inline its address as a literal string instead of using `@`.
+
 `build_release.py` does not mine or discover vanity addresses. It only consumes the addresses already present in the config file.
+
+### Shared creation code
+
+When multiple contracts embed the same inner contract via `type(X).creationCode`, they must be compiled with identical optimizer runs. Otherwise the embedded bytecode differs, producing different `keccak256` init-code hashes and mismatched CREATE2 addresses.
+
+The `sharedCreationCode` config key declares these groups:
+
+```json
+"sharedCreationCode": {
+    "BuilderWallet": ["BuilderFactory", "RiskEngine"]
+}
+```
+
+`script/optimize_runs.py` uses this to clamp all group members to the minimum optimal runs found across the group. `build_release.py` does not enforce this — it compiles each contract with whatever `optimizeRuns` is in the config. Make sure the values are already consistent before building.
 
 ## Step 1: Choose vanity addresses
 
@@ -409,6 +432,64 @@ python3 script/verify_etherscan.py build-config-v3.json --etherscan-api-key $ETH
 ```
 
 The merge step batch file names depend on how many batches are generated. Review the `gen_safetx.py` output and adjust accordingly.
+
+## Redeploying RiskEngine and BuilderFactory
+
+When deploying a new RiskEngine (e.g. with different risk parameters) you must also deploy a new BuilderFactory so that both contracts agree on the `BuilderWallet` init-code hash. The existing PanopticGuardian, PanopticFactory, SFPM, CollateralTracker, and PanopticPool implementations do not need redeployment:
+
+- **PanopticGuardian** takes `BuilderFactory` as a function parameter — not stored as an immutable.
+- **PanopticFactory** takes `riskEngine` as a parameter to `deployNewPool` — not hardcoded.
+- **PanopticPool** and **CollateralTracker** get the RiskEngine address baked in as clone immutable args at pool creation time. Existing pools keep using their original RiskEngine; new pools use whichever RiskEngine is passed to `deployNewPool`.
+
+Use `build-config-RiskEngine.json` as the template. It contains only BuilderFactory and RiskEngine, with the PanopticGuardian address inlined as a literal constructor argument.
+
+### Workflow
+
+```bash
+# 1. Assign vanity addresses for the new BuilderFactory and RiskEngine
+#    (update build-config-RiskEngine.json with new address/salt/nonce)
+
+# 2. Find optimal optimizer runs (respects sharedCreationCode clamping)
+python3 script/optimize_runs.py build-config-RiskEngine.json
+
+# 3. Update optimizeRuns in the config, then build
+python3 build_release.py build-config-RiskEngine.json
+
+# 4. Generate Safe batches
+python3 gen_safetx.py deployment-info-RiskEngine.json safe-txns-RiskEngine
+
+# 5. Verify addresses
+python3 script/verify_deployment.py deployment-info-RiskEngine.json --config build-config-RiskEngine.json
+
+# 6. Execute Safe batches
+
+# 7. Verify on-chain
+python3 script/verify_deployment.py deployment-info-RiskEngine.json --rpc-url $RPC_URL
+
+# 8. Verify source on Etherscan
+python3 script/verify_etherscan.py build-config-RiskEngine.json --etherscan-api-key $ETHERSCAN_API_KEY
+```
+
+After deployment, update `build-config-v3.json` and `build-config-v4.json` with the new BuilderFactory and RiskEngine addresses and optimizer runs so they stay in sync.
+
+### Mining uint128-compatible builder codes
+
+After deploying the new BuilderFactory, mine `builderCode` values whose CREATE2 wallet addresses fit in a `uint128` (4 leading zero bytes). These codes can be used with `dispatch` for fee routing.
+
+```bash
+# 1. Compute the init code hash for the new factory
+INIT_CODE_HASH=$(cast keccak $(cast concat-hex \
+    $(forge inspect --optimize --optimizer-runs <RUNS> BuilderWallet bytecode) \
+    $(cast abi-encode "x(address)" <NEW_FACTORY_ADDRESS>)))
+
+# 2. Mine builder codes (streams hits as found, appends to CSV)
+cargo run --release --manifest-path script/builder-code-miner/Cargo.toml -- \
+    --factory <NEW_FACTORY_ADDRESS> \
+    --init-code-hash $INIT_CODE_HASH \
+    -o builder-codes.csv
+```
+
+At ~11.6M hashes/sec, expect one uint128-compatible hit roughly every ~6 minutes (1/2^32 probability). Use `--first` to stop after the first hit, or let it run to collect multiple candidates.
 
 ## Notes
 

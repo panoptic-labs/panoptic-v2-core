@@ -82,7 +82,7 @@ def main():
 
     # Load metadata for MD_* env vars if needed
     metadata_path = Path("metadata/out/MetadataPackage.json")
-    if metadata_path.exists():
+    if metadata_path.exists() and config.get("dataContracts"):
         metadata = json.loads(metadata_path.read_text())
         config["env"]["MD_PROPERTIES"] = list(
             map(lambda prop: str.encode(prop), metadata["properties"])

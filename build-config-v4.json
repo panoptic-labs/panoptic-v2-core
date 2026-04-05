@@ -41,6 +41,9 @@
       "nonce": 14
     }
   ],
+  "sharedCreationCode": {
+    "BuilderWallet": ["BuilderFactory", "RiskEngine"]
+  },
   "logicContracts": {
     "PanopticMath": {
       "path": "./contracts/libraries/PanopticMath.sol",
@@ -87,21 +90,21 @@
     "BuilderFactory": {
       "path": "./contracts/Builder.sol",
       "deployment": {
-        "address": "0x00000000000008F144d786506C6bb22eCE144020",
-        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a159d7d98e8d0a81022ab2c05b",
-        "nonce": 17
+        "address": "0x00000000000008D41F2cd5bF144F61cEB3661F98",
+        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a11844a45ce33c51028b019714",
+        "nonce": 7
       },
-      "optimizeRuns": 9999999,
+      "optimizeRuns": 1,
       "constructorArgs": [["@PanopticGuardian"], ["address"]]
     },
     "RiskEngine": {
       "path": "./contracts/RiskEngine.sol",
       "deployment": {
-        "address": "0x0000000000000E65545005B26207D7edFd031260",
-        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a157326a0674d700038bec92ac",
-        "nonce": 25
+        "address": "0x0000000000000e673aECBDB5f5fE5DFAf4a8e9Ac",
+        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a199a5e1fb2076b602ea79c489",
+        "nonce": 2
       },
-      "optimizeRuns": 3733,
+      "optimizeRuns": 1,
       "constructorArgs": [
         [10000000, 10000000, "@PanopticGuardian", "@BuilderFactory"],
         ["uint256", "uint256", "address", "address"]

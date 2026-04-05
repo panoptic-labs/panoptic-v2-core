@@ -1,0 +1,35 @@
+{
+  "env": {
+    "GUARDIAN_ADMIN": "0xC3D385022d082Acd6b8744A85ad1766a01f522F7",
+    "TREASURER": "0xD8c5EbfeEA9B35695e54FFe0AaF9cFC521C9190d"
+  },
+  "dataContracts": [],
+  "sharedCreationCode": {
+    "BuilderWallet": ["BuilderFactory", "RiskEngine"]
+  },
+  "logicContracts": {
+    "BuilderFactory": {
+      "path": "./contracts/Builder.sol",
+      "deployment": {
+        "address": "0x00000000000008D41F2cd5bF144F61cEB3661F98",
+        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a11844a45ce33c51028b019714",
+        "nonce": 7
+      },
+      "optimizeRuns": 1,
+      "constructorArgs": [["0x0000000000000C99fD9F3234eDf924E436331569"], ["address"]]
+    },
+    "RiskEngine": {
+      "path": "./contracts/RiskEngine.sol",
+      "deployment": {
+        "address": "0x0000000000000e673aECBDB5f5fE5DFAf4a8e9Ac",
+        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a199a5e1fb2076b602ea79c489",
+        "nonce": 2
+      },
+      "optimizeRuns": 1,
+      "constructorArgs": [
+        [10000000, 10000000, "0x0000000000000C99fD9F3234eDf924E436331569", "@BuilderFactory"],
+        ["uint256", "uint256", "address", "address"]
+      ]
+    }
+  }
+}
