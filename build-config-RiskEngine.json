@@ -5,7 +5,10 @@
   },
   "dataContracts": [],
   "sharedCreationCode": {
-    "BuilderWallet": ["BuilderFactory", "RiskEngine"]
+    "BuilderWallet": {
+      "contracts": ["BuilderFactory", "RiskEngine"],
+      "initCodeHash": "0xeb1a92c570c29805c1a47de21c2623cbff81cd1b2017741cf4cb5e3de955f185"
+    }
   },
   "logicContracts": {
     "BuilderFactory": {

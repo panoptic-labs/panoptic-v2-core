@@ -13,7 +13,10 @@ the derived bytecode (and any keccak256 init-code hashes) match. Use the ``"shar
 key in the build config to declare such groups::
 
     "sharedCreationCode": {
-        "BuilderWallet": ["BuilderFactory", "RiskEngine"]
+        "BuilderWallet": {
+            "contracts": ["BuilderFactory", "RiskEngine"],
+            "initCodeHash": "0xeb1a92c5..."
+        }
     }
 
 When a group is present, the script searches each member independently, then clamps every
@@ -424,7 +427,8 @@ def main():
     shared_groups = config.get("sharedCreationCode", {})
     clamped = {}  # contract name → clamped runs
 
-    for group_label, members in shared_groups.items():
+    for group_label, group_value in shared_groups.items():
+        members = group_value["contracts"] if isinstance(group_value, dict) else group_value
         group_results = [r for r in results if r["contract"] in members]
         if not group_results:
             continue
