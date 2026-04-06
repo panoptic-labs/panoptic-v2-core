@@ -83,7 +83,7 @@ with open(CONFIG_PATH, "r") as file:
     config = json.load(file)
 
 # propagate metadata to environment
-if metadata is not None:
+if metadata is not None and config.get("dataContracts"):
     config["env"]["MD_PROPERTIES"] = list(
         map(lambda prop: str.encode(prop), metadata["properties"])
     )
@@ -109,7 +109,7 @@ if metadata is not None:
 
 deploymentInfo = {"dataContracts": [], "logicContracts": []}
 
-if metadata is not None:
+if metadata is not None and config.get("dataContracts"):
     for deployment, code in zip(config["dataContracts"], metadata["bytecodes"]):
         deploymentInfo["dataContracts"].append(
             {

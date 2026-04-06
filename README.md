@@ -248,6 +248,23 @@ python3 script/select_vanity_addresses.py --in-place
 
 By default, the selector reads from `script/vanity-addresses.tsv`, applies a rarity cap, and updates the split configs. Use `--freeze <file>` to protect already-deployed addresses from being reassigned. Review the diff before generating artifacts.
 
+Mine Panoptic pool deployment salts locally with the multithreaded Rust miner:
+
+```bash
+cargo run --release --manifest-path script/pool-address-miner/Cargo.toml -- \
+  --factory 0x<panoptic-factory-v4> \
+  --deployer 0x<caller> \
+  --risk-engine 0x<risk-engine> \
+  --pool-id 0x<pool-id> \
+  --salt 0 \
+  --until-target \
+  --min-target-rarity 6 \
+  --chunk-loops 5000000
+```
+
+You can also pass the full PoolKey instead of `--pool-id` with `--currency0`, `--currency1`, `--fee`, `--tick-spacing`, and `--hooks`. The local miner needs `--factory` in addition to the on-chain `minePoolAddress` inputs because the CREATE3 address depends on the factory address.
+Use the exact address that will be `msg.sender` at the factory as `--deployer`; if a Safe or another contract sends the transaction, mine against that contract address, not the signer EOA.
+
 Preview a build without running forge or writing files:
 
 ```bash

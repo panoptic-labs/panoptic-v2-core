@@ -97,8 +97,8 @@ contract DeployProtocol is Script {
         );
 
         PanopticGuardian panopticGuardian = new PanopticGuardian(
-            address(msg.sender),
-            address(msg.sender)
+            vm.envAddress("GUARDIAN_ADMIN"),
+            vm.envAddress("TREASURER")
         );
 
         BuilderFactory builderFactory = new BuilderFactory(address(panopticGuardian));
