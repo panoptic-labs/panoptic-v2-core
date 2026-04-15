@@ -11516,4 +11516,129 @@ contract Misctest is Test, PositionUtils {
         );
         assertGt(bIdxAfterSecondPoke, 0, "PokerB's index written by her own poke");
     }
+
+    function test_assertBlockRange_multicall() public {
+        vm.roll(100);
+
+        bytes[] memory calls = new bytes[](3);
+        // in range
+        calls[0] = abi.encodeWithSelector(
+            PanopticPoolV2.assertBlockRange.selector,
+            uint256(50),
+            uint256(150)
+        );
+        // lower boundary inclusive
+        calls[1] = abi.encodeWithSelector(
+            PanopticPoolV2.assertBlockRange.selector,
+            uint256(100),
+            uint256(100)
+        );
+        // upper boundary inclusive (open lower bound)
+        calls[2] = abi.encodeWithSelector(
+            PanopticPoolV2.assertBlockRange.selector,
+            uint256(0),
+            uint256(100)
+        );
+        pp.multicall(calls);
+
+        // below min
+        bytes[] memory failBelow = new bytes[](1);
+        failBelow[0] = abi.encodeWithSelector(
+            PanopticPoolV2.assertBlockRange.selector,
+            uint256(101),
+            uint256(200)
+        );
+        vm.expectRevert(PanopticPoolV2.Deadline.selector);
+        pp.multicall(failBelow);
+
+        // above max
+        bytes[] memory failAbove = new bytes[](1);
+        failAbove[0] = abi.encodeWithSelector(
+            PanopticPoolV2.assertBlockRange.selector,
+            uint256(0),
+            uint256(99)
+        );
+        vm.expectRevert(PanopticPoolV2.Deadline.selector);
+        pp.multicall(failAbove);
+    }
+
+    function test_assertTimestampRange_multicall() public {
+        vm.warp(1_500);
+
+        bytes[] memory calls = new bytes[](3);
+        // in range
+        calls[0] = abi.encodeWithSelector(
+            PanopticPoolV2.assertTimestampRange.selector,
+            uint256(1_000),
+            uint256(2_000)
+        );
+        // lower boundary inclusive
+        calls[1] = abi.encodeWithSelector(
+            PanopticPoolV2.assertTimestampRange.selector,
+            uint256(1_500),
+            uint256(1_500)
+        );
+        // upper boundary inclusive (open lower bound)
+        calls[2] = abi.encodeWithSelector(
+            PanopticPoolV2.assertTimestampRange.selector,
+            uint256(0),
+            uint256(1_500)
+        );
+        pp.multicall(calls);
+
+        // below min
+        bytes[] memory failBelow = new bytes[](1);
+        failBelow[0] = abi.encodeWithSelector(
+            PanopticPoolV2.assertTimestampRange.selector,
+            uint256(1_501),
+            uint256(2_000)
+        );
+        vm.expectRevert(PanopticPoolV2.Deadline.selector);
+        pp.multicall(failBelow);
+
+        // above max
+        bytes[] memory failAbove = new bytes[](1);
+        failAbove[0] = abi.encodeWithSelector(
+            PanopticPoolV2.assertTimestampRange.selector,
+            uint256(0),
+            uint256(1_499)
+        );
+        vm.expectRevert(PanopticPoolV2.Deadline.selector);
+        pp.multicall(failAbove);
+    }
+
+    function test_assertTickRange_multicall() public {
+        int24 currentTick = pp.getCurrentTick();
+
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeWithSelector(
+            PanopticPoolV2.assertTickRange.selector,
+            int24(currentTick - 10),
+            int24(currentTick + 10)
+        );
+        calls[1] = abi.encodeWithSelector(
+            PanopticPoolV2.assertTickRange.selector,
+            currentTick,
+            currentTick
+        );
+        pp.multicall(calls);
+
+        bytes[] memory failBelow = new bytes[](1);
+        failBelow[0] = abi.encodeWithSelector(
+            PanopticPoolV2.assertTickRange.selector,
+            int24(currentTick + 1),
+            int24(currentTick + 100)
+        );
+        vm.expectRevert(abi.encodeWithSelector(Errors.PriceBoundFail.selector, currentTick));
+        pp.multicall(failBelow);
+
+        bytes[] memory failAbove = new bytes[](1);
+        failAbove[0] = abi.encodeWithSelector(
+            PanopticPoolV2.assertTickRange.selector,
+            int24(currentTick - 100),
+            int24(currentTick - 1)
+        );
+        vm.expectRevert(abi.encodeWithSelector(Errors.PriceBoundFail.selector, currentTick));
+        pp.multicall(failAbove);
+    }
 }

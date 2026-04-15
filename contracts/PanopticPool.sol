@@ -88,6 +88,9 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
         PositionBalance balanceData
     );
 
+    /// @notice The current block number or timestamp has exceeded the caller-provided deadline
+    error Deadline();
+
     /*//////////////////////////////////////////////////////////////
                          IMMUTABLES & CONSTANTS
     //////////////////////////////////////////////////////////////*/
@@ -400,6 +403,32 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
     function assertMinCollateralValues(uint256 minValue0, uint256 minValue1) external view {
         (uint256 assets0, uint256 assets1) = getAssetsOf(msg.sender);
         if (assets0 < minValue0 || assets1 < minValue1) revert Errors.AccountInsolvent(0, 0);
+    }
+
+    /// @notice Reverts if the current block number is below `blockNumber`.
+    /// @dev Can be used for composable deadline checks with `multicall` (such as for RFQ order expiry).
+    /// @param minBlockNumber The earliest acceptable block number
+    /// @param maxBlockNumber The latest acceptable block number
+    function assertBlockRange(uint256 minBlockNumber, uint256 maxBlockNumber) external view {
+        if ((block.number < minBlockNumber) || (block.number > maxBlockNumber)) revert Deadline();
+    }
+
+    /// @notice Reverts if the current block timestamp is before `deadline`.
+    /// @dev Can be used for composable deadline checks with `multicall` (such as for RFQ order expiry).
+    /// @param minTimestamp The earliest acceptable block timestamp
+    /// @param maxTimestamp The latest acceptable block timestamp
+    function assertTimestampRange(uint256 minTimestamp, uint256 maxTimestamp) external view {
+        if ((block.timestamp < minTimestamp) || (block.timestamp > maxTimestamp)) revert Deadline();
+    }
+
+    /// @notice Reverts if the current pool tick is outside the provided range.
+    /// @dev Can be used for composable price checks with `multicall` (such as to verify quoted price is still valid).
+    /// @param minTick The minimum acceptable tick (inclusive)
+    /// @param maxTick The maximum acceptable tick (inclusive)
+    function assertTickRange(int24 minTick, int24 maxTick) external view {
+        int24 currentTick = getCurrentTick();
+        if (currentTick < minTick || currentTick > maxTick)
+            revert Errors.PriceBoundFail(currentTick);
     }
 
     /// @notice Get the balance of underlying collateral tokens (token0 and token1) held by an account.
