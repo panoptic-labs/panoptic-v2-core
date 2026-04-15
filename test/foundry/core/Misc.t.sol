@@ -11435,4 +11435,85 @@ contract Misctest is Test, PositionUtils {
 
         console2.log("Net liquidator value (token1 terms):", totalGain1 + token0InToken1Terms);
     }
+
+    /// @notice Direct call to the onlyPanopticPool overload from a non-PP caller must revert.
+    function test_Fail_AccrueInterest_OnlyPanopticPool() public {
+        vm.stopPrank();
+        vm.startPrank(Alice);
+        vm.expectRevert(Errors.NotPanopticPool.selector);
+        ct0.accrueInterest(Alice);
+        vm.expectRevert(Errors.NotPanopticPool.selector);
+        ct1.accrueInterest(Alice);
+        vm.stopPrank();
+    }
+
+    /// @notice pokeOracle must accrue interest for the *caller*, not for address(pp).
+    /// @dev Pre-fix, _accrueInterests() called accrueInterest() with msg.sender == address(pp),
+    /// which updated s_interestState[address(pp)] instead of the user's slot.
+    function test_Success_PokeOracle_AccruesUserInterest() public {
+        address Newbie = makeAddr("Newbie");
+
+        // Fresh address: never deposited, never accrued — both index slots are 0.
+        (int128 newbieIdxBefore0, ) = ct0.interestState(Newbie);
+        (int128 newbieIdxBefore1, ) = ct1.interestState(Newbie);
+        assertEq(newbieIdxBefore0, 0, "pre: newbie idx0 zero");
+        assertEq(newbieIdxBefore1, 0, "pre: newbie idx1 zero");
+
+        // Pre-fix sentinel: address(pp) must not be the entity whose state advances.
+        (int128 ppIdxBefore0, ) = ct0.interestState(address(pp));
+        (int128 ppIdxBefore1, ) = ct1.interestState(address(pp));
+
+        vm.warp(block.timestamp + 1 days);
+        vm.roll(block.number + 1);
+
+        vm.stopPrank();
+        vm.startPrank(Newbie);
+        pp.pokeOracle();
+        vm.stopPrank();
+
+        (int128 newbieIdxAfter0, ) = ct0.interestState(Newbie);
+        (int128 newbieIdxAfter1, ) = ct1.interestState(Newbie);
+        assertGt(newbieIdxAfter0, 0, "post: newbie idx0 advanced (ct0)");
+        assertGt(newbieIdxAfter1, 0, "post: newbie idx1 advanced (ct1)");
+
+        (int128 ppIdxAfter0, ) = ct0.interestState(address(pp));
+        (int128 ppIdxAfter1, ) = ct1.interestState(address(pp));
+        assertEq(ppIdxAfter0, ppIdxBefore0, "post: pp idx0 untouched");
+        assertEq(ppIdxAfter1, ppIdxBefore1, "post: pp idx1 untouched");
+    }
+
+    /// @notice pokeOracle accrues only the caller; another user's stored index stays unchanged.
+    function test_Success_PokeOracle_OnlyAccruesCaller() public {
+        address PokerA = makeAddr("PokerA");
+        address PokerB = makeAddr("PokerB");
+
+        // Have PokerA poke first to seed her index to whatever the global is.
+        vm.stopPrank();
+        vm.startPrank(PokerA);
+        pp.pokeOracle();
+        vm.stopPrank();
+
+        (int128 aIdxAfterFirstPoke, ) = ct0.interestState(PokerA);
+        (int128 bIdxAfterFirstPoke, ) = ct0.interestState(PokerB);
+        assertEq(bIdxAfterFirstPoke, 0, "PokerB untouched by PokerA's poke");
+
+        // Advance time so the global borrow index has room to move further,
+        // then PokerB pokes — only her slot should be written.
+        vm.warp(block.timestamp + 1 days);
+        vm.roll(block.number + 1);
+
+        vm.startPrank(PokerB);
+        pp.pokeOracle();
+        vm.stopPrank();
+
+        (int128 aIdxAfterSecondPoke, ) = ct0.interestState(PokerA);
+        (int128 bIdxAfterSecondPoke, ) = ct0.interestState(PokerB);
+
+        assertEq(
+            aIdxAfterSecondPoke,
+            aIdxAfterFirstPoke,
+            "PokerA's stored index unchanged after PokerB poked"
+        );
+        assertGt(bIdxAfterSecondPoke, 0, "PokerB's index written by her own poke");
+    }
 }

@@ -888,6 +888,13 @@ contract CollateralTrackerV2 is Clone, ERC20Minimal, Multicall, TransientReentra
         _accrueInterest(msg.sender, DONOT_SKIP_INTEREST);
     }
 
+    /// @notice Accrues protocol-wide interest for the calling user
+    /// @dev Updates global interest state and settles any outstanding interest for account owner (can only be called from the PanopticPool)
+    /// @param owner the account which calls accrue interest
+    function accrueInterest(address owner) external nonReentrant onlyPanopticPool {
+        _accrueInterest(owner, DONOT_SKIP_INTEREST);
+    }
+
     /// @notice Accrues protocol-wide interest and settles a specific user's interest.
     /// @dev This function should be called before any user action that affects their borrow balance.
     /// @param owner the account which calls accrue interest

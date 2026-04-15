@@ -1650,10 +1650,10 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
     }
 
     /// @notice Internal function that calls CollateralTracker to accrue the protocol-wide interest.
-    /// @dev since the caller is PanopticPool, that call will just update the unrealizedGlobalInterest, currentBorrowIndex, and currentEpoch
+    /// @dev That call will pay any outstanding interest by the caller and update the unrealizedGlobalInterest, currentBorrowIndex, and currentEpoch
     function _accrueInterests() internal {
-        collateralToken0().accrueInterest();
-        collateralToken1().accrueInterest();
+        _getCt(true).accrueInterest(msg.sender);
+        _getCt(false).accrueInterest(msg.sender);
     }
 
     /// @notice Internal function that calls CollateralTracker to increase the share balance of a user by `2^248 - 1` without updating the total supply.
