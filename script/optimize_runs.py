@@ -7,6 +7,21 @@ and reports the highest value whose deployed runtime bytecode fits in 24,576 byt
 The report also includes total initcode size, including ABI-encoded constructor arguments,
 so large deployment payloads remain visible alongside runtime size.
 
+Contracts that share embedded creation code (e.g. BuilderFactory and RiskEngine both embed
+``type(BuilderWallet).creationCode``) must be compiled with the same optimizer runs so that
+the derived bytecode (and any keccak256 init-code hashes) match. Use the ``"sharedCreationCode"``
+key in the build config to declare such groups::
+
+    "sharedCreationCode": {
+        "BuilderWallet": {
+            "contracts": ["BuilderFactory", "RiskEngine"],
+            "initCodeHash": "0xeb1a92c5..."
+        }
+    }
+
+When a group is present, the script searches each member independently, then clamps every
+member to the **minimum** optimal runs found in the group.
+
 Usage:
     python3 script/optimize_runs.py build-config-v3.json
     python3 script/optimize_runs.py build-config-v4.json --max-runs 20000000 --margin 256
@@ -109,6 +124,9 @@ def _abi_encode(types, values):
 def _inject_metadata_env(config):
     metadata_path = Path("metadata/out/MetadataPackage.json")
     if not metadata_path.exists():
+        return
+
+    if not config.get("dataContracts"):
         return
 
     metadata = json.loads(metadata_path.read_text())
@@ -405,6 +423,50 @@ def main():
                 }
             )
 
+    # ── Clamp shared-creation-code groups to the minimum optimal runs ──
+    shared_groups = config.get("sharedCreationCode", {})
+    clamped = {}  # contract name → clamped runs
+
+    for group_label, group_value in shared_groups.items():
+        members = group_value["contracts"] if isinstance(group_value, dict) else group_value
+        group_results = [r for r in results if r["contract"] in members]
+        if not group_results:
+            continue
+
+        group_optima = []
+        for r in group_results:
+            sr = r["searchResult"]
+            if sr.kind == "too_large":
+                print(
+                    f"\033[91msharedCreationCode group '{group_label}': "
+                    f"{r['contract']} exceeds runtime limit even at runs=1\033[0m"
+                )
+            elif sr.runs is not None:
+                group_optima.append(sr.runs)
+
+        if not group_optima:
+            continue
+
+        min_runs = min(group_optima)
+        needs_clamp = any(
+            r["searchResult"].runs is not None and r["searchResult"].runs != min_runs
+            for r in group_results
+        )
+
+        if needs_clamp:
+            print(
+                f"\033[93msharedCreationCode group '{group_label}': "
+                f"clamping {[r['contract'] for r in group_results]} "
+                f"to min optimal runs = {min_runs}\033[0m",
+                flush=True,
+            )
+            for r in group_results:
+                sr = r["searchResult"]
+                if sr.runs is not None and sr.runs != min_runs:
+                    clamped[r["contract"]] = min_runs
+                    r["searchResult"] = SearchResult("clamped", min_runs, sr.measurement)
+            print()
+
     print("\033[95m" + "=" * 122 + "\033[0m")
     print(
         f"{'Contract':<32} {'Current':>10} {'Result':>14} {'Runtime':>10} "
@@ -433,13 +495,15 @@ def main():
             if search_result.kind == "lower_bound":
                 result_display = f">= {search_result.runs}"
                 delta = ""
+            elif search_result.kind == "clamped":
+                result_display = str(search_result.runs)
+                delta = "CLAMPED"
             else:
                 result_display = str(search_result.runs)
-                delta = (
-                    "CHANGE"
-                    if result["currentRuns"] != search_result.runs
-                    else ""
-                )
+                if result["currentRuns"] != search_result.runs:
+                    delta = "CHANGE"
+                else:
+                    delta = ""
 
             runtime_display = f"{measurement.runtime_size}B"
             initcode_display = f"{measurement.initcode_size}B"
