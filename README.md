@@ -335,3 +335,11 @@ The primary license for Panoptic V2 is the Business Source License 1.1 (`BUSL-1.
 - [Tests](./test/) and some [scripts](./scripts) are unlicensed
 
 Each of these files states their license type.
+
+## 💰 Bounty Contribution
+
+- **Task:** Pre-contest audit triage for next Panoptic C4 contest — $500, 5-day turnaround
+- **Reward:** $1500
+- **Source:** GitHub-Paid
+- **Date:** 2026-04-27
+
