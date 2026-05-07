@@ -6,6 +6,7 @@ import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
 import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
 import {PanopticGuardian} from "@contracts/PanopticGuardian.sol";
 import {BuilderFactory} from "@contracts/Builder.sol";
+import {OraclePack} from "@types/OraclePack.sol";
 
 interface IERC20Like {
     function balanceOf(address account) external view returns (uint256);
@@ -149,6 +150,7 @@ contract PartialCollectRiskEngine {
 
 contract MockPanopticPool {
     IRiskEngine internal immutable RISK_ENGINE;
+    uint8 internal _lockMode;
 
     constructor(IRiskEngine riskEngine_) {
         RISK_ENGINE = riskEngine_;
@@ -157,10 +159,19 @@ contract MockPanopticPool {
     function riskEngine() external view returns (IRiskEngine) {
         return RISK_ENGINE;
     }
+
+    function setLockMode(uint8 mode) external {
+        _lockMode = mode;
+    }
+
+    function getOracleTicks() external view returns (int24, int24, int24, int24, OraclePack) {
+        return (int24(0), int24(0), int24(0), int24(0), OraclePack.wrap(uint256(_lockMode) << 118));
+    }
 }
 
 contract GuardianTest is Test {
     event TokensCollected(address indexed token, address indexed recipient, uint256 amount);
+    event UnlockRequested(PanopticPoolV2 indexed pool, uint256 eta);
 
     address internal constant GUARDIAN_ADMIN = address(0xA11CE);
     address internal constant TREASURER = address(0xB0B);
@@ -184,6 +195,7 @@ contract GuardianTest is Test {
         MockPanopticPool foreignPool = new MockPanopticPool(
             IRiskEngine(address(foreignRiskEngine))
         );
+        foreignPool.setLockMode(3);
 
         vm.prank(GUARDIAN_ADMIN);
         guardian.requestUnlock(PanopticPoolV2(address(foreignPool)));
@@ -249,6 +261,7 @@ contract GuardianTest is Test {
             BuilderFactory(address(factory))
         );
         recognizedRiskEngine.setFeeRecipient(11, wallet);
+        recognizedPool.setLockMode(3);
 
         vm.prank(GUARDIAN_ADMIN);
         guardian.requestUnlock(PanopticPoolV2(address(recognizedPool)));
@@ -270,6 +283,7 @@ contract GuardianTest is Test {
             BuilderFactory(address(factory))
         );
         recognizedRiskEngine.setFeeRecipient(11, wallet);
+        recognizedPool.setLockMode(3);
 
         vm.prank(GUARDIAN_ADMIN);
         guardian.requestUnlock(PanopticPoolV2(address(recognizedPool)));
@@ -289,6 +303,8 @@ contract GuardianTest is Test {
     }
 
     function testLockPoolCancelsPendingUnlock() external {
+        recognizedPool.setLockMode(3);
+
         vm.prank(GUARDIAN_ADMIN);
         guardian.requestUnlock(PanopticPoolV2(address(recognizedPool)));
 
@@ -341,5 +357,75 @@ contract GuardianTest is Test {
 
         assertEq(token.balanceOf(address(partialCollectRiskEngine)), 21);
         assertEq(token.balanceOf(recipient), 21);
+    }
+
+    function testRequestUnlockRevertsWhenPoolNotLocked() external {
+        vm.prank(GUARDIAN_ADMIN);
+        vm.expectRevert(PanopticGuardian.PoolNotLocked.selector);
+        guardian.requestUnlock(PanopticPoolV2(address(recognizedPool)));
+    }
+
+    function testRequestUnlockSucceedsWhenPoolLocked() external {
+        recognizedPool.setLockMode(3);
+
+        uint256 expectedEta = block.timestamp + guardian.UNLOCK_DELAY();
+
+        vm.expectEmit(true, false, false, true, address(guardian));
+        emit UnlockRequested(PanopticPoolV2(address(recognizedPool)), expectedEta);
+
+        vm.prank(GUARDIAN_ADMIN);
+        guardian.requestUnlock(PanopticPoolV2(address(recognizedPool)));
+
+        assertEq(guardian.unlockEta(PanopticPoolV2(address(recognizedPool))), expectedEta);
+    }
+
+    function testRequestUnlockSucceedsForAnyNonZeroLockMode(uint8 mode) external {
+        mode = uint8(bound(uint256(mode), 1, 3));
+        recognizedPool.setLockMode(mode);
+
+        vm.prank(GUARDIAN_ADMIN);
+        guardian.requestUnlock(PanopticPoolV2(address(recognizedPool)));
+
+        assertEq(
+            guardian.unlockEta(PanopticPoolV2(address(recognizedPool))),
+            block.timestamp + guardian.UNLOCK_DELAY()
+        );
+    }
+
+    function testRequestUnlockRevertsNotGuardianAdminTakesPrecedence() external {
+        recognizedPool.setLockMode(0);
+
+        vm.prank(address(0xBADBAD));
+        vm.expectRevert(PanopticGuardian.NotGuardianAdmin.selector);
+        guardian.requestUnlock(PanopticPoolV2(address(recognizedPool)));
+    }
+
+    function testRequestUnlockRevertsUnlockAlreadyPending() external {
+        recognizedPool.setLockMode(3);
+
+        vm.prank(GUARDIAN_ADMIN);
+        guardian.requestUnlock(PanopticPoolV2(address(recognizedPool)));
+
+        vm.prank(GUARDIAN_ADMIN);
+        vm.expectRevert(PanopticGuardian.UnlockAlreadyPending.selector);
+        guardian.requestUnlock(PanopticPoolV2(address(recognizedPool)));
+    }
+
+    function testRequestUnlockRevertsPoolNotLockedAfterPendingCleared() external {
+        recognizedPool.setLockMode(3);
+
+        vm.prank(GUARDIAN_ADMIN);
+        guardian.requestUnlock(PanopticPoolV2(address(recognizedPool)));
+
+        vm.warp(block.timestamp + guardian.UNLOCK_DELAY());
+
+        vm.prank(GUARDIAN_ADMIN);
+        guardian.executeUnlock(PanopticPoolV2(address(recognizedPool)));
+
+        recognizedPool.setLockMode(0);
+
+        vm.prank(GUARDIAN_ADMIN);
+        vm.expectRevert(PanopticGuardian.PoolNotLocked.selector);
+        guardian.requestUnlock(PanopticPoolV2(address(recognizedPool)));
     }
 }

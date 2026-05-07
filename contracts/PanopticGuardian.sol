@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 import {PanopticPoolV2} from "./PanopticPool.sol";
 import {IRiskEngine} from "./interfaces/IRiskEngine.sol";
 import {BuilderFactory, BuilderWallet} from "./Builder.sol";
+import {OraclePack} from "@types/OraclePack.sol";
 
 /// @notice Minimal ERC20 balance query interface.
 interface IERC20BalanceOf {
@@ -39,6 +40,9 @@ contract PanopticGuardian {
 
     /// @notice Reverts when an unlock request already exists for the pool.
     error UnlockAlreadyPending();
+
+    /// @notice Reverts when an unlock request is done on a pool that's not locked.
+    error PoolNotLocked();
 
     /// @notice Reverts when the Guardian is not the builder factory admin.
     error NotFactoryAdmin();
@@ -175,6 +179,9 @@ contract PanopticGuardian {
     function requestUnlock(PanopticPoolV2 pool) external onlyGuardianAdmin {
         _getRiskEngine(pool);
         if (unlockEta[pool] != 0) revert UnlockAlreadyPending();
+
+        (, , , , OraclePack oraclePack) = pool.getOracleTicks();
+        if (oraclePack.lockMode() == 0) revert PoolNotLocked();
 
         uint256 eta = block.timestamp + UNLOCK_DELAY;
         unlockEta[pool] = eta;
