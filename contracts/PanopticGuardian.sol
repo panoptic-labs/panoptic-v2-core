@@ -234,7 +234,6 @@ contract PanopticGuardian {
         BuilderFactory builderFactory
     ) external onlyGuardianAdmin returns (address wallet) {
         if (builderCode == 0 || builderCode > type(uint48).max) revert InvalidBuilderCode();
-        if (builderAdmin == address(0)) revert ZeroAddress();
         if (builderFactory.OWNER() != address(this)) revert NotFactoryAdmin();
 
         // casting to uint48 is safe because builderCode is range-checked above
