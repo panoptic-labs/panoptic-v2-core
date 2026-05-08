@@ -515,32 +515,60 @@ contract RiskEngine {
         int256 bonus1;
         // keep everything checked to catch any under/overflow or miscastings
         {
-            // compute bonus as min(collateralBalance*MAX_BONUS/DECIMALS, required-collateralBalance), clamped to exclude loan-inflated balance
+            // compute bonus as min(cross-token loan-net term, cross-token deficit), then split back to per-token bonuses by each token's share of the total requirement
             {
-                uint256 bal0 = tokenData0.rightSlot();
-                uint256 bal1 = tokenData1.rightSlot();
-                uint256 req0 = tokenData0.leftSlot();
-                uint256 req1 = tokenData1.leftSlot();
-
-                bonus0 = Math
-                    .min((bal0 * MAX_BONUS) / DECIMALS, req0 > bal0 ? req0 - bal0 : 0)
-                    .toInt256();
-                bonus1 = Math
-                    .min((bal1 * MAX_BONUS) / DECIMALS, req1 > bal1 ? req1 - bal1 : 0)
-                    .toInt256();
-
-                uint256 loan0 = loanAmounts.rightSlot();
-                uint256 loan1 = loanAmounts.leftSlot();
-                // Invariant: bonus/MAX_BONUS + loanAmounts <= bal  (all unsigned additions, no underflow)
-                if (bonus0 > 0 && (DECIMALS * uint256(bonus0)) / MAX_BONUS + loan0 > bal0) {
-                    bonus0 = bal0 >= loan0
-                        ? int256((MAX_BONUS * (bal0 - loan0)) / DECIMALS)
-                        : int256(0);
+                // fold both tokens' balance and requirement into a single cross-token unit (the lowest-priced token)
+                // evaluate at TWAP price to maintain consistency with solvency calculations
+                (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.getCrossBalances(
+                    tokenData0,
+                    tokenData1,
+                    atSqrtPriceX96
+                );
+                uint256 bonusCross;
+                {
+                    // reuse getCrossBalances to convert loans to the cross-token unit: pack each loan into the balance slot of a fake tokenData word (req=0), so only the balance-side conversion is exercised
+                    (uint256 loansCross, ) = PanopticMath.getCrossBalances(
+                        LeftRightUnsigned.wrap(loanAmounts.rightSlot()),
+                        LeftRightUnsigned.wrap(loanAmounts.leftSlot()),
+                        atSqrtPriceX96
+                    );
+                    // Bonus base = balanceCross - loansCross, floored at MAINT_MARGIN_RATE * loansCross
+                    // to keep a non-zero incentive once the user erodes past their loan. Safe because
+                    // the mint check (balance >= (1 + MMR) * loans) caps loans at deposit/(1 + MMR),
+                    // so the floor is bounded by at-mint commitment, not runtime loan inflation.
+                    bonusCross = Math.min(
+                        ((MAX_BONUS *
+                            (Math.max(
+                                balanceCross,
+                                ((DECIMALS + MAINT_MARGIN_RATE) * loansCross) / DECIMALS
+                            ) - loansCross)) / DECIMALS),
+                        thresholdCross + loansCross > balanceCross
+                            ? thresholdCross + loansCross - balanceCross
+                            : 0
+                    );
                 }
-                if (bonus1 > 0 && (DECIMALS * uint256(bonus1)) / MAX_BONUS + loan1 > bal1) {
-                    bonus1 = bal1 >= loan1
-                        ? int256((MAX_BONUS * (bal1 - loan1)) / DECIMALS)
-                        : int256(0);
+                // `bonusCross` and `thresholdCross` are returned in terms of the lowest-priced token
+                if (atSqrtPriceX96 < Constants.FP96) {
+                    // required0 / (required0 + token0(required1))
+                    uint256 requiredRatioX128 = Math.mulDiv(
+                        tokenData0.leftSlot(),
+                        2 ** 128,
+                        thresholdCross
+                    );
+                    uint256 bonus0U = Math.mulDiv128(bonusCross, requiredRatioX128);
+                    bonus0 = int256(bonus0U);
+
+                    bonus1 = int256(PanopticMath.convert0to1(bonusCross - bonus0U, atSqrtPriceX96));
+                } else {
+                    // required1 / (token1(required0) + required1)
+                    uint256 requiredRatioX128 = Math.mulDiv(
+                        tokenData1.leftSlot(),
+                        2 ** 128,
+                        thresholdCross
+                    );
+                    uint256 bonus1U = Math.mulDiv128(bonusCross, requiredRatioX128);
+                    bonus1 = int256(bonus1U);
+                    bonus0 = int256(PanopticMath.convert1to0(bonusCross - bonus1U, atSqrtPriceX96));
                 }
             }
 

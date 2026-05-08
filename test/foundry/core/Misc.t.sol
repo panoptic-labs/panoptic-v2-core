@@ -1811,6 +1811,37 @@ contract Misctest is Test, PositionUtils {
         assertEq(manager.balanceOf(address(pp), 0), 103 ether - 1, "man bal");
     }
 
+    function test_MulticallNativeDepositCannotReuseOuterMsgValue() public {
+        token0 = ERC20S(address(0));
+
+        poolKey = PoolKey(
+            Currency.wrap(address(token0)),
+            Currency.wrap(address(token1)),
+            100,
+            1,
+            IHooks(address(0))
+        );
+
+        manager.initialize(poolKey, 2 ** 96);
+
+        pp = PanopticPoolV2(address(factory.deployNewPool(poolKey, re, uint96(block.timestamp))));
+        ct0 = pp.collateralToken0();
+
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeWithSelector(CollateralTrackerV2.deposit.selector, 10 ether, Alice);
+        calls[1] = abi.encodeWithSelector(CollateralTrackerV2.deposit.selector, 10 ether, Alice);
+
+        vm.deal(Alice, 10 ether);
+        vm.startPrank(Alice);
+        vm.expectRevert();
+        ct0.multicall{value: 10 ether}(calls);
+        vm.stopPrank();
+
+        assertEq(ct0.balanceOf(Alice), 0, "shares minted");
+        assertEq(ct0.convertToAssets(ct0.balanceOf(Alice)), 0, "asset claim minted");
+        assertEq(manager.balanceOf(address(pp), 0), 0, "pool manager balance");
+    }
+
     // Test that risk-partnered positions can be minted/burned succesfully
     function test_success_MintBurnStraddle() public {
         swapperc = new SwapperC();
@@ -11220,5 +11251,188 @@ contract Misctest is Test, PositionUtils {
                 "long position net premia left slot should be negated"
             );
         }
+    }
+
+    function test_Success_loanBonusClamp_crossCollateralized_zeroBonus() public {
+        // Bob: withdraw setUp deposits, redeposit ONLY token1
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+        token1.approve(address(ct1), 1_000_000);
+        ct1.deposit(1_000_000, Bob);
+
+        // Open a token0 loan (short put), 5x deposit
+        poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+        poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, 0, 0));
+        mintOptions(
+            pp,
+            $posIdList,
+            5_000_000,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        // Pump token0 price (tick 0 to 10000, ~2.72x), past the liquidation edge
+        vm.startPrank(Swapper);
+        swapperc.mint(uniPool, -800000, 800000, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -800000, 800000, 10 ** 18);
+        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(10000));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10000));
+        for (uint256 j = 0; j < 10000; ++j) {
+            vm.warp(block.timestamp + 3600);
+            vm.roll(block.number + 10);
+            pp.pokeOracle();
+        }
+
+        // Liquidate as Alice
+        vm.startPrank(Alice);
+        deal(ct0.asset(), Alice, 100_000_000);
+        deal(ct1.asset(), Alice, 100_000_000);
+        IERC20Partial(ct0.asset()).approve(address(ct0), 100_000_000);
+        IERC20Partial(ct1.asset()).approve(address(ct1), 100_000_000);
+
+        uint256 ctBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        uint256 ctBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+        uint256 walletBefore0 = token0.balanceOf(Alice);
+        uint256 walletBefore1 = token1.balanceOf(Alice);
+
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+        console2.log("walletBefore0, walletBefore1", walletBefore0, walletBefore1);
+        console2.log(
+            "token0.balanceOf(Alice), token1.balanceOf(Alice)",
+            token0.balanceOf(Alice),
+            token1.balanceOf(Alice)
+        );
+
+        console2.log(
+            "net0",
+            int256(ct0.convertToAssets(token0.balanceOf(Alice))) -
+                int256(ct0.convertToAssets(walletBefore0))
+        );
+        console2.log(
+            "net1",
+            int256(ct1.convertToAssets(token1.balanceOf(Alice))) -
+                int256(ct1.convertToAssets(walletBefore1))
+        );
+
+        int256 totalGain0 = (int256(ct0.convertToAssets(ct0.balanceOf(Alice))) -
+            int256(ctBefore0)) + (int256(token0.balanceOf(Alice)) - int256(walletBefore0));
+        int256 totalGain1 = (int256(ct1.convertToAssets(ct1.balanceOf(Alice))) -
+            int256(ctBefore1)) + (int256(token1.balanceOf(Alice)) - int256(walletBefore1));
+
+        (, , , , oraclePack) = pp.getOracleTicks();
+        twapTick = re.twapEMA(oraclePack);
+        uint160 oracleSqrtPrice = Math.getSqrtRatioAtTick(int24(twapTick));
+
+        int256 token0InToken1Terms = totalGain0 >= 0
+            ? int256(PanopticMath.convert0to1(uint256(totalGain0), oracleSqrtPrice))
+            : -int256(PanopticMath.convert0to1(uint256(-totalGain0), oracleSqrtPrice));
+
+        console2.log("totalGain0", totalGain0);
+        console2.log("totalGain1", totalGain1);
+        console2.log("token0InToken1Terms", token0InToken1Terms);
+
+        console2.log("Net liquidator value (token1 terms):", totalGain1 + token0InToken1Terms);
+    }
+
+    function test_Success_loanBonusClamp_crossCollateralized_put_zeroBonus() public {
+        // Bob: withdraw setUp deposits, redeposit ONLY token1
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+        token1.approve(address(ct1), 1_000_000);
+        ct1.deposit(1_000_000, Bob);
+
+        // Open a token0 loan (short put), 5x deposit
+        poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+        poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, 0, 0).addLeg(
+                1,
+                100,
+                0,
+                0,
+                0,
+                1,
+                200,
+                2
+            )
+        );
+        mintOptions(
+            pp,
+            $posIdList,
+            50_000,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        // Pump token0 price (tick 0 to 10000, ~2.72x), past the liquidation edge
+        vm.startPrank(Swapper);
+        swapperc.mint(uniPool, -800000, 800000, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -800000, 800000, 10 ** 18);
+        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(10000));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10000));
+        for (uint256 j = 0; j < 10000; ++j) {
+            vm.warp(block.timestamp + 3600);
+            vm.roll(block.number + 10);
+            pp.pokeOracle();
+        }
+
+        // Liquidate as Alice
+        vm.startPrank(Alice);
+        deal(ct0.asset(), Alice, 100_000_000);
+        deal(ct1.asset(), Alice, 100_000_000);
+        IERC20Partial(ct0.asset()).approve(address(ct0), 100_000_000);
+        IERC20Partial(ct1.asset()).approve(address(ct1), 100_000_000);
+
+        uint256 ctBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        uint256 ctBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+        uint256 walletBefore0 = token0.balanceOf(Alice);
+        uint256 walletBefore1 = token1.balanceOf(Alice);
+
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+        console2.log("walletBefore0, walletBefore1", walletBefore0, walletBefore1);
+        console2.log(
+            "token0.balanceOf(Alice), token1.balanceOf(Alice)",
+            token0.balanceOf(Alice),
+            token1.balanceOf(Alice)
+        );
+
+        console2.log(
+            "net0",
+            int256(ct0.convertToAssets(token0.balanceOf(Alice))) -
+                int256(ct0.convertToAssets(walletBefore0))
+        );
+        console2.log(
+            "net1",
+            int256(ct1.convertToAssets(token1.balanceOf(Alice))) -
+                int256(ct1.convertToAssets(walletBefore1))
+        );
+
+        int256 totalGain0 = (int256(ct0.convertToAssets(ct0.balanceOf(Alice))) -
+            int256(ctBefore0)) + (int256(token0.balanceOf(Alice)) - int256(walletBefore0));
+        int256 totalGain1 = (int256(ct1.convertToAssets(ct1.balanceOf(Alice))) -
+            int256(ctBefore1)) + (int256(token1.balanceOf(Alice)) - int256(walletBefore1));
+
+        (, , , , oraclePack) = pp.getOracleTicks();
+        twapTick = re.twapEMA(oraclePack);
+        uint160 oracleSqrtPrice = Math.getSqrtRatioAtTick(int24(twapTick));
+
+        int256 token0InToken1Terms = totalGain0 >= 0
+            ? int256(PanopticMath.convert0to1(uint256(totalGain0), oracleSqrtPrice))
+            : -int256(PanopticMath.convert0to1(uint256(-totalGain0), oracleSqrtPrice));
+
+        console2.log("totalGain0", totalGain0);
+        console2.log("totalGain1", totalGain1);
+        console2.log("token0InToken1Terms", token0InToken1Terms);
+
+        console2.log("Net liquidator value (token1 terms):", totalGain1 + token0InToken1Terms);
     }
 }
