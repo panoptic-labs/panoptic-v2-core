@@ -555,8 +555,10 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
     /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
     /// @param includePendingPremium If true, include premium that is owed to the user but has not yet settled; if false, only include premium that is available to collect
     /// @param atTick The current tick of the Uniswap pool
+    /// @param perPositionPremia If true, compute and return per-position net premia; if false, `netPremiaPerPosition` is empty
     /// @return shortLongPremium The total amount of premium owed (which may `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
     /// @return balances A list of balances and pool utilization for each position, of the form `[[tokenId0, balances0], [tokenId1, balances1], ...]`
+    /// @return netPremiaPerPosition The net premia (short minus long) per position (token0: right slot, token1: left slot), empty if `perPositionPremia` is false
     function _calculateAccumulatedPremia(
         address user,
         TokenId[] calldata positionIdList,
@@ -973,6 +975,9 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
         );
     }
 
+    /// @notice Return the collateral tracker for the given token.
+    /// @param isCollateralToken0 True for token0, false for token1
+    /// @return The corresponding CollateralTracker
     function _getCt(bool isCollateralToken0) internal pure returns (CollateralTrackerV2) {
         return isCollateralToken0 ? collateralToken0() : collateralToken1();
     }
@@ -1861,6 +1866,8 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
     /// @notice Force the exercise of a single position. Exercisor will have to pay a fee to the force exercisee.
     /// @param account Address of the distressed account
     /// @param tokenId The position to be force exercised
+    /// @param twapTick The oracle TWAP tick used for collateral and exercise fee calculations
+    /// @param currentTick The current tick of the Uniswap pool
     function _forceExercise(
         address account,
         TokenId tokenId,
@@ -1915,6 +1922,9 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
         emit ForcedExercised(msg.sender, account, tokenId, exerciseFees);
     }
 
+    /// @notice Settle refund amounts with an account and revoke any remaining delegated virtual shares.
+    /// @param account The account to refund and revoke
+    /// @param refundAmounts The refund deltas for token0 (right slot) and token1 (left slot)
     function _refundRevoke(address account, LeftRightSigned refundAmounts) internal {
         // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
         _refund(account, refundAmounts.rightSlot(), CALL_CT0);
@@ -2185,24 +2195,6 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
         return s_positionsHash[user] >> 248;
     }
 
-    /// @notice Get the `tokenId` position data for `user`.
-    /// @param user The account that owns `tokenId`
-    /// @param tokenId The position to query
-    /// @return whether a swap happened at mint
-    /// @return `block.number` at mint
-    /// @return `block.timestamp` at mint
-    /// @return `currentTick` at mint
-    /// @return Utilization of token0 at mint
-    /// @return Utilization of token1 at mint
-    /// @return Size of the position
-    /*
-    function positionData(
-        address user,
-        TokenId tokenId
-    ) external view returns (bool, uint256, uint256, int24, int256, int256, uint128) {
-        return s_positionBalance[user][tokenId].unpackAll();
-    }
-    */
     /// @notice Get the oracle price used to check solvency in liquidations.
     /// @return twapTick The current oracle price used to check solvency in liquidations
     function getTWAP() public view returns (int24 twapTick) {
@@ -2416,6 +2408,11 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
         }
     }
 
+    /// @notice Query the SFPM for the net and removed liquidity of this pool's account in a given chunk.
+    /// @param tickLower The lower tick of the chunk
+    /// @param tickUpper The upper tick of the chunk
+    /// @param tokenType The token type (0 or 1) of the chunk
+    /// @return accountLiquidities Net liquidity (right slot) and removed liquidity (left slot)
     function _getLiquiditiesFromSFPM(
         int24 tickLower,
         int24 tickUpper,

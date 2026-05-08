@@ -442,10 +442,10 @@ contract CollateralTrackerV2 is Clone, ERC20Minimal, Multicall, TransientReentra
     }
 
     /// @notice Uniswap V4 unlock callback implementation.
-    /// @dev Parameters are `(address account, int256 delta, uint256 valueOrigin)`.
     /// @dev Wraps/unwraps `delta` amount of the underlying asset and transfers to/from the Panoptic Pool.
-    /// @param data The encoded data containing the account, delta, and valueOrigin
-    /// @return This function returns no data
+    /// @param data ABI-encoded `(address account, int256 delta, uint256 valueOrigin)` where `account` is the depositor/recipient,
+    /// `delta` is the signed token amount to settle (positive = transfer in, negative = transfer out), and `valueOrigin` is `msg.value` forwarded for native ETH settlements
+    /// @return Empty bytes (no return data)
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(poolManager())) revert Errors.UnauthorizedUniswapCallback();
 
@@ -1410,11 +1410,16 @@ contract CollateralTrackerV2 is Clone, ERC20Minimal, Multicall, TransientReentra
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Internal function to handle all balance and state updates for position creation and closing.
-    /// @param isCreation A boolean flag to indicate if this is for option creation (true) or closing (false).
     /// @param optionOwner The user minting the option
+    /// @param isCreation A boolean flag to indicate if this is for option creation (true) or closing (false)
     /// @param longAmount The amount of longs
     /// @param shortAmount The amount of shorts
     /// @param ammDeltaAmount The amount of tokens moved during creation of the option position
+    /// @param realizedPremium The premium to settle on the current position (only used when closing)
+    /// @return utilization The final pool utilization (in basis points)
+    /// @return paid The net amount of tokens paid by the option owner (negative if tokens were received)
+    /// @return totalAssets_ The total assets in the vault after the operation
+    /// @return totalSupply_ The total share supply after the operation
     function _updateBalancesAndSettle(
         address optionOwner,
         bool isCreation,
