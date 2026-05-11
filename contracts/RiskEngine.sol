@@ -157,8 +157,8 @@ contract RiskEngine {
     /// @notice Maximum number of open legs allowed.
     uint256 public constant MAX_OPEN_LEGS = 26;
 
-    /// @notice Max possible bonus during liquidations (currently 20% of balance)
-    /// @dev bonus formula is min(MAX_BONUS * balance / DECIMALS, required - balance)
+    /// @notice Max possible bonus during liquidations (currently 20% of required)
+    /// @dev bonus formula is min(MAX_BONUS * required / DECIMALS, max(required - balance, 0))
     uint256 public constant MAX_BONUS = 2_000_000;
 
     /*//////////////////////////////////////////////////////////////
@@ -500,7 +500,7 @@ contract RiskEngine {
     /// @param atSqrtPriceX96 The oracle price used to swap tokens between the liquidator/liquidatee and determine solvency for the liquidatee
     /// @param netPaid The net amount of tokens paid/received by the liquidatee to close their portfolio of positions
     /// @param shortPremium Total owed premium (prorated by available settled tokens) across all short legs being liquidated
-    /// @param loanAmounts The net loan amounts
+    /// @param creditAmounts The net credit amounts. Used to make adjustments to the balance amount to avoid double-counting credits
     /// @return The LeftRight-packed bonus amounts to be paid to the liquidator for both tokens (may be negative)
     /// @return The LeftRight-packed protocol loss (pre-haircut) for both tokens, i.e., the delta between the user's starting balance and expended tokens
     function getLiquidationBonus(
@@ -509,67 +509,32 @@ contract RiskEngine {
         uint160 atSqrtPriceX96,
         LeftRightSigned netPaid,
         LeftRightUnsigned shortPremium,
-        LeftRightUnsigned loanAmounts
+        LeftRightUnsigned creditAmounts
     ) external pure returns (LeftRightSigned, LeftRightSigned) {
         int256 bonus0;
         int256 bonus1;
         // keep everything checked to catch any under/overflow or miscastings
         {
-            // compute bonus as min(cross-token loan-net term, cross-token deficit), then split back to per-token bonuses by each token's share of the total requirement
+            // Per-token bonus: min(MAX_BONUS * required / DECIMALS, max(required - balance, 0)).
+            //
+            // The cap is anchored on `required` (not on `balance` or on the shortfall alone) so the
+            // bonus stays non-zero for cross-margined accounts that are insolvent in one token but
+            // flush in the other -- the case that motivated the M-02 fix.
+            // `required` is derived from option parameters and price, not from user balances, so an
+            // adversary cannot inflate the bonus without minting a larger position; the mint check
+            // ties that back to real collateral via `balance >= (1 + MMR) * loans`.
             {
-                // fold both tokens' balance and requirement into a single cross-token unit (the lowest-priced token)
-                // evaluate at TWAP price to maintain consistency with solvency calculations
-                (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.getCrossBalances(
-                    tokenData0,
-                    tokenData1,
-                    atSqrtPriceX96
-                );
-                uint256 bonusCross;
-                {
-                    // reuse getCrossBalances to convert loans to the cross-token unit: pack each loan into the balance slot of a fake tokenData word (req=0), so only the balance-side conversion is exercised
-                    (uint256 loansCross, ) = PanopticMath.getCrossBalances(
-                        LeftRightUnsigned.wrap(loanAmounts.rightSlot()),
-                        LeftRightUnsigned.wrap(loanAmounts.leftSlot()),
-                        atSqrtPriceX96
-                    );
-                    // Bonus base = balanceCross - loansCross, floored at MAINT_MARGIN_RATE * loansCross
-                    // to keep a non-zero incentive once the user erodes past their loan. Safe because
-                    // the mint check (balance >= (1 + MMR) * loans) caps loans at deposit/(1 + MMR),
-                    // so the floor is bounded by at-mint commitment, not runtime loan inflation.
-                    bonusCross = Math.min(
-                        ((MAX_BONUS *
-                            (Math.max(
-                                balanceCross,
-                                ((DECIMALS + MAINT_MARGIN_RATE) * loansCross) / DECIMALS
-                            ) - loansCross)) / DECIMALS),
-                        thresholdCross + loansCross > balanceCross
-                            ? thresholdCross + loansCross - balanceCross
-                            : 0
-                    );
-                }
-                // `bonusCross` and `thresholdCross` are returned in terms of the lowest-priced token
-                if (atSqrtPriceX96 < Constants.FP96) {
-                    // required0 / (required0 + token0(required1))
-                    uint256 requiredRatioX128 = Math.mulDiv(
-                        tokenData0.leftSlot(),
-                        2 ** 128,
-                        thresholdCross
-                    );
-                    uint256 bonus0U = Math.mulDiv128(bonusCross, requiredRatioX128);
-                    bonus0 = int256(bonus0U);
+                uint256 bal0 = tokenData0.rightSlot();
+                uint256 bal1 = tokenData1.rightSlot();
+                uint256 req0 = tokenData0.leftSlot();
+                uint256 req1 = tokenData1.leftSlot();
 
-                    bonus1 = int256(PanopticMath.convert0to1(bonusCross - bonus0U, atSqrtPriceX96));
-                } else {
-                    // required1 / (token1(required0) + required1)
-                    uint256 requiredRatioX128 = Math.mulDiv(
-                        tokenData1.leftSlot(),
-                        2 ** 128,
-                        thresholdCross
-                    );
-                    uint256 bonus1U = Math.mulDiv128(bonusCross, requiredRatioX128);
-                    bonus1 = int256(bonus1U);
-                    bonus0 = int256(PanopticMath.convert1to0(bonusCross - bonus1U, atSqrtPriceX96));
-                }
+                bonus0 = Math
+                    .min((req0 * MAX_BONUS) / DECIMALS, req0 > bal0 ? req0 - bal0 : 0)
+                    .toInt256();
+                bonus1 = Math
+                    .min((req1 * MAX_BONUS) / DECIMALS, req1 > bal1 ? req1 - bal1 : 0)
+                    .toInt256();
             }
 
             // negative premium (owed to the liquidatee) is credited to the collateral balance
@@ -579,8 +544,15 @@ contract RiskEngine {
             int256 balance1 = int256(uint256(tokenData1.rightSlot())) -
                 int256(uint256(shortPremium.leftSlot()));
 
-            int256 paid0 = bonus0 + int256(netPaid.rightSlot());
-            int256 paid1 = bonus1 + int256(netPaid.leftSlot());
+            // `tokenData` already includes credit amounts as collateral, while closing a credit
+            // appears in `netPaid` as a negative payment. Add credits back to `paid` so credits
+            // are counted once when determining surplus/shortage for cross-token conversion.
+            int256 paid0 = bonus0 +
+                int256(netPaid.rightSlot()) +
+                int256(uint256(creditAmounts.rightSlot()));
+            int256 paid1 = bonus1 +
+                int256(netPaid.leftSlot()) +
+                int256(uint256(creditAmounts.leftSlot()));
 
             // note that "balance0" and "balance1" are the liquidatee's original balances before token delegation by a liquidator
             // their actual balances at the time of computation may be higher, but these are a buffer representing the amount of tokens we
@@ -624,8 +596,14 @@ contract RiskEngine {
                     );
                 }
                 // recompute netPaid based on new bonus amounts
-                paid0 = bonus0 + int256(netPaid.rightSlot());
-                paid1 = bonus1 + int256(netPaid.leftSlot());
+                paid0 =
+                    bonus0 +
+                    int256(netPaid.rightSlot()) +
+                    int256(uint256(creditAmounts.rightSlot()));
+                paid1 =
+                    bonus1 +
+                    int256(netPaid.leftSlot()) +
+                    int256(uint256(creditAmounts.leftSlot()));
             }
 
             return (

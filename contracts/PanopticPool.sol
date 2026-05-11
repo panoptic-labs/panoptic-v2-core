@@ -1800,7 +1800,7 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
                 LeftRightSigned collateralRemaining;
 
                 {
-                    LeftRightUnsigned loanAmounts = PanopticMath.getTotalLoanAmounts(
+                    LeftRightUnsigned creditAmounts = PanopticMath.getTotalCreditAmounts(
                         positionBalanceArray,
                         positionIdList
                     );
@@ -1812,7 +1812,7 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
                         Math.getSqrtRatioAtTick(twapTick),
                         netPaid,
                         shortLongPremium[0],
-                        loanAmounts
+                        creditAmounts
                     );
                 }
                 // premia cannot be paid if there is protocol loss associated with the liquidatee
