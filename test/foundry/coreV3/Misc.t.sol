@@ -9128,6 +9128,122 @@ contract Misctest is Test, PositionUtils {
         );
     }
 
+    function test_Success_liquidationCreditAmounts_singleCountsCreditedTokenPayout() public {
+        uint256 snapshot = vm.snapshotState();
+
+        (int256 withCreditGain0, uint256 credit0) = _liquidationCreditPayoutScenario(true);
+        vm.revertToState(snapshot);
+
+        (int256 withoutCreditGain0, ) = _liquidationCreditPayoutScenario(false);
+
+        int256 excessFromCredit = withCreditGain0 - withoutCreditGain0;
+        uint256 absExcessFromCredit = excessFromCredit >= 0
+            ? uint256(excessFromCredit)
+            : uint256(-excessFromCredit);
+
+        // Both branches have the same loan and liquidation-driving option. The credit branch
+        // moves 1,000,000 token0 from ordinary collateral into a zero-width long credit; the
+        // baseline leaves that token0 as ordinary collateral. Any residual should be only share
+        // rounding/interest drift, not another credit-sized payout. Passing zero creditAmounts
+        // into getLiquidationBonus makes this fixture fail with a 333,236 token0 excess.
+        assertEq(credit0, 1_000_000, "credit0");
+        assertLe(absExcessFromCredit, 1_000, "credit double-counted in payout");
+    }
+
+    function _liquidationCreditPayoutScenario(
+        bool includeCredit
+    ) internal returns (int256 totalGain0, uint256 credit0) {
+        delete $posIdList;
+
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+        token0.approve(address(ct0), 2_000_000);
+        token1.approve(address(ct1), 2_000_000);
+        ct0.deposit(2_000_000, Bob);
+        ct1.deposit(2_000_000, Bob);
+
+        poolId = uint40(uint160(address(uniPool)) >> 120) + uint64(uint256(vegoid) << 40);
+        poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+
+        TokenId loanId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 1, 0, 0, 0);
+        $posIdList.push(loanId);
+        mintOptions(
+            pp,
+            $posIdList,
+            1_000_000,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        if (includeCredit) {
+            $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, 0, 0));
+            mintOptions(
+                pp,
+                $posIdList,
+                1_000_000,
+                type(uint24).max / 2,
+                Constants.MIN_POOL_TICK,
+                Constants.MAX_POOL_TICK,
+                true
+            );
+        }
+
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, -15, 1));
+        mintOptions(
+            pp,
+            $posIdList,
+            5_000_000,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        (, , PositionBalance[] memory positionBalanceArray, , ) = pp.getFullPositionsData(
+            Bob,
+            false,
+            $posIdList
+        );
+        credit0 = PanopticMath.getTotalCreditAmounts(positionBalanceArray, $posIdList).rightSlot();
+
+        vm.startPrank(Swapper);
+        swapperc.mint(uniPool, -800000, 800000, 10 ** 18);
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-10_000));
+        for (uint256 j = 0; j < 10000; ++j) {
+            vm.warp(block.timestamp + 3600);
+            vm.roll(block.number + 10);
+            pp.pokeOracle();
+        }
+
+        (currentTick, , , , oraclePack) = pp.getOracleTicks();
+        twapTick = re.twapEMA(oraclePack);
+        (uint256 totalCollateralBalance, uint256 totalCollateralRequired) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            $posIdList
+        );
+        assertLt(totalCollateralBalance, totalCollateralRequired, "liquidatable");
+
+        vm.startPrank(Alice);
+        deal(ct0.asset(), Alice, 100_000_000);
+        deal(ct1.asset(), Alice, 100_000_000);
+        IERC20Partial(ct0.asset()).approve(address(ct0), 100_000_000);
+        IERC20Partial(ct1.asset()).approve(address(ct1), 100_000_000);
+
+        uint256 ctBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        uint256 walletBefore0 = token0.balanceOf(Alice);
+
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+        totalGain0 =
+            (int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(ctBefore0)) +
+            (int256(token0.balanceOf(Alice)) - int256(walletBefore0));
+    }
+
     function test_Success_getFullPositionsData_collateralRequirements() public {
         {
             poolId = uint40(uint160(address(uniPool)) >> 120) + uint64(uint256(vegoid) << 40);
