@@ -3386,9 +3386,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 bobAssetsBefore = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
         console2.log("b-before", bobAssetsBefore);
 
+        // bonus = min(MAX_BONUS*required/DECIMALS, required - balance) capped at the liquidatee's
+        // backable balance. Here backable = collateral net of the interest owed (closed via netPaid),
+        // i.e. bobAssetsBefore - previewedInterest; that cap binds in this scenario.
         uint256 expectedBonus = Math.min(
-            (riskEngine.MAX_BONUS() * (bobAssetsBefore - previewedInterest)) / 10_000_000,
-            (tokenData0.leftSlot() - tokenData0.rightSlot())
+            Math.min(
+                (riskEngine.MAX_BONUS() * tokenData0.leftSlot()) / DECIMALS,
+                (tokenData0.leftSlot() - tokenData0.rightSlot())
+            ),
+            bobAssetsBefore - previewedInterest
         );
         console.log("expectedBonus", expectedBonus);
         console2.log("previewBob-before-liq", collateralToken0.previewOwedInterest(Bob));

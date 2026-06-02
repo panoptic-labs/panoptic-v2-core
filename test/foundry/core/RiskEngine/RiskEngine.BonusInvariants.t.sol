@@ -3,17 +3,25 @@ pragma solidity ^0.8.24;
 
 /// @title Liquidation Bonus Invariants — consolidated test pins
 /// @notice Single-file home for every test that asserts a property of the
-///         bonus formula at `RiskEngine.getLiquidationBonus` (RE:506-617),
-///         the cross-conversion arm (RE:560-607), or the haircut conversion
-///         (`RiskEngine.haircutPremia`, RE:620-740).
+///         realized bonus model at `RiskEngine.getLiquidationBonus`, including
+///         the raw per-token candidate, cross-conversion arm, and backable
+///         collateral cap, or the haircut conversion (`RiskEngine.haircutPremia`).
 ///
 /// Audit reference: protocol-analysis/audits/BONUS_INVARIANTS_AUDIT.md
 ///
 /// Target invariants:
-///   I1  Liquidator-incentive floor: bonus_value > 0 whenever the account is liquidatable.
+///   I1  Liquidator-incentive floor: bonus_value > 0 whenever the account is liquidatable AND
+///       retains backable collateral; bonus_value = 0 in genuine bad debt (backable consumed).
 ///   I2  Protocol-loss safety (final-state): ProtocolLossRealized_t > 0 ⇒ ∀ s, post_balance_s ≤ 0.
-///   I3  Bonus monotone in distress (stated, non-binding).
+///   I3  Continuity: the bonus has no jump in collateral. The backable cap makes it tent-shaped,
+///       so it is intentionally NOT monotone in distress; continuity is the binding property.
 ///   I6  Continuity at the maintenance boundary: no cliff to zero at bal_t → req_t^-.
+///
+///   Bonus model: raw_i = min(MAX_BONUS*req_i/DECIMALS, max(req_i-bal_i,0)) per token.
+///   Raw bonuses may be shifted across tokens by the cross-token conversion, then capped at
+///   each token's backable collateral (balance_i - netPaid_i - credits_i). The cap is what
+///   guarantees no protocol loss is minted to fund the bonus (=> I9); it is credit-neutral
+///   and continuous to zero in bad debt.
 ///   I9  No self-liquidation profit at TWAP, net of gas + fees.
 ///
 /// Additional invariants:
@@ -55,6 +63,7 @@ import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
 import {PanopticFactoryV4} from "@contracts/PanopticFactoryV4.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
+import {PanopticQuery} from "@helper/PanopticQuery.sol";
 import {IUniswapV3Factory} from "v3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
 import {PositionUtils} from "../../testUtils/PositionUtils.sol";
@@ -232,6 +241,241 @@ contract BonusInvariantsUnit is Test {
         );
     }
 
+    /// @notice Sibling of the credit double-count pins, for the OTHER balance-injected term:
+    /// `shortPremium`. Negative premium owed to the liquidatee is credited into
+    /// `tokenData.balance` upstream AND appears in `netPaid` (received on close), so the
+    /// contract removes it from `balance` (RE:544-547) — the mirror of adding credits back to
+    /// `paid`. Both count the quantity exactly once.
+    ///
+    /// Pinned by equivalence (same shape as the credit tests): an account whose balance
+    /// includes the premium, with `shortPremium` set, must produce the identical bonus/remaining
+    /// to one whose balance never included it (`shortPremium = 0`), with `netPaid` held constant.
+    /// The premium sits on a req=0 token so the floor-bonus term (which reads RAW balance) is 0
+    /// in both cases, isolating the `balance -= shortPremium` subtraction.
+    function test_LiquidationBonus_shortPremiumCountedOnce() public view {
+        // token0 carries the premium (req0 = 0 → surplus side); token1 is the deficit.
+        LeftRightSigned netPaid = _signedPair(-100, 1000); // +100 premium received, 1000 close cost
+
+        (LeftRightSigned bonusWithPremium, LeftRightSigned remWithPremium) = E.getLiquidationBonus(
+            _tokenData(1100, 0), // balance includes the 100 premium
+            _tokenData(100, 1100),
+            Math.getSqrtRatioAtTick(0),
+            netPaid,
+            _unsignedPair(100, 0), // shortPremium removes it from balance
+            LeftRightUnsigned.wrap(0)
+        );
+        (LeftRightSigned bonusWithoutBalancePremium, LeftRightSigned remWithoutBalancePremium) = E
+            .getLiquidationBonus(
+                _tokenData(1000, 0), // balance never included the premium
+                _tokenData(100, 1100),
+                Math.getSqrtRatioAtTick(0),
+                netPaid,
+                LeftRightUnsigned.wrap(0),
+                LeftRightUnsigned.wrap(0)
+            );
+
+        assertEq(
+            LeftRightSigned.unwrap(bonusWithPremium),
+            LeftRightSigned.unwrap(bonusWithoutBalancePremium),
+            "bonus: short premium counted once"
+        );
+        assertEq(
+            LeftRightSigned.unwrap(remWithPremium),
+            LeftRightSigned.unwrap(remWithoutBalancePremium),
+            "remaining: short premium counted once"
+        );
+    }
+
+    /// @notice Pins the loan/credit asymmetry: a width-zero LOAN needs NO creditAmounts
+    /// adjustment, because (unlike a credit) the loan principal is never added to
+    /// `tokenData.balance` (RE:1213 adds only credits). The loan repayment reaches the
+    /// surplus/cap math purely through `netPaid` (a positive close payment), so it is
+    /// counted exactly once and `creditAmounts` is correctly 0.
+    ///
+    /// Single-token (token1) so the cap binds directly without the cross-conversion arm.
+    /// bal1=800, req1=1000 → floor bonus = min(MAX_BONUS·1000/DEC, 1000-800) = min(200,200) = 200.
+    /// Loan repayment netPaid1 = 700 (liquidatee pays to close the loan), credits = 0.
+    /// backable cap maxBonus1 = balance1 - netPaid1 - credits1 = 800 - 700 - 0 = 100,
+    /// so bonus is trimmed 200 → 100 and paid1 = 100 + 700 = 800 = balance1 (remaining 0).
+    /// No credit term appears and the loan is not double-counted.
+    function test_LiquidationBonus_pureLoan_noCreditAdjustmentNeeded() public view {
+        (LeftRightSigned bonus, LeftRightSigned remaining) = E.getLiquidationBonus(
+            _tokenData(0, 0),
+            _tokenData(800, 1000), // token1: 800 collateral, req 1000 → floor bonus 200
+            Math.getSqrtRatioAtTick(0),
+            _signedPair(0, 700), // loan repayment shows up as a +700 close payment
+            LeftRightUnsigned.wrap(0),
+            LeftRightUnsigned.wrap(0) // creditAmounts = 0: a loan is NOT a credit
+        );
+
+        // Cap = balance - netPaid (no credit term) = 800 - 700 = 100.
+        assertEq(bonus.rightSlot(), 0, "token0 bonus");
+        assertEq(bonus.leftSlot(), 100, "token1 bonus capped at backable = balance - netPaid");
+        // paid1 = bonus1 + netPaid1 = 100 + 700 = 800 = balance1 → nothing minted.
+        assertEq(remaining.leftSlot(), 0, "token1 remaining: loan repayment fully backed, no loss");
+
+        // Sanity on the asymmetry: had we WRONGLY passed the loan principal as a credit
+        // (creditAmounts1 = 700), the cap would drop to 800 - 700 - 700 = -600 → 0, zeroing
+        // the bonus. That divergence is exactly why loans must NOT be fed through creditAmounts.
+        (LeftRightSigned bonusIfMistakenlyTreatedAsCredit, ) = E.getLiquidationBonus(
+            _tokenData(0, 0),
+            _tokenData(800, 1000),
+            Math.getSqrtRatioAtTick(0),
+            _signedPair(0, 700),
+            LeftRightUnsigned.wrap(0),
+            _unsignedPair(0, 700)
+        );
+        assertEq(
+            bonusIfMistakenlyTreatedAsCredit.leftSlot(),
+            0,
+            "treating a loan as a credit would wrongly zero the bonus"
+        );
+    }
+
+    /// @notice (#1) Loan AND credit in the SAME token. `netPaid` carries the loan repayment
+    /// (+700) and the credit return (−400) netted to a single +300, but `creditAmounts` must
+    /// pick out ONLY the credit (400) and subtract it again in both `paid` and the cap. This
+    /// is the case that stresses the discrimination: netting and the credit adjustment are
+    /// distinct operations and must not be conflated.
+    ///
+    /// token1: bal1=800 (raw 400 + credit 400, mirroring RE:1213), req1=1000 → floor bonus
+    /// = min(MAX_BONUS·1000/DEC, 1000−800) = min(200,200) = 200.
+    /// paid1 = bonus + netPaid + credit = 200 + 300 + 400 = 900 > balance 800 → would mint.
+    /// cap maxBonus1 = balance − netPaid − credit = 800 − 300 − 400 = 100 trims bonus → 100,
+    /// so paid1 = 100 + 300 + 400 = 800 = balance1, remaining 0, nothing minted.
+    /// If the cap omitted the credit term it would be 800 − 300 = 500, leaving bonus=200 and
+    /// minting 100 of protocol loss — which this test forbids.
+    function test_LiquidationBonus_loanAndCreditSameToken_creditSubtractedSeparately() public view {
+        (LeftRightSigned bonus, LeftRightSigned remaining) = E.getLiquidationBonus(
+            _tokenData(0, 0),
+            _tokenData(800, 1000),
+            Math.getSqrtRatioAtTick(0),
+            _signedPair(0, 300), // +700 loan repayment − 400 credit return, netted
+            LeftRightUnsigned.wrap(0),
+            _unsignedPair(0, 400) // only the credit half flows through creditAmounts
+        );
+
+        assertEq(bonus.rightSlot(), 0, "token0 bonus");
+        assertEq(bonus.leftSlot(), 100, "token1 bonus capped at balance - netPaid - credit");
+        assertEq(remaining.leftSlot(), 0, "token1 remaining: credit-neutral, nothing minted");
+    }
+
+    /// @notice (#2) Credit on the SURPLUS token while the OTHER token's deficit drives the
+    /// cross-conversion arm. The credit add-back must keep the convertible surplus equal to
+    /// the liquidatee's TRUE collateral — a credit sitting in `balance` must not inflate the
+    /// surplus that funds the cross-token bonus.
+    ///
+    /// token0: bal0=0, req0=1000 → floor bonus0 = 200, paid0 = 200 > balance0 = 0 (deficit).
+    /// token1: bal1=2000 (raw 1500 + credit 500), req1=0 (surplus). Closing the credit returns
+    /// 500 → netPaid1 = −500, creditAmounts1 = 500. paid1 = 0 − 500 + 500 = 0, so the
+    /// convertible surplus = balance1 − paid1 = 2000 = the true collateral (NOT 2500).
+    ///
+    /// Asserted by equivalence: this must produce the identical bonus/remaining to a clean
+    /// account that simply holds 2000 token1 with no credit and no close flow.
+    function test_LiquidationBonus_creditOnSurplusToken_doesNotInflateConversion() public view {
+        uint160 sp = Math.getSqrtRatioAtTick(0);
+
+        (LeftRightSigned bonusCredit, LeftRightSigned remCredit) = E.getLiquidationBonus(
+            _tokenData(0, 1000),
+            _tokenData(2000, 0),
+            sp,
+            _signedPair(0, -500), // credit return on the surplus token
+            LeftRightUnsigned.wrap(0),
+            _unsignedPair(0, 500)
+        );
+
+        // Clean reference: same TRUE collateral (2000 token1), no credit, no close flow.
+        (LeftRightSigned bonusClean, LeftRightSigned remClean) = E.getLiquidationBonus(
+            _tokenData(0, 1000),
+            _tokenData(2000, 0),
+            sp,
+            LeftRightSigned.wrap(0),
+            LeftRightUnsigned.wrap(0),
+            LeftRightUnsigned.wrap(0)
+        );
+
+        assertEq(
+            LeftRightSigned.unwrap(bonusCredit),
+            LeftRightSigned.unwrap(bonusClean),
+            "credit on surplus token must not change the converted bonus"
+        );
+        assertEq(
+            LeftRightSigned.unwrap(remCredit),
+            LeftRightSigned.unwrap(remClean),
+            "credit on surplus token must not change remaining collateral"
+        );
+        // Sanity: conversion did fire and paid a cross-token bonus on the surplus side.
+        assertEq(bonusCredit.rightSlot(), 0, "token0 bonus converted away");
+        assertGt(bonusCredit.leftSlot(), int128(0), "token1 carries the converted bonus");
+    }
+
+    /// @notice (#2b, I9) GLOBAL-solvency cap: when the account is globally insolvent at TWAP, the
+    /// liquidator's NET bonus value must be zero -- otherwise a borrower controlling the liquidator
+    /// extracts the difference from PLPs (the self-liquidation-profit vector found by the I9 fuzz).
+    ///
+    /// token0 in bad debt: bal0=0, req0=1000 (floor 200), netPaid0=+1000 close cost.
+    /// token1 is ENTIRELY a returned credit: bal1=1000 (all credit), req1=0, netPaid1=-1000,
+    /// credits1=1000. At 1:1 the global backable is exactly zero: mb0=0-1000-0=-1000 token0 and
+    /// mb1=1000+1000-1000=1000 token1 sum to 0. The credit is genuinely the borrower's money, but it
+    /// is exactly enough to cover their token0 debt -- nothing is left to fund a bonus.
+    ///
+    /// Pre-fix, the per-token cap let the token1 floor/conversion pay a net +200 bonus while the
+    /// token0 deficit was minted (collateralRemaining = (-200, +200): surplus-with-loss, extraction).
+    /// The global floor cap zeroes the floors first, so the conversion only covers the deficit
+    /// value-neutrally: bonus = (-1000, +1000) (net value 0), collateralRemaining = (0, 0).
+    function test_I9_creditOnSurplusToken_globalCapZeroesBonusInBadDebt() public view {
+        uint160 sp = Math.getSqrtRatioAtTick(0); // 1:1
+
+        (LeftRightSigned bonus, LeftRightSigned remaining) = E.getLiquidationBonus(
+            _tokenData(0, 1000),
+            _tokenData(1000, 0),
+            sp,
+            _signedPair(1000, -1000), // token0 close cost +1000; token1 credit return -1000
+            LeftRightUnsigned.wrap(0),
+            _unsignedPair(0, 1000) // token1 is entirely a returned credit
+        );
+
+        // Net liquidator bonus value at 1:1 must be zero (no extraction): bonus0 + bonus1 == 0.
+        assertEq(
+            int256(bonus.rightSlot()) + int256(bonus.leftSlot()),
+            0,
+            "I9: net bonus value zero in global bad debt"
+        );
+        assertEq(bonus.rightSlot(), -1000, "liquidator provides token0 value-neutrally");
+        assertEq(bonus.leftSlot(), 1000, "liquidator receives equal token1");
+        // No surplus-with-loss: the credit fully covers the deficit, nothing minted, nothing kept.
+        assertEq(remaining.rightSlot(), 0, "token0 collateralRemaining 0");
+        assertEq(remaining.leftSlot(), 0, "token1 collateralRemaining 0");
+    }
+
+    /// @notice (#3) Credit return (plus premium received) EXCEEDS the close cost, so the
+    /// credit-adjusted `paid` goes NEGATIVE — the liquidatee is net-receiving on the token.
+    /// Pins that the signed arithmetic handles paid < 0 without underflow/clamp: the bonus
+    /// stays at its floor and remaining = balance − paid grows past balance.
+    ///
+    /// token1: bal1=1200 (raw 200 + credit 1000), req1=1500 → floor bonus
+    /// = min(MAX_BONUS·1500/DEC, 1500−1200) = min(300,300) = 300.
+    /// netPaid1 = −1600 (1000 credit return + 600 premium received), creditAmounts1 = 1000.
+    /// paid1 = 300 − 1600 + 1000 = −300 (< 0). cap maxBonus1 = 1200 + 1600 − 1000 = 1800
+    /// (no bind). remaining1 = balance1 − paid1 = 1200 − (−300) = 1500.
+    function test_LiquidationBonus_creditExceedsCloseCost_paidGoesNegative() public view {
+        (LeftRightSigned bonus, LeftRightSigned remaining) = E.getLiquidationBonus(
+            _tokenData(0, 0),
+            _tokenData(1200, 1500),
+            Math.getSqrtRatioAtTick(0),
+            _signedPair(0, -1600),
+            LeftRightUnsigned.wrap(0),
+            _unsignedPair(0, 1000)
+        );
+
+        assertEq(bonus.leftSlot(), 300, "token1 bonus stays at floor when paid < 0");
+        assertEq(
+            remaining.leftSlot(),
+            1500,
+            "token1 remaining = balance - paid with paid negative"
+        );
+    }
+
     /// @notice Pins I6 at the M-02 boundary. Pre-fix this returned bonus = 0
     /// because the cap was anchored on token1 balance; the required-anchored
     /// cap now pays 0.2 * 1100 = 220 to the liquidator on token0.
@@ -263,12 +507,16 @@ contract BonusInvariantsUnit is Test {
 
     /*============================ I1 ===============================*/
 
-    /// @notice I1 (direct unit): bonus_value > 0 for the three motivating
-    /// scenarios — M-02 boundary, both-deficit, single-side deficit with surplus.
-    function test_I1_bonusValueStrictlyPositive_whenAccountLiquidatable() public {
+    /// @notice I1 (direct unit): bonus_value > 0 when the account is liquidatable AND retains
+    /// backable collateral (cases b, c), and is exactly 0 in genuine bad debt where no backable
+    /// collateral remains in any token (case a). The old M-02 floor — a positive minted bonus when
+    /// the deficit token has no balance — is intentionally gone: once backable hits zero a positive
+    /// bonus could only be minted, which is the extractable self-liquidation profit I9 forbids.
+    function test_I1_bonusPositiveWhenBackable_zeroInGenuineBadDebt() public {
         uint160 sp = Math.getSqrtRatioAtTick(0); // 1:1 price for simple sum
 
-        // (a) M-02 boundary case: deficit token0, token1 is "nothing" (bal=0, req=0)
+        // (a) Genuine bad debt: deficit token0, and NO collateral anywhere (bal=0 in both tokens),
+        //     so backable = 0 everywhere and the bonus is exactly 0 (no minted floor).
         (LeftRightSigned b1, ) = E.getLiquidationBonus(
             _tokenData(0, 1100),
             _tokenData(0, 0),
@@ -277,11 +525,14 @@ contract BonusInvariantsUnit is Test {
             LeftRightUnsigned.wrap(0),
             LeftRightUnsigned.wrap(0)
         );
-        // M-02 floor pays 220 on token0 (= MAX_BONUS * 1100 / DECIMALS)
-        assertGt(int256(b1.rightSlot()) + int256(b1.leftSlot()), 0, "I1: M-02 boundary");
+        assertEq(
+            int256(b1.rightSlot()) + int256(b1.leftSlot()),
+            0,
+            "I1: zero bonus in genuine bad debt (no backable collateral)"
+        );
 
-        // (b) Both-deficit (without cross-conv triggering, since paid<balance for each side
-        //     when netPaid=0). Each per-token bonus must be > 0.
+        // (b) Both-deficit but with backable collateral (netPaid=0 ⇒ backable=bal>0).
+        //     Each per-token bonus must be > 0.
         (LeftRightSigned b2, ) = E.getLiquidationBonus(
             _tokenData(500, 1000),
             _tokenData(500, 1000),
@@ -309,25 +560,23 @@ contract BonusInvariantsUnit is Test {
         assertGt(valueAtTwap, 0, "I1: single-side deficit + surplus");
     }
 
-    /// @notice I1 (fuzz): whenever at least one side is in deficit and that side's
-    /// req is large enough not to be rounded out by the cap, bonus value at TWAP > 0.
-    function testFuzz_I1_bonusValuePositive_overReqBalSweep(
+    /// @notice No-mint (fuzz): with the backable cap, each token's bonus never exceeds the
+    /// liquidatee's collateral on that token (here backable = bal since netPaid = credits = 0).
+    /// This is what makes the bonus self-funding — nothing is minted to pay it — and is the
+    /// per-token foundation of I9. Strict positivity is now conditional on backable being
+    /// non-zero, so it is pinned by the direct-unit test above rather than here.
+    function testFuzz_noMint_bonusNeverExceedsCollateral(
         uint128 req0,
         uint128 req1,
         uint128 bal0,
         uint128 bal1,
         int24 atTick
     ) public view {
-        // Bound to avoid uint128 overflow downstream. Lower bound on req keeps
-        // MAX_BONUS·req/DECIMALS ≥ 1 wei (above 4 wei, that's guaranteed).
         req0 = uint128(bound(req0, 100, type(uint96).max));
         req1 = uint128(bound(req1, 100, type(uint96).max));
         bal0 = uint128(bound(bal0, 0, type(uint96).max));
         bal1 = uint128(bound(bal1, 0, type(uint96).max));
         atTick = int24(bound(atTick, Constants.MIN_POOL_TICK + 1, Constants.MAX_POOL_TICK - 1));
-
-        // I1 only requires bonus > 0 when the account is liquidatable.
-        vm.assume(req0 > bal0 || req1 > bal1);
 
         uint160 sp = Math.getSqrtRatioAtTick(atTick);
         (LeftRightSigned bonus, ) = E.getLiquidationBonus(
@@ -339,8 +588,13 @@ contract BonusInvariantsUnit is Test {
             LeftRightUnsigned.wrap(0)
         );
 
-        int256 value = _valueAt(int256(bonus.rightSlot()), int256(bonus.leftSlot()), sp);
-        assertGt(value, 0, "I1: bonus value > 0 at TWAP");
+        // backable_i = bal_i (netPaid = credits = shortPremium = 0); the cap forbids exceeding it.
+        assertLe(
+            int256(bonus.rightSlot()),
+            int256(uint256(bal0)),
+            "no-mint: bonus0 <= collateral0"
+        );
+        assertLe(int256(bonus.leftSlot()), int256(uint256(bal1)), "no-mint: bonus1 <= collateral1");
     }
 
     /*============================ I2 ===============================*/
@@ -475,25 +729,36 @@ contract BonusInvariantsUnit is Test {
 
     /*============================ I3 ===============================*/
 
-    /// @notice I3 (fuzz, per-token form): bonus(req, bal) is non-increasing in bal
-    /// (equivalently, non-decreasing in distress (req-bal)/req).
-    function testFuzz_I3_perTokenBonusMonotonic(
-        uint128 req,
-        uint128 balA,
-        uint128 balB
-    ) public pure {
-        req = uint128(bound(req, 5, type(uint96).max));
-        balA = uint128(bound(balA, 0, req));
-        balB = uint128(bound(balB, 0, req));
+    /// @notice I3 (fuzz): the realized per-token bonus is CONTINUOUS in collateral — bumping bal by
+    /// 1 wei moves the bonus by at most 1 wei, with no jump anywhere, in particular across the
+    /// bad-debt boundary where the old M-02 floor cliffed the bonus up to MAX_BONUS*req/DECIMALS.
+    /// The backable cap makes the realized bonus tent-shaped, so it is intentionally NOT monotone in
+    /// distress; continuity is the property that replaced monotonicity. Single-token (token1) so the
+    /// cap binds directly, without the cross-conversion arm.
+    function testFuzz_I3_realizedBonusContinuousInCollateral(uint128 req, uint128 bal) public view {
+        req = uint128(bound(req, 100, type(uint64).max));
+        bal = uint128(bound(bal, 1, type(uint64).max));
+        uint160 sp = Math.getSqrtRatioAtTick(0);
 
-        uint256 ba = balA < balB ? balA : balB;
-        uint256 bb = balA < balB ? balB : balA;
+        (LeftRightSigned lo, ) = E.getLiquidationBonus(
+            _tokenData(0, 0),
+            _tokenData(bal - 1, req),
+            sp,
+            LeftRightSigned.wrap(0),
+            LeftRightUnsigned.wrap(0),
+            LeftRightUnsigned.wrap(0)
+        );
+        (LeftRightSigned hi, ) = E.getLiquidationBonus(
+            _tokenData(0, 0),
+            _tokenData(bal, req),
+            sp,
+            LeftRightSigned.wrap(0),
+            LeftRightUnsigned.wrap(0),
+            LeftRightUnsigned.wrap(0)
+        );
 
-        uint256 bonusA = _bonusPerToken(req, uint128(ba));
-        uint256 bonusB = _bonusPerToken(req, uint128(bb));
-
-        // lower bal = higher distress = bonus ≥
-        assertGe(bonusA, bonusB, "I3: bonus non-decreasing in distress");
+        int256 diff = int256(lo.leftSlot()) - int256(hi.leftSlot());
+        assertLe(diff < 0 ? -diff : diff, 1, "I3: realized bonus is continuous in bal (no jump)");
     }
 
     /*============================ I6 ===============================*/
@@ -692,6 +957,52 @@ contract BonusInvariantsUnit is Test {
         );
     }
 
+    /// @notice I9 (direct haircut fuzz): premium haircutting plus the corresponding
+    /// bonus delta cannot create positive combined borrower+liquidator value.
+    function testFuzz_I9_haircutPremiaCombinedDeltaNonPositive(
+        uint128 loss0,
+        uint128 loss1,
+        uint128 lp0,
+        uint128 lp1,
+        uint8 nLegs,
+        int24 atTick
+    ) public view {
+        loss0 = uint128(bound(loss0, 0, type(uint64).max));
+        loss1 = uint128(bound(loss1, 0, type(uint64).max));
+        lp0 = uint128(bound(lp0, 0, type(uint64).max));
+        lp1 = uint128(bound(lp1, 0, type(uint64).max));
+        nLegs = uint8(bound(nLegs, 1, 4));
+        atTick = int24(bound(atTick, -100_000, 100_000));
+
+        uint160 sp = Math.getSqrtRatioAtTick(atTick);
+        LeftRightSigned collateralRemaining = LeftRightSigned.wrap(-int128(loss0)).addToLeftSlot(
+            -int128(loss1)
+        );
+
+        (
+            TokenId[] memory positionIdList,
+            LeftRightSigned[4][] memory premiasByLeg
+        ) = _buildLongLegPositions(nLegs, lp0, lp1);
+
+        (LeftRightSigned bonusDeltas, LeftRightUnsigned haircutTotal, ) = E.haircutPremia(
+            positionIdList,
+            premiasByLeg,
+            collateralRemaining,
+            sp
+        );
+
+        int256 combinedDelta0 = int256(bonusDeltas.rightSlot()) -
+            int256(uint256(haircutTotal.rightSlot()));
+        int256 combinedDelta1 = int256(bonusDeltas.leftSlot()) -
+            int256(uint256(haircutTotal.leftSlot()));
+
+        assertLe(
+            _valueAt(combinedDelta0, combinedDelta1, sp),
+            int256(E.MAX_OPEN_LEGS()),
+            "I9: haircut combined delta"
+        );
+    }
+
     /*======================== local helpers =========================*/
 
     /// @dev Per-token bonus formula (`min(MAX_BONUS·req/DECIMALS, max(req-bal, 0))`).
@@ -825,6 +1136,85 @@ contract BonusInvariantsUnit is Test {
     function _signedPair(int128 right, int128 left) internal pure returns (LeftRightSigned) {
         return LeftRightSigned.wrap(0).addToRightSlot(right).addToLeftSlot(left);
     }
+
+    /// @notice DIAGNOSTIC: "sell 2000 put, 400 USDC collateral, price -> 1000" with NO
+    /// surplus in the other token. USDC = token1. Bob has 400 token1 collateral, no
+    /// token0. Closing the deep-ITM short costs 1000 token1 (netPaid1=1000) -> 600 bad
+    /// debt. We sweep the maintenance requirement req1 to show that the backable cap cuts
+    /// the raw bonus to zero when the close cost already consumes all collateral. Protocol
+    /// loss is the 600 bad-debt shortfall only, not bad debt plus a minted liquidator bonus.
+    function test_DIAG_singleToken_putScenario_noSurplus() public view {
+        uint128[3] memory reqs = [uint128(1000), 2000, 3000];
+        for (uint256 i = 0; i < reqs.length; ++i) {
+            (LeftRightSigned bonus, LeftRightSigned remaining) = E.getLiquidationBonus(
+                _tokenData(0, 0), // token0: none
+                _tokenData(400, reqs[i]), // token1: 400 collateral, req = reqs[i]
+                Math.getSqrtRatioAtTick(0),
+                _signedPair(0, 1000), // netPaid: Bob pays 1000 token1 to close
+                LeftRightUnsigned.wrap(0),
+                LeftRightUnsigned.wrap(0)
+            );
+            console2.log("--- req1 =", uint256(reqs[i]));
+            console2.log("  bonus token1     :", int256(bonus.leftSlot()));
+            console2.log("  protocol loss t1 :", -int256(remaining.leftSlot())); // remaining<0 => loss
+        }
+    }
+
+    /// @notice DIAGNOSTIC: a PURE single-token (only token1) account that is only
+    /// MILDLY insolvent: close cost (300) < collateral (400), but the 20%-of-req
+    /// bonus (200) pushes paid past balance, so part of the bonus would be minted.
+    /// Here maxBonus1 = 400-300 = 100 > 0, so the backable cap trims the raw bonus
+    /// 200 -> 100, even though there is NO other-token surplus.
+    /// Demonstrates the cap is NOT limited to cross-margined accounts.
+    function test_DIAG_singleToken_partialInsolvency() public view {
+        (LeftRightSigned bonus, LeftRightSigned remaining) = E.getLiquidationBonus(
+            _tokenData(0, 0),
+            _tokenData(400, 1000), // 400 collateral, req 1000 -> floor bonus 200
+            Math.getSqrtRatioAtTick(0),
+            _signedPair(0, 300), // close cost 300 (< 400 collateral)
+            LeftRightUnsigned.wrap(0),
+            LeftRightUnsigned.wrap(0)
+        );
+        console2.log("bonus token1     :", int256(bonus.leftSlot()));
+        console2.log("protocol loss t1 :", -int256(remaining.leftSlot()));
+    }
+
+    /// @notice DIAGNOSTIC: sweep collateral b (token1) with req r=1000, close cost
+    /// n=300 fixed, and print bonus + protocol loss to plot continuity. Breakpoints:
+    /// 0.8r=800, r=1000, n=300. Watch b around n=300 for a discontinuity.
+    function test_DIAG_bonusCurve_sweepCollateral() public view {
+        uint128[15] memory bs = [
+            uint128(900),
+            850,
+            800,
+            700,
+            600,
+            500,
+            450,
+            400,
+            350,
+            320,
+            301,
+            300,
+            299,
+            250,
+            150
+        ];
+        console2.log("b | bonus | protocolLoss   (r=1000, n=300, 0.8r=800)");
+        for (uint256 i = 0; i < bs.length; ++i) {
+            (LeftRightSigned bonus, LeftRightSigned remaining) = E.getLiquidationBonus(
+                _tokenData(0, 0),
+                _tokenData(bs[i], 1000),
+                Math.getSqrtRatioAtTick(0),
+                _signedPair(0, 300),
+                LeftRightUnsigned.wrap(0),
+                LeftRightUnsigned.wrap(0)
+            );
+            console2.log("b=", uint256(bs[i]));
+            console2.log("   bonus:", int256(bonus.leftSlot()));
+            console2.log("   loss :", -int256(remaining.leftSlot()));
+        }
+    }
 }
 
 /*//////////////////////////////////////////////////////////////
@@ -943,6 +1333,7 @@ contract BonusInvariantsIntegration is Test, PositionUtils {
     CollateralTrackerV2 ct0;
     CollateralTrackerV2 ct1;
     PanopticHelper ph;
+    PanopticQuery pq;
     IRiskEngine re;
 
     IPoolManager manager;
@@ -994,6 +1385,7 @@ contract BonusInvariantsIntegration is Test, PositionUtils {
         collateralReference = address(new CollateralTrackerV2());
         token0 = new ERC20S("token0", "T0", 18);
         token1 = new ERC20S("token1", "T1", 18);
+        pq = new PanopticQuery();
         uniPool = IUniswapV3Pool(V3FACTORY.createPool(address(token0), address(token1), 500));
 
         MAX_CLAMP_DELTA = 149;
@@ -1781,6 +2173,20 @@ contract BonusInvariantsIntegration is Test, PositionUtils {
         uint256 tokenBalance;
     }
 
+    struct RandomI9Case {
+        TokenId tokenId;
+        uint128 maxSizeAtMinUtil;
+        uint128 maxSizeAtMaxUtil;
+        uint128 positionSize;
+        int24 liquidationPriceDown;
+        int24 liquidationPriceUp;
+        int24 targetTick;
+        uint160 oracleSqrtPrice;
+        int256 liqValue;
+        int256 borValue;
+        int256 combinedValue;
+    }
+
     function _snapshotActor(address who) internal view returns (FlowSnapshot memory s) {
         s.wallet0 = token0.balanceOf(who);
         s.wallet1 = token1.balanceOf(who);
@@ -1842,6 +2248,440 @@ contract BonusInvariantsIntegration is Test, PositionUtils {
             ? int256(PanopticMath.convert0to1(uint256(v0), sqrtP))
             : -int256(PanopticMath.convert0to1(uint256(-v0), sqrtP));
         return v1 + v0in1;
+    }
+
+    function _currentPoolId() internal view returns (uint64) {
+        return
+            uint40(uint256(PoolId.unwrap(poolKey.toId()))) +
+            uint64(uint256(vegoid) << 40) +
+            (uint64(uint24(uniPool.tickSpacing())) << 48);
+    }
+
+    function _randomI9TokenId(uint256 seed) internal view returns (TokenId tokenId) {
+        uint256 numLegs = 1 + (seed & 3);
+        int24 tickSpacing = uniPool.tickSpacing();
+        tokenId = TokenId.wrap(0).addPoolId(_currentPoolId());
+
+        for (uint256 leg; leg < numLegs; ++leg) {
+            tokenId = _addRandomI9Leg(tokenId, seed, leg, tickSpacing);
+        }
+    }
+
+    function _crossCollateralizedLoanI9TokenId(
+        uint256 seed
+    ) internal view returns (TokenId tokenId) {
+        uint256 tokenType = seed & 1;
+        tokenId = TokenId.wrap(0).addPoolId(_currentPoolId()).addLeg(
+            0,
+            1 + ((seed >> 8) & 3),
+            tokenType,
+            0,
+            tokenType,
+            0,
+            0,
+            0
+        );
+    }
+
+    function _genuineBadDebtI9TokenId(uint256 seed) internal view returns (TokenId tokenId) {
+        int24 tickSpacing = uniPool.tickSpacing();
+        int24 width = int24(1 + int256((seed >> 16) % 8));
+        int24 strike = int24((int256((seed >> 24) % 31) - 20) * int256(tickSpacing));
+
+        tokenId = TokenId.wrap(0).addPoolId(_currentPoolId()).addLeg(
+            0,
+            1 + ((seed >> 8) & 3),
+            1,
+            0,
+            1,
+            0,
+            strike,
+            width
+        );
+    }
+
+    function _haircutPremiaI9TokenId(uint256 seed) internal view returns (TokenId tokenId) {
+        int24 tickSpacing = uniPool.tickSpacing();
+        int24 width = int24(1 + int256((seed >> 16) % 20));
+        int24 shortStrike = int24((int256((seed >> 24) % 41) - 30) * int256(tickSpacing));
+        int24 creditStrike = int24(
+            shortStrike + int24((80 + int256((seed >> 32) % 40)) * int256(tickSpacing))
+        );
+
+        tokenId = TokenId.wrap(0).addPoolId(_currentPoolId()).addLeg(
+            0,
+            2 + ((seed >> 8) & 3),
+            1,
+            0,
+            1,
+            0,
+            shortStrike,
+            width
+        );
+        tokenId = tokenId.addLeg(1, 1, 0, 1, 1, 1, creditStrike, 0);
+    }
+
+    function _addRandomI9Leg(
+        TokenId tokenId,
+        uint256 seed,
+        uint256 leg,
+        int24 tickSpacing
+    ) internal pure returns (TokenId) {
+        uint256 h = uint256(keccak256(abi.encode(seed, leg)));
+        uint256 legClass = h & 3;
+
+        return
+            tokenId.addLeg(
+                leg,
+                1 + ((h >> 4) & 3),
+                (h >> 6) & 1,
+                legClass & 1,
+                (h >> 7) & 1,
+                leg,
+                _randomI9Strike(h, leg, tickSpacing),
+                legClass < 2 ? int24(0) : int24(1 + int256((h >> 16) % 20))
+            );
+    }
+
+    function _randomI9Strike(
+        uint256 h,
+        uint256 leg,
+        int24 tickSpacing
+    ) internal pure returns (int24) {
+        // Distinct leg offsets avoid duplicate chunks while keeping strikes close enough
+        // that random positions can plausibly become liquidatable in bounded price moves.
+        int256 bucket = int256((h >> 24) % 61) - 30 + int256(leg) * 97;
+        return int24(bucket * int256(tickSpacing));
+    }
+
+    function _randomI9Collateral(
+        uint256 seed
+    ) internal pure returns (uint256 deposit0, uint256 deposit1) {
+        deposit0 = 1_000_000 + ((seed >> 64) % 5) * 250_000;
+        deposit1 = 1_000_000 + ((seed >> 72) % 5) * 250_000;
+
+        // Include moderately skewed collateral cases without making mint success too rare.
+        if (((seed >> 80) & 1) != 0) deposit0 /= 4;
+        if (((seed >> 81) & 1) != 0) deposit1 /= 4;
+    }
+
+    function _resetBorrowerCollateral(uint256 seed) internal {
+        (uint256 deposit0, uint256 deposit1) = _randomI9Collateral(seed);
+        _resetBorrowerCollateralTo(deposit0, deposit1);
+    }
+
+    function _resetBorrowerCollateralTo(uint256 deposit0, uint256 deposit1) internal {
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+        token0.approve(address(ct0), type(uint256).max);
+        token1.approve(address(ct1), type(uint256).max);
+        if (deposit0 > 0) ct0.deposit(deposit0, Bob);
+        if (deposit1 > 0) ct1.deposit(deposit1, Bob);
+    }
+
+    function _boundedRandomI9Size(
+        uint128 maxSizeAtMinUtil,
+        uint128 maxSizeAtMaxUtil,
+        uint256 seed
+    ) internal pure returns (uint128 size) {
+        uint128 maxSize = maxSizeAtMaxUtil == 0 ? maxSizeAtMinUtil : maxSizeAtMaxUtil;
+        if (maxSize > 5_000_000) maxSize = 5_000_000;
+        if (maxSize < 100) return 0;
+
+        uint256 pct = 70 + ((seed >> 88) % 26);
+        size = uint128((uint256(maxSize) * pct) / 100);
+        if (size == 0) size = 1;
+    }
+
+    function _tryMintRandomI9Position(TokenId tokenId, uint128 size) internal returns (bool) {
+        TokenId[] memory positionIdList = new TokenId[](1);
+        TokenId[] memory mintList = new TokenId[](1);
+        uint128[] memory sizeList = new uint128[](1);
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
+
+        positionIdList[0] = tokenId;
+        mintList[0] = tokenId;
+        sizeList[0] = size;
+        tickAndSpreadLimits[0][0] = Constants.MIN_POOL_TICK;
+        tickAndSpreadLimits[0][1] = Constants.MAX_POOL_TICK;
+        tickAndSpreadLimits[0][2] = int24(type(uint24).max / 2);
+
+        vm.startPrank(Bob);
+        try pp.dispatch(mintList, positionIdList, sizeList, tickAndSpreadLimits, true, 0) {
+            $posIdList.push(tokenId);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    function _assertI9FullCycle(
+        uint256 seed,
+        TokenId tokenId,
+        uint256 deposit0,
+        uint256 deposit1,
+        bool optimizeRiskPartners,
+        uint128 positionSizeOverride,
+        uint256 minMoveBuffer,
+        uint256 moveBufferRange,
+        bool expectProtocolLoss
+    ) internal {
+        delete $posIdList;
+        RandomI9Case memory c;
+
+        (currentTick, , , , ) = pp.getOracleTicks();
+        c.tokenId = tokenId;
+
+        if (optimizeRiskPartners) {
+            try pq.optimizeRiskPartners(pp, currentTick, c.tokenId) returns (
+                TokenId optimizedTokenId
+            ) {
+                c.tokenId = optimizedTokenId;
+            } catch {
+                console2.log("A");
+                assertTrue(false, "optimizeTokenId");
+            }
+        }
+
+        try pq.validateTokenId(c.tokenId) {} catch {
+            console2.log("B");
+            assertTrue(false, "validate TokenId");
+        }
+
+        _resetBorrowerCollateralTo(deposit0, deposit1);
+        FlowSnapshot memory borBefore = _snapshotActor(Bob);
+
+        if (positionSizeOverride == 0) {
+            TokenId[] memory emptyPositionList = new TokenId[](0);
+            try pq.getMaxPositionSizeBounds(pp, emptyPositionList, Bob, c.tokenId) returns (
+                uint128 minUtilBound,
+                uint128 maxUtilBound
+            ) {
+                c.maxSizeAtMinUtil = minUtilBound;
+                c.maxSizeAtMaxUtil = maxUtilBound;
+            } catch {
+                (uint128 a, uint128 b) = pq.getMaxPositionSizeBounds(
+                    pp,
+                    emptyPositionList,
+                    Bob,
+                    c.tokenId
+                );
+                console2.log("a,b", a, b);
+                console2.log("C");
+                assertTrue(false, "maxSize");
+            }
+
+            c.positionSize = _boundedRandomI9Size(c.maxSizeAtMinUtil, c.maxSizeAtMaxUtil, seed);
+        } else {
+            c.positionSize = positionSizeOverride;
+        }
+
+        vm.assume(c.positionSize > 0);
+        vm.assume(_tryMintRandomI9Position(c.tokenId, c.positionSize));
+
+        try pq.getLiquidationPrices(pp, Bob, $posIdList) returns (int24 down, int24 up) {
+            c.liquidationPriceDown = down;
+            c.liquidationPriceUp = up;
+        } catch {
+            console2.log("D");
+            assertTrue(false, "liq prices");
+        }
+
+        bool hasTarget;
+        (hasTarget, c.targetTick) = _pickLiquidationMoveBuffered(
+            c.liquidationPriceDown,
+            c.liquidationPriceUp,
+            seed,
+            minMoveBuffer,
+            moveBufferRange
+        );
+        vm.assume(hasTarget);
+
+        _moveOracleTo(c.targetTick);
+        vm.assume(!pq.isAccountSolvent(pp, Bob, $posIdList, c.targetTick));
+
+        address liquidator = address(0xCAFE);
+        vm.startPrank(liquidator);
+        deal(ct0.asset(), liquidator, 1_000_000_000);
+        deal(ct1.asset(), liquidator, 1_000_000_000);
+        IERC20Partial(ct0.asset()).approve(address(ct0), 1_000_000_000);
+        IERC20Partial(ct1.asset()).approve(address(ct1), 1_000_000_000);
+
+        FlowSnapshot memory liqBefore = _snapshotActor(liquidator);
+
+        // Always record logs so the I2 overlay below can read the protocol-loss
+        // events on every run, not just the expectProtocolLoss entry points.
+        vm.recordLogs();
+        try
+            pp.dispatchFrom(
+                new TokenId[](0),
+                Bob,
+                $posIdList,
+                new TokenId[](0),
+                LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1)
+            )
+        {} catch {
+            console2.log("E");
+            assertTrue(false, "liquidation");
+        }
+
+        Vm.Log[] memory liquidationLogs = vm.getRecordedLogs();
+        uint256 lossAssets = _protocolLossAssets(liquidationLogs);
+        if (expectProtocolLoss) {
+            assertGt(lossAssets, 0, "bad debt");
+        }
+        (bool loss0, bool loss1) = _protocolLossMask(liquidationLogs);
+
+        FlowSnapshot memory liqAfter = _snapshotActor(liquidator);
+        FlowSnapshot memory borAfter = _snapshotActor(Bob);
+        c.oracleSqrtPrice = _twapSqrtPrice();
+
+        c.liqValue = _toToken1(
+            _actorNet0(liqBefore, liqAfter),
+            _actorNet1(liqBefore, liqAfter),
+            c.oracleSqrtPrice
+        );
+        c.borValue = _toToken1(
+            _actorNet0(borBefore, borAfter),
+            _actorNet1(borBefore, borAfter),
+            c.oracleSqrtPrice
+        );
+        c.combinedValue = c.liqValue + c.borValue;
+
+        // I2 (protocol-loss safety, final-state): if the protocol/PLPs realized any
+        // loss, the borrower must retain no recoverable surplus in ANY token. The
+        // borrower's residual recoverable collateral is exactly their post-liquidation
+        // CT-asset balance (their wallet is untouched by dispatchFrom). Per-token (the
+        // invariant is `∀ s`), with a tolerance of MAX_OPEN_LEGS wei (the per-leg
+        // unsafeDivRoundingUp haircut bias the unit test already tolerates) plus 2 wei
+        // for ERC4626 convertToAssets share rounding. Always-on overlay: vacuously true
+        // when no loss fires.
+        //
+        // Gated on `lossAssets > 0` (realized magnitude), NOT on the mere presence of a
+        // ProtocolLossRealized event: a zero-asset event fires on healthy cross-collateral
+        // liquidations (one token's deficit covered by converting the other), where the
+        // borrower legitimately keeps surplus. The invariant is `ProtocolLossRealized_t > 0`.
+        if (lossAssets > 0) {
+            int256 i2Tol = int256(re.MAX_OPEN_LEGS()) + 2;
+            assertLe(
+                int256(borAfter.ctAssets0),
+                i2Tol,
+                "I2: residual surplus token0 with protocol loss"
+            );
+            assertLe(
+                int256(borAfter.ctAssets1),
+                i2Tol,
+                "I2: residual surplus token1 with protocol loss"
+            );
+        }
+
+        if (expectProtocolLoss) {
+            (bool foundBonus, int256 bonus0, int256 bonus1) = _accountLiquidatedBonusSlots(
+                liquidationLogs
+            );
+            assertTrue(foundBonus, "AccountLiquidated");
+            if (loss0) assertLe(bonus0, int256(0), "I9: loss-token bonus0");
+            if (loss1) assertLe(bonus1, int256(0), "I9: loss-token bonus1");
+        } else {
+            assertLe(c.combinedValue, int256(0), "I9: self-liquidation profit");
+        }
+    }
+
+    function _pickLiquidationMove(
+        int24 liquidationPriceDown,
+        int24 liquidationPriceUp,
+        uint256 seed
+    ) internal pure returns (bool hasTarget, int24 targetTick) {
+        return
+            _pickLiquidationMoveBuffered(
+                liquidationPriceDown,
+                liquidationPriceUp,
+                seed,
+                500,
+                2_500
+            );
+    }
+
+    function _pickLiquidationMoveBuffered(
+        int24 liquidationPriceDown,
+        int24 liquidationPriceUp,
+        uint256 seed,
+        uint256 minBuffer,
+        uint256 bufferRange
+    ) internal pure returns (bool hasTarget, int24 targetTick) {
+        bool hasDown = liquidationPriceDown != type(int24).min;
+        bool hasUp = liquidationPriceUp != type(int24).max;
+        if (!hasDown && !hasUp) return (false, 0);
+
+        bool moveUp = hasUp && (!hasDown || ((seed >> 96) & 1) != 0);
+        int256 buffer = int256(minBuffer + ((seed >> 97) % bufferRange));
+        int256 rawTarget = moveUp
+            ? int256(liquidationPriceUp) + buffer
+            : int256(liquidationPriceDown) - buffer;
+
+        int256 minTick = int256(Constants.MIN_POOL_TICK) + 2;
+        int256 maxTick = int256(Constants.MAX_POOL_TICK) - 2;
+        if (rawTarget < minTick) rawTarget = minTick;
+        if (rawTarget > maxTick) rawTarget = maxTick;
+
+        return (true, int24(rawTarget));
+    }
+
+    function _protocolLossAssets(Vm.Log[] memory entries) internal pure returns (uint256 total) {
+        bytes32 sig = keccak256("ProtocolLossRealized(address,address,uint256,uint256)");
+        for (uint256 i; i < entries.length; ++i) {
+            if (entries[i].topics.length > 0 && entries[i].topics[0] == sig) {
+                (uint256 assets, ) = abi.decode(entries[i].data, (uint256, uint256));
+                total += assets;
+            }
+        }
+    }
+
+    function _accountLiquidatedBonusSlots(
+        Vm.Log[] memory entries
+    ) internal pure returns (bool found, int256 bonus0, int256 bonus1) {
+        bytes32 sig = keccak256("AccountLiquidated(address,address,int256)");
+        for (uint256 i; i < entries.length; ++i) {
+            if (entries[i].topics.length > 0 && entries[i].topics[0] == sig) {
+                LeftRightSigned bonusAmounts = LeftRightSigned.wrap(
+                    abi.decode(entries[i].data, (int256))
+                );
+                return (true, int256(bonusAmounts.rightSlot()), int256(bonusAmounts.leftSlot()));
+            }
+        }
+    }
+
+    function _protocolLossMask(
+        Vm.Log[] memory entries
+    ) internal view returns (bool loss0, bool loss1) {
+        bytes32 sig = keccak256("ProtocolLossRealized(address,address,uint256,uint256)");
+        for (uint256 i; i < entries.length; ++i) {
+            if (entries[i].topics.length > 0 && entries[i].topics[0] == sig) {
+                if (entries[i].emitter == address(ct0)) loss0 = true;
+                if (entries[i].emitter == address(ct1)) loss1 = true;
+            }
+        }
+    }
+
+    function _moveOracleTo(int24 targetTick) internal {
+        vm.startPrank(Swapper);
+        swapperc.mint(uniPool, -800000, 800000, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -800000, 800000, 10 ** 18);
+        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(targetTick));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(targetTick));
+
+        for (uint256 j; j < 1000; ++j) {
+            vm.warp(block.timestamp + 36000);
+            vm.roll(block.number + 100);
+            pp.pokeOracle();
+        }
+    }
+
+    function _twapSqrtPrice() internal returns (uint160) {
+        (, , , , oraclePack) = pp.getOracleTicks();
+        twapTick = re.twapEMA(oraclePack);
+        return Math.getSqrtRatioAtTick(int24(twapTick));
     }
 
     function _logBalReq(string memory label, address user, TokenId[] memory ids) internal {
@@ -2233,5 +3073,454 @@ contract BonusInvariantsIntegration is Test, PositionUtils {
 
         // I9: combined self-liquidation P&L is non-positive at TWAP.
         assertLe(liqValue + borValue, int256(0), "I9: self-liquidation profit at TWAP");
+    }
+
+    /// @notice I9 (bounded fuzz): random 1-4 leg portfolios cannot produce positive
+    /// borrower+liquidator PnL across the full self-liquidation cycle at oracle TWAP.
+    /// forge-config: default.fuzz.runs = 25
+    function testFuzz_I9_randomTokenId_selfLiquidationNoProfit(uint256 seed) public {
+        (uint256 deposit0, uint256 deposit1) = _randomI9Collateral(seed);
+        _assertI9FullCycle(
+            seed,
+            _randomI9TokenId(seed),
+            deposit0,
+            deposit1,
+            true,
+            0,
+            500,
+            2_500,
+            false
+        );
+    }
+
+    function test_I9_randomTokenId_fullCycleCounterexampleRegression() public {
+        testFuzz_I9_randomTokenId_selfLiquidationNoProfit(
+            19420182117295316302233354161501907838732057622076890809
+        );
+    }
+
+    /// @notice Regression for the credit-in-surplus-token x cross-token-bad-debt self-liquidation
+    /// profit (the global-backable cap fix). Pre-fix this seed extracted ~13% of position size from
+    /// PLPs (combined borrower+liquidator value > 0 at TWAP); the proportional global floor cap in
+    /// `getLiquidationBonus` drives the net bonus to zero so combined <= 0.
+    function test_I9_creditBadDebt_globalCapRegression() public {
+        testFuzz_I9_randomTokenId_selfLiquidationNoProfit(
+            15711867615927946943544337117520432083872209606168597275098887885787
+        );
+    }
+
+    /// @notice I9 (directed fuzz): cross-collateralized zero-width loans with
+    /// collateral concentrated in the opposite token cannot self-liquidate for profit.
+    /// forge-config: default.fuzz.runs = 50
+    function testFuzz_I9_crossCollateralizedLoan_fullCycleNoProfit(uint256 seed) public {
+        bool token0Loan = (seed & 1) == 0;
+        uint256 richSide = 1_000_000 + ((seed >> 64) % 5) * 250_000;
+        uint128 loanSize = uint128(3_000_000 + ((seed >> 16) % 2_000_001));
+        _assertI9FullCycle(
+            seed,
+            _crossCollateralizedLoanI9TokenId(seed),
+            token0Loan ? 1_000 : richSide,
+            token0Loan ? richSide : 1_000,
+            false,
+            loanSize,
+            2_000,
+            8_000,
+            false
+        );
+    }
+
+    /// @notice I9 (directed fuzz): genuine bad debt may realize protocol loss,
+    /// but the liquidation bonus itself must not be positive at TWAP.
+    /// forge-config: default.fuzz.runs = 25
+    function testFuzz_I9_genuineBadDebt_noPositiveBonus(uint256 seed) public {
+        _assertI9FullCycle(
+            seed,
+            _genuineBadDebtI9TokenId(seed),
+            500_000 + ((seed >> 64) % 4) * 250_000,
+            1_005 + ((seed >> 72) % 1_000),
+            false,
+            uint128(900_000 + ((seed >> 16) % 600_001)),
+            50_000,
+            250_000,
+            true
+        );
+    }
+
+    /// @notice I2 (directed fuzz): when a liquidation realizes protocol loss (PLP
+    /// dilution), the borrower retains no recoverable surplus in ANY token. Biased
+    /// toward genuine bad debt via large move buffers + skewed (rich token0 / thin
+    /// token1) collateral so the protocol-loss branch fires often; expectProtocolLoss
+    /// keeps the "bad debt" precondition so a run that fails to reach bad debt fails
+    /// loudly rather than passing vacuously. The I2 assertion itself lives in
+    /// `_assertI9FullCycle` as an always-on overlay.
+    /// forge-config: default.fuzz.runs = 50
+    function testFuzz_I2_genuineBadDebt_borrowerNoResidualSurplus(uint256 seed) public {
+        _assertI9FullCycle(
+            seed,
+            _genuineBadDebtI9TokenId(seed),
+            500_000 + ((seed >> 64) % 4) * 250_000, // skewed-rich token0
+            1_005 + ((seed >> 72) % 1_000), // thin token1 -> bad debt likely
+            false,
+            uint128(900_000 + ((seed >> 16) % 600_001)),
+            50_000, // large minMoveBuffer (force deep insolvency)
+            250_000, // wide moveBufferRange
+            true // expectProtocolLoss
+        );
+    }
+
+    function test_I2_genuineBadDebt_borrowerNoResidualSurplusRegression() public {
+        // Seed reaches a full bad-debt liquidation (passes all scenario assumptions).
+        // Replace with a counterexample seed if the fuzzer ever finds an I2 violation.
+        testFuzz_I2_genuineBadDebt_borrowerNoResidualSurplus(24893033914019724266919454);
+    }
+
+    /// @notice I9 (directed fuzz): portfolios with a short option and width-zero
+    /// long credit cover the credit/haircut-adjacent liquidation surface.
+    /// forge-config: default.fuzz.runs = 50
+    function testFuzz_I9_haircutPremiaShape_fullCycleNoProfit(uint256 seed) public {
+        _assertI9FullCycle(
+            seed,
+            _haircutPremiaI9TokenId(seed),
+            750_000 + ((seed >> 64) % 5) * 250_000,
+            750_000 + ((seed >> 72) % 5) * 250_000,
+            false,
+            uint128(150_000 + ((seed >> 16) % 250_001)),
+            5_000,
+            20_000,
+            false
+        );
+    }
+
+    /// @notice RECONCILIATION: replicate the auditor's exact PoC scenario
+    /// (tick 7500, 100 warps, fresh liquidator 0xCAFE) and compute, side by side:
+    ///   (A) the auditor's raw per-token combined delta from PRE-MINT (convertToAssets+wallet);
+    ///   (B) the same combined delta expressed in a single numeraire (token1 @ oracle TWAP);
+    ///   (C) the I9 measure: combined delta from PRE-LIQ in token1 @ TWAP;
+    ///   (D) the LP cohort (Alice + Charlie) value delta in token1 @ TWAP (the actual LP loss);
+    ///   (E) REALIZABILITY: redeem both actors' shares to wallet and recompute the
+    ///       raw per-token combined delta from PRE-MINT using only real wallet tokens.
+    function test_RECONCILE_selfLiquidation_auditorVsTeam() public {
+        // Bob: withdraw setUp deposits, redeposit ONLY token1 (auditor setup)
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+        token1.approve(address(ct1), 1_000_000);
+        ct1.deposit(1_000_000, Bob);
+
+        address Liq = address(0xCAFE);
+
+        // PRE-MINT snapshots (Bob has no position; Liq not funded yet)
+        FlowSnapshot memory bobPreMint = _snapshotActor(Bob);
+        // LP cohort = Alice + Charlie (pure PLPs, never trade)
+        uint256 lpAssets0_preMint = ct0.convertToAssets(
+            ct0.balanceOf(Alice) + ct0.balanceOf(Charlie)
+        );
+        uint256 lpAssets1_preMint = ct1.convertToAssets(
+            ct1.balanceOf(Alice) + ct1.balanceOf(Charlie)
+        );
+
+        // Open a token0 loan (width-0 short), 5x deposit
+        poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+        poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, 0, 0));
+        mintOptions(
+            pp,
+            $posIdList,
+            5_000_000,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        // Pump token0 price (tick 0 -> 7500), 100 warps (auditor params)
+        vm.startPrank(Swapper);
+        swapperc.mint(uniPool, -800000, 800000, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -800000, 800000, 10 ** 18);
+        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(7500));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(7500));
+        for (uint256 j = 0; j < 100; ++j) {
+            vm.warp(block.timestamp + 600);
+            vm.roll(block.number + 1);
+            pp.pokeOracle();
+        }
+
+        // Fund fresh liquidator
+        vm.startPrank(Liq);
+        deal(ct0.asset(), Liq, 100_000_000);
+        deal(ct1.asset(), Liq, 100_000_000);
+        IERC20Partial(ct0.asset()).approve(address(ct0), 100_000_000);
+        IERC20Partial(ct1.asset()).approve(address(ct1), 100_000_000);
+
+        // PRE-LIQ snapshots
+        FlowSnapshot memory bobPreLiq = _snapshotActor(Bob);
+        FlowSnapshot memory liqPreLiq = _snapshotActor(Liq);
+
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+        // POST-LIQ snapshots
+        FlowSnapshot memory bobPost = _snapshotActor(Bob);
+        FlowSnapshot memory liqPost = _snapshotActor(Liq);
+
+        (, , , , oraclePack) = pp.getOracleTicks();
+        twapTick = re.twapEMA(oraclePack);
+        uint160 sp = Math.getSqrtRatioAtTick(int24(twapTick));
+
+        // ---- (A) auditor raw per-token, from PRE-MINT ----
+        {
+            int256 combT0 = _actorNet0(bobPreMint, bobPost) + _actorNet0(liqPreLiq, liqPost);
+            int256 combT1 = _actorNet1(bobPreMint, bobPost) + _actorNet1(liqPreLiq, liqPost);
+            console2.log("(A) auditor raw per-token combined delta (from PRE-MINT):");
+            console2.log("    token0:", combT0);
+            console2.log("    token1:", combT1);
+            console2.log("(B) ... same, in token1 @ TWAP:", _toToken1(combT0, combT1, sp));
+        }
+
+        // ---- (C) I9 measure: from PRE-LIQ, token1 @ TWAP ----
+        {
+            int256 i9 = _toToken1(
+                _actorNet0(bobPreLiq, bobPost),
+                _actorNet1(bobPreLiq, bobPost),
+                sp
+            ) + _toToken1(_actorNet0(liqPreLiq, liqPost), _actorNet1(liqPreLiq, liqPost), sp);
+            console2.log("(C) I9 combined delta in token1 @ TWAP (from PRE-LIQ):", i9);
+        }
+
+        // ---- (D) LP cohort (Alice+Charlie) value delta in token1 @ TWAP ----
+        {
+            int256 lpDelta = _toToken1(
+                int256(ct0.convertToAssets(ct0.balanceOf(Alice) + ct0.balanceOf(Charlie))) -
+                    int256(lpAssets0_preMint),
+                int256(ct1.convertToAssets(ct1.balanceOf(Alice) + ct1.balanceOf(Charlie))) -
+                    int256(lpAssets1_preMint),
+                sp
+            );
+            console2.log("(D) LP cohort (Alice+Charlie) value delta in token1 @ TWAP:", lpDelta);
+        }
+
+        // ---- (E) REALIZABILITY: redeem everything to wallet, recompute raw combined ----
+        vm.startPrank(Bob);
+        if (ct0.maxRedeem(Bob) > 0) ct0.redeem(ct0.maxRedeem(Bob), Bob, Bob);
+        if (ct1.maxRedeem(Bob) > 0) ct1.redeem(ct1.maxRedeem(Bob), Bob, Bob);
+        vm.startPrank(Liq);
+        if (ct0.maxRedeem(Liq) > 0) ct0.redeem(ct0.maxRedeem(Liq), Liq, Liq);
+        if (ct1.maxRedeem(Liq) > 0) ct1.redeem(ct1.maxRedeem(Liq), Liq, Liq);
+
+        // Per-actor realized wallet deltas (debug).
+        console2.log("(E) realized wallet deltas:");
+        console2.log("    Bob  w0:", int256(token0.balanceOf(Bob)) - int256(bobPreMint.wallet0));
+        console2.log("    Bob  w1:", int256(token1.balanceOf(Bob)) - int256(bobPreMint.wallet1));
+        console2.log("    Liq  w0:", int256(token0.balanceOf(Liq)) - int256(liqPreLiq.wallet0));
+        console2.log("    Liq  w1:", int256(token1.balanceOf(Liq)) - int256(liqPreLiq.wallet1));
+        console2.log("    Bob ct0 left:", ct0.balanceOf(Bob));
+        console2.log("    Bob ct1 left:", ct1.balanceOf(Bob));
+        console2.log("    Liq ct0 left:", ct0.balanceOf(Liq));
+        console2.log("    Liq ct1 left:", ct1.balanceOf(Liq));
+    }
+
+    /// @notice DIAGNOSTIC: sweep liquidation TIMING. Same 5M token0 loan / 1M token1
+    /// collateral, liquidated at progressively larger price moves (= progressively
+    /// later / more underwater). For each, report how far the account is past the
+    /// margin threshold (bal0 vs req0) and the resulting net PLP loss + colluding
+    /// pair profit (token1 @ TWAP). Shows whether early liquidation keeps loss ~0
+    /// and bounds the worst case. Run against CURRENT (M-02, uncapped) behavior.
+    function test_DIAG_lossVsLiquidationTiming() public {
+        int24[8] memory ticks = [int24(7000), 7500, 9000, 12000, 20000, 40000, 60000, 74000];
+        uint256 snap = vm.snapshotState();
+        console2.log("tick | bal0 | req0 | underwater(req0-bal0) | PLP_loss_t1 | pair_profit_t1");
+        for (uint256 i = 0; i < ticks.length; ++i) {
+            vm.revertToState(snap);
+            _diagAtTick(ticks[i]);
+        }
+    }
+
+    function _diagAtTick(int24 targetTick) internal {
+        delete $posIdList;
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+        token1.approve(address(ct1), 1_000_000);
+        ct1.deposit(1_000_000, Bob);
+
+        FlowSnapshot memory bobPreMint = _snapshotActor(Bob);
+        uint256 lp0 = ct0.convertToAssets(ct0.balanceOf(Alice) + ct0.balanceOf(Charlie));
+        uint256 lp1 = ct1.convertToAssets(ct1.balanceOf(Alice) + ct1.balanceOf(Charlie));
+
+        poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+        poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, 0, 0));
+        mintOptions(
+            pp,
+            $posIdList,
+            5_000_000,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Swapper);
+        swapperc.mint(uniPool, -800000, 800000, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -800000, 800000, 10 ** 18);
+        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(targetTick));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(targetTick));
+        for (uint256 j = 0; j < 100; ++j) {
+            vm.warp(block.timestamp + 600);
+            vm.roll(block.number + 1);
+            pp.pokeOracle();
+        }
+
+        address Liq = address(0xCAFE);
+        vm.startPrank(Liq);
+        deal(ct0.asset(), Liq, 100_000_000);
+        deal(ct1.asset(), Liq, 100_000_000);
+        IERC20Partial(ct0.asset()).approve(address(ct0), 100_000_000);
+        IERC20Partial(ct1.asset()).approve(address(ct1), 100_000_000);
+
+        FlowSnapshot memory liqPre = _snapshotActor(Liq);
+        FlowSnapshot memory bobPre = _snapshotActor(Bob);
+        (uint256 b0, uint256 r0) = _balReq0(Bob, $posIdList);
+
+        try
+            pp.dispatchFrom(
+                new TokenId[](0),
+                Bob,
+                $posIdList,
+                new TokenId[](0),
+                LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1)
+            )
+        {
+            (, , , , oraclePack) = pp.getOracleTicks();
+            uint160 sp = Math.getSqrtRatioAtTick(int24(re.twapEMA(oraclePack)));
+            FlowSnapshot memory bobPost = _snapshotActor(Bob);
+            FlowSnapshot memory liqPost = _snapshotActor(Liq);
+            int256 pair = _toToken1(
+                _actorNet0(bobPreMint, bobPost) + _actorNet0(liqPre, liqPost),
+                _actorNet1(bobPreMint, bobPost) + _actorNet1(liqPre, liqPost),
+                sp
+            );
+            int256 lpd = _toToken1(
+                int256(ct0.convertToAssets(ct0.balanceOf(Alice) + ct0.balanceOf(Charlie))) -
+                    int256(lp0),
+                int256(ct1.convertToAssets(ct1.balanceOf(Alice) + ct1.balanceOf(Charlie))) -
+                    int256(lp1),
+                sp
+            );
+            console2.log("--- tick", uint256(uint24(targetTick)));
+            console2.log("  bal0,req0:", b0, r0);
+            console2.log("  underwater (req0-bal0):", r0 > b0 ? r0 - b0 : 0);
+            console2.log("  PLP net loss (t1):", -lpd);
+            console2.log("  pair profit  (t1):", pair);
+        } catch {
+            console2.log("--- tick", uint256(uint24(targetTick)));
+            console2.log("  bal0,req0:", b0, r0);
+            console2.log("  NOT LIQUIDATABLE (solvent)");
+        }
+        bobPre; // silence unused
+    }
+
+    function _balReq0(
+        address user,
+        TokenId[] memory ids
+    ) internal returns (uint256 bal0, uint256 req0) {
+        (LeftRightUnsigned sp_, LeftRightUnsigned lp_, PositionBalance[] memory pb, , ) = pp
+            .getFullPositionsData(user, false, ids);
+        (, , , , oraclePack) = pp.getOracleTicks();
+        (LeftRightUnsigned td0, , ) = re.getMargin(
+            pb,
+            re.twapEMA(oraclePack),
+            user,
+            ids,
+            sp_,
+            lp_,
+            ct0,
+            ct1
+        );
+        return (td0.rightSlot(), td0.leftSlot());
+    }
+
+    /// @notice DIAGNOSTIC: single-token (NON cross-margined) short that gaps deep
+    /// ITM beyond its collateral -> genuine bad debt. Bob deposits ONLY token1 and
+    /// sells a token1-collateralized short; price then crashes so the intrinsic
+    /// loss exceeds the collateral. Measures net PLP loss under the refined cap.
+    /// Expectation: PLP loss is POSITIVE here (irreducible bad debt), in contrast
+    /// to the cross-margined loan case where the cap drives it to ~0.
+    function test_DIAG_singleToken_genuineBadDebt() public {
+        delete $posIdList;
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+        token0.approve(address(ct0), 1_500_000);
+        ct0.deposit(1_500_000, Bob); // token0 collateral (depreciates with the crash)
+        token1.approve(address(ct1), 1_005);
+        ct1.deposit(1_005, Bob); // dust token1 the option leg needs to mint
+
+        uint256 lp0 = ct0.convertToAssets(ct0.balanceOf(Alice) + ct0.balanceOf(Charlie));
+        uint256 lp1 = ct1.convertToAssets(ct1.balanceOf(Alice) + ct1.balanceOf(Charlie));
+
+        poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+        poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        // short, token1-side (asset=1, tokenType=1), width=1 option near spot
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, -15, 1));
+        mintOptions(
+            pp,
+            $posIdList,
+            1_003_003,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        // Crash the price hard so the short goes deep ITM (loss >> collateral).
+        vm.startPrank(Swapper);
+        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-500_000));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-500_000));
+        for (uint256 j = 0; j < 10000; ++j) {
+            vm.warp(block.timestamp + 3600);
+            vm.roll(block.number + 10);
+            pp.pokeOracle();
+        }
+
+        address Liq = address(0xCAFE);
+        vm.startPrank(Liq);
+        deal(ct0.asset(), Liq, type(uint120).max);
+        deal(ct1.asset(), Liq, type(uint120).max);
+        IERC20Partial(ct0.asset()).approve(address(ct0), type(uint120).max);
+        IERC20Partial(ct1.asset()).approve(address(ct1), type(uint120).max);
+
+        vm.recordLogs();
+        try
+            pp.dispatchFrom(
+                new TokenId[](0),
+                Bob,
+                $posIdList,
+                new TokenId[](0),
+                LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1)
+            )
+        {
+            Vm.Log[] memory entries = vm.getRecordedLogs();
+            bytes32 sig = keccak256("ProtocolLossRealized(address,address,uint256,uint256)");
+            for (uint256 i = 0; i < entries.length; ++i) {
+                if (entries[i].topics.length > 0 && entries[i].topics[0] == sig) {
+                    (uint256 a, uint256 s) = abi.decode(entries[i].data, (uint256, uint256));
+                    console2.log("ProtocolLossRealized on", entries[i].emitter);
+                    console2.log("  protocolLossAssets:", a);
+                }
+            }
+            (, , , , oraclePack) = pp.getOracleTicks();
+            uint160 sp = Math.getSqrtRatioAtTick(int24(re.twapEMA(oraclePack)));
+            int256 lpd = _toToken1(
+                int256(ct0.convertToAssets(ct0.balanceOf(Alice) + ct0.balanceOf(Charlie))) -
+                    int256(lp0),
+                int256(ct1.convertToAssets(ct1.balanceOf(Alice) + ct1.balanceOf(Charlie))) -
+                    int256(lp1),
+                sp
+            );
+            console2.log("Bob collateral deposited (t0):", uint256(1_500_000));
+            console2.log("PLP net loss (t1) [>0 = real bad debt]:", -lpd);
+        } catch {
+            console2.log("liquidation reverted");
+        }
     }
 }

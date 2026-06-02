@@ -128,7 +128,7 @@ interface IRiskEngine {
     /// @notice Maximum number of open legs allowed.
     function MAX_OPEN_LEGS() external view returns (uint256);
 
-    /// @notice Max possible bonus during liquidations (currently 20% of balance)
+    /// @notice Max raw per-token bonus rate during liquidations (currently 20% of required)
     function MAX_BONUS() external view returns (uint256);
 
     /*//////////////////////////////////////////////////////////////
@@ -197,8 +197,8 @@ interface IRiskEngine {
     /// @param netPaid The net amount of tokens paid/received by the liquidatee to close their portfolio of positions
     /// @param shortPremium Total owed premium (prorated by available settled tokens) across all short legs being liquidated
     /// @param creditAmounts The net credit amounts. Used to make adjustments to the balance amount to avoid double-counting credits
-    /// @return The LeftRight-packed bonus amounts to be paid to the liquidator for both tokens
-    /// @return The LeftRight-packed protocol loss (pre-haircut) for both tokens
+    /// @return The LeftRight-packed bonus amounts to be paid to the liquidator for both tokens (may be negative)
+    /// @return The LeftRight-packed collateral remaining after liquidation costs and bonus; negative slots represent protocol loss before premia haircut
     function getLiquidationBonus(
         LeftRightUnsigned tokenData0,
         LeftRightUnsigned tokenData1,

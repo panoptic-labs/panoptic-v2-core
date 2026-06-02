@@ -11,5 +11,6 @@ v4-core/=lib/v4-core/src
 @test_periphery/=test/foundry/test_periphery
 @tokens/=contracts/tokens
 @types/=contracts/types
+@helper/=lib/panoptic-helper/src
 @scripts/=scripts
 @uniswap/=lib

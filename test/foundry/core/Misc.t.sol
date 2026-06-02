@@ -10691,6 +10691,201 @@ contract Misctest is Test, PositionUtils {
     // `test/foundry/core/RiskEngine/RiskEngine.BonusInvariants.t.sol`
     // (contract `BonusInvariantsIntegration`).
 
+    function test_Success_loanBonusClamp_crossCollateralized_zeroBonus_revised() public {
+        // Bob: withdraw setUp deposits, redeposit ONLY token1
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+        token1.approve(address(ct1), 1_000_000);
+        ct1.deposit(1_000_000, Bob);
+
+        // PRE-snapshot Bob's starting balance (before any position is opened).
+        // No loan exists yet, so ct + wallet is a clean wealth measure.
+        uint256 bobStartT0 = ct0.convertToAssets(ct0.balanceOf(Bob)) + token0.balanceOf(Bob);
+        uint256 bobStartT1 = ct1.convertToAssets(ct1.balanceOf(Bob)) + token1.balanceOf(Bob);
+        console2.log("Bob   BEFORE token0:", bobStartT0);
+        console2.log("Bob   BEFORE token1:", bobStartT1);
+
+        // Open a token0 loan (short put), 5x deposit
+        poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+        poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, 0, 0));
+        mintOptions(
+            pp,
+            $posIdList,
+            5_000_000,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        // Pump token0 price (tick 0 to 7500, ~2.12x), just past liquidation edge
+        vm.startPrank(Swapper);
+        swapperc.mint(uniPool, -800000, 800000, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -800000, 800000, 10 ** 18);
+        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(7500));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(7500));
+        for (uint256 j = 0; j < 100; ++j) {
+            vm.warp(block.timestamp + 600);
+            vm.roll(block.number + 1);
+            pp.pokeOracle();
+        }
+
+        // Fresh liquidator (separate address, but treated as colluding with Bob)
+        address Liquidator = address(0xCAFE);
+        vm.startPrank(Liquidator);
+        deal(ct0.asset(), Liquidator, 100_000_000);
+        deal(ct1.asset(), Liquidator, 100_000_000);
+        IERC20Partial(ct0.asset()).approve(address(ct0), 100_000_000);
+        IERC20Partial(ct1.asset()).approve(address(ct1), 100_000_000);
+
+        // PRE-snapshot Liq's starting balance (right after deal, before liquidate).
+        uint256 liqStartT0 = ct0.convertToAssets(ct0.balanceOf(Liquidator)) +
+            token0.balanceOf(Liquidator);
+        uint256 liqStartT1 = ct1.convertToAssets(ct1.balanceOf(Liquidator)) +
+            token1.balanceOf(Liquidator);
+        console2.log("Liq   BEFORE token0:", liqStartT0);
+        console2.log("Liq   BEFORE token1:", liqStartT1);
+
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+        // POST-snapshot
+        uint256 bobEndT0 = ct0.convertToAssets(ct0.balanceOf(Bob)) + token0.balanceOf(Bob);
+        uint256 bobEndT1 = ct1.convertToAssets(ct1.balanceOf(Bob)) + token1.balanceOf(Bob);
+        uint256 liqEndT0 = ct0.convertToAssets(ct0.balanceOf(Liquidator)) +
+            token0.balanceOf(Liquidator);
+        uint256 liqEndT1 = ct1.convertToAssets(ct1.balanceOf(Liquidator)) +
+            token1.balanceOf(Liquidator);
+        console2.log("Bob   AFTER  token0:", bobEndT0);
+        console2.log("Bob   AFTER  token1:", bobEndT1);
+        console2.log("Liq   AFTER  token0:", liqEndT0);
+        console2.log("Liq   AFTER  token1:", liqEndT1);
+
+        // Combined totals (raw token sums, no price conversion).
+        console2.log("Combined BEFORE token0:", bobStartT0 + liqStartT0);
+        console2.log("Combined AFTER  token0:", bobEndT0 + liqEndT0);
+        console2.log("Combined BEFORE token1:", bobStartT1 + liqStartT1);
+        console2.log("Combined AFTER  token1:", bobEndT1 + liqEndT1);
+
+        // Per-token deltas. Self-liq is profitable iff neither delta is negative and at least one is
+        // positive. Invariant I9: self-liquidation must NOT be profitable. The colluding pair may
+        // lose rounding dust to the protocol (the safe direction), but must never come out ahead.
+        int256 deltaT0 = int256(bobEndT0 + liqEndT0) - int256(bobStartT0 + liqStartT0);
+        int256 deltaT1 = int256(bobEndT1 + liqEndT1) - int256(bobStartT1 + liqStartT1);
+        console2.log(">>> Combined delta token0:", deltaT0);
+        console2.log(">>> Combined delta token1:", deltaT1);
+
+        assertFalse(
+            deltaT0 >= 0 && deltaT1 >= 0 && (deltaT0 > 0 || deltaT1 > 0),
+            "I9: self-liquidation must not be profitable"
+        );
+    }
+
+    function test_Success_loanBonusClamp_crossCollateralized_zeroBonus() public {
+        // Bob: withdraw setUp deposits, redeposit ONLY token1
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+        token1.approve(address(ct1), 1_000_000);
+        ct1.deposit(1_000_000, Bob);
+
+        // Open a token0 loan (width-0 short), 5x deposit
+        poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+        poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, 0, 0));
+        mintOptions(
+            pp,
+            $posIdList,
+            5_000_000,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        // Pump token0 price (tick 0 to 7500, ~2.12x), just past liquidation edge
+        vm.startPrank(Swapper);
+        swapperc.mint(uniPool, -800000, 800000, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -800000, 800000, 10 ** 18);
+        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(7500));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(7500));
+        // Minimal warps: just enough for TWAP to catch up — rules out interest accrual
+        for (uint256 j = 0; j < 100; ++j) {
+            vm.warp(block.timestamp + 600);
+            vm.roll(block.number + 1);
+            pp.pokeOracle();
+        }
+
+        // Liquidate as a FRESH liquidator with no prior CT balance
+        address Liquidator = address(0xCAFE);
+        vm.startPrank(Liquidator);
+        deal(ct0.asset(), Liquidator, 100_000_000);
+        deal(ct1.asset(), Liquidator, 100_000_000);
+        IERC20Partial(ct0.asset()).approve(address(ct0), 100_000_000);
+        IERC20Partial(ct1.asset()).approve(address(ct1), 100_000_000);
+
+        _logBalReq("BEFORE Bob", Bob, $posIdList);
+
+        console2.log("Liquidator BEFORE wallet token0:", token0.balanceOf(Liquidator));
+        console2.log("Liquidator BEFORE wallet token1:", token1.balanceOf(Liquidator));
+        console2.log("Liquidator BEFORE ct0 shares:", ct0.balanceOf(Liquidator));
+        console2.log("Liquidator BEFORE ct1 shares:", ct1.balanceOf(Liquidator));
+
+        vm.recordLogs();
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        bytes32 sig = keccak256("ProtocolLossRealized(address,address,uint256,uint256)");
+        for (uint256 i = 0; i < entries.length; i++) {
+            if (entries[i].topics.length > 0 && entries[i].topics[0] == sig) {
+                (uint256 a, uint256 s) = abi.decode(entries[i].data, (uint256, uint256));
+                console2.log("!! ProtocolLossRealized emitted (Path A / mint hit) !!");
+                console2.log("   ct:", entries[i].emitter);
+                console2.log("   protocolLossAssets:", a);
+                console2.log("   protocolLossShares:", s);
+            }
+        }
+
+        console2.log("Liquidator AFTER wallet token0:", token0.balanceOf(Liquidator));
+        console2.log("Liquidator AFTER wallet token1:", token1.balanceOf(Liquidator));
+        console2.log(
+            "Liquidator AFTER ct0 underlying:",
+            ct0.convertToAssets(ct0.balanceOf(Liquidator))
+        );
+        console2.log(
+            "Liquidator AFTER ct1 underlying:",
+            ct1.convertToAssets(ct1.balanceOf(Liquidator))
+        );
+    }
+
+    function _logBalReq(string memory label, address user, TokenId[] memory ids) internal {
+        (
+            LeftRightUnsigned _shortPrem,
+            LeftRightUnsigned _longPrem,
+            PositionBalance[] memory _posBal,
+            ,
+
+        ) = pp.getFullPositionsData(user, false, ids);
+        (, , , , oraclePack) = pp.getOracleTicks();
+        int24 _twap = re.twapEMA(oraclePack);
+        (LeftRightUnsigned _td0, LeftRightUnsigned _td1, ) = re.getMargin(
+            _posBal,
+            _twap,
+            user,
+            ids,
+            _shortPrem,
+            _longPrem,
+            ct0,
+            ct1
+        );
+        console2.log(label);
+        console2.log("  bal0:", _td0.rightSlot());
+        console2.log("  bal1:", _td1.rightSlot());
+        console2.log("  req0:", _td0.leftSlot());
+        console2.log("  req1:", _td1.leftSlot());
+    }
+
     function test_Success_getFullPositionsData_collateralRequirements() public {
         {
             poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
