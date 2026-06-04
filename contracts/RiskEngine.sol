@@ -157,8 +157,10 @@ contract RiskEngine {
     /// @notice Maximum number of open legs allowed.
     uint256 public constant MAX_OPEN_LEGS = 26;
 
-    /// @notice Max possible bonus during liquidations (currently 20% of balance)
-    /// @dev bonus formula is min(MAX_BONUS * balance / DECIMALS, required - balance)
+    /// @notice Max raw per-token bonus rate during liquidations (currently 20% of required)
+    /// @dev The raw candidate is min(MAX_BONUS * required / DECIMALS, max(required - balance, 0));
+    ///      getLiquidationBonus may shift it across tokens and caps positive realized bonuses at
+    ///      the liquidatee's backable collateral.
     uint256 public constant MAX_BONUS = 2_000_000;
 
     /*//////////////////////////////////////////////////////////////
@@ -500,22 +502,29 @@ contract RiskEngine {
     /// @param atSqrtPriceX96 The oracle price used to swap tokens between the liquidator/liquidatee and determine solvency for the liquidatee
     /// @param netPaid The net amount of tokens paid/received by the liquidatee to close their portfolio of positions
     /// @param shortPremium Total owed premium (prorated by available settled tokens) across all short legs being liquidated
-    /// @param loanAmounts The net loan amounts
+    /// @param creditAmounts The net credit amounts. Used to make adjustments to the balance amount to avoid double-counting credits
     /// @return The LeftRight-packed bonus amounts to be paid to the liquidator for both tokens (may be negative)
-    /// @return The LeftRight-packed protocol loss (pre-haircut) for both tokens, i.e., the delta between the user's starting balance and expended tokens
+    /// @return The LeftRight-packed collateral remaining after liquidation costs and bonus; negative slots represent protocol loss before premia haircut
     function getLiquidationBonus(
         LeftRightUnsigned tokenData0,
         LeftRightUnsigned tokenData1,
         uint160 atSqrtPriceX96,
         LeftRightSigned netPaid,
         LeftRightUnsigned shortPremium,
-        LeftRightUnsigned loanAmounts
+        LeftRightUnsigned creditAmounts
     ) external pure returns (LeftRightSigned, LeftRightSigned) {
         int256 bonus0;
         int256 bonus1;
         // keep everything checked to catch any under/overflow or miscastings
         {
-            // compute bonus as min(collateralBalance*MAX_BONUS/DECIMALS, required-collateralBalance), clamped to exclude loan-inflated balance
+            // Per-token bonus: min(MAX_BONUS * required / DECIMALS, max(required - balance, 0)).
+            //
+            // Anchored on `required` (not on `balance`) so a cross-margined account that is insolvent
+            // in one token but flush in the other still earns a bonus: that deficit-token bonus is
+            // paid out of the surplus token by the cross-collateral conversion below, and is bounded
+            // by the collateral cap that follows it. `required` is derived from option parameters and
+            // price, not user balances, so an adversary cannot inflate the bonus without minting a
+            // larger position.
             {
                 uint256 bal0 = tokenData0.rightSlot();
                 uint256 bal1 = tokenData1.rightSlot();
@@ -523,25 +532,11 @@ contract RiskEngine {
                 uint256 req1 = tokenData1.leftSlot();
 
                 bonus0 = Math
-                    .min((bal0 * MAX_BONUS) / DECIMALS, req0 > bal0 ? req0 - bal0 : 0)
+                    .min((req0 * MAX_BONUS) / DECIMALS, req0 > bal0 ? req0 - bal0 : 0)
                     .toInt256();
                 bonus1 = Math
-                    .min((bal1 * MAX_BONUS) / DECIMALS, req1 > bal1 ? req1 - bal1 : 0)
+                    .min((req1 * MAX_BONUS) / DECIMALS, req1 > bal1 ? req1 - bal1 : 0)
                     .toInt256();
-
-                uint256 loan0 = loanAmounts.rightSlot();
-                uint256 loan1 = loanAmounts.leftSlot();
-                // Invariant: bonus/MAX_BONUS + loanAmounts <= bal  (all unsigned additions, no underflow)
-                if (bonus0 > 0 && (DECIMALS * uint256(bonus0)) / MAX_BONUS + loan0 > bal0) {
-                    bonus0 = bal0 >= loan0
-                        ? int256((MAX_BONUS * (bal0 - loan0)) / DECIMALS)
-                        : int256(0);
-                }
-                if (bonus1 > 0 && (DECIMALS * uint256(bonus1)) / MAX_BONUS + loan1 > bal1) {
-                    bonus1 = bal1 >= loan1
-                        ? int256((MAX_BONUS * (bal1 - loan1)) / DECIMALS)
-                        : int256(0);
-                }
             }
 
             // negative premium (owed to the liquidatee) is credited to the collateral balance
@@ -551,8 +546,33 @@ contract RiskEngine {
             int256 balance1 = int256(uint256(tokenData1.rightSlot())) -
                 int256(uint256(shortPremium.leftSlot()));
 
-            int256 paid0 = bonus0 + int256(netPaid.rightSlot());
-            int256 paid1 = bonus1 + int256(netPaid.leftSlot());
+            // Cap the bonus floors by the liquidatee's total backable collateral, before the
+            // cross-token conversion below. The conversion is value-neutral at the oracle price,
+            // so the floors are the liquidator's entire bonus value -- bounding them here bounds
+            // the whole bonus. If the account can't back the bonus across both tokens together,
+            // the floors scale to zero (invariant I9: no bonus minted into an insolvent account);
+            // otherwise they're untouched, preserving the legitimate cross-margin bonus.
+            //
+            // The check has to be global, not per-token: an account can hold spare collateral in
+            // one token and a larger deficit in the other. A per-token clamp at zero would miss
+            // that and let the surplus side pay out a bonus the account can't actually back.
+            (bonus0, bonus1) = _scaleFloorsToBackable(
+                bonus0,
+                bonus1,
+                balance0 - int256(netPaid.rightSlot()) - int256(uint256(creditAmounts.rightSlot())),
+                balance1 - int256(netPaid.leftSlot()) - int256(uint256(creditAmounts.leftSlot())),
+                atSqrtPriceX96
+            );
+
+            // `tokenData` already includes credit amounts as collateral, while closing a credit
+            // appears in `netPaid` as a negative payment. Add credits back to `paid` so credits
+            // are counted once when determining surplus/shortage for cross-token conversion.
+            int256 paid0 = bonus0 +
+                int256(netPaid.rightSlot()) +
+                int256(uint256(creditAmounts.rightSlot()));
+            int256 paid1 = bonus1 +
+                int256(netPaid.leftSlot()) +
+                int256(uint256(creditAmounts.leftSlot()));
 
             // note that "balance0" and "balance1" are the liquidatee's original balances before token delegation by a liquidator
             // their actual balances at the time of computation may be higher, but these are a buffer representing the amount of tokens we
@@ -595,10 +615,29 @@ contract RiskEngine {
                         paid1 - balance1
                     );
                 }
-                // recompute netPaid based on new bonus amounts
-                paid0 = bonus0 + int256(netPaid.rightSlot());
-                paid1 = bonus1 + int256(netPaid.leftSlot());
             }
+
+            // Per-token cap: bound each token's bonus by that token's own backable collateral, so the
+            // conversion above can't push a bonus onto a token beyond what it can back. The global cap
+            // (pre-conversion) handles the cross-token case; this catches per-token overshoot from the
+            // conversion itself. Credit-neutral: the credit notional cancels via netPaid.
+            int256 maxBonus0 = balance0 -
+                int256(netPaid.rightSlot()) -
+                int256(uint256(creditAmounts.rightSlot()));
+            int256 maxBonus1 = balance1 -
+                int256(netPaid.leftSlot()) -
+                int256(uint256(creditAmounts.leftSlot()));
+            if (maxBonus0 < 0) maxBonus0 = 0;
+            if (maxBonus1 < 0) maxBonus1 = 0;
+            if (bonus0 > maxBonus0) bonus0 = maxBonus0;
+            if (bonus1 > maxBonus1) bonus1 = maxBonus1;
+
+            // recompute paid based on the post-conversion, capped bonus amounts
+            paid0 =
+                bonus0 +
+                int256(netPaid.rightSlot()) +
+                int256(uint256(creditAmounts.rightSlot()));
+            paid1 = bonus1 + int256(netPaid.leftSlot()) + int256(uint256(creditAmounts.leftSlot()));
 
             return (
                 LeftRightSigned.wrap(0).addToRightSlot(int128(bonus0)).addToLeftSlot(
@@ -609,6 +648,47 @@ contract RiskEngine {
                 )
             );
         }
+    }
+
+    /// @notice Scales the bonus floors down proportionally if their combined value exceeds
+    /// the liquidatee's total backable collateral. See the call site for why this is global.
+    /// @dev Denominate cap and value in the lower-priced token (token0 when price < 1, else
+    /// token1). The cap/value ratio is the same in either token, but down-scaling sheds low
+    /// bits, so we pick the side that multiplies up -- matching _isAccountSolvent. The two
+    /// branches are exact token0<->token1 mirrors (invariant C5). Both conversions round the
+    /// magnitude up, so the scale factor errs in the protocol's favor. value > cap >= 0 means
+    /// value > 0, so the mulDiv can't divide by zero; floors are non-negative, so it's unsigned-safe.
+    /// @param bonus0 The token0 bonus floor (>= 0)
+    /// @param bonus1 The token1 bonus floor (>= 0)
+    /// @param mb0 Signed backable in token0 (balance0 - netPaid0 - credits0)
+    /// @param mb1 Signed backable in token1 (balance1 - netPaid1 - credits1)
+    /// @param atSqrtPriceX96 The oracle price used to value the cross-token cap
+    /// @return The scaled (bonus0, bonus1)
+    function _scaleFloorsToBackable(
+        int256 bonus0,
+        int256 bonus1,
+        int256 mb0,
+        int256 mb1,
+        uint160 atSqrtPriceX96
+    ) internal pure returns (int256, int256) {
+        // Denominate in the lower-priced token so the conversion rounds up rather than
+        // down (rationale in @dev). atSqrtPriceX96 < FP96 means token0 is the cheaper one.
+        int256 cap;
+        int256 value;
+        if (atSqrtPriceX96 < Constants.FP96) {
+            cap = mb0 + PanopticMath.convert1to0RoundingUp(mb1, atSqrtPriceX96);
+            value = bonus0 + PanopticMath.convert1to0RoundingUp(bonus1, atSqrtPriceX96);
+        } else {
+            cap = PanopticMath.convert0to1RoundingUp(mb0, atSqrtPriceX96) + mb1;
+            value = bonus1 + PanopticMath.convert0to1RoundingUp(bonus0, atSqrtPriceX96);
+        }
+        if (cap < 0) cap = 0;
+
+        if (value > cap) {
+            bonus0 = int256(Math.mulDiv(uint256(bonus0), uint256(cap), uint256(value)));
+            bonus1 = int256(Math.mulDiv(uint256(bonus1), uint256(cap), uint256(value)));
+        }
+        return (bonus0, bonus1);
     }
 
     /// @notice Haircut/clawback any premium paid by `liquidatee` on `positionIdList` over the protocol loss threshold during a liquidation.

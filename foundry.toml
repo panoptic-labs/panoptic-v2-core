@@ -20,10 +20,15 @@ script="DO_NOT_COMPILE"
 fork_block_number = 18963715
 
 [profile.ci_sizes]
-optimizer_runs = 62
+optimizer_runs = 133
 test = 'DO_NOT_COMPILE'
 
 [lint]
+# Don't run the Solar linter during `forge build`. On this codebase it emits
+# thousands of calls-loop/shadowing warnings that stall the CI build step;
+# linting is handled separately by the lint.yml workflow (run `forge lint`
+# explicitly when needed).
+lint_on_build = false
 exclude_lints = ["mixed-case-variable", "mixed-case-function", "unaliased-plain-import", "unsafe-cheatcode", "unsafe-typecast"]
 
 [profile.ci_sizes_ir]

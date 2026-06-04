@@ -9,6 +9,7 @@ import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {OraclePack} from "@types/OraclePack.sol";
+import {PanopticMath} from "@libraries/PanopticMath.sol";
 
 /// @notice Exposes internal functions of RiskEngine strictly for testing properties.
 /// DO NOT DEPLOY IN PROD.
@@ -151,6 +152,13 @@ contract RiskEngineHarness is RiskEngine {
             PositionBalance globalUtilizations
         ) = _getTotalRequiredCollateral(positionBalanceArray, positionIdList, atTick, longPremia);
         return (tokensRequired, creditAmounts, globalUtilizations);
+    }
+
+    function totalCreditAmounts(
+        PositionBalance[] memory positionBalanceArray,
+        TokenId[] memory positionIdList
+    ) public pure returns (LeftRightUnsigned) {
+        return PanopticMath.getTotalCreditAmounts(positionBalanceArray, positionIdList);
     }
 
     // Thin public shim for _getMargin for packing/units properties

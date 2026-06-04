@@ -22,3 +22,6 @@
 [submodule "lib/clones-with-immutable-args"]
 	path = lib/clones-with-immutable-args
 	url = https://github.com/1inch/clones-with-immutable-args
+[submodule "lib/panoptic-helper"]
+	path = lib/panoptic-helper
+	url = https://github.com/panoptic-labs/panoptic-helper

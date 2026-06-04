@@ -88,6 +88,9 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
         PositionBalance balanceData
     );
 
+    /// @notice The current block number or timestamp has exceeded the caller-provided deadline
+    error Deadline();
+
     /*//////////////////////////////////////////////////////////////
                          IMMUTABLES & CONSTANTS
     //////////////////////////////////////////////////////////////*/
@@ -402,6 +405,32 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
         if (assets0 < minValue0 || assets1 < minValue1) revert Errors.AccountInsolvent(0, 0);
     }
 
+    /// @notice Reverts if the current block number is below `blockNumber`.
+    /// @dev Can be used for composable deadline checks with `multicall` (such as for RFQ order expiry).
+    /// @param minBlockNumber The earliest acceptable block number
+    /// @param maxBlockNumber The latest acceptable block number
+    function assertBlockRange(uint256 minBlockNumber, uint256 maxBlockNumber) external view {
+        if ((block.number < minBlockNumber) || (block.number > maxBlockNumber)) revert Deadline();
+    }
+
+    /// @notice Reverts if the current block timestamp is before `deadline`.
+    /// @dev Can be used for composable deadline checks with `multicall` (such as for RFQ order expiry).
+    /// @param minTimestamp The earliest acceptable block timestamp
+    /// @param maxTimestamp The latest acceptable block timestamp
+    function assertTimestampRange(uint256 minTimestamp, uint256 maxTimestamp) external view {
+        if ((block.timestamp < minTimestamp) || (block.timestamp > maxTimestamp)) revert Deadline();
+    }
+
+    /// @notice Reverts if the current pool tick is outside the provided range.
+    /// @dev Can be used for composable price checks with `multicall` (such as to verify quoted price is still valid).
+    /// @param minTick The minimum acceptable tick (inclusive)
+    /// @param maxTick The maximum acceptable tick (inclusive)
+    function assertTickRange(int24 minTick, int24 maxTick) external view {
+        int24 currentTick = getCurrentTick();
+        if (currentTick < minTick || currentTick > maxTick)
+            revert Errors.PriceBoundFail(currentTick);
+    }
+
     /// @notice Get the balance of underlying collateral tokens (token0 and token1) held by an account.
     /// @dev This queries the `CollateralTracker` for both tokens and converts shares to underlying asset amounts.
     /// @param account The address of the user to query balances for.
@@ -526,8 +555,10 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
     /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
     /// @param includePendingPremium If true, include premium that is owed to the user but has not yet settled; if false, only include premium that is available to collect
     /// @param atTick The current tick of the Uniswap pool
+    /// @param perPositionPremia If true, compute and return per-position net premia; if false, `netPremiaPerPosition` is empty
     /// @return shortLongPremium The total amount of premium owed (which may `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
     /// @return balances A list of balances and pool utilization for each position, of the form `[[tokenId0, balances0], [tokenId1, balances1], ...]`
+    /// @return netPremiaPerPosition The net premia (short minus long) per position (token0: right slot, token1: left slot), empty if `perPositionPremia` is false
     function _calculateAccumulatedPremia(
         address user,
         TokenId[] calldata positionIdList,
@@ -944,6 +975,9 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
         );
     }
 
+    /// @notice Return the collateral tracker for the given token.
+    /// @param isCollateralToken0 True for token0, false for token1
+    /// @return The corresponding CollateralTracker
     function _getCt(bool isCollateralToken0) internal pure returns (CollateralTrackerV2) {
         return isCollateralToken0 ? collateralToken0() : collateralToken1();
     }
@@ -1650,10 +1684,10 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
     }
 
     /// @notice Internal function that calls CollateralTracker to accrue the protocol-wide interest.
-    /// @dev since the caller is PanopticPool, that call will just update the unrealizedGlobalInterest, currentBorrowIndex, and currentEpoch
+    /// @dev That call will pay any outstanding interest by the caller and update the unrealizedGlobalInterest, currentBorrowIndex, and currentEpoch
     function _accrueInterests() internal {
-        collateralToken0().accrueInterest();
-        collateralToken1().accrueInterest();
+        _getCt(true).accrueInterest(msg.sender);
+        _getCt(false).accrueInterest(msg.sender);
     }
 
     /// @notice Internal function that calls CollateralTracker to increase the share balance of a user by `2^248 - 1` without updating the total supply.
@@ -1766,7 +1800,7 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
                 LeftRightSigned collateralRemaining;
 
                 {
-                    LeftRightUnsigned loanAmounts = PanopticMath.getTotalLoanAmounts(
+                    LeftRightUnsigned creditAmounts = PanopticMath.getTotalCreditAmounts(
                         positionBalanceArray,
                         positionIdList
                     );
@@ -1778,7 +1812,7 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
                         Math.getSqrtRatioAtTick(twapTick),
                         netPaid,
                         shortLongPremium[0],
-                        loanAmounts
+                        creditAmounts
                     );
                 }
                 // premia cannot be paid if there is protocol loss associated with the liquidatee
@@ -1832,6 +1866,8 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
     /// @notice Force the exercise of a single position. Exercisor will have to pay a fee to the force exercisee.
     /// @param account Address of the distressed account
     /// @param tokenId The position to be force exercised
+    /// @param twapTick The oracle TWAP tick used for collateral and exercise fee calculations
+    /// @param currentTick The current tick of the Uniswap pool
     function _forceExercise(
         address account,
         TokenId tokenId,
@@ -1886,6 +1922,9 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
         emit ForcedExercised(msg.sender, account, tokenId, exerciseFees);
     }
 
+    /// @notice Settle refund amounts with an account and revoke any remaining delegated virtual shares.
+    /// @param account The account to refund and revoke
+    /// @param refundAmounts The refund deltas for token0 (right slot) and token1 (left slot)
     function _refundRevoke(address account, LeftRightSigned refundAmounts) internal {
         // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
         _refund(account, refundAmounts.rightSlot(), CALL_CT0);
@@ -2156,24 +2195,6 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
         return s_positionsHash[user] >> 248;
     }
 
-    /// @notice Get the `tokenId` position data for `user`.
-    /// @param user The account that owns `tokenId`
-    /// @param tokenId The position to query
-    /// @return whether a swap happened at mint
-    /// @return `block.number` at mint
-    /// @return `block.timestamp` at mint
-    /// @return `currentTick` at mint
-    /// @return Utilization of token0 at mint
-    /// @return Utilization of token1 at mint
-    /// @return Size of the position
-    /*
-    function positionData(
-        address user,
-        TokenId tokenId
-    ) external view returns (bool, uint256, uint256, int24, int256, int256, uint128) {
-        return s_positionBalance[user][tokenId].unpackAll();
-    }
-    */
     /// @notice Get the oracle price used to check solvency in liquidations.
     /// @return twapTick The current oracle price used to check solvency in liquidations
     function getTWAP() public view returns (int24 twapTick) {
@@ -2387,6 +2408,11 @@ contract PanopticPoolV2 is Clone, Multicall, TransientReentrancyGuard {
         }
     }
 
+    /// @notice Query the SFPM for the net and removed liquidity of this pool's account in a given chunk.
+    /// @param tickLower The lower tick of the chunk
+    /// @param tickUpper The upper tick of the chunk
+    /// @param tokenType The token type (0 or 1) of the chunk
+    /// @return accountLiquidities Net liquidity (right slot) and removed liquidity (left slot)
     function _getLiquiditiesFromSFPM(
         int24 tickLower,
         int24 tickUpper,

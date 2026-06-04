@@ -481,4 +481,9 @@ contract RiskEngineProperties is Test {
         assertLe(r1, r2 + r3, "split/merge invariance");
         assertApproxEqAbs(r1, r2 + r3, 2, "split/merge invariance");
     }
+
+    // NOTE: Block "K. Liquidation bonus transfer accounting" has been moved
+    // to `test/foundry/core/RiskEngine/RiskEngine.BonusInvariants.t.sol`
+    // (contract `BonusInvariantsUnit`). See that file for the credit-counting
+    // and required-cap pins.
 }

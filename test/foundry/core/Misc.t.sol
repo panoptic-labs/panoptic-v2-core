@@ -1811,6 +1811,37 @@ contract Misctest is Test, PositionUtils {
         assertEq(manager.balanceOf(address(pp), 0), 103 ether - 1, "man bal");
     }
 
+    function test_MulticallNativeDepositCannotReuseOuterMsgValue() public {
+        token0 = ERC20S(address(0));
+
+        poolKey = PoolKey(
+            Currency.wrap(address(token0)),
+            Currency.wrap(address(token1)),
+            100,
+            1,
+            IHooks(address(0))
+        );
+
+        manager.initialize(poolKey, 2 ** 96);
+
+        pp = PanopticPoolV2(address(factory.deployNewPool(poolKey, re, uint96(block.timestamp))));
+        ct0 = pp.collateralToken0();
+
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeWithSelector(CollateralTrackerV2.deposit.selector, 10 ether, Alice);
+        calls[1] = abi.encodeWithSelector(CollateralTrackerV2.deposit.selector, 10 ether, Alice);
+
+        vm.deal(Alice, 10 ether);
+        vm.startPrank(Alice);
+        vm.expectRevert();
+        ct0.multicall{value: 10 ether}(calls);
+        vm.stopPrank();
+
+        assertEq(ct0.balanceOf(Alice), 0, "shares minted");
+        assertEq(ct0.convertToAssets(ct0.balanceOf(Alice)), 0, "asset claim minted");
+        assertEq(manager.balanceOf(address(pp), 0), 0, "pool manager balance");
+    }
+
     // Test that risk-partnered positions can be minted/burned succesfully
     function test_success_MintBurnStraddle() public {
         swapperc = new SwapperC();
@@ -10650,226 +10681,209 @@ contract Misctest is Test, PositionUtils {
         console.log("CONCLUSION: ALL fees collected during burn BYPASS haircut!");
     }
 
-    // ======== LIQ-008: Loan-Inflated Bonus Clamp Tests ========
+    // NOTE: LIQ-008 loan-bonus-clamp tests (sameToken, noLoan_unchanged,
+    // crossCollateralized_zeroBonus[_orig|_put_zeroBonus], creditMirror_tickInvariance,
+    // liquidationCreditAmounts_singleCountsCreditedTokenPayout) and their
+    // helpers (FlowSnapshot/CTSnapshot, _snapshotActor, _snapshotCT,
+    // _logActorDelta, _logCTDelta, _actorNet0, _actorNet1, _toToken1,
+    // _logBalReq, _setupAndRecordGaps, _setupAndRecordGapsForCreditFuzz,
+    // _liquidationCreditPayoutScenario) have been consolidated into
+    // `test/foundry/core/RiskEngine/RiskEngine.BonusInvariants.t.sol`
+    // (contract `BonusInvariantsIntegration`).
 
-    /// @notice Test that the loan bonus clamp prevents profitable self-liquidation.
-    /// Attack: deposit D, take loan L=3D, create far-OTM short, price crashes, self-liquidate.
-    /// Without clamp: bonus = min(bal/2, req-bal) uses loan-inflated bal → profit.
-    /// With clamp: bonus capped at (bal - loanAmounts)/2 → guaranteed loss.
-    function test_Success_loanBonusClamp_sameToken() public {
-        // --- Step 1: Setup attacker (Bob) with minimal deposit ---
+    function test_Success_loanBonusClamp_crossCollateralized_zeroBonus_revised() public {
+        // Bob: withdraw setUp deposits, redeposit ONLY token1
         vm.startPrank(Bob);
-
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
         ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+        token1.approve(address(ct1), 1_000_000);
+        ct1.deposit(1_000_000, Bob);
 
-        uint256 deposit = 1_000_000;
-        token0.approve(address(ct0), deposit);
-        ct0.deposit(deposit, Bob);
+        // PRE-snapshot Bob's starting balance (before any position is opened).
+        // No loan exists yet, so ct + wallet is a clean wealth measure.
+        uint256 bobStartT0 = ct0.convertToAssets(ct0.balanceOf(Bob)) + token0.balanceOf(Bob);
+        uint256 bobStartT1 = ct1.convertToAssets(ct1.balanceOf(Bob)) + token1.balanceOf(Bob);
+        console2.log("Bob   BEFORE token0:", bobStartT0);
+        console2.log("Bob   BEFORE token1:", bobStartT1);
 
-        // small token1 deposit for solvency
-        token1.approve(address(ct1), 1000);
-        ct1.deposit(1000, Bob);
-
-        uint256 bobBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Bob));
-        console2.log("Bob deposit (assets):", bobBalanceBefore0);
-
-        // --- Step 2: Create a loan (width=0, isLong=0) in token0 ---
-        {
-            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
-            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
-        }
-
-        // Loan: width=0, isLong=0, tokenType=0 (token0 loan)
-        // optionRatio=1, asset=0, riskPartner=0, strike=0
-        $posIdList.push(
-            TokenId.wrap(0).addPoolId(poolId).addLeg(
-                0, // legIndex
-                1, // optionRatio
-                0, // asset
-                0, // isLong = 0 (short = loan)
-                0, // tokenType = 0 (token0)
-                0, // riskPartner
-                100, // strike
-                0 // width = 0 (loan)
-            )
-        );
-
-        uint256 loanSize = deposit * 3; // L = 3D
+        // Open a token0 loan (short put), 5x deposit
+        poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+        poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, 0, 0));
         mintOptions(
             pp,
             $posIdList,
-            uint128(loanSize),
+            5_000_000,
             type(uint24).max / 2,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK,
             true
         );
 
-        uint256 bobBalanceAfterLoan0 = ct0.convertToAssets(ct0.balanceOf(Bob));
-        console2.log("Bob balance after loan (assets):", bobBalanceAfterLoan0);
-        assertTrue(bobBalanceAfterLoan0 > bobBalanceBefore0, "Loan should inflate balance");
-
-        // --- Step 3: Create a far-OTM short put (width>0) that will go deep ITM ---
-        // Short put: isLong=0, tokenType=0, width=1 (narrow), far below current tick
-        int24 tickSpacing = uniPool.tickSpacing();
-        int24 shortStrike = int24(200) * tickSpacing; // far below tick=0
-
-        $posIdList.push(
-            TokenId.wrap(0).addPoolId(poolId).addLeg(
-                0,
-                1, // optionRatio
-                0, // asset
-                0, // isLong = 0 (short)
-                0, // tokenType = 0
-                0, // riskPartner
-                shortStrike,
-                2 // width = 1 (narrow range)
-            )
-        );
-
-        // Mint the short - use remaining solvency slack
-        mintOptions(
-            pp,
-            $posIdList,
-            1_000_000,
-            type(uint24).max / 2,
-            Constants.MIN_POOL_TICK,
-            Constants.MAX_POOL_TICK,
-            true
-        );
-
-        console2.log("Bob balance after short (assets):", ct0.convertToAssets(ct0.balanceOf(Bob)));
-
-        // --- Step 4: Crash price to make the short deep ITM ---
+        // Pump token0 price (tick 0 to 7500, ~2.12x), just past liquidation edge
         vm.startPrank(Swapper);
-
-        // Add liquidity for the swap
         swapperc.mint(uniPool, -800000, 800000, 10 ** 18);
         routerV4.modifyLiquidity(address(0), poolKey, -800000, 800000, 10 ** 18);
-
-        // Crash price
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(500_000));
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(500_000));
-
-        // Advance oracle to catch up
-        for (uint256 j = 0; j < 10000; ++j) {
-            vm.warp(block.timestamp + 3600);
-            vm.roll(block.number + 10);
+        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(7500));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(7500));
+        for (uint256 j = 0; j < 100; ++j) {
+            vm.warp(block.timestamp + 600);
+            vm.roll(block.number + 1);
             pp.pokeOracle();
         }
 
-        (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
-            .getOracleTicks();
-        twapTick = re.twapEMA(oraclePack);
-        console2.log("current tick:", currentTick);
-        console2.log("twap tick:", twapTick);
+        // Fresh liquidator (separate address, but treated as colluding with Bob)
+        address Liquidator = address(0xCAFE);
+        vm.startPrank(Liquidator);
+        deal(ct0.asset(), Liquidator, 100_000_000);
+        deal(ct1.asset(), Liquidator, 100_000_000);
+        IERC20Partial(ct0.asset()).approve(address(ct0), 100_000_000);
+        IERC20Partial(ct1.asset()).approve(address(ct1), 100_000_000);
 
-        // --- Step 5: Liquidate (Alice acts as the accomplice liquidator) ---
-        vm.startPrank(Alice);
-        deal(ct0.asset(), Alice, 10_000_000);
-        deal(ct1.asset(), Alice, 10_000_000);
-        IERC20Partial(ct0.asset()).approve(address(ct0), 10_000_000);
-        IERC20Partial(ct1.asset()).approve(address(ct1), 10_000_000);
-
-        uint256 aliceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
-        uint256 aliceBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+        // PRE-snapshot Liq's starting balance (right after deal, before liquidate).
+        uint256 liqStartT0 = ct0.convertToAssets(ct0.balanceOf(Liquidator)) +
+            token0.balanceOf(Liquidator);
+        uint256 liqStartT1 = ct1.convertToAssets(ct1.balanceOf(Liquidator)) +
+            token1.balanceOf(Liquidator);
+        console2.log("Liq   BEFORE token0:", liqStartT0);
+        console2.log("Liq   BEFORE token1:", liqStartT1);
 
         liquidate(pp, new TokenId[](0), Bob, $posIdList);
 
-        uint256 aliceAfter0 = ct0.convertToAssets(ct0.balanceOf(Alice));
-        uint256 aliceAfter1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+        // POST-snapshot
+        uint256 bobEndT0 = ct0.convertToAssets(ct0.balanceOf(Bob)) + token0.balanceOf(Bob);
+        uint256 bobEndT1 = ct1.convertToAssets(ct1.balanceOf(Bob)) + token1.balanceOf(Bob);
+        uint256 liqEndT0 = ct0.convertToAssets(ct0.balanceOf(Liquidator)) +
+            token0.balanceOf(Liquidator);
+        uint256 liqEndT1 = ct1.convertToAssets(ct1.balanceOf(Liquidator)) +
+            token1.balanceOf(Liquidator);
+        console2.log("Bob   AFTER  token0:", bobEndT0);
+        console2.log("Bob   AFTER  token1:", bobEndT1);
+        console2.log("Liq   AFTER  token0:", liqEndT0);
+        console2.log("Liq   AFTER  token1:", liqEndT1);
 
-        // --- Step 6: Assert the clamp worked ---
-        // The bonus the liquidator received (could be in either token)
-        int256 liquidatorGain0 = int256(aliceAfter0) - int256(aliceBefore0);
-        int256 liquidatorGain1 = int256(aliceAfter1) - int256(aliceBefore1);
+        // Combined totals (raw token sums, no price conversion).
+        console2.log("Combined BEFORE token0:", bobStartT0 + liqStartT0);
+        console2.log("Combined AFTER  token0:", bobEndT0 + liqEndT0);
+        console2.log("Combined BEFORE token1:", bobStartT1 + liqStartT1);
+        console2.log("Combined AFTER  token1:", bobEndT1 + liqEndT1);
 
-        console2.log("Liquidator gain token0:", liquidatorGain0);
-        console2.log("Liquidator gain token1:", liquidatorGain1);
-        console2.log("Deposit was:", int256(deposit));
+        // Per-token deltas. Self-liq is profitable iff neither delta is negative and at least one is
+        // positive. Invariant I9: self-liquidation must NOT be profitable. The colluding pair may
+        // lose rounding dust to the protocol (the safe direction), but must never come out ahead.
+        int256 deltaT0 = int256(bobEndT0 + liqEndT0) - int256(bobStartT0 + liqStartT0);
+        int256 deltaT1 = int256(bobEndT1 + liqEndT1) - int256(bobStartT1 + liqStartT1);
+        console2.log(">>> Combined delta token0:", deltaT0);
+        console2.log(">>> Combined delta token1:", deltaT1);
 
-        // Key assertion: the liquidator's total gain should NOT exceed the deposit
-        // Without the clamp, gain could be up to 2D (100% profit). With clamp, gain <= D/2.
-        // Use a generous bound to account for cross-collateral conversion and rounding
-        assertTrue(liquidatorGain0 <= int256(deposit), "loan clamp failed!");
+        assertFalse(
+            deltaT0 >= 0 && deltaT1 >= 0 && (deltaT0 > 0 || deltaT1 > 0),
+            "I9: self-liquidation must not be profitable"
+        );
     }
 
-    /// @notice Test that the loan bonus clamp is inactive for accounts without loans.
-    /// The bonus formula should be unchanged for normal (non-loan) positions.
-    function test_Success_loanBonusClamp_noLoan_unchanged() public {
+    function test_Success_loanBonusClamp_crossCollateralized_zeroBonus() public {
+        // Bob: withdraw setUp deposits, redeposit ONLY token1
         vm.startPrank(Bob);
-
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
         ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+        token1.approve(address(ct1), 1_000_000);
+        ct1.deposit(1_000_000, Bob);
 
-        uint256 deposit = 1_000_000;
-        token0.approve(address(ct0), deposit);
-        ct0.deposit(deposit, Bob);
-        token1.approve(address(ct1), 1000);
-        ct1.deposit(1000, Bob);
-
-        {
-            poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
-            poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
-        }
-
-        // Short put (no loan) — width=1, isLong=0, tokenType=0
-        int24 tickSpacing = uniPool.tickSpacing();
-        $posIdList.push(
-            TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, int24(200) * tickSpacing, 2)
-        );
-
+        // Open a token0 loan (width-0 short), 5x deposit
+        poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+        poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, 0, 0));
         mintOptions(
             pp,
             $posIdList,
-            2_500_000,
+            5_000_000,
             type(uint24).max / 2,
             Constants.MIN_POOL_TICK,
             Constants.MAX_POOL_TICK,
             true
         );
 
-        // Crash price
+        // Pump token0 price (tick 0 to 7500, ~2.12x), just past liquidation edge
         vm.startPrank(Swapper);
         swapperc.mint(uniPool, -800000, 800000, 10 ** 18);
         routerV4.modifyLiquidity(address(0), poolKey, -800000, 800000, 10 ** 18);
-        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(500_000));
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(500_000));
-
-        for (uint256 j = 0; j < 10000; ++j) {
-            vm.warp(block.timestamp + 3600);
-            vm.roll(block.number + 10);
+        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(7500));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(7500));
+        // Minimal warps: just enough for TWAP to catch up — rules out interest accrual
+        for (uint256 j = 0; j < 100; ++j) {
+            vm.warp(block.timestamp + 600);
+            vm.roll(block.number + 1);
             pp.pokeOracle();
         }
 
-        // Liquidate
-        vm.startPrank(Alice);
-        deal(ct0.asset(), Alice, 10_000_000);
-        deal(ct1.asset(), Alice, 10_000_000);
-        IERC20Partial(ct0.asset()).approve(address(ct0), 10_000_000);
-        IERC20Partial(ct1.asset()).approve(address(ct1), 10_000_000);
+        // Liquidate as a FRESH liquidator with no prior CT balance
+        address Liquidator = address(0xCAFE);
+        vm.startPrank(Liquidator);
+        deal(ct0.asset(), Liquidator, 100_000_000);
+        deal(ct1.asset(), Liquidator, 100_000_000);
+        IERC20Partial(ct0.asset()).approve(address(ct0), 100_000_000);
+        IERC20Partial(ct1.asset()).approve(address(ct1), 100_000_000);
 
-        uint256 aliceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
-        uint256 aliceBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+        _logBalReq("BEFORE Bob", Bob, $posIdList);
 
+        console2.log("Liquidator BEFORE wallet token0:", token0.balanceOf(Liquidator));
+        console2.log("Liquidator BEFORE wallet token1:", token1.balanceOf(Liquidator));
+        console2.log("Liquidator BEFORE ct0 shares:", ct0.balanceOf(Liquidator));
+        console2.log("Liquidator BEFORE ct1 shares:", ct1.balanceOf(Liquidator));
+
+        vm.recordLogs();
         liquidate(pp, new TokenId[](0), Bob, $posIdList);
 
-        uint256 aliceAfter0 = ct0.convertToAssets(ct0.balanceOf(Alice));
-        int256 liquidatorGain0 = int256(aliceAfter0) - int256(aliceBefore0);
-        uint256 aliceAfter1 = ct1.convertToAssets(ct1.balanceOf(Alice));
-        int256 liquidatorGain1 = int256(aliceAfter1) - int256(aliceBefore1);
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        bytes32 sig = keccak256("ProtocolLossRealized(address,address,uint256,uint256)");
+        for (uint256 i = 0; i < entries.length; i++) {
+            if (entries[i].topics.length > 0 && entries[i].topics[0] == sig) {
+                (uint256 a, uint256 s) = abi.decode(entries[i].data, (uint256, uint256));
+                console2.log("!! ProtocolLossRealized emitted (Path A / mint hit) !!");
+                console2.log("   ct:", entries[i].emitter);
+                console2.log("   protocolLossAssets:", a);
+                console2.log("   protocolLossShares:", s);
+            }
+        }
 
-        console2.log("No-loan liquidator gain token0:", liquidatorGain0);
-        console2.log("No-loan liquidator gain token1:", liquidatorGain1);
-
-        // Without a loan, the clamp is inactive (loanAmounts=0, so 2*bonus + 0 <= bal always holds).
-        // The bonus may be negative in one token and positive in the other due to cross-collateral conversion.
-        // We verify the liquidation completed (no revert) and the liquidator received SOME bonus in at least one token.
-        assertTrue(
-            liquidatorGain0 > 0 || liquidatorGain1 > 0,
-            "Liquidator should receive bonus in at least one token without loan"
+        console2.log("Liquidator AFTER wallet token0:", token0.balanceOf(Liquidator));
+        console2.log("Liquidator AFTER wallet token1:", token1.balanceOf(Liquidator));
+        console2.log(
+            "Liquidator AFTER ct0 underlying:",
+            ct0.convertToAssets(ct0.balanceOf(Liquidator))
         );
+        console2.log(
+            "Liquidator AFTER ct1 underlying:",
+            ct1.convertToAssets(ct1.balanceOf(Liquidator))
+        );
+    }
+
+    function _logBalReq(string memory label, address user, TokenId[] memory ids) internal {
+        (
+            LeftRightUnsigned _shortPrem,
+            LeftRightUnsigned _longPrem,
+            PositionBalance[] memory _posBal,
+            ,
+
+        ) = pp.getFullPositionsData(user, false, ids);
+        (, , , , oraclePack) = pp.getOracleTicks();
+        int24 _twap = re.twapEMA(oraclePack);
+        (LeftRightUnsigned _td0, LeftRightUnsigned _td1, ) = re.getMargin(
+            _posBal,
+            _twap,
+            user,
+            ids,
+            _shortPrem,
+            _longPrem,
+            ct0,
+            ct1
+        );
+        console2.log(label);
+        console2.log("  bal0:", _td0.rightSlot());
+        console2.log("  bal1:", _td1.rightSlot());
+        console2.log("  req0:", _td0.leftSlot());
+        console2.log("  req1:", _td1.leftSlot());
     }
 
     function test_Success_getFullPositionsData_collateralRequirements() public {
@@ -11220,5 +11234,211 @@ contract Misctest is Test, PositionUtils {
                 "long position net premia left slot should be negated"
             );
         }
+    }
+
+    /// @notice Direct call to the onlyPanopticPool overload from a non-PP caller must revert.
+    function test_Fail_AccrueInterest_OnlyPanopticPool() public {
+        vm.stopPrank();
+        vm.startPrank(Alice);
+        vm.expectRevert(Errors.NotPanopticPool.selector);
+        ct0.accrueInterest(Alice);
+        vm.expectRevert(Errors.NotPanopticPool.selector);
+        ct1.accrueInterest(Alice);
+        vm.stopPrank();
+    }
+
+    /// @notice pokeOracle must accrue interest for the *caller*, not for address(pp).
+    /// @dev Pre-fix, _accrueInterests() called accrueInterest() with msg.sender == address(pp),
+    /// which updated s_interestState[address(pp)] instead of the user's slot.
+    function test_Success_PokeOracle_AccruesUserInterest() public {
+        address Newbie = makeAddr("Newbie");
+
+        // Fresh address: never deposited, never accrued — both index slots are 0.
+        (int128 newbieIdxBefore0, ) = ct0.interestState(Newbie);
+        (int128 newbieIdxBefore1, ) = ct1.interestState(Newbie);
+        assertEq(newbieIdxBefore0, 0, "pre: newbie idx0 zero");
+        assertEq(newbieIdxBefore1, 0, "pre: newbie idx1 zero");
+
+        // Pre-fix sentinel: address(pp) must not be the entity whose state advances.
+        (int128 ppIdxBefore0, ) = ct0.interestState(address(pp));
+        (int128 ppIdxBefore1, ) = ct1.interestState(address(pp));
+
+        vm.warp(block.timestamp + 1 days);
+        vm.roll(block.number + 1);
+
+        vm.stopPrank();
+        vm.startPrank(Newbie);
+        pp.pokeOracle();
+        vm.stopPrank();
+
+        (int128 newbieIdxAfter0, ) = ct0.interestState(Newbie);
+        (int128 newbieIdxAfter1, ) = ct1.interestState(Newbie);
+        assertGt(newbieIdxAfter0, 0, "post: newbie idx0 advanced (ct0)");
+        assertGt(newbieIdxAfter1, 0, "post: newbie idx1 advanced (ct1)");
+
+        (int128 ppIdxAfter0, ) = ct0.interestState(address(pp));
+        (int128 ppIdxAfter1, ) = ct1.interestState(address(pp));
+        assertEq(ppIdxAfter0, ppIdxBefore0, "post: pp idx0 untouched");
+        assertEq(ppIdxAfter1, ppIdxBefore1, "post: pp idx1 untouched");
+    }
+
+    /// @notice pokeOracle accrues only the caller; another user's stored index stays unchanged.
+    function test_Success_PokeOracle_OnlyAccruesCaller() public {
+        address PokerA = makeAddr("PokerA");
+        address PokerB = makeAddr("PokerB");
+
+        // Have PokerA poke first to seed her index to whatever the global is.
+        vm.stopPrank();
+        vm.startPrank(PokerA);
+        pp.pokeOracle();
+        vm.stopPrank();
+
+        (int128 aIdxAfterFirstPoke, ) = ct0.interestState(PokerA);
+        (int128 bIdxAfterFirstPoke, ) = ct0.interestState(PokerB);
+        assertEq(bIdxAfterFirstPoke, 0, "PokerB untouched by PokerA's poke");
+
+        // Advance time so the global borrow index has room to move further,
+        // then PokerB pokes — only her slot should be written.
+        vm.warp(block.timestamp + 1 days);
+        vm.roll(block.number + 1);
+
+        vm.startPrank(PokerB);
+        pp.pokeOracle();
+        vm.stopPrank();
+
+        (int128 aIdxAfterSecondPoke, ) = ct0.interestState(PokerA);
+        (int128 bIdxAfterSecondPoke, ) = ct0.interestState(PokerB);
+
+        assertEq(
+            aIdxAfterSecondPoke,
+            aIdxAfterFirstPoke,
+            "PokerA's stored index unchanged after PokerB poked"
+        );
+        assertGt(bIdxAfterSecondPoke, 0, "PokerB's index written by her own poke");
+    }
+
+    function test_assertBlockRange_multicall() public {
+        vm.roll(100);
+
+        bytes[] memory calls = new bytes[](3);
+        // in range
+        calls[0] = abi.encodeWithSelector(
+            PanopticPoolV2.assertBlockRange.selector,
+            uint256(50),
+            uint256(150)
+        );
+        // lower boundary inclusive
+        calls[1] = abi.encodeWithSelector(
+            PanopticPoolV2.assertBlockRange.selector,
+            uint256(100),
+            uint256(100)
+        );
+        // upper boundary inclusive (open lower bound)
+        calls[2] = abi.encodeWithSelector(
+            PanopticPoolV2.assertBlockRange.selector,
+            uint256(0),
+            uint256(100)
+        );
+        pp.multicall(calls);
+
+        // below min
+        bytes[] memory failBelow = new bytes[](1);
+        failBelow[0] = abi.encodeWithSelector(
+            PanopticPoolV2.assertBlockRange.selector,
+            uint256(101),
+            uint256(200)
+        );
+        vm.expectRevert(PanopticPoolV2.Deadline.selector);
+        pp.multicall(failBelow);
+
+        // above max
+        bytes[] memory failAbove = new bytes[](1);
+        failAbove[0] = abi.encodeWithSelector(
+            PanopticPoolV2.assertBlockRange.selector,
+            uint256(0),
+            uint256(99)
+        );
+        vm.expectRevert(PanopticPoolV2.Deadline.selector);
+        pp.multicall(failAbove);
+    }
+
+    function test_assertTimestampRange_multicall() public {
+        vm.warp(1_500);
+
+        bytes[] memory calls = new bytes[](3);
+        // in range
+        calls[0] = abi.encodeWithSelector(
+            PanopticPoolV2.assertTimestampRange.selector,
+            uint256(1_000),
+            uint256(2_000)
+        );
+        // lower boundary inclusive
+        calls[1] = abi.encodeWithSelector(
+            PanopticPoolV2.assertTimestampRange.selector,
+            uint256(1_500),
+            uint256(1_500)
+        );
+        // upper boundary inclusive (open lower bound)
+        calls[2] = abi.encodeWithSelector(
+            PanopticPoolV2.assertTimestampRange.selector,
+            uint256(0),
+            uint256(1_500)
+        );
+        pp.multicall(calls);
+
+        // below min
+        bytes[] memory failBelow = new bytes[](1);
+        failBelow[0] = abi.encodeWithSelector(
+            PanopticPoolV2.assertTimestampRange.selector,
+            uint256(1_501),
+            uint256(2_000)
+        );
+        vm.expectRevert(PanopticPoolV2.Deadline.selector);
+        pp.multicall(failBelow);
+
+        // above max
+        bytes[] memory failAbove = new bytes[](1);
+        failAbove[0] = abi.encodeWithSelector(
+            PanopticPoolV2.assertTimestampRange.selector,
+            uint256(0),
+            uint256(1_499)
+        );
+        vm.expectRevert(PanopticPoolV2.Deadline.selector);
+        pp.multicall(failAbove);
+    }
+
+    function test_assertTickRange_multicall() public {
+        int24 currentTick = pp.getCurrentTick();
+
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeWithSelector(
+            PanopticPoolV2.assertTickRange.selector,
+            int24(currentTick - 10),
+            int24(currentTick + 10)
+        );
+        calls[1] = abi.encodeWithSelector(
+            PanopticPoolV2.assertTickRange.selector,
+            currentTick,
+            currentTick
+        );
+        pp.multicall(calls);
+
+        bytes[] memory failBelow = new bytes[](1);
+        failBelow[0] = abi.encodeWithSelector(
+            PanopticPoolV2.assertTickRange.selector,
+            int24(currentTick + 1),
+            int24(currentTick + 100)
+        );
+        vm.expectRevert(abi.encodeWithSelector(Errors.PriceBoundFail.selector, currentTick));
+        pp.multicall(failBelow);
+
+        bytes[] memory failAbove = new bytes[](1);
+        failAbove[0] = abi.encodeWithSelector(
+            PanopticPoolV2.assertTickRange.selector,
+            int24(currentTick - 100),
+            int24(currentTick - 1)
+        );
+        vm.expectRevert(abi.encodeWithSelector(Errors.PriceBoundFail.selector, currentTick));
+        pp.multicall(failAbove);
     }
 }
