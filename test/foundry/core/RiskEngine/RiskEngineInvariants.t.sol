@@ -283,32 +283,6 @@ contract RiskEngineInvariants is Test {
         assertGe(partner, 1, "floor binds");
     }
 
-    // 5) Delayed swap chooses max(required loan, converted credit) as atTick varies.
-    function testFuzz_Invariant_delayed_swap_max_rule(int24 atTick) public {
-        atTick = int24(bound(atTick, -30000, 30000));
-        uint64 pool = 1 + (10 << 48);
-        // loan (short, type=1) + credit (long, type=0) so conversion branch flips with price
-        TokenId t = PositionFactory.makeTwoLegs(
-            pool,
-            1,
-            0,
-            0,
-            1,
-            int24(0),
-            0, // loan leg0
-            1,
-            0,
-            1,
-            0,
-            int24(0),
-            0 // credit leg1
-        );
-        uint256 r0 = E.reqSinglePartner(t, 0, 2e9, atTick, 0);
-        assertGt(r0, 0, "delayed swap positive");
-        // Partner on credit side always zero
-        assertEq(E.reqSinglePartner(t, 1, 2e9, atTick, 0), 0, "only loan leg returns");
-    }
-
     // 6) isAccountSolvent monotone in buffer and flips at most once (bisection).
     function testFuzz_Invariant_buffer_single_flip(uint128 s, uint16 u0, uint16 u1) public {
         s = uint128(bound(s, 1e9, 1e12));

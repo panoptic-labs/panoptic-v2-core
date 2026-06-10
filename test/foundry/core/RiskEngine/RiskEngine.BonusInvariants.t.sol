@@ -560,6 +560,41 @@ contract BonusInvariantsUnit is Test {
         assertGt(valueAtTwap, 0, "I1: single-side deficit + surplus");
     }
 
+    /// @notice I9 (direct unit): the GLOBAL backable cap, not the per-token cap, is what bounds
+    /// the bonus for a credit-in-surplus-token x cross-token-bad-debt account. Replaces the deleted
+    /// `test_I9_creditBadDebt_globalCapRegression` (a fuzzed seed that only reached this branch via
+    /// the now-removed delayed-swap netting). Here the position is built directly so the branch is
+    /// hit without relying on the RNG or any composite strategy.
+    ///
+    /// token0: bal=1000 of which 800 is a credit claim, and a 1000 close cost (netPaid0) ⇒ token0
+    ///         backable = 1000 - 1000 - 800 = -800 (genuinely underwater once the credit nets out).
+    /// token1: bal=1000, req=2000 ⇒ per-token floor = min(2000*MAX_BONUS/DECIMALS, 1000) = 400, and
+    ///         per-token backable = 1000 (so the PER-TOKEN cap of 1000 does NOT bind the 400 floor).
+    /// Combined backable = -800 + 1000 = 200 < 400 floor, so ONLY the cross-token global cap can
+    /// stop the extra 200 from being minted into an account that cannot back it. At 1:1 price the
+    /// total bonus value at TWAP must therefore not exceed 200; pre-fix it was 400.
+    function test_I9_globalCap_creditInSurplusToken_crossTokenBadDebt() public {
+        uint160 sp = Math.getSqrtRatioAtTick(0); // 1:1 price ⇒ value at TWAP = bonus0 + bonus1
+
+        (LeftRightSigned bonus, ) = E.getLiquidationBonus(
+            _tokenData(1000, 0), // token0: bal=1000, req=0
+            _tokenData(1000, 2000), // token1: bal=1000, req=2000 (floor 400)
+            sp,
+            _signedPair(1000, 0), // netPaid: 1000 token0 close cost
+            LeftRightUnsigned.wrap(0), // shortPremium = 0
+            _unsignedPair(800, 0) // creditAmounts: 800 token0 credit claim
+        );
+
+        // Combined backable collateral the account can actually fund a bonus from.
+        int256 backableCap = int256(1000) - 1000 - 800 + (int256(1000) - 0 - 0); // = 200
+        int256 valueAtTwap = int256(bonus.rightSlot()) + int256(bonus.leftSlot());
+        assertLe(
+            valueAtTwap,
+            backableCap,
+            "I9: bonus value exceeds backable collateral (global cap not enforced)"
+        );
+    }
+
     /// @notice No-mint (fuzz): with the backable cap, each token's bonus never exceeds the
     /// liquidatee's collateral on that token (here backable = bal since netPaid = credits = 0).
     /// This is what makes the bonus self-funding — nothing is minted to pay it — and is the
@@ -3096,16 +3131,6 @@ contract BonusInvariantsIntegration is Test, PositionUtils {
     function test_I9_randomTokenId_fullCycleCounterexampleRegression() public {
         testFuzz_I9_randomTokenId_selfLiquidationNoProfit(
             19420182117295316302233354161501907838732057622076890809
-        );
-    }
-
-    /// @notice Regression for the credit-in-surplus-token x cross-token-bad-debt self-liquidation
-    /// profit (the global-backable cap fix). Pre-fix this seed extracted ~13% of position size from
-    /// PLPs (combined borrower+liquidator value > 0 at TWAP); the proportional global floor cap in
-    /// `getLiquidationBonus` drives the net bonus to zero so combined <= 0.
-    function test_I9_creditBadDebt_globalCapRegression() public {
-        testFuzz_I9_randomTokenId_selfLiquidationNoProfit(
-            15711867615927946943544337117520432083872209606168597275098887885787
         );
     }
 
