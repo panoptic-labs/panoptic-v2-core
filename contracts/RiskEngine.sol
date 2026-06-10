@@ -108,11 +108,11 @@ contract RiskEngine {
     //////////////////////////////////////////////////////////////*/
     /// @notice The notional fee, in basis points, collected from PLPs at option mint.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 public constant NOTIONAL_FEE = 1;
+    uint16 public constant NOTIONAL_FEE = 3;
 
     /// @notice The premium fee, in basis points, collected from the premium paid/received.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 public constant PREMIUM_FEE = 100;
+    uint16 public constant PREMIUM_FEE = 250;
 
     /// @notice The protocol split, in basis points, when a builder code is present.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
