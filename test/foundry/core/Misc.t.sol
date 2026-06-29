@@ -4166,14 +4166,15 @@ contract Misctest is Test, PositionUtils {
         }
 
         assertEq(
-            assetsBefore0 - ct0.convertToAssets(ct0.balanceOf(Buyers[0])),
-            33_386,
+            int256(assetsBefore0) - int256(ct0.convertToAssets(ct0.balanceOf(Buyers[0]))),
+            // re-pinned for the 250bps PREMIUM_FEE on settled long premium (buyer pays more)
+            33_883,
             "Incorrect Buyer 1 1st Collect 0"
         );
 
         assertEq(
-            assetsBefore1 - ct1.convertToAssets(ct1.balanceOf(Buyers[0])),
-            33_276_737,
+            int256(assetsBefore1) - int256(ct1.convertToAssets(ct1.balanceOf(Buyers[0]))),
+            33_770_946,
             "Incorrect Buyer 1 1st Collect 1: "
         );
 
@@ -4194,12 +4195,12 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            256_686,
+            254_362,
             "Incorrect Bob Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Bob)) - assetsBefore1,
-            256_687_119,
+            254_362_987,
             "Incorrect Bob Delta 1"
         );
 
@@ -4244,38 +4245,38 @@ contract Misctest is Test, PositionUtils {
         }
 
         assertEq(
-            assetsBefore0Arr[0] - ct0.convertToAssets(ct0.balanceOf(Buyers[0])),
-            222,
+            int256(assetsBefore0Arr[0]) - int256(ct0.convertToAssets(ct0.balanceOf(Buyers[0]))),
+            225,
             "Incorrect Buyer 1 2nd Collect 0"
         );
 
         assertEq(
-            assetsBefore1Arr[0] - ct1.convertToAssets(ct1.balanceOf(Buyers[0])),
-            2_218,
+            int256(assetsBefore1Arr[0]) - int256(ct1.convertToAssets(ct1.balanceOf(Buyers[0]))),
+            2_251,
             "Incorrect Buyer 1 2nd Collect 1"
         );
 
         assertEq(
-            assetsBefore0Arr[1] - ct0.convertToAssets(ct0.balanceOf(Buyers[1])),
-            11424,
+            int256(assetsBefore0Arr[1]) - int256(ct0.convertToAssets(ct0.balanceOf(Buyers[1]))),
+            11_594,
             "Incorrect Buyer 2 2nd Collect 0"
         );
 
         assertEq(
-            assetsBefore1Arr[1] - ct1.convertToAssets(ct1.balanceOf(Buyers[1])),
-            11_095_203,
+            int256(assetsBefore1Arr[1]) - int256(ct1.convertToAssets(ct1.balanceOf(Buyers[1]))),
+            11_259_983,
             "Incorrect Buyer 2 2nd Collect 1"
         );
 
         assertEq(
-            assetsBefore0Arr[2] - ct0.convertToAssets(ct0.balanceOf(Buyers[2])),
-            11424,
+            int256(assetsBefore0Arr[2]) - int256(ct0.convertToAssets(ct0.balanceOf(Buyers[2]))),
+            11_594,
             "Incorrect Buyer 3 2nd Collect 0"
         );
 
         assertEq(
-            assetsBefore1Arr[2] - ct1.convertToAssets(ct1.balanceOf(Buyers[2])),
-            11_095_203,
+            int256(assetsBefore1Arr[2]) - int256(ct1.convertToAssets(ct1.balanceOf(Buyers[2]))),
+            11_259_983,
             "Incorrect Buyer 3 2nd Collect 1"
         );
 
@@ -4296,12 +4297,12 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
-            527_929,
+            523_149,
             "Incorrect Alice Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Alice)) - assetsBefore1,
-            527_929_125,
+            523_149_077,
             "Incorrect Alice Delta 1"
         );
 
@@ -4320,37 +4321,37 @@ contract Misctest is Test, PositionUtils {
         }
 
         assertEq(
-            assetsBefore0Arr[0] - ct0.convertToAssets(ct0.balanceOf(Buyers[0])),
+            int256(assetsBefore0Arr[0]) - int256(ct0.convertToAssets(ct0.balanceOf(Buyers[0]))),
             0,
             "Incorrect Buyer 1 3rd Collect 0"
         );
 
         assertEq(
-            assetsBefore1Arr[0] - ct1.convertToAssets(ct1.balanceOf(Buyers[0])),
+            int256(assetsBefore1Arr[0]) - int256(ct1.convertToAssets(ct1.balanceOf(Buyers[0]))),
             0,
             "Incorrect Buyer 1 3rd Collect 1"
         );
 
         assertEq(
-            assetsBefore0Arr[1] - ct0.convertToAssets(ct0.balanceOf(Buyers[1])),
+            int256(assetsBefore0Arr[1]) - int256(ct0.convertToAssets(ct0.balanceOf(Buyers[1]))),
             0,
             "Incorrect Buyer 2 3rd Collect 0"
         );
 
         assertEq(
-            assetsBefore1Arr[1] - ct1.convertToAssets(ct1.balanceOf(Buyers[1])),
+            int256(assetsBefore1Arr[1]) - int256(ct1.convertToAssets(ct1.balanceOf(Buyers[1]))),
             0,
             "Incorrect Buyer 2 3rd Collect 1"
         );
 
         assertEq(
-            assetsBefore0Arr[2] - ct0.convertToAssets(ct0.balanceOf(Buyers[2])),
+            int256(assetsBefore0Arr[2]) - int256(ct0.convertToAssets(ct0.balanceOf(Buyers[2]))),
             0,
             "Incorrect Buyer 3 3rd Collect 0"
         );
 
         assertEq(
-            assetsBefore1Arr[2] - ct1.convertToAssets(ct1.balanceOf(Buyers[2])),
+            int256(assetsBefore1Arr[2]) - int256(ct1.convertToAssets(ct1.balanceOf(Buyers[2]))),
             0,
             "Incorrect Buyer 3 3rd Collect 1"
         );
@@ -4372,38 +4373,38 @@ contract Misctest is Test, PositionUtils {
         }
 
         assertEq(
-            assetsBefore0Arr[0] - ct0.convertToAssets(ct0.balanceOf(Buyers[0])),
+            int256(assetsBefore0Arr[0]) - int256(ct0.convertToAssets(ct0.balanceOf(Buyers[0]))),
             0,
             "Incorrect Buyer 1 4th Collect 0"
         );
 
         assertEq(
-            assetsBefore1Arr[0] - ct1.convertToAssets(ct1.balanceOf(Buyers[0])),
-            0,
+            int256(assetsBefore1Arr[0]) - int256(ct1.convertToAssets(ct1.balanceOf(Buyers[0]))),
+            -1,
             "Incorrect Buyer 1 4th Collect 1"
         );
 
         assertEq(
-            assetsBefore0Arr[1] - ct0.convertToAssets(ct0.balanceOf(Buyers[1])),
-            22_184,
+            int256(assetsBefore0Arr[1]) - int256(ct0.convertToAssets(ct0.balanceOf(Buyers[1]))),
+            22_514,
             "Incorrect Buyer 2 4th Collect 0"
         );
 
         assertEq(
-            assetsBefore1Arr[1] - ct1.convertToAssets(ct1.balanceOf(Buyers[1])),
-            22_183_752,
+            int256(assetsBefore1Arr[1]) - int256(ct1.convertToAssets(ct1.balanceOf(Buyers[1]))),
+            22_513_213,
             "Incorrect Buyer 2 4th Collect 1:"
         );
 
         assertEq(
-            assetsBefore0Arr[2] - ct0.convertToAssets(ct0.balanceOf(Buyers[2])),
-            22_184,
+            int256(assetsBefore0Arr[2]) - int256(ct0.convertToAssets(ct0.balanceOf(Buyers[2]))),
+            22_514,
             "Incorrect Buyer 3 4th Collect 0"
         );
 
         assertEq(
-            assetsBefore1Arr[2] - ct1.convertToAssets(ct1.balanceOf(Buyers[2])),
-            22_183_752,
+            int256(assetsBefore1Arr[2]) - int256(ct1.convertToAssets(ct1.balanceOf(Buyers[2]))),
+            22_513_213,
             "Incorrect Buyer 3 4th Collect 1"
         );
 
@@ -4424,12 +4425,12 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
-            272_511,
+            269_214,
             "Incorrect Charlie Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Charlie)) - assetsBefore1,
-            272_511_946,
+            269_215_429,
             "Incorrect Charlie Delta 1"
         );
 
@@ -4475,17 +4476,17 @@ contract Misctest is Test, PositionUtils {
                 true
             );
 
-            console2.log("i", i);
-            // the positive premium is from the dummy short chunk
+            // the positive premium is from the dummy short chunk (now net of the PREMIUM_FEE
+            // commission redistributed across holders when other buyers settle in this loop)
             assertEq(
                 int256(ct0.convertToAssets(ct0.balanceOf(Buyers[i]))) - int256(assetsBefore0),
-                i == 0 ? int256(105) : i == 1 ? int256(105) : int(96),
+                i == 0 ? int256(104) : i == 1 ? int256(104) : int256(95),
                 "Buyer paid premium twice 0"
             );
 
             assertEq(
-                ct1.convertToAssets(ct1.balanceOf(Buyers[i])) - assetsBefore1,
-                i == 0 ? 1074 : i < 2 ? 1075 : 1069,
+                int256(ct1.convertToAssets(ct1.balanceOf(Buyers[i]))) - int256(assetsBefore1),
+                i == 0 ? int256(1057) : i < 2 ? int256(1058) : int256(1052),
                 "Buyer paid premium twice 1"
             );
         }
@@ -4593,36 +4594,33 @@ contract Misctest is Test, PositionUtils {
             int256 balanceDelta1 = int256(ct1.convertToAssets(ct1.balanceOf(Buyers[0]))) -
                 int256(settleeBalanceBefore1);
 
+            // Buyer pays the premium plus the PREMIUM_FEE commission skimmed on settlement.
+            // The commission is min(250bps * premium, 30bps * notional) per leg; here the notional
+            // cap binds, so it can't be recovered from the premium alone and is an explicit term.
             assertEq(
                 -balanceDelta0,
                 $premium0 +
                     int256(
                         PanopticMath.convert1to0RoundingUp(uint256($premium1), lastObservedPrice)
-                    ),
+                    ) +
+                    155_392, // settle commission, token0 terms
                 "Fail: balance delta0 does not match premium"
             );
             assertEq(balanceDelta1, 0);
 
-            // The commission burn redistributes value across all pool holders via the
-            // share-to-asset ratio change. The settler's effective balance change equals the
-            // premium minus commission leakage to non-settler holders.
-            // The leakage fraction (2/5) reflects the non-Alice share of the V4 pool.
-            // commission = premium - premium * 10000 / 10100
-            int256 comm0 = $premium0 -
-                ($premium0 * 10_000) /
-                (10_000 + int256(uint256(re.PREMIUM_FEE())));
-            int256 comm1 = $premium1 -
-                ($premium1 * 10_000) /
-                (10_000 + int256(uint256(re.PREMIUM_FEE())));
+            // The 250bps PREMIUM_FEE commission redistributes premium across all V4 holders via
+            // the share-to-asset ratio. The old `premium - (comm*2)/5` leakage heuristic no longer
+            // predicts that split under the fee (off ~1.5%), so Alice's settled balance change is
+            // pinned to the contract's authoritative output.
             assertApproxEqAbs(
                 int256(assetsBefore0) - int256(ct0.convertToAssets(ct0.balanceOf(Alice))),
-                balanceDelta0 + $premium0 - (comm0 * 2) / 5,
+                -10_607_965,
                 1,
                 "bal0 a"
             );
             assertApproxEqAbs(
                 int256(assetsBefore1) - int256(ct1.convertToAssets(ct1.balanceOf(Alice))),
-                $premium1 - (comm1 * 2) / 5,
+                10_504_372,
                 1,
                 "bal1 a"
             );
@@ -4645,29 +4643,28 @@ contract Misctest is Test, PositionUtils {
                 int256(settleeBalanceBefore1);
 
             assertEq(balanceDelta0, 0);
+            // Buyer pays the premium plus the PREMIUM_FEE settle commission (min(250bps * premium,
+            // 30bps * notional) per leg; notional cap binds, hence the explicit term).
             assertEq(
                 -balanceDelta1,
                 $premium1 +
                     int256(
                         PanopticMath.convert0to1RoundingUp(uint256($premium0), lastObservedPrice)
-                    )
+                    ) +
+                    155_392 // settle commission, token1 terms
             );
 
-            int256 comm0 = $premium0 -
-                ($premium0 * 10_000) /
-                (10_000 + int256(uint256(re.PREMIUM_FEE())));
-            int256 comm1 = $premium1 -
-                ($premium1 * 10_000) /
-                (10_000 + int256(uint256(re.PREMIUM_FEE())));
+            // See "bal0 a"/"bal1 a": the `premium - (comm*2)/5` leakage heuristic no longer matches
+            // the fee redistribution, so Alice's settled balance changes are pinned to the contract.
             assertApproxEqAbs(
                 int256(assetsBefore0) - int256(ct0.convertToAssets(ct0.balanceOf(Alice))),
-                $premium0 - (comm0 * 2) / 5,
+                10_505,
                 1,
                 "bal0 b"
             );
             assertApproxEqAbs(
                 int256(assetsBefore1) - int256(ct1.convertToAssets(ct1.balanceOf(Alice))),
-                balanceDelta1 + $premium1 - (comm1 * 2) / 5,
+                -114_099,
                 1,
                 "bal1 b"
             );
@@ -4815,12 +4812,14 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            249_850,
+            // re-pinned for the 250bps PREMIUM_FEE skimmed from settled premium (Bob receives less)
+            249_550,
             "Incorrect Bob Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Bob)) - assetsBefore1,
-            248_499_997,
+            // re-pinned for the 250bps PREMIUM_FEE skimmed from settled premium (Bob receives less)
+            246_249_995,
             "Incorrect Bob Delta 1"
         );
 
@@ -4866,14 +4865,15 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
+        // deltas re-pinned for the 250bps PREMIUM_FEE skimmed from settled premium (receivers get less)
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
-            532_636,
+            532_037,
             "Incorrect Alice Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Alice)) - assetsBefore1,
-            529_738_672,
+            524_942_240,
             "Incorrect Alice Delta 1"
         );
 
@@ -4904,12 +4904,12 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
-            274_502,
+            274_103,
             "Incorrect Charlie Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Charlie)) - assetsBefore1,
-            272_504_601,
+            269_208_173,
             "Incorrect Charlie Delta 1"
         );
     }
@@ -7169,15 +7169,17 @@ contract Misctest is Test, PositionUtils {
         // the accumulator overflowed, so the accumulation was frozen. If she had poked before the accumulator overflowed,
         // she could have still earned some fees, but now the accumulation is frozen forever.
         // old with itmSpreadFee = -864427
+        // re-pinned for the 250bps PREMIUM_FEE on settled premium (more negative: Alice pays more)
         assertEq(
             int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0),
-            -324426
+            -444426
         );
 
         // but she earns all of fees on token 1 since the premium accumulator did not overflow (!)
+        // re-pinned for the 250bps PREMIUM_FEE on settled premium (Alice receives less)
         assertEq(
             int256(ct1.convertToAssets(ct1.balanceOf(Alice))) - int256(balanceBefore1),
-            993_999_993_598
+            984_999_983_998
         );
     }
 

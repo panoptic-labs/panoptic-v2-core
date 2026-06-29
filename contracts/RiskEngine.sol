@@ -108,11 +108,11 @@ contract RiskEngine {
     //////////////////////////////////////////////////////////////*/
     /// @notice The notional fee, in basis points, collected from PLPs at option mint.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 public constant NOTIONAL_FEE = 1;
+    uint16 public constant NOTIONAL_FEE = 3;
 
     /// @notice The premium fee, in basis points, collected from the premium paid/received.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
-    uint16 public constant PREMIUM_FEE = 100;
+    uint16 public constant PREMIUM_FEE = 250;
 
     /// @notice The protocol split, in basis points, when a builder code is present.
     /// @dev can never exceed 10000, so this value must fit inside a uint14 due to RiskParameters packing
@@ -1735,8 +1735,6 @@ contract RiskEngine {
         // -Option-protected loan (long put or call + loan) "Get a loan with an embedded long option for capital protection" = requirement is max(loan, short option)
         // -Cash-Secured Option (short put or call + credit) "Allocate collateral to that specific option" = requirement is max(short - credit, 1)
         //
-        // TOKEN TRANSFERS
-        // - Delayed Swap (credit at one strike, loan at another; different amounts = effective swap) = requirement is max(loan0 - convert1to0(credit), 1) or max(loan1 - convert0to1(credit), 1)
         {
             // only proceed if the partners have the same asset
             if (
@@ -1829,24 +1827,6 @@ contract RiskEngine {
                                         partnerIndex,
                                         atTick,
                                         poolUtilization
-                                    )
-                                    : 0;
-                        }
-                    }
-                } else {
-                    if (_tokenType != tokenTypeP) {
-                        // TOKEN TRANSFERS
-                        if (_isLong != isLongP) {
-                            // DELAYED SWAP
-                            // only compute it once for the loan side
-                            return
-                                _isLong == 0
-                                    ? _computeDelayedSwap(
-                                        tokenId,
-                                        positionSize,
-                                        index,
-                                        partnerIndex,
-                                        atTick
                                     )
                                     : 0;
                         }
@@ -2156,62 +2136,6 @@ contract RiskEngine {
         );
 
         return _required;
-    }
-
-    /// @notice Computes the required collateral for a delayed swap strategy by netting the credit against the loan
-    /// @dev Calculates loan amount with seller collateral ratio, converts credit to same token type, and nets them. Floors result at 1
-    /// @param tokenId The token ID representing the position
-    /// @param positionSize The size of the position in contracts
-    /// @param index The leg index of the loan
-    /// @param partnerIndex The leg index of the credit partner
-    /// @param atTick The tick at which to evaluate the collateral requirement and perform conversions
-    /// @return The net required collateral after crediting, floored at 1
-    function _computeDelayedSwap(
-        TokenId tokenId,
-        uint128 positionSize,
-        uint256 index,
-        uint256 partnerIndex,
-        int24 atTick
-    ) internal pure returns (uint256) {
-        unchecked {
-            // can only be called when partnerIndex is the credit
-            LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
-                tokenId,
-                positionSize,
-                index,
-                false
-            );
-
-            LeftRightUnsigned amountsMovedP = PanopticMath.getAmountsMoved(
-                tokenId,
-                positionSize,
-                partnerIndex,
-                false
-            );
-
-            uint256 loanAmount = tokenId.tokenType(index) == 0
-                ? amountsMoved.rightSlot()
-                : amountsMoved.leftSlot();
-            uint256 required = Math.mulDivRoundingUp(
-                loanAmount,
-                SELLER_COLLATERAL_RATIO + DECIMALS,
-                DECIMALS
-            );
-
-            uint256 creditAmount = tokenId.tokenType(partnerIndex) == 0
-                ? amountsMovedP.rightSlot()
-                : amountsMovedP.leftSlot();
-
-            uint256 convertedCredit = tokenId.tokenType(partnerIndex) == 0
-                ? PanopticMath.convert0to1RoundingUp(creditAmount, Math.getSqrtRatioAtTick(atTick))
-                : PanopticMath.convert1to0RoundingUp(creditAmount, Math.getSqrtRatioAtTick(atTick));
-
-            if (required > convertedCredit) {
-                return required - convertedCredit; // ✓ Net the credit
-            } else {
-                return 1; // ✓ Floor at 1
-            }
-        }
     }
 
     /// @notice Get the base collateral requirement for a short leg at a given pool utilization.

@@ -126,16 +126,6 @@ contract RiskEngineHarness is RiskEngine {
         return _computeCreditOptionComposite(tokenId, positionSize, index, atTick);
     }
 
-    function computeDelayedSwap(
-        TokenId tokenId,
-        uint128 positionSize,
-        uint256 index,
-        uint256 partnerIndex,
-        int24 atTick
-    ) external view returns (uint256) {
-        return _computeDelayedSwap(tokenId, positionSize, index, partnerIndex, atTick);
-    }
-
     // Thin public shim for _getTotalRequiredCollateral for property-only assertions
     function totalRequiredCollateral(
         PositionBalance[] calldata positionBalanceArray,

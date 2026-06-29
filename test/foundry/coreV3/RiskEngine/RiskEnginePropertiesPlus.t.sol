@@ -300,33 +300,6 @@ contract RiskEnginePropertiesPlus is Test {
         assertTrue((ol0 > 0 && ol1 == 0) || (ol1 > 0 && ol0 == 0), "OL: option side only");
     }
 
-    function testC5_Delayed_swap_max_rule_boundary() public {
-        uint64 poolId = 1 + (10 << 48);
-        // loan on leg0, credit on leg1 with different token types to trigger conversion
-        // choose atTick so that converted credit barely dominates vs loan requirement
-        int24 atTick = 0;
-        TokenId dl = PositionFactory.makeTwoLegs(
-            poolId,
-            1,
-            0,
-            0,
-            0,
-            int24(0),
-            int24(0), // leg0 loan
-            1,
-            0,
-            1,
-            1,
-            int24(0),
-            int24(0) // leg1 credit opposite tokenType
-        );
-        uint128 size = 5e9;
-        uint256 req = E.computeDelayedSwap(dl, size, 0, 1, atTick);
-        // must be equal to max(upfront short requirement, converted credit)
-        // we cannot compute internals here without duplicating math; just sanity:
-        assertGt(req, 0, "delayed swap positive");
-    }
-
     function testC6_Calendar_spread_taylor_term_monotone_in_dWidth() public {
         uint64 poolId = 1 + (10 << 48);
         // same strike, same token type, different widths

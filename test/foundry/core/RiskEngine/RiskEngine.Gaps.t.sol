@@ -86,35 +86,6 @@ contract RiskEngineCoverageGaps is Test {
         // (long premia is what increases requirements, already covered elsewhere).
     }
 
-    // 2) Drive the TOKEN TRANSFERS -> DELAYED SWAP via reqSinglePartner branch (not direct compute)
-    function test_PartnerPath_DelayedSwap_TriggeredOnLoanSide() public {
-        uint64 pool = 1 + (10 << 48);
-        // Leg0: short loan, tokenType 0; Leg1: long credit, tokenType 1; both width=0, opposite token types.
-        // Risk partners cross-linked by makeTwoLegs.
-        TokenId t = PositionFactory.makeTwoLegs(
-            pool,
-            /*leg0*/ 1,
-            0,
-            /*isLong*/ 0,
-            /*type*/ 0,
-            int24(0),
-            int24(0),
-            /*leg1*/ 1,
-            0,
-            /*isLong*/ 1,
-            /*type*/ 1,
-            int24(0),
-            int24(0)
-        );
-
-        uint128 size = 2e9;
-        // Only the loan side (index 0, isLong=0) should compute delayed swap; partner leg returns 0
-        uint256 r0 = E.reqSinglePartner(t, 0, size, int24(500), int16(0));
-        uint256 r1 = E.reqSinglePartner(t, 1, size, int24(500), int16(0));
-        assertGt(r0, 0, "loan side computes delayed swap");
-        assertEq(r1, 0, "credit side reports zero");
-    }
-
     // 3) Hit tokenType==1 calendar term branch inside _computeSpread
     function test_Spread_PutCalendarTerm_TokenType1Branch() public {
         uint64 pool = 1 + (10 << 48);
@@ -244,44 +215,5 @@ contract RiskEngineCoverageGaps is Test {
         assertEq(partnerReq, a + b, "short option branch sums loan + option");
         // Partner on loan side should be zero
         assertEq(E.reqSinglePartner(t, 1, size, int24(0), int16(0)), 0, "loan side reports zero");
-    }
-
-    // 6) Drive _computeDelayedSwap to return convertedCredit (else branch), not required
-    function test_DelayedSwap_ReturnsConvertedCredit_WhenCreditDominates() public {
-        uint64 pool = 1 + (10 << 48);
-        // We want convertedCredit >> required.
-        // Make partner (credit) tokenType=0 so path uses convert0to1RoundingUp, and set atTick very large.
-        // Make loan amount relatively small (tokenType=1) so required is modest.
-        TokenId t = PositionFactory.makeTwoLegs(
-            pool,
-            /*loan (index 0)*/ 1,
-            0,
-            0,
-            /*type*/ 1,
-            int24(0),
-            int24(0), // short loan, tokenType=1
-            /*credit (index 1)*/ 1,
-            0,
-            1,
-            /*type*/ 0,
-            int24(0),
-            int24(0) // long credit, tokenType=0
-        );
-
-        uint128 size = 1e9;
-
-        // Choose a very high tick to make 0->1 conversion huge.
-        int24 atTick = 30_000; // safely within Uniswap V3 bounds
-
-        uint256 reqViaPartner = E.reqSinglePartner(t, 0, size, atTick, int16(0));
-        // If the else branch executed, reqViaPartner equals convertedCredit, which should exceed the
-        // upfront required = loanAmount * (1 + SELL) by construction.
-        // We cannot introspect both numbers without duplicating math; assert that the partner call
-        // on loan side is positive and, crucially, calling with a low tick flips to required branch.
-        assertGt(reqViaPartner, 0, "delayed swap computed");
-
-        assertEq(reqViaPartner, 1, "high tick selects convertedCredit branch");
-        // Partner on credit side still zero
-        assertEq(E.reqSinglePartner(t, 1, size, atTick, int16(0)), 0, "credit side zero");
     }
 }
