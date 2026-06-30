@@ -27,4 +27,5 @@ broadcast
 out
 docs
 safe-txns
+safe-txns-*
 scratch
