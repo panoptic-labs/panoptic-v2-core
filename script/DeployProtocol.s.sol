@@ -7,6 +7,7 @@ import {PanopticFactoryV3} from "@contracts/PanopticFactoryV3.sol";
 import {PanopticFactoryV4} from "@contracts/PanopticFactoryV4.sol";
 import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {RiskEngineXStocks} from "@contracts/RiskEngineXStocks.sol";
 import {BuilderFactory} from "@contracts/Builder.sol";
 import {PanopticGuardian} from "@contracts/PanopticGuardian.sol";
 import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
@@ -105,6 +106,23 @@ contract DeployProtocol is Script {
 
         // risk engine MED
         new RiskEngine(10_000_000, 10_000_000, address(panopticGuardian), address(builderFactory));
+
+        // risk engine xstocks (conservative): CROSS_BUFFER_0 = 75% (wSPCXx/token0), CROSS_BUFFER_1 = 90% (USDC/token1)
+        new RiskEngineXStocks(
+            7_500_000,
+            9_000_000,
+            address(panopticGuardian),
+            address(builderFactory)
+        );
+
+        // risk engine xstocks (reverse): for markets with flipped token0/token1, so the
+        // conservative buffer sits on the xstock side. CROSS_BUFFER_0 = 90%, CROSS_BUFFER_1 = 75%.
+        new RiskEngineXStocks(
+            9_000_000,
+            7_500_000,
+            address(panopticGuardian),
+            address(builderFactory)
+        );
 
         /*
         // risk engine LOW

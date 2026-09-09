@@ -1,0 +1,46 @@
+{
+  "env": {
+    "GUARDIAN_ADMIN": "0xC3D385022d082Acd6b8744A85ad1766a01f522F7",
+    "TREASURER": "0xD8c5EbfeEA9B35695e54FFe0AaF9cFC521C9190d"
+  },
+  "dataContracts": [],
+  "logicContracts": {
+    "RiskEngineXStocks": {
+      "path": "./contracts/RiskEngineXStocks.sol",
+      "deployment": {
+        "address": "0x0000000000000fE1E261f66ce2F44def4F5Ae0CB",
+        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a18655d0218b1ea7028a82cd17",
+        "nonce": 14
+      },
+      "optimizeRuns": 3333,
+      "constructorArgs": [
+        [
+          7500000,
+          9000000,
+          "0x0000000000000D329aCC1514f4Ba05584a8369ed",
+          "0x0000000000000a3D22E158417AA639D7F71b0FF7"
+        ],
+        ["uint256", "uint256", "address", "address"]
+      ]
+    },
+    "RiskEngineXStocksReverse": {
+      "path": "./contracts/RiskEngineXStocks.sol",
+      "artifactName": "RiskEngineXStocks",
+      "deployment": {
+        "address": "0x0000000000000f3fb82469581A74776178E76Ca4",
+        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a19576142f3a8ba401ef6135ad",
+        "nonce": 5
+      },
+      "optimizeRuns": 3333,
+      "constructorArgs": [
+        [
+          9000000,
+          7500000,
+          "0x0000000000000D329aCC1514f4Ba05584a8369ed",
+          "0x0000000000000a3D22E158417AA639D7F71b0FF7"
+        ],
+        ["uint256", "uint256", "address", "address"]
+      ]
+    }
+  }
+}
