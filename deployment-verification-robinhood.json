@@ -1,0 +1,196 @@
+{
+  "chainId": 4663,
+  "blockNumber": 58991179,
+  "rpc": "https://rpc.mainnet.chain.robinhood.com",
+  "method": "Execute manifest initcode locally using CREATE from each derived vanity proxy at nonce+1; compare full runtime including metadata and immutables with eth_getCode at the fixed block. Existing Query and Safe runtime presence checked separately.",
+  "contracts": [
+    {
+      "name": "Metadata 0",
+      "address": "0x0000000000001ab7ffe789237c76dc00d3dd4e57",
+      "runtimeBytes": 24439,
+      "runtimeKeccak256": "0xdd0ec57b873af7e553fbd9404281da95203e426929ecb3dfb419bbcbcd87aa7f",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "Metadata 1",
+      "address": "0x0000000000002d8d91e89ecf009a972d4740c694",
+      "runtimeBytes": 20669,
+      "runtimeKeccak256": "0x97d0d1afc82d4dba1ebaabd94ef9cdc7e38789cf81a410565d2502634c446615",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "Metadata 2",
+      "address": "0x0000000000002de9b30f908ad171257ab30023df",
+      "runtimeBytes": 20141,
+      "runtimeKeccak256": "0x3027b6042e96eabda4468d04a6366f717c3546f2e106b51b5b490574529e7097",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "Metadata 3",
+      "address": "0x0000000000002ea0f5d36a076d5570b400800ddd",
+      "runtimeBytes": 17266,
+      "runtimeKeccak256": "0xa6b6c4a12dfb4616558a30a3596c6739691e37385e69f8a366f7a43abb98d3e9",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "Metadata 4",
+      "address": "0x00000000000046c4faaf5b9c6ef32295009050d4",
+      "runtimeBytes": 23768,
+      "runtimeKeccak256": "0xabdee20968abd3e6dddcd1ba58d0f5c7890a14122a01cefa0db86278acf43e32",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "Metadata 5",
+      "address": "0x00000000000049f100c3061e84d62d34cbae777c",
+      "runtimeBytes": 24482,
+      "runtimeKeccak256": "0xd2bff9530ad0696f844e93d21e22e09572653ab5b07d7571a6c7d6829ea54552",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "Metadata 6",
+      "address": "0x0000000000005b4ff0f09cbe5dff259acc00607a",
+      "runtimeBytes": 5602,
+      "runtimeKeccak256": "0x01a10a5c6d647a90937bd3e5ca3cfc9d7ee260feff04d4dc0a27a72461b21a4c",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "PanopticMath",
+      "address": "0x000000000000334bbd65c195581cf59ecf315932",
+      "runtimeBytes": 3217,
+      "runtimeKeccak256": "0x451714beb6742d66de2f98efa56105dab1d5113299ae659c26b25e280c4cb90e",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "InteractionHelper",
+      "address": "0x00000000000041fe14ce3c2392337ce501ae8328",
+      "runtimeBytes": 7020,
+      "runtimeKeccak256": "0x71928b6e74682732c09657d4b36e724530ad9137f08f0d91c23dde26d3132fc8",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "CollateralTrackerV2",
+      "address": "0x0000000000001d9c38ca405a2e04420865a08a33",
+      "runtimeBytes": 21611,
+      "runtimeKeccak256": "0x1d0e9fae5a04332c09c1cfb109f07c0f2cf5d5b6cfab96c13ab8884ac016f1a1",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "PanopticGuardian",
+      "address": "0x0000000000000d329acc1514f4ba05584a8369ed",
+      "runtimeBytes": 5562,
+      "runtimeKeccak256": "0x6c1f7a73b6413dec6d05a44f230c42faa55aa7266f91793cb6d818caf12d224e",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "BuilderFactory",
+      "address": "0x0000000000000a3d22e158417aa639d7f71b0ff7",
+      "runtimeBytes": 4393,
+      "runtimeKeccak256": "0xe2c8b3423f2d0e766abe4ec9179dc117f05e2e5428ec0a68d932898c04e5eaf1",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "RiskEngine",
+      "address": "0x000000000000075e29cdaa9cb640a69e148ca7da",
+      "runtimeBytes": 24270,
+      "runtimeKeccak256": "0x2831f41cd43d8a4d17ddba4621862181b33eee68f1d4e1b2c1254649c1071dd0",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "SemiFungiblePositionManagerV4",
+      "address": "0x00000000000005c3287f136ef5af56c68ea6849f",
+      "runtimeBytes": 23836,
+      "runtimeKeccak256": "0xb931625dd4be84ea27df7bced722b76515c7a06e88a75ef39e3ceb9b4b16f327",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "PanopticPoolV2 (V4)",
+      "address": "0x000000000000135429f0dacab61639bf6a63ebbc",
+      "runtimeBytes": 24576,
+      "runtimeKeccak256": "0x6cb89525ec6aac98fd99805ecbfa49cfb6b85ce54140704094db234be17703e4",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "PanopticFactoryV4",
+      "address": "0x0000000000000c51d0f8cf4bd9ade7191372a625",
+      "runtimeBytes": 20944,
+      "runtimeKeccak256": "0x3e1ddbba49aada3fc42192f94499bd21de8790af2fa7f408ea58269a1ab9d7bb",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "PanopticPoolV2 (V3)",
+      "address": "0x000000000000155f9860e155a779992cde7e7449",
+      "runtimeBytes": 24576,
+      "runtimeKeccak256": "0xfeaec33d4ef6e3bbebcd9edb20ef7d1013b600f46b7ba1d6ec4c1214f1377a46",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "SemiFungiblePositionManagerV3",
+      "address": "0x00000000000005e4693adc8ec0f12d686f728198",
+      "runtimeBytes": 23614,
+      "runtimeKeccak256": "0x5051744b5595d5b9a65b46cc84cd6f54373354054cbc61b9218721496feb0478",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "PanopticFactoryV3",
+      "address": "0x0000000000000adc9a108591e718f2aee963a2a7",
+      "runtimeBytes": 20382,
+      "runtimeKeccak256": "0x82f06f9960f427b382c5237245643c69d4aea2562009f979edff3aafc25be247",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "RiskEngineXStocks",
+      "address": "0x0000000000000fe1e261f66ce2f44def4f5ae0cb",
+      "runtimeBytes": 24290,
+      "runtimeKeccak256": "0x90016233bb93187122d6758e378be70de6a3e5fdcaeb5558bccd7131833a8388",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "RiskEngineXStocksReverse",
+      "address": "0x0000000000000f3fb82469581a74776178e76ca4",
+      "runtimeBytes": 24290,
+      "runtimeKeccak256": "0xd2bf788fc4629628208b7e579d531f93074ece9afd35267f35245437d9a9d7d5",
+      "exactManifestRuntimeMatch": true
+    },
+    {
+      "name": "PanopticQuery proxy",
+      "address": "0x0000000000000e1ae9c66c1c3b0a547d23389c93",
+      "runtimeBytes": 2111,
+      "runtimeKeccak256": "0x59c1ac4200e9d0189b0a418ec8c481e817d5e3b04f5b961a8943a67084c45f0c",
+      "exactManifestRuntimeMatch": null
+    },
+    {
+      "name": "Vault",
+      "address": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1",
+      "runtimeBytes": 171,
+      "runtimeKeccak256": "0xb89c1b3bdf2cf8827818646bce9a8f6e372885f8c55e5c07acbd307cb133b000",
+      "exactManifestRuntimeMatch": null
+    },
+    {
+      "name": "Guardian admin Safe",
+      "address": "0xc3d385022d082acd6b8744a85ad1766a01f522f7",
+      "runtimeBytes": 171,
+      "runtimeKeccak256": "0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c",
+      "exactManifestRuntimeMatch": null
+    },
+    {
+      "name": "Treasurer Safe",
+      "address": "0xd8c5ebfeea9b35695e54ffe0aaf9cfc521c9190d",
+      "runtimeBytes": 171,
+      "runtimeKeccak256": "0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c",
+      "exactManifestRuntimeMatch": null
+    }
+  ],
+  "sourceCommit": "e3b9d125f929a5a8c7220ec6467613686939edae",
+  "inputSha256": {
+    "build-config-robinhood-v3.json": "f3d906ca3b464f488eb528e1dea10c189fd33b1e66a634ce4011d127a1484ea7",
+    "build-config-robinhood-v4.json": "979eba0a2044085ea0a4b2740d3195fe227f8f820cf197a2788bb099d16ee2a1",
+    "build-config-RiskEngineXStocks.json": "24f46935babe137190c6f780d65de6d7cc109410b4ca51de4165fa7b18245c99",
+    "deployment-info-robinhood-v3.json": "19cc650dc0c05f4b166ffb40ec04001cbf8b65d9a0bdce80089ad3413e00a38a",
+    "deployment-info-robinhood-v4.json": "14cf7846966c46da4c2e2f86860abeeca9cdfd716268c5662e749fb9603a6f51",
+    "deployment-info-RiskEngineXStocks.json": "091400a66c7b789690aea10948c6b4e85dcd3835f5c23139f7ab6e05909a0715"
+  },
+  "explorerSourceVerification": {
+    "status": "unknown",
+    "reason": "Blockscout v2 and legacy API requests returned HTTP 403 Cloudflare challenges; exact runtime matches are independent of explorer source verification."
+  }
+}
