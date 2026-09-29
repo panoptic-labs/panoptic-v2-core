@@ -113,14 +113,60 @@ five owners, and threshold three. A subsequent RPC batch reporting block
 Those configuration reads used `latest`, not an atomic historical snapshot.
 Code presence for all three Safes was reconfirmed at block `58991179`.
 
+## Pool deployments
+
+Seven Panoptic pools were deployed on 2026-09-25 by calling each factory's
+`deployNewPool` directly from `0xcae438c8505be86b1a200d1c737A580170d5bF22`
+(Ledger, legacy HD path `m/44'/60'/0'/0`). Salts were mined with
+`script/pool-address-miner` against that EOA as the deployer. Every call was
+simulated with `cast call --from` before broadcasting and returned the mined
+address. Receipts, pool keys and collateral trackers are recorded in
+[deployment-pools-robinhood.json](../deployment-pools-robinhood.json).
+
+| Market          | Kind | Risk engine              | PanopticPool                                 |
+| --------------- | ---- | ------------------------ | -------------------------------------------- |
+| ETH-USDG-1bps   | v3   | RiskEngine               | `0x000000000567861dfB86e396e30e5Ceca1883789` |
+| SPY-USDG-5bps   | v4   | RiskEngineXStocks        | `0x000000000c21b38c54AcA7c7145Df01ff09d69Bb` |
+| NVDA-USDG-5bps  | v3   | RiskEngineXStocksReverse | `0x000000000D77fF63E3a051F46028A5e972DB4E00` |
+| SPCX-USDG-5bps  | v3   | RiskEngineXStocks        | `0x000000000e7356536bBc5753D892cd21c91B7b28` |
+| GLD-USDG-5bps   | v3   | RiskEngineXStocksReverse | `0x0000000003977B00A4F6b6E12E760B0d77260F66` |
+| QQQ-USDG-5bps   | v3   | RiskEngineXStocksReverse | `0x000000000287126A6CdbA8E713B4930bf806a527` |
+| GOOGL-USDG-5bps | v3   | RiskEngineXStocks        | `0x0000000005Cc182d3c65B982eA2F65d5F27AA333` |
+
+The reverse engine is used where USDG is token0. Each pool's
+`collateralToken0/1()` and `riskEngine()` were read back and match the
+factory's deployment event. The deployer EOA holds the seven factory NFTs.
+
+## Source verification
+
+All 14 logic contracts are source-verified on both Sourcify (exact match,
+runtime including metadata hash) and robin.etherscan.io: PanopticMath,
+InteractionHelper, CollateralTrackerV2, PanopticGuardian, BuilderFactory,
+RiskEngine, RiskEngineXStocks, RiskEngineXStocksReverse, both SFPMs, both
+PanopticPoolV2 references and both factories.
+
+Before submission, each standard-JSON input was compiled locally with solc
+`0.8.28` and matched against the chain: runtime (immutables masked) and
+Etherscan's recorded creation bytecode plus the build config's constructor
+arguments, exactly, for all 14.
+
+Notes for reproducing:
+
+- Compile with `--use 0.8.28`; the default toolchain picks a newer solc and
+  `forge verify-contract` then finds no matching artifact.
+- The installed `forge` has no Etherscan URL for chain `4663` and ignores
+  `--verifier-url`, falling back to Sourcify with profile settings. Generate
+  the input with `forge verify-contract ... --show-standard-json-input` and
+  submit it to `https://api.etherscan.io/v2/api?chainid=4663` or Sourcify's
+  `/v2/verify/4663/<address>` directly.
+- Etherscan's queue for this chain took several days to process submissions.
+
+Not source-verifiable: the seven metadata data contracts (raw data), and the
+pool/collateral-tracker clones (ClonesWithImmutableArgs proxies of the verified
+references).
+
 ## Remaining release records
 
-Explorer source-verification status is unknown: Blockscout v2 and legacy API
-requests returned HTTP 403 Cloudflare challenges. This is separate from the
-successful exact runtime comparisons. Source-verification checks can be resumed
-through an authenticated Blockscout API or the explorer UI.
-
-Execution transaction hashes and receipts have not yet been attached to this
-record. Preserve them alongside the generated batch checksums when available.
-Query implementation verification and post-deployment operational checks remain
-separate follow-up work; neither is claimed by the core bytecode report.
+The Query proxy implementation (`0x5f7199aaa7cac6574ebcfef4b394c28ce5174e96`)
+is not yet source-verified; it builds from `lib/panoptic-helper`.
+Safe batch execution transaction hashes are not yet attached to this record.
