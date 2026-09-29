@@ -262,7 +262,21 @@ cargo run --release --manifest-path script/pool-address-miner/Cargo.toml -- \
   --chunk-loops 5000000
 ```
 
-You can also pass the full PoolKey instead of `--pool-id` with `--currency0`, `--currency1`, `--fee`, `--tick-spacing`, and `--hooks`. The local miner needs `--factory` in addition to the on-chain `minePoolAddress` inputs because the CREATE3 address depends on the factory address.
+For a Uniswap v3 pool, pass its address directly:
+
+```bash
+cargo run --release --manifest-path script/pool-address-miner/Cargo.toml -- \
+  --factory 0x<panoptic-factory-v3> \
+  --deployer 0x<caller> \
+  --risk-engine 0x<risk-engine> \
+  --v3-pool 0x<uniswap-v3-pool> \
+  --salt 0 \
+  --until-target \
+  --min-target-rarity 6 \
+  --chunk-loops 5000000
+```
+
+For v4, you can pass the full PoolKey instead of `--pool-id` with `--currency0`, `--currency1`, `--fee`, `--tick-spacing`, and `--hooks`. The local miner needs `--factory` in addition to the on-chain `minePoolAddress` inputs because the CREATE3 address depends on the factory address.
 Use the exact address that will be `msg.sender` at the factory as `--deployer`; if a Safe or another contract sends the transaction, mine against that contract address, not the signer EOA.
 
 Preview a build without running forge or writing files:
