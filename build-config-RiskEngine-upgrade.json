@@ -1,0 +1,44 @@
+{
+  "env": {
+    "GUARDIAN_ADMIN": "0xC3D385022d082Acd6b8744A85ad1766a01f522F7",
+    "TREASURER": "0xD8c5EbfeEA9B35695e54FFe0AaF9cFC521C9190d",
+    "RISK_ENGINE_OWNER": "0x8DFEAA4AEe4596b90EF581d7731E4E0b7AbA3221"
+  },
+  "dataContracts": [],
+  "logicContracts": {
+    "RiskEngine": {
+      "path": "./contracts/RiskEngine.sol",
+      "deployment": {
+        "address": "TODO_ASSIGN_UNUSED_SLOT",
+        "salt": "TODO",
+        "nonce": 0
+      },
+      "optimizeRuns": 500,
+      "constructorArgs": [
+        [
+          "0x0000000000000D329aCC1514f4Ba05584a8369ed",
+          "0x0000000000000a3D22E158417AA639D7F71b0FF7",
+          "0x6a0d5c6577773db023c0a2ffa778aa7bd42daedbce4a5b9ad7ddd38b422e7412",
+          [
+            10000000, 10000000, 4533471891108855828971580, 724, 149, 513, 90000, 10750000, 2000000,
+            100000, 1000000, 4, 5000000, 6666667, 9000000, 26, 2000000, 3, 250, 5000, 4000,
+            634195839
+          ]
+        ],
+        [
+          "address",
+          "address",
+          "bytes32",
+          "(uint256,uint256,uint96,int256,int24,uint16,uint24,uint32,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint16,uint16,uint16,uint16,int256)"
+        ]
+      ],
+      "artifactName": "RiskEngineV2"
+    }
+  },
+  "upgrades": [
+    {
+      "proxy": "0x000000000000ffE5eFdB5AE76b9200263C58b4c0",
+      "implementation": "RiskEngine"
+    }
+  ]
+}

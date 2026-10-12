@@ -5,7 +5,8 @@ import "forge-std/Test.sol";
 import {SemiFungiblePositionManagerV3} from "@contracts/SemiFungiblePositionManagerV3.sol";
 import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
 import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
-import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {RiskEngineV2} from "@contracts/RiskEngine.sol";
+import {RiskEngineParams} from "../testUtils/RiskEngineParams.sol";
 import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
 import {PanopticFactoryV3} from "@contracts/PanopticFactoryV3.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
@@ -222,7 +223,16 @@ contract Misctest is Test, PositionUtils {
         uniPool = IUniswapV3Pool(V3FACTORY.createPool(address(token0), address(token1), 500));
 
         MAX_CLAMP_DELTA = 149;
-        re = IRiskEngine(address(new RiskEngine(10_000_000, 10_000_000, address(0), address(0))));
+        re = IRiskEngine(
+            address(
+                new RiskEngineV2(
+                    address(0),
+                    address(0),
+                    bytes32(0),
+                    RiskEngineParams.blueChip(10_000_000, 10_000_000)
+                )
+            )
+        );
 
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
@@ -533,7 +543,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_short_packed() public {
-        uint256 positionCount = (re.MAX_OPEN_LEGS()) / 4;
+        uint256 positionCount = (RiskEngineParams.blueChip().maxOpenLegs) / 4;
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
@@ -678,7 +688,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_short_soloLeg() public {
-        uint256 positionCount = (re.MAX_OPEN_LEGS());
+        uint256 positionCount = (RiskEngineParams.blueChip().maxOpenLegs);
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
@@ -760,7 +770,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_long_packed() public {
-        uint256 positionCount = (re.MAX_OPEN_LEGS()) / 4;
+        uint256 positionCount = (RiskEngineParams.blueChip().maxOpenLegs) / 4;
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
@@ -949,7 +959,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_long_soloLeg() public {
-        uint256 positionCount = (re.MAX_OPEN_LEGS());
+        uint256 positionCount = (RiskEngineParams.blueChip().maxOpenLegs);
 
         for (uint256 i = 0; i < positionCount; i++) {
             {
@@ -3039,13 +3049,13 @@ contract Misctest is Test, PositionUtils {
 
             assertApproxEqAbs(
                 charlieDeltaPremia0,
-                (owedPremia0 * (10_000 - re.PREMIUM_FEE())) / 10_000,
+                (owedPremia0 * (10_000 - RiskEngineParams.blueChip().premiumFee)) / 10_000,
                 1,
                 "charlie received exactly what they are owed due to settled token0"
             );
             assertApproxEqAbs(
                 charlieDeltaPremia1,
-                (owedPremia1 * (10_000 - re.PREMIUM_FEE())) / 10_000,
+                (owedPremia1 * (10_000 - RiskEngineParams.blueChip().premiumFee)) / 10_000,
                 1,
                 "charlie received exactly what they are owed due to settled token0"
             );
@@ -3298,13 +3308,13 @@ contract Misctest is Test, PositionUtils {
 
             assertApproxEqAbs(
                 charlieDeltaPremia0,
-                (owedPremia0 * (10000 - re.PREMIUM_FEE())) / 10000,
+                (owedPremia0 * (10000 - RiskEngineParams.blueChip().premiumFee)) / 10000,
                 1,
                 "charlie received exactly what they are owed due to settled token0"
             );
             assertApproxEqAbs(
                 charlieDeltaPremia1,
-                (owedPremia1 * (10000 - re.PREMIUM_FEE())) / 10000,
+                (owedPremia1 * (10000 - RiskEngineParams.blueChip().premiumFee)) / 10000,
                 1,
                 "charlie received exactly what they are owed due to settled token0"
             );
@@ -4572,7 +4582,10 @@ contract Misctest is Test, PositionUtils {
             )
         );
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-int24(re.MAX_TICKS_DELTA() + 2)));
+        swapperc.swapTo(
+            uniPool,
+            Math.getSqrtRatioAtTick(-int24(RiskEngineParams.blueChip().maxTicksDelta + 2))
+        );
 
         assertTrue(pp.isSafeMode() > 0, "in safe mode");
 
@@ -4642,7 +4655,10 @@ contract Misctest is Test, PositionUtils {
             )
         );
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(re.MAX_TICKS_DELTA() + 1)));
+        swapperc.swapTo(
+            uniPool,
+            Math.getSqrtRatioAtTick(int24(RiskEngineParams.blueChip().maxTicksDelta + 1))
+        );
 
         assertTrue(pp.isSafeMode() > 0, "in safe mode");
 
@@ -4713,7 +4729,10 @@ contract Misctest is Test, PositionUtils {
 
         (, int24 staleTick, , , , , ) = uniPool.slot0();
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-int24(re.MAX_TICKS_DELTA() - 1)));
+        swapperc.swapTo(
+            uniPool,
+            Math.getSqrtRatioAtTick(-int24(RiskEngineParams.blueChip().maxTicksDelta - 1))
+        );
 
         console2.log("isSafeMode", pp.isSafeMode() > 0 ? "safe mode ON" : "safe mode OFF");
         assertTrue(pp.isSafeMode() == 0, "safeMode");
@@ -4798,7 +4817,10 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-int24(re.MAX_TICKS_DELTA() + 2)));
+        swapperc.swapTo(
+            uniPool,
+            Math.getSqrtRatioAtTick(-int24(RiskEngineParams.blueChip().maxTicksDelta + 2))
+        );
 
         console2.log("isSafeMode", pp.isSafeMode() > 0 ? "safe mode ON" : "safe mode OFF");
         assertTrue(pp.isSafeMode() > 0);
@@ -4891,7 +4913,10 @@ contract Misctest is Test, PositionUtils {
 
         (, int24 staleTick, , , , , ) = uniPool.slot0();
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(re.MAX_TICKS_DELTA() - 1)));
+        swapperc.swapTo(
+            uniPool,
+            Math.getSqrtRatioAtTick(int24(RiskEngineParams.blueChip().maxTicksDelta - 1))
+        );
         pp.pokeOracle();
         console2.log("safeMode level", pp.isSafeMode());
         console2.log("isSafeMode", pp.isSafeMode() > 0 ? "safe mode ON" : "safe mode OFF");
@@ -4990,7 +5015,10 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(re.MAX_TICKS_DELTA() + 1)));
+        swapperc.swapTo(
+            uniPool,
+            Math.getSqrtRatioAtTick(int24(RiskEngineParams.blueChip().maxTicksDelta + 1))
+        );
 
         console2.log("isSafeMode", pp.isSafeMode() > 0 ? "safe mode ON" : "safe mode OFF");
         assertTrue(pp.isSafeMode() > 0, "safe mode still");
@@ -5090,20 +5118,28 @@ contract Misctest is Test, PositionUtils {
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-int24(re.MAX_TICKS_DELTA() - 1)));
+        swapperc.swapTo(
+            uniPool,
+            Math.getSqrtRatioAtTick(-int24(RiskEngineParams.blueChip().maxTicksDelta - 1))
+        );
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
         assertTrue(
-            Math.abs(currentTick - slowOracleTick) <= int24(re.MAX_TICKS_DELTA()),
+            Math.abs(currentTick - slowOracleTick) <=
+                int24(RiskEngineParams.blueChip().maxTicksDelta),
             "small price deviation"
         );
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-int24(re.MAX_TICKS_DELTA() + 1)));
+        swapperc.swapTo(
+            uniPool,
+            Math.getSqrtRatioAtTick(-int24(RiskEngineParams.blueChip().maxTicksDelta + 1))
+        );
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
         assertTrue(
-            Math.abs(currentTick - slowOracleTick) > int24(re.MAX_TICKS_DELTA()),
+            Math.abs(currentTick - slowOracleTick) >
+                int24(RiskEngineParams.blueChip().maxTicksDelta),
             "small price deviation"
         );
         assertTrue(pp.isSafeMode() > 0, "in safe mode");
@@ -5119,22 +5155,30 @@ contract Misctest is Test, PositionUtils {
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(re.MAX_TICKS_DELTA())));
+        swapperc.swapTo(
+            uniPool,
+            Math.getSqrtRatioAtTick(int24(RiskEngineParams.blueChip().maxTicksDelta))
+        );
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
         console2.log("currentTick", currentTick);
         console2.log("slowOracleTick", slowOracleTick);
         assertTrue(
-            Math.abs(currentTick - slowOracleTick) <= int24(re.MAX_TICKS_DELTA()),
+            Math.abs(currentTick - slowOracleTick) <=
+                int24(RiskEngineParams.blueChip().maxTicksDelta),
             "small price deviation 0"
         );
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(re.MAX_TICKS_DELTA() + 1)));
+        swapperc.swapTo(
+            uniPool,
+            Math.getSqrtRatioAtTick(int24(RiskEngineParams.blueChip().maxTicksDelta + 1))
+        );
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
         assertTrue(
-            Math.abs(currentTick - slowOracleTick) > int24(re.MAX_TICKS_DELTA()),
+            Math.abs(currentTick - slowOracleTick) >
+                int24(RiskEngineParams.blueChip().maxTicksDelta),
             "small price deviation1 "
         );
         assertTrue(pp.isSafeMode() > 0, "in safe mode");
@@ -5160,12 +5204,16 @@ contract Misctest is Test, PositionUtils {
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-int24(re.MAX_TICKS_DELTA() + 114)));
+        swapperc.swapTo(
+            uniPool,
+            Math.getSqrtRatioAtTick(-int24(RiskEngineParams.blueChip().maxTicksDelta + 114))
+        );
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(
-            Math.abs(currentTick - slowOracleTick) > int24(re.MAX_TICKS_DELTA()),
+            Math.abs(currentTick - slowOracleTick) >
+                int24(RiskEngineParams.blueChip().maxTicksDelta),
             "small price deviation"
         );
         assertTrue(pp.isSafeMode() > 0, "in safe mode");
@@ -5216,14 +5264,18 @@ contract Misctest is Test, PositionUtils {
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-int24(re.MAX_TICKS_DELTA())));
+        swapperc.swapTo(
+            uniPool,
+            Math.getSqrtRatioAtTick(-int24(RiskEngineParams.blueChip().maxTicksDelta))
+        );
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
         console2.log("cur", currentTick);
         console2.log("sl", slowOracleTick);
 
         assertTrue(
-            Math.abs(currentTick - slowOracleTick) <= int24(re.MAX_TICKS_DELTA()),
+            Math.abs(currentTick - slowOracleTick) <=
+                int24(RiskEngineParams.blueChip().maxTicksDelta),
             "small price deviation 0"
         );
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
@@ -5275,13 +5327,17 @@ contract Misctest is Test, PositionUtils {
         vm.revertTo(snap);
 
         vm.startPrank(Swapper);
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-int24(re.MAX_TICKS_DELTA() + 2)));
+        swapperc.swapTo(
+            uniPool,
+            Math.getSqrtRatioAtTick(-int24(RiskEngineParams.blueChip().maxTicksDelta + 2))
+        );
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
         console2.log("currentTick", currentTick);
         console2.log("slowOracleTick", slowOracleTick);
         assertTrue(
-            Math.abs(currentTick - slowOracleTick) > int24(re.MAX_TICKS_DELTA()),
+            Math.abs(currentTick - slowOracleTick) >
+                int24(RiskEngineParams.blueChip().maxTicksDelta),
             "large price deviation"
         );
 
@@ -5336,12 +5392,16 @@ contract Misctest is Test, PositionUtils {
 
         assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-int24(re.MAX_TICKS_DELTA() + 2)));
+        swapperc.swapTo(
+            uniPool,
+            Math.getSqrtRatioAtTick(-int24(RiskEngineParams.blueChip().maxTicksDelta + 2))
+        );
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(
-            Math.abs(currentTick - slowOracleTick) > int24(re.MAX_TICKS_DELTA()),
+            Math.abs(currentTick - slowOracleTick) >
+                int24(RiskEngineParams.blueChip().maxTicksDelta),
             "small price deviation"
         );
         assertTrue(pp.isSafeMode() > 0, "in safe mode");
@@ -5479,12 +5539,16 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.startPrank(Swapper);
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-int24(re.MAX_TICKS_DELTA() + 2)));
+        swapperc.swapTo(
+            uniPool,
+            Math.getSqrtRatioAtTick(-int24(RiskEngineParams.blueChip().maxTicksDelta + 2))
+        );
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(
-            Math.abs(currentTick - slowOracleTick) > int24(re.MAX_TICKS_DELTA()),
+            Math.abs(currentTick - slowOracleTick) >
+                int24(RiskEngineParams.blueChip().maxTicksDelta),
             "small price deviation"
         );
         assertTrue(pp.isSafeMode() > 0, "in safe mode");
@@ -5553,7 +5617,10 @@ contract Misctest is Test, PositionUtils {
 
         // mint OTM position
         $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 4095));
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-int24(re.MAX_TICKS_DELTA() + 2)));
+        swapperc.swapTo(
+            uniPool,
+            Math.getSqrtRatioAtTick(-int24(RiskEngineParams.blueChip().maxTicksDelta + 2))
+        );
 
         vm.warp(block.timestamp + 63);
         vm.roll(block.number + 1);
@@ -5677,7 +5744,10 @@ contract Misctest is Test, PositionUtils {
         // mint OTM position
         $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 4095));
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-int24(re.MAX_TICKS_DELTA() + 2)));
+        swapperc.swapTo(
+            uniPool,
+            Math.getSqrtRatioAtTick(-int24(RiskEngineParams.blueChip().maxTicksDelta + 2))
+        );
 
         vm.warp(block.timestamp + 63);
         vm.roll(block.number + 1);
@@ -5796,7 +5866,10 @@ contract Misctest is Test, PositionUtils {
         // mint OTM position
         $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, 15, 4095));
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-int24(re.MAX_TICKS_DELTA() + 2)));
+        swapperc.swapTo(
+            uniPool,
+            Math.getSqrtRatioAtTick(-int24(RiskEngineParams.blueChip().maxTicksDelta + 2))
+        );
 
         vm.startPrank(Alice);
 
@@ -7012,7 +7085,9 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(
             uniPool,
-            Math.getSqrtRatioAtTick(int24(currentTick) + int24(re.MAX_TICKS_DELTA() - 3))
+            Math.getSqrtRatioAtTick(
+                int24(currentTick) + int24(RiskEngineParams.blueChip().maxTicksDelta - 3)
+            )
         );
 
         vm.warp(block.timestamp + 13);
@@ -7033,7 +7108,7 @@ contract Misctest is Test, PositionUtils {
             int256(fastOracleTick - slowOracleTick) ** 2 +
                 int256(lastObservedTick - slowOracleTick) ** 2 +
                 int256(currentTick - slowOracleTick) ** 2 >
-                int256(int24(re.MAX_TICKS_DELTA())) ** 2,
+                int256(int24(RiskEngineParams.blueChip().maxTicksDelta)) ** 2,
             "will check at multiple ticks"
         );
 
@@ -7134,7 +7209,9 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
         swapperc.swapTo(
             uniPool,
-            Math.getSqrtRatioAtTick(int24(currentTick) + int24(re.MAX_TICKS_DELTA()))
+            Math.getSqrtRatioAtTick(
+                int24(currentTick) + int24(RiskEngineParams.blueChip().maxTicksDelta)
+            )
         );
 
         vm.warp(block.timestamp + 13);
@@ -7155,7 +7232,7 @@ contract Misctest is Test, PositionUtils {
             int256(fastOracleTick - slowOracleTick) ** 2 +
                 int256(lastObservedTick - slowOracleTick) ** 2 +
                 int256(currentTick - slowOracleTick) ** 2 >
-                int256(int24(re.MAX_TICKS_DELTA())) ** 2,
+                int256(int24(RiskEngineParams.blueChip().maxTicksDelta)) ** 2,
             "will check at multiple ticks"
         );
 

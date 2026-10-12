@@ -22,7 +22,8 @@ contract RiskEngineUtilMarginLoans is Test {
     MockCollateralTracker internal ct1;
 
     uint256 constant DEC = 10_000_000;
-    uint256 constant MAINT = 1_000_000; // MAINT_MARGIN_RATE = 20%
+    uint256 constant MAINT = 1_000_000; // MAINT_MARGIN_RATE = 10%
+    uint256 constant LOAN_DIV = 4; // LOAN_MARGIN_DIVISOR: loan margin ceiling = DEC / 4 = 25%
     uint256 constant SELLER = 2_000_000; // SELLER_COLLATERAL_RATIO = 20%
     uint256 constant TARGET = 6_666_667; // TARGET_POOL_UTIL (scaled by 1000 internally)
     uint256 constant SATURATED = 9_000_000; // SATURATED_POOL_UTIL
@@ -117,7 +118,7 @@ contract RiskEngineUtilMarginLoans is Test {
     }
 
     function test_loanMargin_highUtil_exceedsBaseMaint() public view {
-        // At high utilization, loan margin should exceed the base 120%
+        // At high utilization, loan margin should exceed the base 110% and reach the 125% ceiling
         uint64 pool = 1 + (10 << 48);
         TokenId loan = PositionFactory.makeLeg(
             pool,
@@ -132,16 +133,16 @@ contract RiskEngineUtilMarginLoans is Test {
         );
 
         uint128 size = 1e18;
-        // util=9000 → saturated → _sellCollateralRatio = DECIMALS
-        // required = amount * (DEC + DEC) / DEC = 200% of amount
+        // util=9000 → saturated → _sellCollateralRatio(4 * MAINT) = DECIMALS, divided by LOAN_DIV = 25%
+        // required = amount * (DEC + DEC / 4) / DEC = 125% of amount
         uint256 reqHigh = E.reqSingleNoPartner(loan, 0, size, int24(0), int16(9000));
         uint256 reqLow = E.reqSingleNoPartner(loan, 0, size, int24(0), int16(0));
 
         assertTrue(reqHigh > reqLow, "high util loan margin should exceed low util");
 
-        // At saturation: required = ceil(size * 2)
-        uint256 expectedSaturated = (uint256(size) * (DEC + DEC) + DEC - 1) / DEC;
-        assertEq(reqHigh, expectedSaturated, "saturated loan should be 200% collateral");
+        // At saturation: required = ceil(size * 1.25)
+        uint256 expectedSaturated = (uint256(size) * (DEC + DEC / LOAN_DIV) + DEC - 1) / DEC;
+        assertEq(reqHigh, expectedSaturated, "saturated loan should be 125% collateral");
     }
 
     function test_loanMargin_midUtil_interpolated() public view {

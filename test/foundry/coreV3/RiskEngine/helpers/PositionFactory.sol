@@ -116,12 +116,25 @@ library PositionFactory {
         return makeTwoLegs(_poolId, A, B);
     }
 
+    /// @dev Mint metadata for synthetic balances: a real-looking block and timestamp, never zero, so a
+    /// balance built here is never mistaken for an unminted or sentinel entry.
+    uint32 internal constant TIMESTAMP_AT_MINT = 1_700_000_000;
+    uint40 internal constant BLOCK_AT_MINT = 18_000_000;
+
     function posBalance(
         uint128 positionSize,
         uint16 util0, // int16 packed in PositionBalance
         uint16 util1
     ) internal pure returns (PositionBalance) {
         uint32 utilPacked = uint32(util0) | (uint32(util1) << 16);
-        return PositionBalanceLibrary.storeBalanceData(positionSize, utilPacked, 0, 0, 0, false);
+        return
+            PositionBalanceLibrary.storeBalanceData(
+                positionSize,
+                utilPacked,
+                0,
+                TIMESTAMP_AT_MINT,
+                BLOCK_AT_MINT,
+                false
+            );
     }
 }

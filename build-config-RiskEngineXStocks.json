@@ -1,46 +1,52 @@
 {
   "env": {
     "GUARDIAN_ADMIN": "0xC3D385022d082Acd6b8744A85ad1766a01f522F7",
-    "TREASURER": "0xD8c5EbfeEA9B35695e54FFe0AaF9cFC521C9190d"
+    "TREASURER": "0xD8c5EbfeEA9B35695e54FFe0AaF9cFC521C9190d",
+    "RISK_ENGINE_OWNER": "0x8DFEAA4AEe4596b90EF581d7731E4E0b7AbA3221"
   },
   "dataContracts": [],
   "logicContracts": {
     "RiskEngineXStocks": {
-      "path": "./contracts/RiskEngineXStocks.sol",
+      "path": "./contracts/RiskEngine.sol",
+      "artifactName": "RiskEngineV2",
       "deployment": {
-        "address": "0x0000000000000fE1E261f66ce2F44def4F5Ae0CB",
-        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a18655d0218b1ea7028a82cd17",
-        "nonce": 14
+        "address": "0x000000000000F4901018445c697e1e358DAb8dAD",
+        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a193504ab8db09dd0096f7e01b",
+        "nonce": 21
       },
-      "optimizeRuns": 3333,
+      "optimizeRuns": 500,
       "constructorArgs": [
         [
-          7500000,
-          9000000,
           "0x0000000000000D329aCC1514f4Ba05584a8369ed",
-          "0x0000000000000a3D22E158417AA639D7F71b0FF7"
+          "0x0000000000000a3D22E158417AA639D7F71b0FF7",
+          "0x6a0d5c6577773db023c0a2ffa778aa7bd42daedbce4a5b9ad7ddd38b422e7412",
+          [
+            7500000, 7500000, 9066943782217711657943160, 953, 149, 513, 90000, 10750000, 2000000,
+            100000, 2500000, 4, 5000000, 6666667, 9000000, 26, 2000000, 3, 250, 5000, 4000,
+            634195839
+          ]
         ],
-        ["uint256", "uint256", "address", "address"]
+        [
+          "address",
+          "address",
+          "bytes32",
+          "(uint256,uint256,uint96,int256,int24,uint16,uint24,uint32,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint16,uint16,uint16,uint16,int256)"
+        ]
       ]
     },
-    "RiskEngineXStocksReverse": {
-      "path": "./contracts/RiskEngineXStocks.sol",
-      "artifactName": "RiskEngineXStocks",
+    "RiskEngineXStocksProxy": {
+      "path": "./contracts/RiskEngineProxy.sol",
       "deployment": {
-        "address": "0x0000000000000f3fb82469581A74776178E76Ca4",
-        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a19576142f3a8ba401ef6135ad",
-        "nonce": 5
+        "address": "0x000000000000FfADa7c641E2aD6B13b51b50Cc94",
+        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1f03a05a8b523a602989260cb",
+        "nonce": 31
       },
-      "optimizeRuns": 3333,
+      "optimizeRuns": 9999999,
       "constructorArgs": [
-        [
-          9000000,
-          7500000,
-          "0x0000000000000D329aCC1514f4Ba05584a8369ed",
-          "0x0000000000000a3D22E158417AA639D7F71b0FF7"
-        ],
-        ["uint256", "uint256", "address", "address"]
-      ]
+        ["@RiskEngineXStocks", "$RISK_ENGINE_OWNER"],
+        ["address", "address"]
+      ],
+      "artifactName": "RiskEngineProxy"
     }
   }
 }

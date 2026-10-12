@@ -3,16 +3,19 @@ pragma solidity ^0.8.24;
 // Foundry
 import "forge-std/Test.sol";
 
-import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {RiskEngineV2} from "@contracts/RiskEngine.sol";
+import {RiskEngineParams} from "../../testUtils/RiskEngineParams.sol";
 import {PositionBalance} from "@types/PositionBalance.sol";
 import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
+import {Math} from "@libraries/Math.sol";
+import {Math} from "@libraries/Math.sol";
 
 /// @notice Exposes internal functions of RiskEngine strictly for testing properties.
 /// DO NOT DEPLOY IN PROD.
-contract RiskEngineHarness is RiskEngine {
+contract RiskEngineHarness is RiskEngineV2 {
     constructor(
         uint256 _sellerCollateralRatio,
         uint256 _buyerCollateralRatio,
@@ -21,7 +24,14 @@ contract RiskEngineHarness is RiskEngine {
         uint256 _saturatedPoolUtilization,
         uint256 _crossBuffer0,
         uint256 _crossBuffer1
-    ) RiskEngine(_crossBuffer0, _crossBuffer1, address(0), address(0)) {}
+    )
+        RiskEngineV2(
+            address(0),
+            address(0),
+            bytes32(0),
+            RiskEngineParams.blueChip(_crossBuffer0, _crossBuffer1)
+        )
+    {}
 
     // Internal → public test shims
 
@@ -126,6 +136,21 @@ contract RiskEngineHarness is RiskEngine {
         return _computeCreditOptionComposite(tokenId, positionSize, index, atTick);
     }
 
+    // Safe-mode / global utilization shims
+    function globalUtilization(
+        PositionBalance[] calldata positionBalanceArray
+    ) external view returns (PositionBalance) {
+        return _getGlobalUtilization(positionBalanceArray);
+    }
+
+    function isSafeModeSentinel(PositionBalance pb) external pure returns (bool) {
+        return _isSafeModeSentinel(pb);
+    }
+
+    function safeModeUtilFloor() external view returns (uint256) {
+        return SAFE_MODE_UTIL_FLOOR;
+    }
+
     // Thin public shim for _getTotalRequiredCollateral for property-only assertions
     function totalRequiredCollateral(
         PositionBalance[] calldata positionBalanceArray,
@@ -134,11 +159,17 @@ contract RiskEngineHarness is RiskEngine {
         LeftRightUnsigned longPremia
     ) external view returns (LeftRightUnsigned, LeftRightUnsigned, PositionBalance) {
         (
-            LeftRightUnsigned tokensRequired,
+            uint256[2] memory tokensRequired,
             LeftRightUnsigned creditAmounts,
             PositionBalance globalUtilizations
         ) = _getTotalRequiredCollateral(positionBalanceArray, positionIdList, atTick, longPremia);
-        return (tokensRequired, creditAmounts, globalUtilizations);
+        return (
+            LeftRightUnsigned.wrap(Math.toUint128(tokensRequired[0])).addToLeftSlot(
+                Math.toUint128(tokensRequired[1])
+            ),
+            creditAmounts,
+            globalUtilizations
+        );
     }
 
     function totalCreditAmounts(

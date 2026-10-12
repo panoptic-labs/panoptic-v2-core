@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
-COMMON_LOGIC_CONTRACTS = {"PanopticMath", "InteractionHelper", "CollateralTrackerV2", "PanopticGuardian", "BuilderFactory", "RiskEngine"}
+COMMON_LOGIC_CONTRACTS = {"PanopticMath", "InteractionHelper", "CollateralTrackerV2", "PanopticGuardian", "BuilderFactory", "RiskEngine", "RiskEngineProxy"}
 DEFAULT_MAX_RARITY = 314649014
 PRIORITY = {
     "PanopticFactoryV4": 1000,
@@ -16,7 +16,13 @@ PRIORITY = {
     "SemiFungiblePositionManagerV3": 940,
     "PanopticPoolV2": 900,
     "PanopticGuardian": 870,
-    "RiskEngine": 850,
+    "RiskEngineProxy": 850,
+    "RiskEngineXStocksProxy": 849,
+    "RiskEngineReservedProxyA": 848,
+    "RiskEngineReservedProxyB": 847,
+    "RiskEngine": 840,
+    "RiskEngineXStocks": 839,
+    "RiskEngineStub": 100,
     "BuilderFactory": 800,
     "CollateralTrackerV2": 700,
     "InteractionHelper": 600,

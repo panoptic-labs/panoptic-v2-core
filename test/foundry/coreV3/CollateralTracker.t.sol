@@ -7,7 +7,8 @@ import "forge-std/Test.sol";
 import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManagerV3} from "@contracts/SemiFungiblePositionManagerV3.sol";
 import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
-import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {RiskEngineV2} from "@contracts/RiskEngine.sol";
+import {RiskEngineParams} from "../testUtils/RiskEngineParams.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 
 // Panoptic Libraries
@@ -200,12 +201,19 @@ contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManagerV3 {
     }
 }
 
-contract RiskEngineHarness is RiskEngine {
+contract RiskEngineHarness is RiskEngineV2 {
     constructor(
         uint256 crossBuffer0,
         uint256 crossBuffer1,
         address guardian
-    ) RiskEngine(crossBuffer0, crossBuffer1, guardian, address(0)) {}
+    )
+        RiskEngineV2(
+            guardian,
+            address(0),
+            bytes32(0),
+            RiskEngineParams.blueChip(crossBuffer0, crossBuffer1)
+        )
+    {}
 
     function getRequiredCollateralAtUtilization(
         uint128 amount,
@@ -222,7 +230,7 @@ contract RiskEngineHarness is RiskEngine {
         int16 poolUtilization,
         bool underlyingIsToken0
     ) external view returns (uint256) {
-        (uint256 tokensRequired, ) = _getRequiredCollateralAtTickSinglePosition(
+        (uint256 tokensRequired, , ) = _getRequiredCollateralAtTickSinglePosition(
             tokenId,
             positionSize,
             atTick,
@@ -3211,7 +3219,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         console2.log("b-before", bobAssetsBefore);
 
         uint256 expectedBonus = Math.min(
-            (riskEngine.MAX_BONUS() * bobAssetsBefore) / 10_000_000,
+            (RiskEngineParams.blueChip().maxBonus * bobAssetsBefore) / 10_000_000,
             (tokenData0.leftSlot() - tokenData0.rightSlot())
         );
         console.log("expectedBonus", expectedBonus);
@@ -3391,7 +3399,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // i.e. bobAssetsBefore - previewedInterest; that cap binds in this scenario.
         uint256 expectedBonus = Math.min(
             Math.min(
-                (riskEngine.MAX_BONUS() * tokenData0.leftSlot()) / DECIMALS,
+                (RiskEngineParams.blueChip().maxBonus * tokenData0.leftSlot()) / DECIMALS,
                 (tokenData0.leftSlot() - tokenData0.rightSlot())
             ),
             bobAssetsBefore - previewedInterest
@@ -3683,7 +3691,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         console2.log("b-before", bobAssetsBefore);
 
         uint256 expectedBonus = Math.min(
-            (riskEngine.MAX_BONUS() * bobAssetsBefore) / 10_000_000,
+            (RiskEngineParams.blueChip().maxBonus * bobAssetsBefore) / 10_000_000,
             (previewedInterest - bobAssetsBefore)
         );
         console2.log("previewBob-before-liq", collateralToken0.previewOwedInterest(Bob));
@@ -11747,8 +11755,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             }
 
             int256 feeUp = hasLegsInRange
-                ? -int256(riskEngine.FORCE_EXERCISE_COST())
-                : -int256(1000);
+                ? -int256(RiskEngineParams.blueChip().forceExerciseCost)
+                : -int256(uint256(RiskEngineParams.blueChip().notionalFee) * 1000);
 
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);
@@ -11890,8 +11898,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             }
 
             int256 feeUp = hasLegsInRange
-                ? -int256(riskEngine.FORCE_EXERCISE_COST())
-                : -int256(1000);
+                ? -int256(RiskEngineParams.blueChip().forceExerciseCost)
+                : -int256(uint256(RiskEngineParams.blueChip().notionalFee) * 1000);
 
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);
@@ -12034,8 +12042,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             }
 
             int256 feeUp = hasLegsInRange
-                ? -int256(riskEngine.FORCE_EXERCISE_COST())
-                : -int256(1000);
+                ? -int256(RiskEngineParams.blueChip().forceExerciseCost)
+                : -int256(uint256(RiskEngineParams.blueChip().notionalFee) * 1000);
 
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);
@@ -12178,8 +12186,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             }
 
             int256 feeUp = hasLegsInRange
-                ? -int256(riskEngine.FORCE_EXERCISE_COST())
-                : -int256(1000);
+                ? -int256(RiskEngineParams.blueChip().forceExerciseCost)
+                : -int256(uint256(RiskEngineParams.blueChip().notionalFee) * 1000);
 
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);

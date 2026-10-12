@@ -4,18 +4,23 @@ pragma solidity ^0.8.24;
 import "forge-std/Test.sol";
 import {RiskEngineHarness} from "./RiskEngineHarness.sol";
 import {MarketState} from "@types/MarketState.sol";
+import {MockCollateralTracker} from "./mocks/MockCollateralTracker.sol";
 
 /// @title RiskEngine IRM Tests
 /// @notice This contract specifically tests the Adaptive Interest Rate Model (IRM)
 /// logic within the RiskEngine, which was not covered by other tests.
 contract RiskEngineIRMTest is Test {
     RiskEngineHarness internal E;
+    MockCollateralTracker internal mock;
+
+    ///  Mock vault size; large so unrealized interest in the accumulator never dominates.
+    uint256 internal constant POOL_SCALE = 1e36;
 
     // --- IRM Constants (copied from RiskEngine.sol) ---
     int256 internal constant WAD = 1e18;
     int256 internal constant INITIAL_RATE_AT_TARGET = 0.04 ether / int256(365 days);
     // These are public in RiskEngine, but we copy them for easy access
-    int256 internal constant MIN_RATE_AT_TARGET = 0.001 ether / int256(365 days);
+    int256 internal constant MIN_RATE_AT_TARGET = 0.02 ether / int256(365 days);
     int256 internal constant MAX_RATE_AT_TARGET = 2.0 ether / int256(365 days);
     int256 internal constant TARGET_UTILIZATION = 2 ether / int256(3);
 
@@ -29,6 +34,7 @@ contract RiskEngineIRMTest is Test {
             5_000_000,
             5_000_000
         );
+        mock = new MockCollateralTracker();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -72,6 +78,17 @@ contract RiskEngineIRMTest is Test {
                 .updateBorrowIndex(borrowIndex);
     }
 
+    ///  Drives the engine as if the mock CollateralTracker were calling, with pool data
+    /// chosen so the rehypothecation-adjusted utilization equals `util` exactly.
+    function _update(uint256 util, MarketState accum) internal returns (uint128, uint256) {
+        uint256 numerator = (util * POOL_SCALE) / uint256(WAD);
+        uint256 insideAMM = numerator - accum.unrealizedInterest();
+        mock.setPoolData(POOL_SCALE - numerator, insideAMM, 0, 0);
+        mock.setGlobal(POOL_SCALE, POOL_SCALE);
+        vm.prank(address(mock));
+        return E.updateInterestRate(util, accum);
+    }
+
     /*//////////////////////////////////////////////////////////////
     //                       DIRECTED TESTS
     //////////////////////////////////////////////////////////////*/
@@ -83,7 +100,7 @@ contract RiskEngineIRMTest is Test {
         uint256 util = uint256(TARGET_UTILIZATION);
 
         // Act
-        (uint128 avgRate, uint256 endRate) = E.updateInterestRate(util, accum);
+        (uint128 avgRate, uint256 endRate) = _update(util, accum);
 
         // Assert
         // With 0 accumulator, both rates should be set to the initial default.
@@ -104,7 +121,7 @@ contract RiskEngineIRMTest is Test {
         uint32 time1 = 1000;
         vm.warp(time1);
         uint256 util1 = uint256(TARGET_UTILIZATION);
-        (, uint256 rate1) = E.updateInterestRate(util1, MarketState.wrap(0));
+        (, uint256 rate1) = _update(util1, MarketState.wrap(0));
         MarketState accum1 = _packAccumulator(int256(rate1), time1);
 
         // --- Test: Second interaction ---
@@ -114,7 +131,7 @@ contract RiskEngineIRMTest is Test {
         uint256 util2 = uint256(TARGET_UTILIZATION + 0.1 ether);
 
         // Act
-        (uint128 avgRate2, uint256 endRate2) = E.updateInterestRate(util2, accum1);
+        (uint128 avgRate2, uint256 endRate2) = _update(util2, accum1);
 
         // Assert
         // `startRateAtTarget` was non-zero, so we entered the `else` block.
@@ -133,7 +150,7 @@ contract RiskEngineIRMTest is Test {
         uint32 time1 = 1000;
         vm.warp(time1);
         uint256 util1 = uint256(TARGET_UTILIZATION);
-        (, uint256 rate1) = E.updateInterestRate(util1, MarketState.wrap(0));
+        (, uint256 rate1) = _update(util1, MarketState.wrap(0));
         MarketState accum1 = _packAccumulator(int256(rate1), time1);
 
         // --- Test: Second interaction ---
@@ -143,7 +160,7 @@ contract RiskEngineIRMTest is Test {
         uint256 util2 = uint256(TARGET_UTILIZATION - 0.1 ether);
 
         // Act
-        (uint128 avgRate2, uint256 endRate2) = E.updateInterestRate(util2, accum1);
+        (uint128 avgRate2, uint256 endRate2) = _update(util2, accum1);
 
         // Assert
         // `elapsed` > 0 and `err` < 0, so `linearAdaptation` < 0.
@@ -159,7 +176,7 @@ contract RiskEngineIRMTest is Test {
         uint32 time1 = 1000;
         vm.warp(time1);
         uint256 util1 = uint256(TARGET_UTILIZATION);
-        (, uint256 rate1) = E.updateInterestRate(util1, MarketState.wrap(0));
+        (, uint256 rate1) = _update(util1, MarketState.wrap(0));
         MarketState accum1 = _packAccumulator(int256(rate1), time1);
 
         // --- Test: Second interaction (no time warp) ---
@@ -167,7 +184,7 @@ contract RiskEngineIRMTest is Test {
         uint256 util2 = uint256(TARGET_UTILIZATION + 0.1 ether); // Change util
 
         // Act
-        (uint128 avgRate2, uint256 endRate2) = E.updateInterestRate(util2, accum1);
+        (uint128 avgRate2, uint256 endRate2) = _update(util2, accum1);
 
         // Assert
         // Enters the `linearAdaptation == 0` block.
@@ -185,7 +202,7 @@ contract RiskEngineIRMTest is Test {
         uint32 time1 = 1000;
         vm.warp(time1);
         uint256 util1 = uint256(TARGET_UTILIZATION);
-        (, uint256 rate1) = E.updateInterestRate(util1, MarketState.wrap(0));
+        (, uint256 rate1) = _update(util1, MarketState.wrap(0));
         MarketState accum1 = _packAccumulator(int256(rate1), time1);
 
         // --- Test: Second interaction ---
@@ -195,7 +212,7 @@ contract RiskEngineIRMTest is Test {
         uint256 util2 = uint256(TARGET_UTILIZATION);
 
         // Act
-        (uint128 avgRate2, uint256 endRate2) = E.updateInterestRate(util2, accum1);
+        (uint128 avgRate2, uint256 endRate2) = _update(util2, accum1);
 
         // Assert
         // Enters the `linearAdaptation == 0` block.
@@ -224,8 +241,8 @@ contract RiskEngineIRMTest is Test {
         MarketState accum_max_index = _packAccumulatorFull(0, rate, time, type(uint80).max);
 
         // Act
-        (uint128 avgRate0, uint256 endRate0) = E.updateInterestRate(util, accum_zero_index);
-        (uint128 avgRateMax, uint256 endRateMax) = E.updateInterestRate(util, accum_max_index);
+        (uint128 avgRate0, uint256 endRate0) = _update(util, accum_zero_index);
+        (uint128 avgRateMax, uint256 endRateMax) = _update(util, accum_max_index);
 
         // Assert
         // Results should be identical, as borrow index bits (0-79) are not read
@@ -259,13 +276,15 @@ contract RiskEngineIRMTest is Test {
         // `linearAdaptation` will also be large and negative.
         // `_newRateAtTarget` will calculate `wExp(negative)` -> ~0
         // The result will be clamped to the minimum.
-        (uint128 avgRate2, uint256 endRate2) = E.updateInterestRate(util2, accum1);
+        (uint128 avgRate2, uint256 endRate2) = _update(util2, accum1);
 
         // Assert
         // The rate plummets to MIN, because of the large negative elapsed time.
         assertEq(endRate2, uint256(MIN_RATE_AT_TARGET), "endRate should be clamped to MIN");
-        // The avgRate will also be based on this, and be very low.
-        assertTrue(avgRate2 < uint256(rate1), "avgRate should be very low");
+        // The avgRate is below what the same utilization would yield with no elapsed time
+        // (i.e. the curve applied to the undecayed INITIAL rate at target).
+        (uint128 avgRateNoDecay, ) = _update(util2, _packAccumulator(rate1, time2));
+        assertTrue(avgRate2 < uint256(avgRateNoDecay), "avgRate should be very low");
     }
 
     /// @notice Tests that bits *above* the 38-bit rateAtTarget field are ignored.
@@ -288,11 +307,8 @@ contract RiskEngineIRMTest is Test {
         );
 
         // Act
-        (uint128 avgRate_normal, uint256 endRate_normal) = E.updateInterestRate(util, accum_normal);
-        (uint128 avgRate_overflow, uint256 endRate_overflow) = E.updateInterestRate(
-            util,
-            accum_overflow
-        );
+        (uint128 avgRate_normal, uint256 endRate_normal) = _update(util, accum_normal);
+        (uint128 avgRate_overflow, uint256 endRate_overflow) = _update(util, accum_overflow);
 
         // Assert
         // Results should be identical, as bits 150+ are not read by _borrowRate
@@ -327,7 +343,7 @@ contract RiskEngineIRMTest is Test {
 
         // Act
         vm.warp(time1 + elapsed);
-        (uint128 avgRate, uint256 endRate) = E.updateInterestRate(util, accum);
+        (uint128 avgRate, uint256 endRate) = _update(util, accum);
 
         // Assert
         // 1. Bounds check

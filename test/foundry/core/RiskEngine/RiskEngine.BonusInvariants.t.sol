@@ -58,7 +58,8 @@ import {SemiFungiblePositionManagerV4} from "@contracts/SemiFungiblePositionMana
 import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
 import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
 import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
-import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {RiskEngineV2} from "@contracts/RiskEngine.sol";
+import {RiskEngineParams} from "../../testUtils/RiskEngineParams.sol";
 import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
 import {PanopticFactoryV4} from "@contracts/PanopticFactoryV4.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
@@ -745,7 +746,7 @@ contract BonusInvariantsUnit is Test {
         // I2 final-state form: a loss on one side bounds the surplus on the OTHER side
         // to at most MAX_OPEN_LEGS wei (the per-leg `unsafeDivRoundingUp` bias). Borrower
         // is permitted unbounded surplus when no protocol loss is realized anywhere.
-        int256 maxBound = int256(uint256(E.MAX_OPEN_LEGS()));
+        int256 maxBound = int256(uint256(RiskEngineParams.blueChip().maxOpenLegs));
         if (post0 < 0) {
             assertLe(
                 post1,
@@ -979,7 +980,7 @@ contract BonusInvariantsUnit is Test {
         );
 
         // The per-leg overshoot is bounded by MAX_OPEN_LEGS (≤ 1 wei per leg, ≤ 26 legs).
-        uint256 maxOpenLegs = E.MAX_OPEN_LEGS();
+        uint256 maxOpenLegs = RiskEngineParams.blueChip().maxOpenLegs;
         assertLe(
             uint256(haircutTotal.rightSlot()),
             uint256(lp0) + maxOpenLegs,
@@ -1033,7 +1034,7 @@ contract BonusInvariantsUnit is Test {
 
         assertLe(
             _valueAt(combinedDelta0, combinedDelta1, sp),
-            int256(E.MAX_OPEN_LEGS()),
+            int256(RiskEngineParams.blueChip().maxOpenLegs),
             "I9: haircut combined delta"
         );
     }
@@ -1424,7 +1425,16 @@ contract BonusInvariantsIntegration is Test, PositionUtils {
         uniPool = IUniswapV3Pool(V3FACTORY.createPool(address(token0), address(token1), 500));
 
         MAX_CLAMP_DELTA = 149;
-        re = IRiskEngine(address(new RiskEngine(10_000_000, 10_000_000, address(0), address(0))));
+        re = IRiskEngine(
+            address(
+                new RiskEngineV2(
+                    address(0),
+                    address(0),
+                    bytes32(0),
+                    RiskEngineParams.blueChip(10_000_000, 10_000_000)
+                )
+            )
+        );
 
         poolKey = PoolKey(
             Currency.wrap(address(token0)),
@@ -2598,7 +2608,7 @@ contract BonusInvariantsIntegration is Test, PositionUtils {
         // liquidations (one token's deficit covered by converting the other), where the
         // borrower legitimately keeps surplus. The invariant is `ProtocolLossRealized_t > 0`.
         if (lossAssets > 0) {
-            int256 i2Tol = int256(re.MAX_OPEN_LEGS()) + 2;
+            int256 i2Tol = int256(RiskEngineParams.blueChip().maxOpenLegs) + 2;
             assertLe(
                 int256(borAfter.ctAssets0),
                 i2Tol,
