@@ -26,7 +26,9 @@ import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
 import {SemiFungiblePositionManagerV4} from "@contracts/SemiFungiblePositionManagerV4.sol";
 import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
 import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
-import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {RiskEngineV2} from "@contracts/RiskEngine.sol";
+import {RiskEngineProxy} from "@contracts/RiskEngineProxy.sol";
+import {RiskEngineParams} from "../testUtils/RiskEngineParams.sol";
 import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
 import {PanopticFactoryV4} from "@contracts/PanopticFactoryV4.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
@@ -272,7 +274,6 @@ contract PanopticPoolTest is PositionUtils {
     LeftRightSigned $shortAmounts;
 
     PanopticFactoryV4 factory;
-    bool $hasLegsInRange;
 
     PanopticPoolHarness pp;
     CollateralTrackerV2 ct0;
@@ -662,7 +663,21 @@ contract PanopticPoolTest is PositionUtils {
             new uint256[][](0),
             new Pointer[][](0)
         );
-        re = IRiskEngine(address(new RiskEngine(10_000_000, 10_000_000, address(0), address(0))));
+        re = IRiskEngine(
+            address(
+                new RiskEngineV2(
+                    address(0),
+                    address(0),
+                    bytes32(0),
+                    RiskEngineParams.blueChip(10_000_000, 10_000_000)
+                )
+            )
+        );
+        // RISK_ENGINE_PROXY=true runs the whole suite with the engine behind its transparent proxy,
+        // mirroring the production deployment (see contracts/RiskEngineProxy.sol).
+        if (vm.envOr("RISK_ENGINE_PROXY", false)) {
+            re = IRiskEngine(address(new RiskEngineProxy(address(re), address(this))));
+        }
 
         deal(token0, Deployer, type(uint104).max);
         deal(token1, Deployer, type(uint104).max);
@@ -2202,14 +2217,18 @@ contract PanopticPoolTest is PositionUtils {
         {
             newSharesFromLoan0 = int256(
                 uint256(
-                    ((uint128(shortAmounts.rightSlot() * int16(10000 - re.NOTIONAL_FEE())) /
-                        10000) * ct1.totalSupply()) / ct1.totalAssets()
+                    ((uint128(
+                        shortAmounts.rightSlot() *
+                            int16(10000 - RiskEngineParams.blueChip().notionalFee)
+                    ) / 10000) * ct1.totalSupply()) / ct1.totalAssets()
                 )
             );
             newSharesFromLoan1 = int256(
                 uint256(
-                    ((uint128(shortAmounts.leftSlot() * int16(10000 - re.NOTIONAL_FEE())) / 10000) *
-                        ct1.totalSupply()) / ct1.totalAssets()
+                    ((uint128(
+                        shortAmounts.leftSlot() *
+                            int16(10000 - RiskEngineParams.blueChip().notionalFee)
+                    ) / 10000) * ct1.totalSupply()) / ct1.totalAssets()
                 )
             );
         }
@@ -2325,14 +2344,16 @@ contract PanopticPoolTest is PositionUtils {
         {
             newSharesFromLoan0 = -int256(
                 uint256(
-                    ((uint128(amountsMoved.rightSlot() * int16(re.NOTIONAL_FEE())) / 10000) *
-                        ct1.totalSupply()) / ct1.totalAssets()
+                    ((uint128(
+                        amountsMoved.rightSlot() * int16(RiskEngineParams.blueChip().notionalFee)
+                    ) / 10000) * ct1.totalSupply()) / ct1.totalAssets()
                 )
             );
             newSharesFromLoan1 = -int256(
                 uint256(
-                    ((uint128(amountsMoved.leftSlot() * int16(re.NOTIONAL_FEE())) / 10000) *
-                        ct1.totalSupply()) / ct1.totalAssets()
+                    ((uint128(
+                        amountsMoved.leftSlot() * int16(RiskEngineParams.blueChip().notionalFee)
+                    ) / 10000) * ct1.totalSupply()) / ct1.totalAssets()
                 )
             );
             int256 expectedSwap0;
@@ -2555,7 +2576,8 @@ contract PanopticPoolTest is PositionUtils {
                 uint256 commission0 = uint256(
                     int256(shortAmounts.rightSlot()) + int256(longAmounts.rightSlot())
                 );
-                uint256 commissionFee0 = (commission0 * uint16(re.NOTIONAL_FEE())) / 10000;
+                uint256 commissionFee0 = (commission0 *
+                    uint16(RiskEngineParams.blueChip().notionalFee)) / 10000;
                 newSharesFromLoan0 = -int256(
                     (
                         tokenToPay0 > 0
@@ -2572,7 +2594,8 @@ contract PanopticPoolTest is PositionUtils {
                 uint256 commission1 = uint256(
                     int256(shortAmounts.leftSlot()) + int256(longAmounts.leftSlot())
                 );
-                uint256 commissionFee1 = (commission1 * uint16(re.NOTIONAL_FEE())) / 10000;
+                uint256 commissionFee1 = (commission1 *
+                    uint16(RiskEngineParams.blueChip().notionalFee)) / 10000;
                 newSharesFromLoan1 = -int256(
                     (
                         tokenToPay1 > 0
@@ -2734,14 +2757,18 @@ contract PanopticPoolTest is PositionUtils {
         {
             newSharesFromLoan0 = int256(
                 uint256(
-                    ((uint128(amountsMoved.rightSlot() * int16(10000 - re.NOTIONAL_FEE())) /
-                        10000) * ct1.totalSupply()) / ct1.totalAssets()
+                    ((uint128(
+                        amountsMoved.rightSlot() *
+                            int16(10000 - RiskEngineParams.blueChip().notionalFee)
+                    ) / 10000) * ct1.totalSupply()) / ct1.totalAssets()
                 )
             );
             newSharesFromLoan1 = int256(
                 uint256(
-                    ((uint128(amountsMoved.leftSlot() * int16(10000 - re.NOTIONAL_FEE())) / 10000) *
-                        ct1.totalSupply()) / ct1.totalAssets()
+                    ((uint128(
+                        amountsMoved.leftSlot() *
+                            int16(10000 - RiskEngineParams.blueChip().notionalFee)
+                    ) / 10000) * ct1.totalSupply()) / ct1.totalAssets()
                 )
             );
             console2.log("newShares0-b", newSharesFromLoan0);
@@ -2945,8 +2972,10 @@ contract PanopticPoolTest is PositionUtils {
         {
             newSharesFromLoan0 = -int256(
                 uint256(
-                    ((uint128(longAmounts.rightSlot() * int16(re.NOTIONAL_FEE() + 10000)) / 10000) *
-                        ct0.totalSupply()) / ct0.totalAssets()
+                    ((uint128(
+                        longAmounts.rightSlot() *
+                            int16(RiskEngineParams.blueChip().notionalFee + 10000)
+                    ) / 10000) * ct0.totalSupply()) / ct0.totalAssets()
                 )
             );
             creditedShares0 = Math.mulDivRoundingUp(
@@ -2956,8 +2985,10 @@ contract PanopticPoolTest is PositionUtils {
             );
             newSharesFromLoan1 = -int256(
                 uint256(
-                    ((uint128(longAmounts.leftSlot() * int16(re.NOTIONAL_FEE() + 10000)) / 10000) *
-                        ct1.totalSupply()) / ct1.totalAssets()
+                    ((uint128(
+                        longAmounts.leftSlot() *
+                            int16(RiskEngineParams.blueChip().notionalFee + 10000)
+                    ) / 10000) * ct1.totalSupply()) / ct1.totalAssets()
                 )
             );
             creditedShares1 = Math.mulDivRoundingUp(
@@ -3120,8 +3151,9 @@ contract PanopticPoolTest is PositionUtils {
         {
             newSharesFromLoan0 = -int256(
                 uint256(
-                    ((uint128(longAmounts.rightSlot() * int16(re.NOTIONAL_FEE())) / 10000) *
-                        ct0.totalSupply()) / ct0.totalAssets()
+                    ((uint128(
+                        longAmounts.rightSlot() * int16(RiskEngineParams.blueChip().notionalFee)
+                    ) / 10000) * ct0.totalSupply()) / ct0.totalAssets()
                 )
             );
             creditedShares0 = Math.mulDivRoundingUp(
@@ -3131,8 +3163,9 @@ contract PanopticPoolTest is PositionUtils {
             );
             newSharesFromLoan1 = -int256(
                 uint256(
-                    ((uint128(longAmounts.leftSlot() * int16(re.NOTIONAL_FEE())) / 10000) *
-                        ct1.totalSupply()) / ct1.totalAssets()
+                    ((uint128(
+                        longAmounts.leftSlot() * int16(RiskEngineParams.blueChip().notionalFee)
+                    ) / 10000) * ct1.totalSupply()) / ct1.totalAssets()
                 )
             );
             creditedShares1 = Math.mulDivRoundingUp(
@@ -3316,7 +3349,10 @@ contract PanopticPoolTest is PositionUtils {
             );
 
             sharesToBurn = Math.mulDivRoundingUp(
-                uint128((longAmounts.rightSlot() * int16(re.NOTIONAL_FEE())) / 10000),
+                uint128(
+                    (longAmounts.rightSlot() * int16(RiskEngineParams.blueChip().notionalFee)) /
+                        10000
+                ),
                 ct0.totalSupply(),
                 ct0.totalAssets()
             );
@@ -3445,7 +3481,10 @@ contract PanopticPoolTest is PositionUtils {
             );
 
             sharesToBurn = Math.mulDivRoundingUp(
-                uint128((longAmounts.rightSlot() * int16(re.NOTIONAL_FEE())) / 10000),
+                uint128(
+                    (longAmounts.rightSlot() * int16(RiskEngineParams.blueChip().notionalFee)) /
+                        10000
+                ),
                 ct0.totalSupply(),
                 ct0.totalAssets()
             );
@@ -3674,7 +3713,10 @@ contract PanopticPoolTest is PositionUtils {
             assertApproxEqAbs(
                 ct0.balanceOf(Alice),
                 uint256(type(uint104).max) -
-                    uint128((shortAmounts.rightSlot() * int16(re.NOTIONAL_FEE())) / 10000),
+                    uint128(
+                        (shortAmounts.rightSlot() *
+                            int16(RiskEngineParams.blueChip().notionalFee)) / 10000
+                    ),
                 uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10)
             );
 
@@ -3775,7 +3817,10 @@ contract PanopticPoolTest is PositionUtils {
             assertApproxEqAbs(
                 ct0.balanceOf(Alice),
                 uint256(type(uint104).max) -
-                    uint128((shortAmounts.rightSlot() * int16(re.NOTIONAL_FEE())) / 10000),
+                    uint128(
+                        (shortAmounts.rightSlot() *
+                            int16(RiskEngineParams.blueChip().notionalFee)) / 10000
+                    ),
                 uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10),
                 "alice balance 0"
             );
@@ -3970,7 +4015,10 @@ contract PanopticPoolTest is PositionUtils {
             assertApproxEqAbs(
                 ct1.balanceOf(Alice),
                 uint256(type(uint104).max) -
-                    uint128((shortAmounts.leftSlot() * int16(re.NOTIONAL_FEE())) / 10000),
+                    uint128(
+                        (shortAmounts.leftSlot() * int16(RiskEngineParams.blueChip().notionalFee)) /
+                            10000
+                    ),
                 uint256(int256(shortAmounts.leftSlot()) / 1_000_000 + 10)
             );
 
@@ -4101,7 +4149,7 @@ contract PanopticPoolTest is PositionUtils {
                 uint256(
                     int256(uint256(type(uint104).max)) -
                         notionalVal -
-                        (shortAmounts.leftSlot() * int16(re.NOTIONAL_FEE())) /
+                        (shortAmounts.leftSlot() * int16(RiskEngineParams.blueChip().notionalFee)) /
                         10_000
                 ),
                 uint256(int256(shortAmounts.leftSlot()) / 1_000_000 + 10),
@@ -4237,7 +4285,8 @@ contract PanopticPoolTest is PositionUtils {
                 uint256(
                     int256(uint256(type(uint104).max)) -
                         notionalVal -
-                        (shortAmounts.rightSlot() * int16(re.NOTIONAL_FEE())) /
+                        (shortAmounts.rightSlot() *
+                            int16(RiskEngineParams.blueChip().notionalFee)) /
                         10_000
                 ),
                 uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10),
@@ -4350,7 +4399,8 @@ contract PanopticPoolTest is PositionUtils {
                 uint256(
                     int256(uint256(type(uint104).max)) -
                         notionalVal -
-                        (shortAmounts.rightSlot() * int16(re.NOTIONAL_FEE())) /
+                        (shortAmounts.rightSlot() *
+                            int16(RiskEngineParams.blueChip().notionalFee)) /
                         10_000
                 ),
                 uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10),
@@ -4541,7 +4591,8 @@ contract PanopticPoolTest is PositionUtils {
                 ];
 
                 int256 val0 = expectedSwap0 -
-                    (shortAmounts.rightSlot() * int16(10000 - re.NOTIONAL_FEE())) /
+                    (shortAmounts.rightSlot() *
+                        int16(10000 - RiskEngineParams.blueChip().notionalFee)) /
                     10000;
                 assertApproxEqAbs(
                     ct0.balanceOf(Alice),
@@ -4551,7 +4602,8 @@ contract PanopticPoolTest is PositionUtils {
                 );
                 console.log("shortAmounts.", shortAmounts.leftSlot());
                 int256 val1 = expectedSwap1 -
-                    (shortAmounts.leftSlot() * int16(10000 - re.NOTIONAL_FEE())) /
+                    (shortAmounts.leftSlot() *
+                        int16(10000 - RiskEngineParams.blueChip().notionalFee)) /
                     10000;
                 assertApproxEqAbs(
                     ct1.balanceOf(Alice),
@@ -4693,7 +4745,8 @@ contract PanopticPoolTest is PositionUtils {
                 uint256(
                     int256(uint256(type(uint104).max)) -
                         notionalVals[0] -
-                        (shortAmounts.rightSlot() * int16(re.NOTIONAL_FEE())) /
+                        (shortAmounts.rightSlot() *
+                            int16(RiskEngineParams.blueChip().notionalFee)) /
                         10_000
                 ),
                 uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10)
@@ -4704,7 +4757,7 @@ contract PanopticPoolTest is PositionUtils {
                 uint256(
                     int256(uint256(type(uint104).max)) -
                         notionalVals[1] -
-                        (shortAmounts.leftSlot() * int16(re.NOTIONAL_FEE())) /
+                        (shortAmounts.leftSlot() * int16(RiskEngineParams.blueChip().notionalFee)) /
                         10_000
                 ),
                 uint256(int256(shortAmounts.leftSlot()) / 1_000_000 + 10)
@@ -5013,7 +5066,8 @@ contract PanopticPoolTest is PositionUtils {
                     ct1.balanceOf(Alice),
                     uint256(
                         int256(uint256(type(uint104).max)) +
-                            (shortAmounts.leftSlot() * int16(10000 - re.NOTIONAL_FEE())) /
+                            (shortAmounts.leftSlot() *
+                                int16(10000 - RiskEngineParams.blueChip().notionalFee)) /
                             10_000 -
                             $intrinsicValue1
                     ),
@@ -5218,7 +5272,7 @@ contract PanopticPoolTest is PositionUtils {
                 uint256(
                     int256(uint256(type(uint104).max)) -
                         notionalVals[0] -
-                        (longAmounts.rightSlot() * int16(re.NOTIONAL_FEE())) /
+                        (longAmounts.rightSlot() * int16(RiskEngineParams.blueChip().notionalFee)) /
                         10_000
                 ),
                 uint256(int256(longAmounts.rightSlot()) / 1_000_000 + 10),
@@ -5230,7 +5284,7 @@ contract PanopticPoolTest is PositionUtils {
                 uint256(
                     int256(uint256(type(uint104).max)) -
                         notionalVals[1] -
-                        (shortAmounts.leftSlot() * int16(re.NOTIONAL_FEE())) /
+                        (shortAmounts.leftSlot() * int16(RiskEngineParams.blueChip().notionalFee)) /
                         10_000
                 ),
                 uint256(int256(shortAmounts.leftSlot()) / 1_000_000 + 10),
@@ -5328,7 +5382,10 @@ contract PanopticPoolTest is PositionUtils {
             assertApproxEqAbs(
                 ct0.balanceOf(Alice),
                 uint256(type(uint104).max) -
-                    uint128((shortAmounts.rightSlot() * int16(re.NOTIONAL_FEE())) / 10000),
+                    uint128(
+                        (shortAmounts.rightSlot() *
+                            int16(RiskEngineParams.blueChip().notionalFee)) / 10000
+                    ),
                 uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10),
                 "alice balance 0"
             );
@@ -5460,8 +5517,14 @@ contract PanopticPoolTest is PositionUtils {
             assertApproxEqAbs(
                 ct0.balanceOf(Alice),
                 uint256(type(uint104).max) -
-                    uint128((shortAmounts0.rightSlot() * int16(re.NOTIONAL_FEE())) / 10000) -
-                    uint128((shortAmounts1.rightSlot() * int16(re.NOTIONAL_FEE())) / 10000),
+                    uint128(
+                        (shortAmounts0.rightSlot() *
+                            int16(RiskEngineParams.blueChip().notionalFee)) / 10000
+                    ) -
+                    uint128(
+                        (shortAmounts1.rightSlot() *
+                            int16(RiskEngineParams.blueChip().notionalFee)) / 10000
+                    ),
                 uint256(
                     int256(shortAmounts0.rightSlot() + shortAmounts1.rightSlot()) / 1_000_000 + 10
                 ),
@@ -5794,8 +5857,14 @@ contract PanopticPoolTest is PositionUtils {
             assertApproxEqAbs(
                 ct0.balanceOf(Alice),
                 uint128(shortAmounts0.rightSlot()) -
-                    uint128((shortAmounts0.rightSlot() * int16(re.NOTIONAL_FEE())) / 10000) -
-                    uint128((shortAmounts1.rightSlot() * int16(re.NOTIONAL_FEE())) / 10000),
+                    uint128(
+                        (shortAmounts0.rightSlot() *
+                            int16(RiskEngineParams.blueChip().notionalFee)) / 10000
+                    ) -
+                    uint128(
+                        (shortAmounts1.rightSlot() *
+                            int16(RiskEngineParams.blueChip().notionalFee)) / 10000
+                    ),
                 uint256(int256(shortAmounts0.rightSlot()) / 1_000_000 + 10),
                 "alice balance 0"
             );
@@ -6492,7 +6561,9 @@ contract PanopticPoolTest is PositionUtils {
         vm.startPrank(Charlie);
 
         ct0.deposit(
-            (uint128((shortAmounts.rightSlot() * int16(re.NOTIONAL_FEE())) / 10000) * 10015) /
+            (uint128(
+                (shortAmounts.rightSlot() * int16(RiskEngineParams.blueChip().notionalFee)) / 10000
+            ) * 10015) /
                 10000 +
                 4,
             Charlie
@@ -6528,7 +6599,8 @@ contract PanopticPoolTest is PositionUtils {
 
             i += numLegs;
 
-            if (i > re.MAX_OPEN_LEGS()) vm.expectRevert(Errors.TooManyLegsOpen.selector);
+            if (i > RiskEngineParams.blueChip().maxOpenLegs)
+                vm.expectRevert(Errors.TooManyLegsOpen.selector);
             mintOptions(
                 pp,
                 tokenIds,
@@ -6539,7 +6611,7 @@ contract PanopticPoolTest is PositionUtils {
                 true
             );
 
-            if (i > re.MAX_OPEN_LEGS()) break;
+            if (i > RiskEngineParams.blueChip().maxOpenLegs) break;
 
             positionsHash = uint248(PanopticMath.updatePositionsHash(positionsHash, tokenId, true));
 
@@ -6628,7 +6700,10 @@ contract PanopticPoolTest is PositionUtils {
             assertApproxEqAbs(
                 ct0.balanceOf(Alice),
                 (uint256(type(uint104).max) -
-                    uint128((shortAmounts.rightSlot() * int16(re.NOTIONAL_FEE())) / 10000)),
+                    uint128(
+                        (shortAmounts.rightSlot() *
+                            int16(RiskEngineParams.blueChip().notionalFee)) / 10000
+                    )),
                 uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10)
             );
             assertEq(ct1.balanceOf(Alice), uint256(type(uint104).max));
@@ -6791,7 +6866,7 @@ contract PanopticPoolTest is PositionUtils {
                 int256(uint256(type(uint104).max)) -
                     notionalVals[0] -
                     notionalVals[1] -
-                    (shortAmounts.rightSlot() * int16(re.NOTIONAL_FEE())) /
+                    (shortAmounts.rightSlot() * int16(RiskEngineParams.blueChip().notionalFee)) /
                     10_000 +
                     int128(tokensOwed0)
             ),
@@ -6959,7 +7034,7 @@ contract PanopticPoolTest is PositionUtils {
                 int256(uint256(type(uint104).max)) -
                     notionalVals[0] -
                     notionalVals[1] -
-                    (shortAmounts.rightSlot() * int16(re.NOTIONAL_FEE())) /
+                    (shortAmounts.rightSlot() * int16(RiskEngineParams.blueChip().notionalFee)) /
                     10_000 +
                     int128(tokensOwed0)
             ),
@@ -6970,7 +7045,7 @@ contract PanopticPoolTest is PositionUtils {
             balanceBefores[1],
             uint256(type(uint104).max) +
                 tokensOwed1 -
-                (uint256(tokensOwed1) * re.PREMIUM_FEE()) /
+                (uint256(tokensOwed1) * RiskEngineParams.blueChip().premiumFee) /
                 10_000,
             tokensOwed1 / 1_000_000 + 10
         );
@@ -7177,7 +7252,7 @@ contract PanopticPoolTest is PositionUtils {
                 0 -
                 notionalVals[0] -
                 notionalVals[1] -
-                (shortAmounts.rightSlot() * int16(re.NOTIONAL_FEE())) /
+                (shortAmounts.rightSlot() * int16(RiskEngineParams.blueChip().notionalFee)) /
                 10_000 +
                 int128(tokensOwed0),
             (uint256(int256(shortAmounts.rightSlot())) + tokensOwed0) /
@@ -7193,7 +7268,7 @@ contract PanopticPoolTest is PositionUtils {
             -notionalVals1[0] -
                 notionalVals1[1] +
                 int256(uint256(tokensOwed1)) -
-                int256((uint256(tokensOwed1) * re.PREMIUM_FEE()) / 10_000),
+                int256((uint256(tokensOwed1) * RiskEngineParams.blueChip().premiumFee) / 10_000),
             tokensOwed1 / 1_000_000 + (expectedSwaps1[0] + expectedSwaps1[1]) / 100 + 10,
             "Incorrect token1 delta"
         );
@@ -7380,7 +7455,8 @@ contract PanopticPoolTest is PositionUtils {
                 0 -
                 notionalVals[0] -
                 notionalVals[1] -
-                (shortAmounts.rightSlot() * int256(uint256(re.NOTIONAL_FEE()))) /
+                (shortAmounts.rightSlot() *
+                    int256(uint256(RiskEngineParams.blueChip().notionalFee))) /
                 10_000 +
                 int128(tokensOwed0),
             (uint256(int256(shortAmounts.rightSlot())) + tokensOwed0) / 1_000_000 + 10,
@@ -7392,7 +7468,7 @@ contract PanopticPoolTest is PositionUtils {
             -notionalVals1[0] -
                 notionalVals1[1] +
                 int256(uint256(tokensOwed1)) -
-                int256((uint256(tokensOwed1) * re.PREMIUM_FEE()) / 10_000),
+                int256((uint256(tokensOwed1) * RiskEngineParams.blueChip().premiumFee) / 10_000),
             tokensOwed1 /
                 1_000_000 +
                 (uint256(Math.abs(amount1Moveds[0])) + uint256(Math.abs(amount1Moveds[1]))) /
@@ -8214,25 +8290,40 @@ contract PanopticPoolTest is PositionUtils {
             .slot0();
         currentTick = sfpm.getCurrentTick(abi.encode(poolKey));
 
-        $hasLegsInRange = false;
         for (uint256 i = 0; i < numLegs; ++i) {
             if (isLongs[i] == 0) continue;
 
+            TWAPtick = pp._getTWAP();
+
+            // per-leg extrinsic-value fee at the oracle tick: SHARE * D^2 / (2W) bps of this leg's notional,
+            // floored at NOTIONAL_FEE bps (max(NOTIONAL_FEE, tickSpacing / 2) bps in range) and bounded at SHARE (see RiskEngine.exerciseCost)
             {
                 (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(
                     tokenId.width(i),
                     tokenId.tickSpacing()
                 );
-
-                if (
-                    (currentTick < tokenId.strike(i) + rangeUp) &&
-                    (currentTick >= tokenId.strike(i) - rangeDown)
-                ) {
-                    $hasLegsInRange = true;
+                int256 tL = int256(tokenId.strike(i)) - rangeDown;
+                int256 tU = int256(tokenId.strike(i)) + rangeUp;
+                int256 legFee = int256(uint256(RiskEngineParams.blueChip().notionalFee)) * 1000;
+                if (int256(TWAPtick) >= tL && int256(TWAPtick) < tU) {
+                    legFee = Math.max(legFee, (int256(tokenId.tickSpacing()) * 1000) / 2);
+                    int256 W = tU - tL;
+                    int256 D = Math.min(int256(TWAPtick) - tL, tU - int256(TWAPtick));
+                    int256 ex = (D * D * int256(RiskEngineParams.blueChip().forceExerciseCost)) /
+                        (2 * W * 10_000);
+                    if (ex > int256(RiskEngineParams.blueChip().forceExerciseCost))
+                        ex = int256(RiskEngineParams.blueChip().forceExerciseCost);
+                    if (ex > legFee) legFee = ex;
                 }
+                (LeftRightSigned legLongs, ) = PanopticMath.calculateIOAmounts(
+                    tokenId,
+                    positionSize,
+                    i,
+                    true
+                );
+                exerciseFeeAmounts[0] += (legLongs.rightSlot() * legFee) / 10_000_000;
+                exerciseFeeAmounts[1] += (legLongs.leftSlot() * legFee) / 10_000_000;
             }
-
-            TWAPtick = pp._getTWAP();
             console2.log("currentTick", currentTick);
             console2.log("twap", TWAPtick);
             uint160 lastObservedPrice = TickMath.getSqrtRatioAtTick(TWAPtick);
@@ -8261,16 +8352,6 @@ contract PanopticPoolTest is PositionUtils {
             exerciseFeeAmounts[0] += int256(currentValue0) - int256(medianValue0);
             exerciseFeeAmounts[1] += int256(currentValue1) - int256(medianValue1);
         }
-
-        // since the position is sufficiently OTM, the spread between value at current tick and median tick is 0
-        // given that it is OTM at both points. Therefore, that spread is not charged as a fee and we just have the proximity fee
-        // note: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
-        // the result is rounded DOWN and NOT toward zero
-        // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
-        int256 exerciseFee = $hasLegsInRange ? -int256(re.FORCE_EXERCISE_COST()) : -int256(1000);
-
-        exerciseFeeAmounts[0] += (longAmountsForExercise.rightSlot() * (-exerciseFee)) / 10_000_000;
-        exerciseFeeAmounts[1] += (longAmountsForExercise.leftSlot() * (-exerciseFee)) / 10_000_000;
 
         console2.log("exerciseFeeAmounts0", exerciseFeeAmounts[0]);
         console2.log("exerciseFeeAmounts1", exerciseFeeAmounts[1]);

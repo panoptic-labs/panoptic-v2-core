@@ -2,62 +2,111 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
-import {RiskEngine} from "@contracts/RiskEngine.sol";
-import {RiskEngineXStocks} from "@contracts/RiskEngineXStocks.sol";
+import {RiskEngineV2} from "@contracts/RiskEngine.sol";
+import {RiskEngineParameters} from "@types/RiskEngineParameters.sol";
+import {RiskEngineParams} from "../../testUtils/RiskEngineParams.sol";
 
-/// @title RiskEngineXStocks parameter pins
-/// @notice Asserts the conservative ("xstocks") parameter set differs from the blue-chip
-///         `RiskEngine` exactly on the 7 intended parameters, and that the cross-buffer
-///         constructor args land on the correct token slot.
+/// @title Tier parameter pins
+/// @notice The engine exposes no parameter getters, so this pins the canonical parameter sets that the
+///         build configs and tests share, checks that the xStocks set differs from blue-chip exactly on the
+///         intended fields, and that both tiers deploy from the single RiskEngineV2 source with the cross
+///         buffers landing on the correct token slot.
 contract RiskEngineXStocksParamsTest is Test {
-    RiskEngineXStocks internal re;
-    RiskEngine internal blueChip;
+    // Symmetric 75% cross buffers: one xStocks engine serves both token orderings.
+    uint256 internal constant CROSS_BUFFER_XSTOCKS = 7_500_000;
 
-    // CROSS_BUFFER_0 = token0 (wSPCXx) = 75%, CROSS_BUFFER_1 = token1 (USDC) = 90%
-    uint256 internal constant CROSS_BUFFER_TOKEN = 7_500_000;
-    uint256 internal constant CROSS_BUFFER_USDC = 9_000_000;
-
-    function setUp() public {
-        re = new RiskEngineXStocks(CROSS_BUFFER_TOKEN, CROSS_BUFFER_USDC, address(0), address(0));
-        blueChip = new RiskEngine(10_000_000, 10_000_000, address(0), address(0));
-    }
-
-    function test_conservativeConstants() public view {
-        assertEq(re.SELLER_COLLATERAL_RATIO(), 3_300_000, "seller 33%");
-        assertEq(re.BUYER_COLLATERAL_RATIO(), 1_500_000, "buyer 15%");
-        assertEq(re.MAINT_MARGIN_RATE(), 2_500_000, "maint 25%");
-        assertEq(re.MAX_TICKS_DELTA(), 953, "max ticks delta ~10%");
+    function test_xStocksParameterSet() public pure {
+        RiskEngineParameters memory p = RiskEngineParams.xStocks();
+        assertEq(p.sellerCollateralRatio, 2_000_000, "seller 20%, as blue-chip");
+        assertEq(p.buyerCollateralRatio, 100_000, "buyer 1%, as blue-chip");
+        assertEq(p.maintMarginRate, 2_500_000, "maint 25%");
+        assertEq(p.maxTicksDelta, 953, "max ticks delta ~10%");
+        assertEq(p.bpDecreaseBuffer, 10_750_000, "bp decrease buffer, as blue-chip");
+        assertEq(
+            p.forceExerciseCost,
+            5_000_000,
+            "force exercise cost: 50% of extrinsic value, as blue-chip"
+        );
+        assertEq(p.minRateAtTarget, 0.02 ether / int256(365 days), "rate floor 2%, as blue-chip");
         // EMA timescales 2/4/8/32 min
         assertEq(
-            re.EMA_PERIODS(),
+            p.emaPeriods,
             uint96(120 + (240 << 24) + (480 << 48) + (1920 << 72)),
             "ema 2/4/8/32 min"
         );
     }
 
-    function test_crossBufferTokenOrdering() public view {
-        // wSPCXx (0x8e2e..) < USDC (0xA0b8..) => token0 = wSPCXx, token1 = USDC
-        assertEq(re.CROSS_BUFFER_0(), CROSS_BUFFER_TOKEN, "token0 = wSPCXx side = 75%");
-        assertEq(re.CROSS_BUFFER_1(), CROSS_BUFFER_USDC, "token1 = USDC side = 90%");
+    function test_blueChipParameterSet() public pure {
+        RiskEngineParameters memory p = RiskEngineParams.blueChip();
+        assertEq(p.sellerCollateralRatio, 2_000_000);
+        assertEq(p.buyerCollateralRatio, 100_000);
+        assertEq(p.maintMarginRate, 1_000_000);
+        assertEq(p.maxTicksDelta, 724);
+        assertEq(p.bpDecreaseBuffer, 10_750_000);
+        assertEq(p.forceExerciseCost, 5_000_000);
+        assertEq(p.minRateAtTarget, 0.02 ether / int256(365 days));
+        assertEq(p.emaPeriods, uint96(60 + (120 << 24) + (240 << 48) + (960 << 72)));
+        assertEq(p.notionalFee, 3);
+        assertEq(p.premiumFee, 250);
+        assertEq(p.protocolSplit, 5_000);
+        assertEq(p.builderSplit, 4_000);
+        assertEq(p.maxTwapDeltaDispatch, 513);
+        assertEq(p.maxSpread, 90_000);
+        assertEq(p.maxOpenLegs, 26);
     }
 
-    function test_blueChipUnchanged() public view {
-        assertEq(blueChip.SELLER_COLLATERAL_RATIO(), 2_000_000);
-        assertEq(blueChip.BUYER_COLLATERAL_RATIO(), 1_000_000);
-        assertEq(blueChip.MAINT_MARGIN_RATE(), 1_000_000);
-        assertEq(blueChip.MAX_TICKS_DELTA(), 724);
-        assertEq(blueChip.EMA_PERIODS(), uint96(60 + (120 << 24) + (240 << 48) + (960 << 72)));
+    /// @notice Everything outside the intended tier fields (cross buffers, EMA periods, maxTicksDelta,
+    ///         maintMarginRate) must match between the two sets.
+    function test_xStocksDiffersOnlyOnTierFields() public pure {
+        RiskEngineParameters memory x = RiskEngineParams.xStocks(10_000_000, 10_000_000);
+        RiskEngineParameters memory b = RiskEngineParams.blueChip();
+        assertEq(x.maxClampDelta, b.maxClampDelta);
+        assertEq(x.maxTwapDeltaDispatch, b.maxTwapDeltaDispatch);
+        assertEq(x.maxSpread, b.maxSpread);
+        assertEq(x.loanMarginDivisor, b.loanMarginDivisor);
+        assertEq(x.targetPoolUtil, b.targetPoolUtil);
+        assertEq(x.saturatedPoolUtil, b.saturatedPoolUtil);
+        assertEq(x.maxOpenLegs, b.maxOpenLegs);
+        assertEq(x.maxBonus, b.maxBonus);
+        assertEq(x.forceExerciseCost, b.forceExerciseCost);
+        assertEq(x.bpDecreaseBuffer, b.bpDecreaseBuffer);
+        assertEq(x.sellerCollateralRatio, b.sellerCollateralRatio);
+        assertEq(x.buyerCollateralRatio, b.buyerCollateralRatio);
+        assertEq(x.minRateAtTarget, b.minRateAtTarget);
+        assertEq(x.notionalFee, b.notionalFee);
+        assertEq(x.premiumFee, b.premiumFee);
+        assertEq(x.protocolSplit, b.protocolSplit);
+        assertEq(x.builderSplit, b.builderSplit);
     }
 
-    /// @notice Everything outside the 7 intended parameters must match the blue-chip engine.
-    function test_nonParameterConstantsMatchBlueChip() public view {
+    function test_deploysFromSingleSource_crossBuffers() public {
+        RiskEngineV2 re = new RiskEngineV2(
+            address(0),
+            address(0),
+            bytes32(0),
+            RiskEngineParams.xStocks()
+        );
+        RiskEngineV2 blueChip = new RiskEngineV2(
+            address(0),
+            address(0),
+            bytes32(0),
+            RiskEngineParams.blueChip()
+        );
+
+        assertEq(re.CROSS_BUFFER_0(), CROSS_BUFFER_XSTOCKS, "symmetric 75% on token0");
+        assertEq(re.CROSS_BUFFER_1(), CROSS_BUFFER_XSTOCKS, "symmetric 75% on token1");
+        assertEq(blueChip.CROSS_BUFFER_0(), 9_000_000, "blue-chip 90% on token0");
+        assertEq(blueChip.CROSS_BUFFER_1(), 9_000_000, "blue-chip 90% on token1");
         assertEq(re.DECIMALS(), blueChip.DECIMALS());
-        assertEq(re.NOTIONAL_FEE(), blueChip.NOTIONAL_FEE());
-        assertEq(re.PREMIUM_FEE(), blueChip.PREMIUM_FEE());
-        assertEq(re.MAX_BONUS(), blueChip.MAX_BONUS());
-        assertEq(re.SATURATED_POOL_UTIL(), blueChip.SATURATED_POOL_UTIL());
-        assertEq(re.TARGET_POOL_UTIL(), blueChip.TARGET_POOL_UTIL());
-        assertEq(re.VEGOID(), blueChip.VEGOID());
-        assertEq(re.MAX_OPEN_LEGS(), blueChip.MAX_OPEN_LEGS());
+        assertEq(re.vegoid(), blueChip.vegoid());
+        assertEq(
+            address(re).code.length,
+            address(blueChip).code.length,
+            "same bytecode, different immutables"
+        );
+        assertTrue(
+            keccak256(address(re).code) != keccak256(address(blueChip).code),
+            "immutables differ"
+        );
     }
 }

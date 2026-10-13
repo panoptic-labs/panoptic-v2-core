@@ -14,6 +14,7 @@ import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 /// - convertToAssets(uint256)
 /// - totalAssets()
 /// - totalSupply()
+/// - getPoolData() (RiskEngineV2)
 /* is CollateralTracker */ contract MockCollateralTracker {
     // per user balances
     mapping(address => uint256) internal _assets;
@@ -23,6 +24,12 @@ import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
     // global accounting
     uint256 internal _totalAssets;
     uint256 internal _totalSupply;
+
+    // pool data (RiskEngineV2 rehypothecation-adjusted utilization)
+    uint256 internal _depositedAssets;
+    uint256 internal _insideAMM;
+    uint256 internal _creditedShares;
+    uint256 internal _currentPoolUtilization;
 
     // linear 1:1 conversions unless specified
     uint256 public sharePriceNum = 1;
@@ -52,6 +59,18 @@ import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
         sharePriceDen = den;
     }
 
+    function setPoolData(
+        uint256 depositedAssets_,
+        uint256 insideAMM_,
+        uint256 creditedShares_,
+        uint256 currentPoolUtilization_
+    ) external {
+        _depositedAssets = depositedAssets_;
+        _insideAMM = insideAMM_;
+        _creditedShares = creditedShares_;
+        _currentPoolUtilization = currentPoolUtilization_;
+    }
+
     // ---------- methods RiskEngine invokes ----------
 
     function assetsAndInterest(address user) external view returns (uint256, uint256) {
@@ -78,5 +97,18 @@ import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 
     function totalSupply() external view returns (uint256) {
         return _totalSupply;
+    }
+
+    function getPoolData()
+        external
+        view
+        returns (
+            uint256 depositedAssets,
+            uint256 insideAMM,
+            uint256 creditedShares,
+            uint256 currentPoolUtilization
+        )
+    {
+        return (_depositedAssets, _insideAMM, _creditedShares, _currentPoolUtilization);
     }
 }

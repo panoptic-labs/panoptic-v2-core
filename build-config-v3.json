@@ -2,7 +2,8 @@
   "env": {
     "UNIV3_FACTORY": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
     "GUARDIAN_ADMIN": "0xC3D385022d082Acd6b8744A85ad1766a01f522F7",
-    "TREASURER": "0xD8c5EbfeEA9B35695e54FFe0AaF9cFC521C9190d"
+    "TREASURER": "0xD8c5EbfeEA9B35695e54FFe0AaF9cFC521C9190d",
+    "RISK_ENGINE_OWNER": "0x8DFEAA4AEe4596b90EF581d7731E4E0b7AbA3221"
   },
   "dataContracts": [
     {
@@ -43,7 +44,7 @@
   ],
   "sharedCreationCode": {
     "BuilderWallet": {
-      "contracts": ["BuilderFactory", "RiskEngine"],
+      "contracts": ["BuilderFactory"],
       "initCodeHash": "0x6a0d5c6577773db023c0a2ffa778aa7bd42daedbce4a5b9ad7ddd38b422e7412"
     }
   },
@@ -103,14 +104,42 @@
     "RiskEngine": {
       "path": "./contracts/RiskEngine.sol",
       "deployment": {
-        "address": "0x000000000000075E29Cdaa9cb640A69e148ca7da",
-        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1739a5557fca3a502b5c41a98",
-        "nonce": 30
+        "address": "0x000000000000F0b287c19f606bC3A471F260c502",
+        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1fdacbdc9c0b26403e17431f4",
+        "nonce": 13
       },
-      "optimizeRuns": 3333,
+      "optimizeRuns": 500,
       "constructorArgs": [
-        [10000000, 10000000, "@PanopticGuardian", "@BuilderFactory"],
-        ["uint256", "uint256", "address", "address"]
+        [
+          "@PanopticGuardian",
+          "@BuilderFactory",
+          "0x6a0d5c6577773db023c0a2ffa778aa7bd42daedbce4a5b9ad7ddd38b422e7412",
+          [
+            9000000, 9000000, 4533471891108855828971580, 724, 149, 513, 90000, 10750000, 2000000,
+            100000, 1000000, 4, 5000000, 6666667, 9000000, 26, 2000000, 3, 250, 5000, 4000,
+            634195839
+          ]
+        ],
+        [
+          "address",
+          "address",
+          "bytes32",
+          "(uint256,uint256,uint96,int256,int24,uint16,uint24,uint32,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint16,uint16,uint16,uint16,int256)"
+        ]
+      ],
+      "artifactName": "RiskEngineV2"
+    },
+    "RiskEngineProxy": {
+      "path": "./contracts/RiskEngineProxy.sol",
+      "deployment": {
+        "address": "0x000000000000ffE5eFdB5AE76b9200263C58b4c0",
+        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a15c19650e26fc010329d99434",
+        "nonce": 1
+      },
+      "optimizeRuns": 9999999,
+      "constructorArgs": [
+        ["@RiskEngine", "$RISK_ENGINE_OWNER"],
+        ["address", "address"]
       ]
     },
     "PanopticPoolV2": {

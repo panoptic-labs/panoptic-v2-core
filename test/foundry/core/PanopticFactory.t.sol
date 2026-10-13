@@ -7,7 +7,8 @@ import "forge-std/Test.sol";
 import {PanopticFactoryV4} from "@contracts/PanopticFactoryV4.sol";
 import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
 import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
-import {RiskEngine} from "@contracts/RiskEngine.sol";
+import {RiskEngineV2} from "@contracts/RiskEngine.sol";
+import {RiskEngineParams} from "../testUtils/RiskEngineParams.sol";
 import {IRiskEngine} from "@contracts/interfaces/IRiskEngine.sol";
 import {SemiFungiblePositionManagerV4} from "@contracts/SemiFungiblePositionManagerV4.sol";
 // Panoptic Libraries
@@ -201,7 +202,14 @@ contract PanopticFactoryTest is Test {
         address[] memory pointerAddresses = new address[](bytecodes.length);
 
         riskEngine = IRiskEngine(
-            address(new RiskEngine(10_000_000, 10_000_000, address(0), address(0)))
+            address(
+                new RiskEngineV2(
+                    address(0),
+                    address(0),
+                    bytes32(0),
+                    RiskEngineParams.blueChip(10_000_000, 10_000_000)
+                )
+            )
         );
 
         for (uint256 i = 0; i < bytecodes.length; i++) {
@@ -397,7 +405,14 @@ contract PanopticFactoryTest is Test {
 
         // Create a second risk engine with slightly different parameters
         IRiskEngine riskEngineB = IRiskEngine(
-            address(new RiskEngine(4_000_000, 5_000_000, address(0), address(0)))
+            address(
+                new RiskEngineV2(
+                    address(0),
+                    address(0),
+                    bytes32(0),
+                    RiskEngineParams.blueChip(4_000_000, 5_000_000)
+                )
+            )
         );
 
         uint96 salt = 12345;

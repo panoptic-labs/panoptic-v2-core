@@ -4,58 +4,63 @@
 
 ## Table of contents
 
-* [Overview](#overview)
+- [Overview](#overview)
 
-  + [About C4](#about-c4)
-* [Summary](#summary)
-* [Scope](#scope)
-* [Severity Criteria](#severity-criteria)
-* [High Risk Findings (3)](#high-risk-findings-3)
+  - [About C4](#about-c4)
 
-  + [[H-01] BuilderWallet `init()` is unprotected/re-initializable, enabling takeover and theft of builder fees](#h-01-builderwallet-init-is-unprotectedre-initializable-enabling-takeover-and-theft-of-builder-fees)
-  + [[H-02] Cross-contract reentrancy in liquidation enables conversion of phantom shares to real shares, draining `CollateralTracker` assets](#h-02-cross-contract-reentrancy-in-liquidation-enables-conversion-of-phantom-shares-to-real-shares-draining-collateraltracker-assets)
-  + [[H-03] Commission fees can always be bypassed](#h-03-commission-fees-can-always-be-bypassed)
-* [Medium Risk Findings (19)](#medium-risk-findings-19)
+- [Summary](#summary)
+- [Scope](#scope)
+- [Severity Criteria](#severity-criteria)
+- [High Risk Findings (3)](#high-risk-findings-3)
 
-  + [[M-01] Liquidations can be permanently blocked via `getLiquidationBonus()` unsigned underflow (Insolvent-but-unliquidatable accounts)](#m-01-liquidations-can-be-permanently-blocked-via-getliquidationbonus-unsigned-underflow-insolvent-but-unliquidatable-accounts)
-  + [[M-02] `RiskEngine::_getRequiredCollateralAtTickSinglePosition()` fails to accumulate credits across multiple legs, leading to potential erroneous liquidations](#m-02-riskengine_getrequiredcollateralatticksingleposition-fails-to-accumulate-credits-across-multiple-legs-leading-to-potential-erroneous-liquidations)
-  + [[M-03] TWAP misweights EMAs in RiskEngine, anchoring liquidation price to slow EMA and letting insolvent accounts dodge liquidation](#m-03-twap-misweights-emas-in-riskengine-anchoring-liquidation-price-to-slow-ema-and-letting-insolvent-accounts-dodge-liquidation)
-  + [[M-04] Incorrect `UPPER_118BITS_MASK` mask in `OraclePackLibrary` causes unexpected clearing of `EMAs` and `lockMode` in `OraclePack`](#m-04-incorrect-upper_118bits_mask-mask-in-oraclepacklibrary-causes-unexpected-clearing-of-emas-and-lockmode-in-oraclepack)
-  + [[M-05] Division-by-zero in long-leg collateral requirement can block solvency checks and `dispatchFrom` (liquidation/force-exercise) for `tickSpacing==1 pools`](#m-05-division-by-zero-in-long-leg-collateral-requirement-can-block-solvency-checks-and-dispatchfrom-liquidationforce-exercise-for-tickspacing1-pools)
-  + [[M-06] `dispatchFrom()` liveness DoS via `StaleOracle`: spot price manipulation blocks liquidations, force exercises, and premium settlements](#m-06-dispatchfrom-liveness-dos-via-staleoracle-spot-price-manipulation-blocks-liquidations-force-exercises-and-premium-settlements)
-  + [[M-07] Liquidator can receive an inflated bonus against PLPs on `PanopticPool._liquidate`](#m-07-liquidator-can-receive-an-inflated-bonus-against-plps-on-panopticpool_liquidate)
-  + [[M-08] Wide-range short legs can revert solvency checks and block liquidations (`Errors.InvalidTick`)](#m-08-wide-range-short-legs-can-revert-solvency-checks-and-block-liquidations-errorsinvalidtick)
-  + [[M-09] Incorrect collateral calculation for delayed swap strategies](#m-09-incorrect-collateral-calculation-for-delayed-swap-strategies)
-  + [[M-10] PLPs can withdraw assets needed by long positions, temporarily locking buyers](#m-10-plps-can-withdraw-assets-needed-by-long-positions-temporarily-locking-buyers)
-  + [[M-11] An attacker can manipulate oracle easily](#m-11-an-attacker-can-manipulate-oracle-easily)
-  + [[M-12] Self-settlement via `dispatchFrom` bypasses refund mechanism allowing underfunded debt settlement](#m-12-self-settlement-via-dispatchfrom-bypasses-refund-mechanism-allowing-underfunded-debt-settlement)
-  + [[M-13] Intra-epoch `rateAtTarget` updates in `CollateralTracker._updateInterestRate()` allow compounding interest rate errors](#m-13-intra-epoch-rateattarget-updates-in-collateraltracker_updateinterestrate-allow-compounding-interest-rate-errors)
-  + [[M-14] State-price mismatch in liquidation](#m-14-state-price-mismatch-in-liquidation)
-  + [[M-15] Commission share-burn distribution is JIT-capturable when `builderCode == 0` (default)](#m-15-commission-share-burn-distribution-is-jit-capturable-when-buildercode--0-default)
-  + [[M-16] Force exercise lacks caller-side bounds for exercise fee](#m-16-force-exercise-lacks-caller-side-bounds-for-exercise-fee)
-  + [[M-17] High divergence check in `isSafeMode` is unreachable dead code providing false sense of security](#m-17-high-divergence-check-in-issafemode-is-unreachable-dead-code-providing-false-sense-of-security)
-  + [[M-18] Solvency tick divergence blind spot in `RiskEngine.getSolvencyTicks`](#m-18-solvency-tick-divergence-blind-spot-in-riskenginegetsolvencyticks)
-  + [[M-19] Withdrawing just before a bad debt event can increase losses for remaining liquidity providers](#m-19-withdrawing-just-before-a-bad-debt-event-can-increase-losses-for-remaining-liquidity-providers)
-* [Low Risk and Informational Issues](#low-risk-and-informational-issues)
+  - [[H-01] BuilderWallet `init()` is unprotected/re-initializable, enabling takeover and theft of builder fees](#h-01-builderwallet-init-is-unprotectedre-initializable-enabling-takeover-and-theft-of-builder-fees)
+  - [[H-02] Cross-contract reentrancy in liquidation enables conversion of phantom shares to real shares, draining `CollateralTracker` assets](#h-02-cross-contract-reentrancy-in-liquidation-enables-conversion-of-phantom-shares-to-real-shares-draining-collateraltracker-assets)
+  - [[H-03] Commission fees can always be bypassed](#h-03-commission-fees-can-always-be-bypassed)
 
-  + [01 `validateCollateralWithdrawable()` hardcodes `safeMode=0`, bypassing stricter collateral requirements during volatile conditions](#01-validatecollateralwithdrawable-hardcodes-safemode0-bypassing-stricter-collateral-requirements-during-volatile-conditions)
-  + [02 Missing zero shares check in `deposit()` allows users to lose deposited assets](#02-missing-zero-shares-check-in-deposit-allows-users-to-lose-deposited-assets)
-  + [03 `CommissionPaid` event emits `protocolSplit` instead of `builderSplit` for `commissionPaidBuilder` parameter](#03-commissionpaid-event-emits-protocolsplit-instead-of-buildersplit-for-commissionpaidbuilder-parameter)
-  + [04 `unlockPool()` emits `GuardianSafeModeUpdated(true)` instead of `false` when lifting the lock](#04-unlockpool-emits-guardiansafemodeupdatedtrue-instead-of-false-when-lifting-the-lock)
-  + [05 Memory copy of `premiasByLeg` inside loop in `haircutPremia()` causes redundant array copying on each iteration](#05-memory-copy-of-premiasbyleg-inside-loop-in-haircutpremia-causes-redundant-array-copying-on-each-iteration)
-  + [06 `PanopticPool.onERC1155Received` accepts tokens from any ERC1155 contract without sender validation](#06-panopticpoolonerc1155received-accepts-tokens-from-any-erc1155-contract-without-sender-validation)
-  + [07 `deposit()` and `mint()` are payable but do not refund ETH for ERC20 collateral, causing user funds to be trapped](#07-deposit-and-mint-are-payable-but-do-not-refund-eth-for-erc20-collateral-causing-user-funds-to-be-trapped)
-  + [08 Median tick calculation rounds toward zero instead of floor for negative values](#08-median-tick-calculation-rounds-toward-zero-instead-of-floor-for-negative-values)
-  + [09 `TokenId` validation allows `riskPartner` to reference inactive leg when index is 0](#09-tokenid-validation-allows-riskpartner-to-reference-inactive-leg-when-index-is-0)
-  + [10 Guardian `lockMode` not enforced in `getSolvencyTicks` allows weaker solvency checks during emergency lock](#10-guardian-lockmode-not-enforced-in-getsolvencyticks-allows-weaker-solvency-checks-during-emergency-lock)
-  + [11 `TARGET_UTILIZATION` NatSpec comment incorrectly states 90% instead of 66.67%](#11-target_utilization-natspec-comment-incorrectly-states-90-instead-of-6667)
-  + [12 NatSpec comments in `Math.sol` incorrectly document boundary conditions for `getAmountsForLiquidity`](#12-natspec-comments-in-mathsol-incorrectly-document-boundary-conditions-for-getamountsforliquidity)
-* [Mitigation Review](#mitigation-review)
+- [Medium Risk Findings (19)](#medium-risk-findings-19)
 
-  + [Introduction](#introduction)
-  + [Mitigation Review Scope & Summary](#mitigation-review-scope--summary)
-  + [Attacker can DoS liquidation by manipulating `currentTick` where the target poistion appears solvent](#attacker-can-dos-liquidation-by-manipulating-currenttick-where-the-target-poistion-appears-solvent)
-* [Disclosures](#disclosures)
+  - [[M-01] Liquidations can be permanently blocked via `getLiquidationBonus()` unsigned underflow (Insolvent-but-unliquidatable accounts)](#m-01-liquidations-can-be-permanently-blocked-via-getliquidationbonus-unsigned-underflow-insolvent-but-unliquidatable-accounts)
+  - [[M-02] `RiskEngine::_getRequiredCollateralAtTickSinglePosition()` fails to accumulate credits across multiple legs, leading to potential erroneous liquidations](#m-02-riskengine_getrequiredcollateralatticksingleposition-fails-to-accumulate-credits-across-multiple-legs-leading-to-potential-erroneous-liquidations)
+  - [[M-03] TWAP misweights EMAs in RiskEngine, anchoring liquidation price to slow EMA and letting insolvent accounts dodge liquidation](#m-03-twap-misweights-emas-in-riskengine-anchoring-liquidation-price-to-slow-ema-and-letting-insolvent-accounts-dodge-liquidation)
+  - [[M-04] Incorrect `UPPER_118BITS_MASK` mask in `OraclePackLibrary` causes unexpected clearing of `EMAs` and `lockMode` in `OraclePack`](#m-04-incorrect-upper_118bits_mask-mask-in-oraclepacklibrary-causes-unexpected-clearing-of-emas-and-lockmode-in-oraclepack)
+  - [[M-05] Division-by-zero in long-leg collateral requirement can block solvency checks and `dispatchFrom` (liquidation/force-exercise) for `tickSpacing==1 pools`](#m-05-division-by-zero-in-long-leg-collateral-requirement-can-block-solvency-checks-and-dispatchfrom-liquidationforce-exercise-for-tickspacing1-pools)
+  - [[M-06] `dispatchFrom()` liveness DoS via `StaleOracle`: spot price manipulation blocks liquidations, force exercises, and premium settlements](#m-06-dispatchfrom-liveness-dos-via-staleoracle-spot-price-manipulation-blocks-liquidations-force-exercises-and-premium-settlements)
+  - [[M-07] Liquidator can receive an inflated bonus against PLPs on `PanopticPool._liquidate`](#m-07-liquidator-can-receive-an-inflated-bonus-against-plps-on-panopticpool_liquidate)
+  - [[M-08] Wide-range short legs can revert solvency checks and block liquidations (`Errors.InvalidTick`)](#m-08-wide-range-short-legs-can-revert-solvency-checks-and-block-liquidations-errorsinvalidtick)
+  - [[M-09] Incorrect collateral calculation for delayed swap strategies](#m-09-incorrect-collateral-calculation-for-delayed-swap-strategies)
+  - [[M-10] PLPs can withdraw assets needed by long positions, temporarily locking buyers](#m-10-plps-can-withdraw-assets-needed-by-long-positions-temporarily-locking-buyers)
+  - [[M-11] An attacker can manipulate oracle easily](#m-11-an-attacker-can-manipulate-oracle-easily)
+  - [[M-12] Self-settlement via `dispatchFrom` bypasses refund mechanism allowing underfunded debt settlement](#m-12-self-settlement-via-dispatchfrom-bypasses-refund-mechanism-allowing-underfunded-debt-settlement)
+  - [[M-13] Intra-epoch `rateAtTarget` updates in `CollateralTracker._updateInterestRate()` allow compounding interest rate errors](#m-13-intra-epoch-rateattarget-updates-in-collateraltracker_updateinterestrate-allow-compounding-interest-rate-errors)
+  - [[M-14] State-price mismatch in liquidation](#m-14-state-price-mismatch-in-liquidation)
+  - [[M-15] Commission share-burn distribution is JIT-capturable when `builderCode == 0` (default)](#m-15-commission-share-burn-distribution-is-jit-capturable-when-buildercode--0-default)
+  - [[M-16] Force exercise lacks caller-side bounds for exercise fee](#m-16-force-exercise-lacks-caller-side-bounds-for-exercise-fee)
+  - [[M-17] High divergence check in `isSafeMode` is unreachable dead code providing false sense of security](#m-17-high-divergence-check-in-issafemode-is-unreachable-dead-code-providing-false-sense-of-security)
+  - [[M-18] Solvency tick divergence blind spot in `RiskEngine.getSolvencyTicks`](#m-18-solvency-tick-divergence-blind-spot-in-riskenginegetsolvencyticks)
+  - [[M-19] Withdrawing just before a bad debt event can increase losses for remaining liquidity providers](#m-19-withdrawing-just-before-a-bad-debt-event-can-increase-losses-for-remaining-liquidity-providers)
+
+- [Low Risk and Informational Issues](#low-risk-and-informational-issues)
+
+  - [01 `validateCollateralWithdrawable()` hardcodes `safeMode=0`, bypassing stricter collateral requirements during volatile conditions](#01-validatecollateralwithdrawable-hardcodes-safemode0-bypassing-stricter-collateral-requirements-during-volatile-conditions)
+  - [02 Missing zero shares check in `deposit()` allows users to lose deposited assets](#02-missing-zero-shares-check-in-deposit-allows-users-to-lose-deposited-assets)
+  - [03 `CommissionPaid` event emits `protocolSplit` instead of `builderSplit` for `commissionPaidBuilder` parameter](#03-commissionpaid-event-emits-protocolsplit-instead-of-buildersplit-for-commissionpaidbuilder-parameter)
+  - [04 `unlockPool()` emits `GuardianSafeModeUpdated(true)` instead of `false` when lifting the lock](#04-unlockpool-emits-guardiansafemodeupdatedtrue-instead-of-false-when-lifting-the-lock)
+  - [05 Memory copy of `premiasByLeg` inside loop in `haircutPremia()` causes redundant array copying on each iteration](#05-memory-copy-of-premiasbyleg-inside-loop-in-haircutpremia-causes-redundant-array-copying-on-each-iteration)
+  - [06 `PanopticPool.onERC1155Received` accepts tokens from any ERC1155 contract without sender validation](#06-panopticpoolonerc1155received-accepts-tokens-from-any-erc1155-contract-without-sender-validation)
+  - [07 `deposit()` and `mint()` are payable but do not refund ETH for ERC20 collateral, causing user funds to be trapped](#07-deposit-and-mint-are-payable-but-do-not-refund-eth-for-erc20-collateral-causing-user-funds-to-be-trapped)
+  - [08 Median tick calculation rounds toward zero instead of floor for negative values](#08-median-tick-calculation-rounds-toward-zero-instead-of-floor-for-negative-values)
+  - [09 `TokenId` validation allows `riskPartner` to reference inactive leg when index is 0](#09-tokenid-validation-allows-riskpartner-to-reference-inactive-leg-when-index-is-0)
+  - [10 Guardian `lockMode` not enforced in `getSolvencyTicks` allows weaker solvency checks during emergency lock](#10-guardian-lockmode-not-enforced-in-getsolvencyticks-allows-weaker-solvency-checks-during-emergency-lock)
+  - [11 `TARGET_UTILIZATION` NatSpec comment incorrectly states 90% instead of 66.67%](#11-target_utilization-natspec-comment-incorrectly-states-90-instead-of-6667)
+  - [12 NatSpec comments in `Math.sol` incorrectly document boundary conditions for `getAmountsForLiquidity`](#12-natspec-comments-in-mathsol-incorrectly-document-boundary-conditions-for-getamountsforliquidity)
+
+- [Mitigation Review](#mitigation-review)
+
+  - [Introduction](#introduction)
+  - [Mitigation Review Scope & Summary](#mitigation-review-scope--summary)
+  - [Attacker can DoS liquidation by manipulating `currentTick` where the target poistion appears solvent](#attacker-can-dos-liquidation-by-manipulating-currenttick-where-the-target-poistion-appears-solvent)
+
+- [Disclosures](#disclosures)
 
 # Overview
 
@@ -85,8 +90,8 @@ The code under review can be found within the [C4 Panoptic: Next Core repository
 
 The code in C4’s Panoptic: Next Core repository was pulled from:
 
-* Repository: <https://github.com/panoptic-labs/panoptic-next-core-private>
-* Commit hash: `29980a740b67f3e5d9df9d96264a246b51fc7b6b`
+- Repository: <https://github.com/panoptic-labs/panoptic-next-core-private>
+- Commit hash: `29980a740b67f3e5d9df9d96264a246b51fc7b6b`
 
 # Severity Criteria
 
@@ -94,10 +99,10 @@ C4 assesses the severity of disclosed vulnerabilities based on three primary ris
 
 High-level considerations for vulnerabilities span the following key areas when conducting assessments:
 
-* Malicious Input Handling
-* Escalation of privileges
-* Arithmetic
-* Gas use
+- Malicious Input Handling
+- Escalation of privileges
+- Arithmetic
+- Gas use
 
 For more information regarding the severity criteria referenced throughout the submission review process, please refer to the documentation provided on [the C4 website](https://code4rena.com), specifically our section on [Severity Categorization](https://docs.code4rena.com/awarding/judging-criteria/severity-categorization).
 
@@ -105,13 +110,13 @@ For more information regarding the severity criteria referenced throughout the s
 
 ## [[H-01] BuilderWallet `init()` is unprotected/re-initializable, enabling takeover and theft of builder fees](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-17)
 
-*Submitted by [darf\_tech](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-16), also found by [0x04](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-442), [0xAura](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-670), [0xMirce](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-386), [0xnbvc](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-370), [0xzys](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1055), [agent001](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1413), [Agontuk](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-698), [Agrawain](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-480), [alaskanking](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-887), [AlexNiht](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-371), [allan31](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-940), [AnantaDeva](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-131), [arturtoros](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-840), [AuditorPraise](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-857), [axelot](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1410), [BlueSheep](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-897), [cheng9061](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-132), [ciphermalware](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-162), [critfinds](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-111), [Diavolo](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-257), [dtang](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-447), [edoscoba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-762), [ElmInNyc99](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-618), [eternal1328](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1051), [forlz](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-851), [Funen](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1205), [Gakarot](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-97), [gegul](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-247), [gwumex](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-9), [happykilling](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-95), [ht111111](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-42), [humanitia](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-173), [I1iveF0rTh1Sh1t](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-488), [Icarus](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-12), [Ituba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-200), [jerry0422](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-485), [johnyfwesh](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-501), [joicygiore](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-758), [K42](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-177), [Kaysoft](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-861), [kimnoic](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-735), [lamassu](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-244), [lazlosoot](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1345), [legat](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1392), [LimeiBBQ](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-622), [LoopGhost007](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-393), [lufP](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-194), [Manvita](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-831), [mehdi81](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-760), [Merkleboy](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-81), [merlin\_san](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-226), [mibunna](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-523), [mohamedfahmy](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-800), [niffylord](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-381), [one](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-923), [piki](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-141), [qed](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1189), [Race](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1171), [Rifter](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-409), [rox\_k](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-89), [s4id](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-934), [SarveshLimaye](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-957), [Spektor](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1110), [tkmk](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-904), [Trynax](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-600), [Tupaia](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1178), [Valves](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1076), [Vemus](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1366), [VulSight](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1185), [Web3Angel](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-726), [wilson9x1](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-403), [wuji](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-839), [Xylem](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-57), [zcai](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1274), and [zzebra83](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-893)*
+_Submitted by [darf_tech](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-16), also found by [0x04](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-442), [0xAura](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-670), [0xMirce](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-386), [0xnbvc](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-370), [0xzys](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1055), [agent001](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1413), [Agontuk](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-698), [Agrawain](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-480), [alaskanking](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-887), [AlexNiht](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-371), [allan31](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-940), [AnantaDeva](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-131), [arturtoros](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-840), [AuditorPraise](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-857), [axelot](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1410), [BlueSheep](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-897), [cheng9061](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-132), [ciphermalware](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-162), [critfinds](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-111), [Diavolo](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-257), [dtang](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-447), [edoscoba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-762), [ElmInNyc99](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-618), [eternal1328](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1051), [forlz](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-851), [Funen](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1205), [Gakarot](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-97), [gegul](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-247), [gwumex](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-9), [happykilling](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-95), [ht111111](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-42), [humanitia](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-173), [I1iveF0rTh1Sh1t](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-488), [Icarus](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-12), [Ituba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-200), [jerry0422](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-485), [johnyfwesh](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-501), [joicygiore](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-758), [K42](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-177), [Kaysoft](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-861), [kimnoic](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-735), [lamassu](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-244), [lazlosoot](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1345), [legat](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1392), [LimeiBBQ](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-622), [LoopGhost007](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-393), [lufP](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-194), [Manvita](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-831), [mehdi81](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-760), [Merkleboy](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-81), [merlin_san](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-226), [mibunna](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-523), [mohamedfahmy](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-800), [niffylord](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-381), [one](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-923), [piki](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-141), [qed](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1189), [Race](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1171), [Rifter](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-409), [rox_k](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-89), [s4id](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-934), [SarveshLimaye](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-957), [Spektor](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1110), [tkmk](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-904), [Trynax](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-600), [Tupaia](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1178), [Valves](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1076), [Vemus](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1366), [VulSight](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1185), [Web3Angel](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-726), [wilson9x1](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-403), [wuji](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-839), [Xylem](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-57), [zcai](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1274), and [zzebra83](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-893)_
 
 In `BuilderWallet`, the admin is stored in `builderAdmin` but `init()` has no access control and no “only-once” guard:
 
-* `BuilderWallet` definition: `RiskEngine.sol` [#L2307](https://github.com/code-423n4/2025-12-panoptic/blob/a4361d6d8dc6420c09187d80ea1a7ce851d1ca36/contracts/RiskEngine.sol#L2307)
-* `init()` (unrestricted, overwrites `builderAdmin`): `RiskEngine.sol` [L2315](https://github.com/code-423n4/2025-12-panoptic/blob/a4361d6d8dc6420c09187d80ea1a7ce851d1ca36/contracts/RiskEngine.sol#L2315)
-* `sweep()` (only gated by `builderAdmin`): `RiskEngine.sol` [L2319](https://github.com/code-423n4/2025-12-panoptic/blob/a4361d6d8dc6420c09187d80ea1a7ce851d1ca36/contracts/RiskEngine.sol#L2319)
+- `BuilderWallet` definition: `RiskEngine.sol` [#L2307](https://github.com/code-423n4/2025-12-panoptic/blob/a4361d6d8dc6420c09187d80ea1a7ce851d1ca36/contracts/RiskEngine.sol#L2307)
+- `init()` (unrestricted, overwrites `builderAdmin`): `RiskEngine.sol` [L2315](https://github.com/code-423n4/2025-12-panoptic/blob/a4361d6d8dc6420c09187d80ea1a7ce851d1ca36/contracts/RiskEngine.sol#L2315)
+- `sweep()` (only gated by `builderAdmin`): `RiskEngine.sol` [L2319](https://github.com/code-423n4/2025-12-panoptic/blob/a4361d6d8dc6420c09187d80ea1a7ce851d1ca36/contracts/RiskEngine.sol#L2319)
 
 Builder wallets are deployed by `BuilderFactory.deployBuilder(...)`, which calls `BuilderWallet(wallet).init(builderAdmin)` after CREATE2 deployment: `RiskEngine.sol` [L2371](https://github.com/code-423n4/2025-12-panoptic/blob/a4361d6d8dc6420c09187d80ea1a7ce851d1ca36/contracts/RiskEngine.sol#L2371)
 
@@ -142,7 +147,7 @@ Direct theft of all ERC20 balances held by any builder wallet (including protoco
 
 ## [[H-02] Cross-contract reentrancy in liquidation enables conversion of phantom shares to real shares, draining `CollateralTracker` assets](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-61)
 
-*Submitted by [ht111111](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-195), also found by [edoscoba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-669), [fullstop](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-834), [johnyfwesh](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-654), [legat](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1398), [qed](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1192), and [VulSight](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1012)*
+_Submitted by [ht111111](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-195), also found by [edoscoba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-669), [fullstop](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-834), [johnyfwesh](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-654), [legat](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1398), [qed](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1192), and [VulSight](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1012)_
 
 `CollateralTracker.sol` [L1359-L1360](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/CollateralTracker.sol#L1359-L1360)
 
@@ -155,7 +160,7 @@ A malicious liquidator can exploit a cross-contract reentrancy vulnerability dur
 The vulnerability stems from the interaction between three specific behaviors in the protocol:
 
 1. **Inconsistent Revocation Timing**: `PanopticPool._liquidate` delegates phantom shares (amount `2^248 - 1`) to the liquidatee on both `token0` and `token1` collateral trackers simultaneously, but revokes them sequentially (`ct0` first, then `ct1`).
-2. **Unsafe External Call**: `CollateralTracker.settleLiquidation` performs an external ETH refund call (`SafeTransferLib.safeTransferETH`) to the liquidator *before* the liquidation process is complete for the other token. This opens a reentrancy window.
+2. **Unsafe External Call**: `CollateralTracker.settleLiquidation` performs an external ETH refund call (`SafeTransferLib.safeTransferETH`) to the liquidator _before_ the liquidation process is complete for the other token. This opens a reentrancy window.
 3. **Accounting Flaw**: The `revoke` logic in `CollateralTracker` assumes any missing phantom shares were “consumed” (burned) by the protocol logic and compensates by increasing `_internalSupply`. It does not account for the possibility that phantom shares were transferred away.
 
 ### Code Analysis
@@ -168,7 +173,7 @@ contracts/CollateralTracker.sol:
 // In settleLiquidation:
 } else {
     // ... (logic to revoke phantom shares for THIS tracker) ...
-    
+
     // @audit-issue The external call here happens while OTHER trackers might still have active phantom shares
     if (msg.value > 0) SafeTransferLib.safeTransferETH(liquidator, msg.value);
 }
@@ -198,7 +203,7 @@ function transferFrom(address from, address to, uint256 amount) public override 
     // ...
     // @audit-issue This check passes during liquidation
     if (panopticPool().numberOfLegs(from) != 0) revert Errors.PositionCountNotZero();
-    
+
     // @audit-issue Standard ERC20 transfer moves phantom shares without checks
     return ERC20Minimal.transferFrom(from, to, amount);
 }
@@ -213,9 +218,9 @@ function revoke(address delegatee) external onlyPanopticPool {
     uint256 balance = balanceOf[delegatee];
     if (type(uint248).max > balance) {
         // @audit-issue Logic assumes missing shares were burned, permanently minting them
-        _internalSupply += type(uint248).max - balance; 
+        _internalSupply += type(uint248).max - balance;
         balanceOf[delegatee] = 0;
-    } 
+    }
     // ...
 }
 ```
@@ -242,7 +247,7 @@ A comprehensive Foundry test case demonstrates this vulnerability. The PoC perfo
 function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
 +   // Prevent moving phantom shares
 +   if (balanceOf[from] > type(uint248).max) revert Errors.PhantomSharesAreNotTransferable();
-    
+
     _accrueInterest(from, IS_NOT_DEPOSIT);
     if (panopticPool().numberOfLegs(from) != 0) revert Errors.PositionCountNotZero();
     return ERC20Minimal.transferFrom(from, to, amount);
@@ -263,16 +268,16 @@ function transferFrom(address from, address to, uint256 amount) public override 
 
 ## [[H-03] Commission fees can always be bypassed](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-103)
 
-*Submitted by [prk0](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-350), also found by [ElmInNyc99](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-731), [peazzycole](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-966), and [zzebra83](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1037)*
+_Submitted by [prk0](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-350), also found by [ElmInNyc99](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-731), [peazzycole](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-966), and [zzebra83](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1037)_
 
-* `CollateralTracker.sol` [L1612-L1632](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/CollateralTracker.sol#L1612-L1632)
-* `PanopticPool.sol` [L1010-L1011](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/PanopticPool.sol#L1010-L1011)
+- `CollateralTracker.sol` [L1612-L1632](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/CollateralTracker.sol#L1612-L1632)
+- `PanopticPool.sol` [L1010-L1011](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/PanopticPool.sol#L1010-L1011)
 
 ### Finding description
 
 Original code block has been omitted. [View complete submission](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-350).
 
-`CollateralTracker::settleBurn()` computes the `commissionFee` as the *minimum* between premium fee and notional fee.
+`CollateralTracker::settleBurn()` computes the `commissionFee` as the _minimum_ between premium fee and notional fee.
 
 `CollateralTracker::settleBurn()` is called in the following flows:
 
@@ -291,7 +296,7 @@ Original code block has been omitted. [View complete submission](https://code4re
 `PanopticPool::dispatchFrom()`  
 → `PanopticPool::_liquidate()`  
 → `PanopticPool::_burnAllOptionsFrom()`  
-→ `PanopticPool::_burnOptions()`   
+→ `PanopticPool::_burnOptions()`  
 → `CollateralTracker::settleBurn()`
 
 **Flow 4 - Settle Premium:**  
@@ -324,7 +329,7 @@ function _settleOptions(
             emptyCollectedByLegs, // collectedByLeg
             positionSize, // positionSize
             riskParameters, // riskParameters
-            LeftRightSigned.wrap(1).addToLeftSlot(1 + (int128(currentTick) << 2)) 
+            LeftRightSigned.wrap(1).addToLeftSlot(1 + (int128(currentTick) << 2))
         );
     }
     // deduct the paid premium tokens from the owner's balance
@@ -335,7 +340,7 @@ function _settleOptions(
 
 In Flow 4 and Flow 5, `settleBurn()` is called from `_settleOptions()` - The supplied `longAmount`, `shortAmount`, and `ammDeltaAmount` parameters are all `0`. Therefore, we can expect the computed notional fee to also be `0`.
 
-As mentioned above, the commission fee is taken from the *minimum* between notional fee and premium fee. As a result, the commission fee will always be computed to `0`, when `settleBurn()` is called from `_settleOptions()` (Flow 4 and Flow 5).
+As mentioned above, the commission fee is taken from the _minimum_ between notional fee and premium fee. As a result, the commission fee will always be computed to `0`, when `settleBurn()` is called from `_settleOptions()` (Flow 4 and Flow 5).
 
 ```solidity
 function settleBurn(
@@ -396,24 +401,24 @@ function settleBurn(
 -   if (realizedPremium != 0) {
         uint128 commissionFee;
         // compute the minimum of the notionalFee and the premiumFee
-        { 
+        {
             uint128 commissionP;
             unchecked {
                 commissionP = realizedPremium > 0
                     ? uint128(realizedPremium)
                     : uint128(-realizedPremium);
             }
-            uint128 commissionFeeP = Math 
+            uint128 commissionFeeP = Math
                 .mulDivRoundingUp(commissionP, riskParameters.premiumFee(), DECIMALS)
                 .toUint128();
             uint128 commissionN = uint256(int256(shortAmount) + int256(longAmount)).toUint128();
             uint128 commissionFeeN;
             unchecked {
-                commissionFeeN = Math 
+                commissionFeeN = Math
                     .mulDivRoundingUp(commissionN, 10 * riskParameters.notionalFee(), DECIMALS)
-                    .toUint128(); 
+                    .toUint128();
             }
-            
+
 +           if (shortAmount == 0 && longAmount == 0) {
 +               commissionFee = commissionFeeP;
 +           } else {
@@ -458,16 +463,16 @@ As a result, Charlie avoided paying any commission fees for his position.
 
 ## [[M-01] Liquidations can be permanently blocked via `getLiquidationBonus()` unsigned underflow (Insolvent-but-unliquidatable accounts)](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-11)
 
-*Submitted by [edoscoba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-763), also found by [0xnija](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-790), [Agontuk](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-766), [AlexNiht](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-343), [Bale](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-659), [caesar49](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-435), [dman](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1362), [eternal1328](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1046), [legat](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1406), [Micky042](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1195), [OxNoble](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-683), [ProngsDev](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1090), [VulSight](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1232), and [Zitifethefirst](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-337)*
+_Submitted by [edoscoba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-763), also found by [0xnija](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-790), [Agontuk](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-766), [AlexNiht](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-343), [Bale](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-659), [caesar49](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-435), [dman](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1362), [eternal1328](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1046), [legat](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1406), [Micky042](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1195), [OxNoble](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-683), [ProngsDev](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1090), [VulSight](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1232), and [Zitifethefirst](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-337)_
 
-* `RiskEngine.sol` [L516](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/RiskEngine.sol#L516)
-* `RiskEngine.sol` [L1029](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/RiskEngine.sol#L1029)
-* `PanopticMath.sol` [L669-L689](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/libraries/PanopticMath.sol#L669-L689)
-* `PanopticPool.sol` [L1540](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/PanopticPool.sol#L1540)
+- `RiskEngine.sol` [L516](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/RiskEngine.sol#L516)
+- `RiskEngine.sol` [L1029](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/RiskEngine.sol#L1029)
+- `PanopticMath.sol` [L669-L689](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/libraries/PanopticMath.sol#L669-L689)
+- `PanopticPool.sol` [L1540](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/PanopticPool.sol#L1540)
 
 ### Finding description
 
-`PanopticPool.dispatchFrom()` routes to liquidation when `RiskEngine.isAccountSolvent()` returns false at all liquidation ticks. The solvency check is intentionally *not* based on total cross-collateral value: it applies a utilization-dependent `crossBufferRatio` that can reduce cross-margining to ~0 at high utilization, forcing a strict per-token solvency requirement.
+`PanopticPool.dispatchFrom()` routes to liquidation when `RiskEngine.isAccountSolvent()` returns false at all liquidation ticks. The solvency check is intentionally _not_ based on total cross-collateral value: it applies a utilization-dependent `crossBufferRatio` that can reduce cross-margining to ~0 at high utilization, forcing a strict per-token solvency requirement.
 
 However, `RiskEngine.getLiquidationBonus()` computes a single cross-denominated “collateral balance” and “required threshold” using `PanopticMath.getCrossBalances(...)`, then applies the documented formula:
 
@@ -477,34 +482,36 @@ This implementation assumes `required >= collateralBalance` and performs the sub
 
 `uint256 bonusCross = Math.min(balanceCross / 2, thresholdCross - balanceCross);`
 
-When liquidation is triggered due to *distribution insolvency* (e.g., `token1` balance is below requirement while `token0` has a large surplus, and cross-margining is disabled by `crossBufferRatio`), it is possible and realistic for `balanceCross > thresholdCross` even though `isAccountSolvent()` is false. In that case, `thresholdCross - balanceCross` underflows and reverts, which bubbles up and reverts the entire liquidation.
+When liquidation is triggered due to _distribution insolvency_ (e.g., `token1` balance is below requirement while `token0` has a large surplus, and cross-margining is disabled by `crossBufferRatio`), it is possible and realistic for `balanceCross > thresholdCross` even though `isAccountSolvent()` is false. In that case, `thresholdCross - balanceCross` underflows and reverts, which bubbles up and reverts the entire liquidation.
 
 ### Impact
 
-* **Liquidation DoS**: accounts that the protocol deems liquidatable can become **unliquidatable**, breaking the core safety mechanism.
-* **Systemic risk escalation**: undercollateralized portfolios can remain open and cannot be force-closed, increasing the likelihood of PLP losses and blocking recovery mechanisms that depend on liquidation completing successfully.
+- **Liquidation DoS**: accounts that the protocol deems liquidatable can become **unliquidatable**, breaking the core safety mechanism.
+- **Systemic risk escalation**: undercollateralized portfolios can remain open and cannot be force-closed, increasing the likelihood of PLP losses and blocking recovery mechanisms that depend on liquidation completing successfully.
 
 ### Recommended mitigation steps
 
-* Make `getLiquidationBonus()` robust to `balanceCross >= thresholdCross` by clamping the deficit:
+- Make `getLiquidationBonus()` robust to `balanceCross >= thresholdCross` by clamping the deficit:
 
-  + `uint256 deficitCross = thresholdCross > balanceCross ? thresholdCross - balanceCross : 0;`
-  + `uint256 bonusCross = Math.min(balanceCross / 2, deficitCross);`
-* Align liquidation bonus computation with the protocol’s solvency semantics:
+  - `uint256 deficitCross = thresholdCross > balanceCross ? thresholdCross - balanceCross : 0;`
+  - `uint256 bonusCross = Math.min(balanceCross / 2, deficitCross);`
 
-  + Either compute “effective cross collateral” using the same `crossBufferRatio` methodology used in `isAccountSolvent()`, or
-  + Derive bonus from per-token deficits/surpluses directly (rather than a single cross-total), so distribution-insolvent accounts cannot trigger a revert in the liquidation path.
-* Keep (and extend) regression tests covering liquidation paths where cross-margining is disabled by high utilization.
+- Align liquidation bonus computation with the protocol’s solvency semantics:
+
+  - Either compute “effective cross collateral” using the same `crossBufferRatio` methodology used in `isAccountSolvent()`, or
+  - Derive bonus from per-token deficits/surpluses directly (rather than a single cross-total), so distribution-insolvent accounts cannot trigger a revert in the liquidation path.
+
+- Keep (and extend) regression tests covering liquidation paths where cross-margining is disabled by high utilization.
 
 ### Proof of Concept
 
 A runnable PoC:
 
-* `test/foundry/core/LiquidationBonusUnderflowPoC.t.sol`
+- `test/foundry/core/LiquidationBonusUnderflowPoC.t.sol`
 
 Run it with:
 
-* `forge test --match-path test/foundry/core/LiquidationBonusUnderflowPoC.t.sol -vvv`
+- `forge test --match-path test/foundry/core/LiquidationBonusUnderflowPoC.t.sol -vvv`
 
 [View detailed Proof of Concept](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-763)
 
@@ -518,7 +525,7 @@ Run it with:
 
 ## [[M-02] `RiskEngine::_getRequiredCollateralAtTickSinglePosition()` fails to accumulate credits across multiple legs, leading to potential erroneous liquidations](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-25)
 
-*Submitted by [joicygiore](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-675), also found by [0xhunter20](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1149), [0xMirce](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-881), [0xnija](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-798), [agent001](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1088), [Agontuk](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-697), [Coachmike](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1135), [Diavolo](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-258), [edoscoba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-779), [eightzerofour](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-491), [eternal1328](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1048), [ewah](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-621), [forlz](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-859), [Funen](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1220), [Hajime](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-879), [Hakeem\_is\_here](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1233), [happykilling](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-96), [hecker\_trieu\_tien](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-454), [Incogknito](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-69), [kimnoic](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1028), [lamassu](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-883), [legat](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1390), [NexusAudits](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1367), [sahuang](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-152), and [VulSight](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1240)*
+_Submitted by [joicygiore](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-675), also found by [0xhunter20](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1149), [0xMirce](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-881), [0xnija](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-798), [agent001](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1088), [Agontuk](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-697), [Coachmike](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1135), [Diavolo](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-258), [edoscoba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-779), [eightzerofour](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-491), [eternal1328](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1048), [ewah](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-621), [forlz](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-859), [Funen](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1220), [Hajime](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-879), [Hakeem_is_here](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1233), [happykilling](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-96), [hecker_trieu_tien](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-454), [Incogknito](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-69), [kimnoic](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1028), [lamassu](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-883), [legat](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1390), [NexusAudits](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1367), [sahuang](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-152), and [VulSight](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1240)_
 
 `RiskEngine.sol` [L1324-L1334](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/RiskEngine.sol#L1324-L1334)
 
@@ -528,7 +535,7 @@ The function `RiskEngine::_getRequiredCollateralAtTickSinglePosition()` is respo
 
 When a `tokenId` contains multiple legs, and more than one leg satisfies the following condition:
 
-* The function computes a credit amount for each qualifying leg. However, instead of accumulating these values, the implementation overwrites the `credits` variable on each iteration:
+- The function computes a credit amount for each qualifying leg. However, instead of accumulating these values, the implementation overwrites the `credits` variable on each iteration:
 
 ```solidity
     function _getRequiredCollateralAtTickSinglePosition(
@@ -591,12 +598,14 @@ Consequently, an account that is actually solvent may be incorrectly classified 
 1. Treat credits as an accumulator and sum the credit contributions from all qualifying legs, rather than overwriting the value.
 2. Clearly distinguish between:
 
-   * Per-leg credit contributions
-   * The total credit amount for a multi-leg position
+   - Per-leg credit contributions
+   - The total credit amount for a multi-leg position
+
 3. Add unit tests covering multi-leg scenarios, including:
 
-   * Multiple `width == 0 && isLong == true` legs
-   * Mixed `tokenType` configurations
+   - Multiple `width == 0 && isLong == true` legs
+   - Mixed `tokenType` configurations
+
 4. (Optional) Update inline documentation or comments to clearly define the expected semantics of `credits`, reducing the risk of future regressions.
 
 ### Proof of Concept
@@ -623,12 +632,12 @@ Ran 2 tests for test/foundry/core/poc_getRequiredCollateralAtTickSinglePosition.
 
 ## [[M-03] TWAP misweights EMAs in RiskEngine, anchoring liquidation price to slow EMA and letting insolvent accounts dodge liquidation](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-36)
 
-*Submitted by [mrdafidi](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-61), also found by [0xanony](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-674), [Ahmedsec](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-365), [Charming](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1275), [Diavolo](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1217), [dtang](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-444), [edoscoba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-747), [ewah](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-725), [Funen](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1231), [fx](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-383), [hecker\_trieu\_tien](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-414), [hiia](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-138), [I1iveF0rTh1Sh1t](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-699), [Incogknito](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-276), [KineticsOfWeb3](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-479), [M\_o7amed\_T](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-329), [Manosh19](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1347), [mohamedfahmy](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-802), [Neo3141](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-561), [niffylord](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-552), [odeili](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1257), [one](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-993), [qwqkol](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-732), [SAGEisbuilding](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-873), and [Wakei](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1255)*
+_Submitted by [mrdafidi](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-61), also found by [0xanony](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-674), [Ahmedsec](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-365), [Charming](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1275), [Diavolo](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1217), [dtang](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-444), [edoscoba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-747), [ewah](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-725), [Funen](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1231), [fx](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-383), [hecker_trieu_tien](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-414), [hiia](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-138), [I1iveF0rTh1Sh1t](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-699), [Incogknito](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-276), [KineticsOfWeb3](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-479), [M_o7amed_T](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-329), [Manosh19](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1347), [mohamedfahmy](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-802), [Neo3141](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-561), [niffylord](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-552), [odeili](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1257), [one](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-993), [qwqkol](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-732), [SAGEisbuilding](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-873), and [Wakei](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1255)_
 
-*This issue was also found with [V12](https://v12.zellic.io).*
+_This issue was also found with [V12](https://v12.zellic.io)._
 
-* `RiskEngine.sol` [L836](https://github.com/code-423n4/2025-12-panoptic/blob/a4361d6d8dc6420c09187d80ea1a7ce851d1ca36/contracts/RiskEngine.sol#L836)
-* `OraclePack.sol` [L209-L224](https://github.com/code-423n4/2025-12-panoptic/blob/a4361d6d8dc6420c09187d80ea1a7ce851d1ca36/contracts/types/OraclePack.sol#L209-L224)
+- `RiskEngine.sol` [L836](https://github.com/code-423n4/2025-12-panoptic/blob/a4361d6d8dc6420c09187d80ea1a7ce851d1ca36/contracts/RiskEngine.sol#L836)
+- `OraclePack.sol` [L209-L224](https://github.com/code-423n4/2025-12-panoptic/blob/a4361d6d8dc6420c09187d80ea1a7ce851d1ca36/contracts/types/OraclePack.sol#L209-L224)
 
 ### Root cause
 
@@ -645,8 +654,8 @@ Destructure EMAs in the correct order and keep the intended 60/30/10 fast/slow/e
 ```solidity
 // contracts/RiskEngine.sol
 function twapEMA(OraclePack oraclePack) external pure returns (int24) {
-    ( , int256 fastEMA, int256 slowEMA, int256 eonsEMA, ) = oraclePack.getEMAs();
-    return int24((6 * fastEMA + 3 * slowEMA + eonsEMA) / 10);
+  (, int256 fastEMA, int256 slowEMA, int256 eonsEMA, ) = oraclePack.getEMAs();
+  return int24((6 * fastEMA + 3 * slowEMA + eonsEMA) / 10);
 }
 ```
 
@@ -668,7 +677,7 @@ Add a regression test ensuring `twapEMA` weights fast/slow/eons and does not dep
 
 ## [[M-04] Incorrect `UPPER_118BITS_MASK` mask in `OraclePackLibrary` causes unexpected clearing of `EMAs` and `lockMode` in `OraclePack`](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-59)
 
-*Submitted by [joicygiore](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-185), also found by [0xnija](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-865), [0xspryon](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1383), [41rR4z0r](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-362), [Agontuk](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-707), [anonymousjoe](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1352), [aster](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-947), [axelot](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1408), [Race](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1174), [random1106](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-401), [slvDev](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-953), [SoarinSkySagar](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1317), [theboiledcorn](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1418), [Tupaia](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1176), and [Vinay](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-508)*
+_Submitted by [joicygiore](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-185), also found by [0xnija](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-865), [0xspryon](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1383), [41rR4z0r](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-362), [Agontuk](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-707), [anonymousjoe](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1352), [aster](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-947), [axelot](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1408), [Race](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1174), [random1106](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-401), [slvDev](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-953), [SoarinSkySagar](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1317), [theboiledcorn](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1418), [Tupaia](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1176), and [Vinay](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-508)_
 
 `OraclePack.sol` [L64-L65](https://github.com/code-423n4/2025-12-panoptic/blob/4ef958cbe0a136fac56138f55a64706d1db037de/contracts/types/OraclePack.sol#L64-L65)
 
@@ -681,7 +690,7 @@ This error results in the accidental overwriting of the `EMAs` and `lockMode` fi
 ```solidity
     uint256 internal constant UPPER_118BITS_MASK =
         0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0000000000000000000000000000000;
-    
+
     function rebaseOraclePack(
         OraclePack oraclePack
     ) internal pure returns (int24 _newReferenceTick, OraclePack rebasedOraclePack) {
@@ -743,7 +752,7 @@ Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 34.70s (420.68ms CP
 
 ## [[M-05] Division-by-zero in long-leg collateral requirement can block solvency checks and `dispatchFrom` (liquidation/force-exercise) for `tickSpacing==1 pools`](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-93)
 
-*Submitted by [niffylord](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-382), also found by [0xnija](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-799), [Agontuk](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-709), [Blackdruid](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-959), [Diavolo](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-261), [edoscoba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-848), [Ituba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-202), [legat](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1404), [LimeiBBQ](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-590), and [VulSight](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1279)*
+_Submitted by [niffylord](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-382), also found by [0xnija](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-799), [Agontuk](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-709), [Blackdruid](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-959), [Diavolo](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-261), [edoscoba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-848), [Ituba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-202), [legat](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1404), [LimeiBBQ](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-590), and [VulSight](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1279)_
 
 For pools with `tickSpacing == 1`, a 1-tick-wide long leg (`width == 1`) evaluated at `atTick == strike` triggers a division-by-zero revert inside `RiskEngine` margin computation. Because `PanopticPool.dispatchFrom(...)` always includes `currentTick` in its tick set, any liquidation/force-exercise/settle action that hits `currentTick == strike` can hard-revert, potentially blocking third-party resolution actions at specific prices.
 
@@ -751,8 +760,8 @@ For pools with `tickSpacing == 1`, a 1-tick-wide long leg (`width == 1`) evaluat
 
 Assumptions:
 
-* Target pool has `tickSpacing == 1`.
-* Attacker can obtain/hold a long position with a 1-tick-wide leg and strike `T`.
+- Target pool has `tickSpacing == 1`.
+- Attacker can obtain/hold a long position with a 1-tick-wide leg and strike `T`.
 
 Steps:
 
@@ -761,8 +770,8 @@ Steps:
 
 ### Affected components/code references (GitHub links)
 
-* Division-by-zero source (long-leg branch): `RiskEngine.sol` [L1508](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/RiskEngine.sol#L1508) and `RiskEngine.sol` [L1541](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/RiskEngine.sol#L1541)
-* `dispatchFrom` includes `currentTick` in tick set: `PanopticPool.sol` [L1360](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/PanopticPool.sol#L1360) and `PanopticPool.sol` [L1392](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/PanopticPool.sol#L1392)
+- Division-by-zero source (long-leg branch): `RiskEngine.sol` [L1508](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/RiskEngine.sol#L1508) and `RiskEngine.sol` [L1541](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/RiskEngine.sol#L1541)
+- `dispatchFrom` includes `currentTick` in tick set: `PanopticPool.sol` [L1360](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/PanopticPool.sol#L1360) and `PanopticPool.sol` [L1392](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/PanopticPool.sol#L1392)
 
 ### Proof of Concept
 
@@ -781,9 +790,9 @@ FOUNDRY_PROFILE=ci_test FOUNDRY_ETH_RPC_URL=https://ethereum.publicnode.com \
 
 [View detailed Proof of Concept](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-382)
 
-* When `tickSpacing == 1` and `width == 1`, the code path sets `positionWidth = tickUpper - tickLower = 1`.
-* In the long-leg branch, `distanceFromStrike = max(positionWidth / 2, abs(atTick - strike))` becomes `max(0, 0) = 0` when `atTick == strike`.
-* The subsequent computation divides by `(distanceFromStrike * expValue)`, which becomes a division-by-zero revert. The PoC triggers this exact state and asserts `stdError.divisionError` during liquidation.
+- When `tickSpacing == 1` and `width == 1`, the code path sets `positionWidth = tickUpper - tickLower = 1`.
+- In the long-leg branch, `distanceFromStrike = max(positionWidth / 2, abs(atTick - strike))` becomes `max(0, 0) = 0` when `atTick == strike`.
+- The subsequent computation divides by `(distanceFromStrike * expValue)`, which becomes a division-by-zero revert. The PoC triggers this exact state and asserts `stdError.divisionError` during liquidation.
 
 ### Recommended mitigation steps
 
@@ -799,7 +808,7 @@ Add a `distanceFromStrike == 0` guard in the long-leg branch (e.g., clamp to 1),
 
 ## [[M-06] `dispatchFrom()` liveness DoS via `StaleOracle`: spot price manipulation blocks liquidations, force exercises, and premium settlements](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-96)
 
-*Submitted by [fuzious](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-441), also found by [brotzumax](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-999), [LinKenji](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-101), and [Valves](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-850)*
+_Submitted by [fuzious](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-441), also found by [brotzumax](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-999), [LinKenji](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-101), and [Valves](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-850)_
 
 `PanopticPool.sol` [L1388-L1389](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/PanopticPool.sol#L1388-L1389)
 
@@ -822,9 +831,9 @@ The default threshold is `MAX_TWAP_DELTA_LIQUIDATION = 513` ticks (defined in `R
 
 This gate executes **before** the function determines whether the operation is:
 
-* A liquidation (`solvent == 0`)
-* A force exercise (`solvent == numberOfTicks && toLength == finalLength + 1`)
-* A long premium settlement (`solvent == numberOfTicks && toLength == finalLength`)
+- A liquidation (`solvent == 0`)
+- A force exercise (`solvent == numberOfTicks && toLength == finalLength + 1`)
+- A long premium settlement (`solvent == numberOfTicks && toLength == finalLength`)
 
 Consequently, when `abs(currentTick - twapTick) > tickDeltaLiquidation`, **all** `dispatchFrom` operations are blocked for **all** callers.
 
@@ -857,14 +866,16 @@ The `StaleOracle` gate exists to prevent liquidation paths from executing at a p
 
 1. **Two-step liquidation (Mark and Execute)**
 
-   * Mark insolvency using TWAP/median-based criteria without reverting on divergence.
-   * Execute liquidation after a delay or once oracle state catches up.
+   - Mark insolvency using TWAP/median-based criteria without reverting on divergence.
+   - Execute liquidation after a delay or once oracle state catches up.
+
 2. **Degraded mode: Proceed using oracle ticks only**
 
-   * If `abs(currentTick - twapTick) > threshold`, proceed but substitute `currentTick` with `twapTick` (or `medianTick`/`latestTick`) for all liquidation/settlement pricing inputs.
+   - If `abs(currentTick - twapTick) > threshold`, proceed but substitute `currentTick` with `twapTick` (or `medianTick`/`latestTick`) for all liquidation/settlement pricing inputs.
+
 3. **Rate-limited/Governance-guarded bypass**
 
-   * Allow a privileged actor (or tightly scoped guardian role) to bypass the gate for emergency liquidation of specific accounts/pools.
+   - Allow a privileged actor (or tightly scoped guardian role) to bypass the gate for emergency liquidation of specific accounts/pools.
 
 ### Proof of Concept
 
@@ -876,15 +887,15 @@ PoC demonstrates end-to-end that:
 
 **Test Coverage**
 
-| Test | What it proves |
-| --- | --- |
-| `test_PoC_LiquidationExecutes_WhenInsolvent_AndPriceInRange` | Valid liquidation executes when `abs(currentTick - twapTick) <= tickDeltaLiquidation` |
-| `test_PoC_LiquidationDoS_BlocksValidLiquidation_WhenPriceOutOfRange` | Same valid liquidation reverts with `Errors.StaleOracle` when spot is out-of-range |
-| `test_PoC_ForceExerciseExecutes_WhenPriceInRange` | Valid force exercise executes in-range (emits `ForcedExercised`) |
-| `test_PoC_ForceExerciseDoS_BlocksValidForceExercise_WhenPriceOutOfRange` | Force exercise blocked by `Errors.StaleOracle` when out-of-range |
-| `test_PoC_PremiumSettlementExecutes_WhenPriceInRange` | Premium settlement executes in-range (emits `PremiumSettled`) |
-| `test_PoC_PremiumSettlementDoS_BlocksValidSettlement_WhenPriceOutOfRange` | Settlement blocked by `Errors.StaleOracle` when out-of-range |
-| `test_PoC_StaleOracleBoundary_StrictGreaterThan_WhenReachable` | Gate is strict `>` (not `>=`) at exact boundary |
+| Test                                                                      | What it proves                                                                        |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `test_PoC_LiquidationExecutes_WhenInsolvent_AndPriceInRange`              | Valid liquidation executes when `abs(currentTick - twapTick) <= tickDeltaLiquidation` |
+| `test_PoC_LiquidationDoS_BlocksValidLiquidation_WhenPriceOutOfRange`      | Same valid liquidation reverts with `Errors.StaleOracle` when spot is out-of-range    |
+| `test_PoC_ForceExerciseExecutes_WhenPriceInRange`                         | Valid force exercise executes in-range (emits `ForcedExercised`)                      |
+| `test_PoC_ForceExerciseDoS_BlocksValidForceExercise_WhenPriceOutOfRange`  | Force exercise blocked by `Errors.StaleOracle` when out-of-range                      |
+| `test_PoC_PremiumSettlementExecutes_WhenPriceInRange`                     | Premium settlement executes in-range (emits `PremiumSettled`)                         |
+| `test_PoC_PremiumSettlementDoS_BlocksValidSettlement_WhenPriceOutOfRange` | Settlement blocked by `Errors.StaleOracle` when out-of-range                          |
+| `test_PoC_StaleOracleBoundary_StrictGreaterThan_WhenReachable`            | Gate is strict `>` (not `>=`) at exact boundary                                       |
 
 ### PoC Diff
 
@@ -902,7 +913,7 @@ To apply the PoC, create the file `test/foundry/core/LiquidationDoSPoC.t.sol` wi
 
 ## [[M-07] Liquidator can receive an inflated bonus against PLPs on `PanopticPool._liquidate`](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-120)
 
-*Submitted by [hecker\_trieu\_tien](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-463), also found by [Albert](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-408)*
+_Submitted by [hecker_trieu_tien](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-463), also found by [Albert](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-408)_
 
 `CollateralTracker.sol` [L1595](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/CollateralTracker.sol#L1595)
 
@@ -914,9 +925,9 @@ To apply the PoC, create the file `test/foundry/core/LiquidationDoSPoC.t.sol` wi
 
 In `contracts/CollateralTracker.sol`, `settleBurn` returns `tokenPaid` derived from `_updateBalancesAndSettle` before commission shares are burned, so the amount returned to the pool does not include the commission paid by the liquidatee.
 
-* `_updateBalancesAndSettle` computes `tokenToPay` from AMM delta, net borrows, and realized premium, then returns it as `tokenPaid`.
-* `settleBurn` then burns commission shares based on `realizedPremium`, but the return value is not adjusted to reflect that additional cost.
-* `PanopticPool._liquidate` uses the unadjusted `netPaid` to compute the liquidation bonus.
+- `_updateBalancesAndSettle` computes `tokenToPay` from AMM delta, net borrows, and realized premium, then returns it as `tokenPaid`.
+- `settleBurn` then burns commission shares based on `realizedPremium`, but the return value is not adjusted to reflect that additional cost.
+- `PanopticPool._liquidate` uses the unadjusted `netPaid` to compute the liquidation bonus.
 
 ### Finding description
 
@@ -1021,36 +1032,37 @@ function settleBurn(...) external onlyPanopticPool returns (int128) {
 
 ## [[M-08] Wide-range short legs can revert solvency checks and block liquidations (`Errors.InvalidTick`)](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-189)
 
-*Submitted by [edoscoba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-864)*
+_Submitted by [edoscoba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-864)_
 
-* `RiskEngine.sol` [L1489-L1505](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/RiskEngine.sol#L1489-L1505)
-* `Math.sol` [L187-L245](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/libraries/Math.sol#L187-L245)
-* `PanopticPool.sol` [L1793-L1803](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/PanopticPool.sol#L1793-L1803)
+- `RiskEngine.sol` [L1489-L1505](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/RiskEngine.sol#L1489-L1505)
+- `Math.sol` [L187-L245](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/libraries/Math.sol#L187-L245)
+- `PanopticPool.sol` [L1793-L1803](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/PanopticPool.sol#L1793-L1803)
 
 ### Finding description and impact
 
 In `RiskEngine._getRequiredCollateralSingleLegNoPartner`, short legs use an “in-range interpolation” path when `atTick` is within `[tickLower, tickUpper)`. That path computes: `scaleFactor = Math.getSqrtRatioAtTick(tickUpper - tickLower)`
 
-However, `getSqrtRatioAtTick` only supports ticks within `[-887_272, 887_272]`. While `tickLower` and `tickUpper` themselves are validated to be within bounds, their *difference* can exceed `887_272` for wide ranges, because the range width is `width * tickSpacing` (with `width` up to `4095` and Uniswap v4 allowing large `tickSpacing` values). In that case, any solvency computation that evaluates the position while the price is in-range will revert with `Errors.InvalidTick()`.
+However, `getSqrtRatioAtTick` only supports ticks within `[-887_272, 887_272]`. While `tickLower` and `tickUpper` themselves are validated to be within bounds, their _difference_ can exceed `887_272` for wide ranges, because the range width is `width * tickSpacing` (with `width` up to `4095` and Uniswap v4 allowing large `tickSpacing` values). In that case, any solvency computation that evaluates the position while the price is in-range will revert with `Errors.InvalidTick()`.
 
 This is exploitable as a denial-of-service on liquidation and other solvency-gated operations:
 
-* An attacker can create a short position with `tickUpper - tickLower > 887_272` while ensuring the current tick is initially outside the range (so the in-range branch is not executed during that check).
-* If/when the market tick later enters the range, solvency checks for that account revert deterministically.
-* Liquidation paths that require solvency evaluation can be bricked, enabling “insolvent-but-unliquidatable” accounts and increasing the chance of protocol bad debt.
-* The same revert can also DoS collateral-withdraw eligibility checks or any other path that calls `riskEngine.isAccountSolvent(...)` at an in-range tick.
+- An attacker can create a short position with `tickUpper - tickLower > 887_272` while ensuring the current tick is initially outside the range (so the in-range branch is not executed during that check).
+- If/when the market tick later enters the range, solvency checks for that account revert deterministically.
+- Liquidation paths that require solvency evaluation can be bricked, enabling “insolvent-but-unliquidatable” accounts and increasing the chance of protocol bad debt.
+- The same revert can also DoS collateral-withdraw eligibility checks or any other path that calls `riskEngine.isAccountSolvent(...)` at an in-range tick.
 
 This issue is not listed in `README.md` “Publicly known issues” and does not appear in `2025_12_panoptic_v12_findings.md`.
 
 ### Recommended mitigation steps
 
-* Replace `getSqrtRatioAtTick(tickUpper - tickLower)` with a computation that never requires an out-of-domain tick input, e.g. derive the ratio from individually valid endpoints:
+- Replace `getSqrtRatioAtTick(tickUpper - tickLower)` with a computation that never requires an out-of-domain tick input, e.g. derive the ratio from individually valid endpoints:
 
-  + `sqrtLower = Math.getSqrtRatioAtTick(tickLower)`
-  + `sqrtUpper = Math.getSqrtRatioAtTick(tickUpper)`
-  + `scaleFactor = sqrtUpper * FP96 / sqrtLower` (choose rounding direction to preserve conservative collateral requirements)
-* Avoid “clamping” `(tickUpper - tickLower)` as a primary fix unless you can prove the result remains conservative; clamping changes the intended economics and can understate requirements.
-* Optionally, add a mint-time validation that rejects short legs with `tickUpper - tickLower > Constants.MAX_POOL_TICK` to fail fast, but the RiskEngine-side fix should still be implemented to prevent protocol-level reverts.
+  - `sqrtLower = Math.getSqrtRatioAtTick(tickLower)`
+  - `sqrtUpper = Math.getSqrtRatioAtTick(tickUpper)`
+  - `scaleFactor = sqrtUpper * FP96 / sqrtLower` (choose rounding direction to preserve conservative collateral requirements)
+
+- Avoid “clamping” `(tickUpper - tickLower)` as a primary fix unless you can prove the result remains conservative; clamping changes the intended economics and can understate requirements.
+- Optionally, add a mint-time validation that rejects short legs with `tickUpper - tickLower > Constants.MAX_POOL_TICK` to fail fast, but the RiskEngine-side fix should still be implemented to prevent protocol-level reverts.
 
 ### Proof of Concept
 
@@ -1071,7 +1083,7 @@ The PoC shows the same wide-range short leg:
 
 ## [[M-09] Incorrect collateral calculation for delayed swap strategies](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-193)
 
-*Submitted by [eternal1328](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1049), also found by [astra39100](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-458), [Coachmike](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1333), [Funen](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1229), [lamassu](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1133), [prk0](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-858), and [YZX0](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-135)*
+_Submitted by [eternal1328](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1049), also found by [astra39100](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-458), [Coachmike](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1333), [Funen](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1229), [lamassu](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1133), [prk0](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-858), and [YZX0](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-135)_
 
 `RiskEngine.sol` [L2018-L2038](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/RiskEngine.sol#L2018-L2038)
 
@@ -1095,8 +1107,8 @@ Users with Delayed Swap strategies face artificially inflated collateral require
 
 **Runnable PoC (Foundry test):**
 
-* PoC file (custom, entire file included): `2025-12-panoptic/test/foundry/poc/H017_DelayedSwap_MaxNotNetting.t.sol`
-* Test: `test_POC_H017_delayedSwap_requirementUsesMax_notNetting`
+- PoC file (custom, entire file included): `2025-12-panoptic/test/foundry/poc/H017_DelayedSwap_MaxNotNetting.t.sol`
+- Test: `test_POC_H017_delayedSwap_requirementUsesMax_notNetting`
 
 **How to run:**
 
@@ -1130,7 +1142,7 @@ File: `2025-12-panoptic/test/foundry/poc/utils/PoCUtils.sol`
 
 ## [[M-10] PLPs can withdraw assets needed by long positions, temporarily locking buyers](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-247)
 
-*Submitted by [Henri](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1215)*
+_Submitted by [Henri](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1215)_
 
 `CollateralTracker.sol` [L651](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/CollateralTracker.sol#L651)
 
@@ -1144,12 +1156,12 @@ The `maxWithdraw` function allows LPs to withdraw up to `s_depositedAssets` - 1:
 
 ```solidity
 function maxWithdraw(address owner) public view returns (uint256 maxAssets) {
-    uint256 depositedAssets = s_depositedAssets;
-    unchecked {
-        uint256 available = depositedAssets > 0 ? depositedAssets - 1 : 0;
-        uint256 balance = convertToAssets(balanceOf[owner]);
-        return panopticPool().numberOfLegs(owner) == 0 ? Math.min(available, balance) : 0;
-    }
+  uint256 depositedAssets = s_depositedAssets;
+  unchecked {
+    uint256 available = depositedAssets > 0 ? depositedAssets - 1 : 0;
+    uint256 balance = convertToAssets(balanceOf[owner]);
+    return panopticPool().numberOfLegs(owner) == 0 ? Math.min(available, balance) : 0;
+  }
 }
 ```
 
@@ -1159,16 +1171,16 @@ The problem occurs when an LP withdraws enough assets that there isn’t suffici
 
 `forceExercise` cannot really help here either:
 
-* It can only target positions with at least one long leg, so pure short positions cannot be force-exercised to replenish the pool.
-* A mixed position with a delta more short than long could be closed but only the delta would replenish the pool. It is not sure that there would be enough of these specific positions.
-* This could become costly for the long to close its position.
+- It can only target positions with at least one long leg, so pure short positions cannot be force-exercised to replenish the pool.
+- A mixed position with a delta more short than long could be closed but only the delta would replenish the pool. It is not sure that there would be enough of these specific positions.
+- This could become costly for the long to close its position.
 
 The current workaround would be for the buyer to deposit the missing amount into the collateral contract before closing the long. This is problematic because buyers shouldn’t need extra tokens to close their own position, especially as the borrowed amount can go up to 5 times their collateral.
 
 ### Impact
 
-* Long holders cannot close their positions, leading to potential losses if the market moves against them.
-* If `netLiquidity` is low on a given chunk, shorts also become unable to close since they would need to `forceExercise` longs.
+- Long holders cannot close their positions, leading to potential losses if the market moves against them.
+- If `netLiquidity` is low on a given chunk, shorts also become unable to close since they would need to `forceExercise` longs.
 
 A whale LP could exploit this by waiting for the right moment to withdraw and trap long holders in their positions.
 
@@ -1229,10 +1241,10 @@ Add the following test to `test/foundry/core/PanopticPool.t.sol`:
 
 ## [[M-11] An attacker can manipulate oracle easily](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-251)
 
-*Submitted by [Tupaia](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1177)*
+_Submitted by [Tupaia](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1177)_
 
-* `OraclePack.sol` [L536-L567](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/types/OraclePack.sol#L536-L567)
-* `PanopticPool.sol` [L552-L558](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/PanopticPool.sol#L552-L558)
+- `OraclePack.sol` [L536-L567](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/types/OraclePack.sol#L536-L567)
+- `PanopticPool.sol` [L552-L558](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/PanopticPool.sol#L552-L558)
 
 ### Finding description
 
@@ -1269,11 +1281,11 @@ Once `differentEpoch` is true and the oracle is updated, subsequent calls to `co
 ```solidity
 // File: contracts/PanopticPool.sol, lines 552-558
 function pokeOracle() external {
-    int24 currentTick = getCurrentTick();
+  int24 currentTick = getCurrentTick();
 
-    (, OraclePack oraclePack) = riskEngine().computeInternalMedian(s_oraclePack, currentTick);
+  (, OraclePack oraclePack) = riskEngine().computeInternalMedian(s_oraclePack, currentTick);
 
-    if (OraclePack.unwrap(oraclePack) != 0) s_oraclePack = oraclePack;
+  if (OraclePack.unwrap(oraclePack) != 0) s_oraclePack = oraclePack;
 }
 ```
 
@@ -1282,22 +1294,22 @@ The `currentTick` used in `pokeOracle()` is obtained from `getCurrentTick()`, wh
 ```solidity
 // File: contracts/types/OraclePack.sol, lines 511-528
 function clampTick(
-    int24 newTick,
-    OraclePack _oraclePack,
-    int24 clampDelta
+  int24 newTick,
+  OraclePack _oraclePack,
+  int24 clampDelta
 ) internal pure returns (int24 clamped) {
-    unchecked {
-        int24 _lastTick = _oraclePack.lastTick();
+  unchecked {
+    int24 _lastTick = _oraclePack.lastTick();
 
-        // Clamp lastObservedTick to be within clampDelta of lastTick
-        if (newTick > _lastTick + clampDelta) {
-            clamped = _lastTick + clampDelta;
-        } else if (newTick < _lastTick - clampDelta) {
-            clamped = _lastTick - clampDelta;
-        } else {
-            clamped = newTick;
-        }
+    // Clamp lastObservedTick to be within clampDelta of lastTick
+    if (newTick > _lastTick + clampDelta) {
+      clamped = _lastTick + clampDelta;
+    } else if (newTick < _lastTick - clampDelta) {
+      clamped = _lastTick - clampDelta;
+    } else {
+      clamped = newTick;
     }
+  }
 }
 ```
 
@@ -1376,10 +1388,10 @@ This test can be run with `forge test --match-test test_PoC_OracleManipulation -
 
 ## [[M-12] Self-settlement via `dispatchFrom` bypasses refund mechanism allowing underfunded debt settlement](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-262)
 
-*Submitted by [merlinboii](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1224), also found by [AnantaDeva](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-930) and [Valves](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1084)*
+_Submitted by [merlinboii](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1224), also found by [AnantaDeva](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-930) and [Valves](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1084)_
 
-* `PanopticPool.sol` [L1671-L1703](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/PanopticPool.sol#L1671-L1703)
-* `PanopticPool.sol` [L1598-L1664](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/PanopticPool.sol#L1598-L1664)
+- `PanopticPool.sol` [L1671-L1703](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/PanopticPool.sol#L1671-L1703)
+- `PanopticPool.sol` [L1598-L1664](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/PanopticPool.sol#L1598-L1664)
 
 ### Finding description
 
@@ -1402,18 +1414,18 @@ The refund mechanism is designed such that if the target account lacks `token0` 
 /// @dev Assumes that the refunder has enough money to pay for the refund.
 ///...
 function refund(address refunder, address refundee, int256 assets) external onlyPanopticPool {
-    if (assets > 0) {
-        _transferFrom(refunder, refundee, convertToShares(uint256(assets)));
-    } else {
-        uint256 sharesToTransfer = convertToShares(uint256(-assets));
-        if (balanceOf[refundee] < sharesToTransfer)
-            revert Errors.NotEnoughTokens(
-                address(this),
-                uint256(-assets),
-                convertToAssets(balanceOf[refundee])
-            );
-        _transferFrom(refundee, refunder, sharesToTransfer);
-    }
+  if (assets > 0) {
+    _transferFrom(refunder, refundee, convertToShares(uint256(assets)));
+  } else {
+    uint256 sharesToTransfer = convertToShares(uint256(-assets));
+    if (balanceOf[refundee] < sharesToTransfer)
+      revert Errors.NotEnoughTokens(
+        address(this),
+        uint256(-assets),
+        convertToAssets(balanceOf[refundee])
+      );
+    _transferFrom(refundee, refunder, sharesToTransfer);
+  }
 }
 ```
 
@@ -1429,10 +1441,10 @@ delegate() -> settlement -> refund() -> revoke()
 
 Let:
 
-* `B` = user’s real balance (shares)
-* `I` = phantom shares added by delegate (`~2^248`)
-* `X` = total shares the settlement attempts to burn
-* `s = X - B` = shortage (`s > 0`)
+- `B` = user’s real balance (shares)
+- `I` = phantom shares added by delegate (`~2^248`)
+- `X` = total shares the settlement attempts to burn
+- `s = X - B` = shortage (`s > 0`)
 
 **During delegation:**
 
@@ -1477,12 +1489,12 @@ Update `_settlePremium` and `_forceExercise` to handle self settlement cases so 
 
 ## [[M-13] Intra-epoch `rateAtTarget` updates in `CollateralTracker._updateInterestRate()` allow compounding interest rate errors](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-265)
 
-*Submitted by [merlinboii](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1221), also found by [Dulgiq](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1034)*
+_Submitted by [merlinboii](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1221), also found by [Dulgiq](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1034)_
 
-* `RiskEngine.sol` [L2203](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/RiskEngine.sol#L2203)
-* `RiskEngine.sol` [L2218-L2221](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/RiskEngine.sol#L2218-L2221)
-* `CollateralTracker.sol` [L1047-L1054](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/CollateralTracker.sol#L1047-L1054)
-* `CollateralTracker.sol` [L970-L976](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/CollateralTracker.sol#L970-L976)
+- `RiskEngine.sol` [L2203](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/RiskEngine.sol#L2203)
+- `RiskEngine.sol` [L2218-L2221](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/RiskEngine.sol#L2218-L2221)
+- `CollateralTracker.sol` [L1047-L1054](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/CollateralTracker.sol#L1047-L1054)
+- `CollateralTracker.sol` [L970-L976](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/CollateralTracker.sol#L970-L976)
 
 ### Finding description
 
@@ -1546,12 +1558,13 @@ Update `rateAtTarget` only if there is actual time passed. If the rate has alrea
 
 **Setup:**
 
-* Put the snippet below into the protocol test suite: `test/foundry/core/CollateralTracker.t.sol:CollateralTrackerTest`
-* Run test:
+- Put the snippet below into the protocol test suite: `test/foundry/core/CollateralTracker.t.sol:CollateralTrackerTest`
+- Run test:
 
-  + `forge test --mt test_audit_accrueInterest_manipulateRateAtTarget_stateProof -vvv`
-  + `forge test --mt test_audit_accrueInterest_manipulateRateAtTarget_combineAttack -vvv`
-* Note: The helper functions need to be added for the PoC to run (attached in the `The full coded PoC` section)
+  - `forge test --mt test_audit_accrueInterest_manipulateRateAtTarget_stateProof -vvv`
+  - `forge test --mt test_audit_accrueInterest_manipulateRateAtTarget_combineAttack -vvv`
+
+- Note: The helper functions need to be added for the PoC to run (attached in the `The full coded PoC` section)
 
 **Results of running the PoC:**
 
@@ -1567,7 +1580,7 @@ Update `rateAtTarget` only if there is actual time passed. If the rate has alrea
 
 ## [[M-14] State-price mismatch in liquidation](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-266)
 
-*Submitted by [devdragon](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1032), also found by [merlinboii](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1223)*
+_Submitted by [devdragon](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1032), also found by [merlinboii](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1223)_
 
 In `PanopticPool._liquidate`, the protocol evaluates the liquidatee’s collateral and debt to determine the liquidation bonus and potential protocol loss. However, there is a fundamental accounting mismatch in how these values are calculated:
 
@@ -1626,8 +1639,8 @@ Because the debt is updated to the current second but the pool’s assets (which
 
 This mismatch systematically underestimates the liquidatee’s net worth. In a liquidation:
 
-* **Overestimated protocol loss**: The protocol will believe the liquidatee is deeper in debt than they truly are. This directly triggers `haircutPremia`, where the protocol revokes premiums from honest sellers to cover a “loss” that doesn’t actually exist.
-* **Systemic disincentive**: Liquidators receive bonuses based on the available collateral. If the collateral is undervalued, liquidators are underpaid, which can lead to delayed liquidations during high-volatility events.
+- **Overestimated protocol loss**: The protocol will believe the liquidatee is deeper in debt than they truly are. This directly triggers `haircutPremia`, where the protocol revokes premiums from honest sellers to cover a “loss” that doesn’t actually exist.
+- **Systemic disincentive**: Liquidators receive bonuses based on the available collateral. If the collateral is undervalued, liquidators are underpaid, which can lead to delayed liquidations during high-volatility events.
 
 ### Recommended mitigation steps
 
@@ -1665,13 +1678,13 @@ Valuation AFTER Accrual:
 
 ## [[M-15] Commission share-burn distribution is JIT-capturable when `builderCode == 0` (default)](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-295)
 
-*Submitted by [fuzious](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-855), also found by [kind0dev](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-465) and [Valves](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-852)*
+_Submitted by [fuzious](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-855), also found by [kind0dev](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-465) and [Valves](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-852)_
 
-* `CollateralTracker.sol` [L1558-L1561](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/CollateralTracker.sol#L1558-L1561)
-* `CollateralTracker.sol` [L1637-L1640](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/CollateralTracker.sol#L1637-L1640)
-* `RiskEngine.sol` [L253-L264](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/RiskEngine.sol#L253-L264)
-* `PanopticPool.sol` [L839](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/PanopticPool.sol#L839)
-* `PanopticPool.sol` [L1634](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/PanopticPool.sol#L1634)
+- `CollateralTracker.sol` [L1558-L1561](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/CollateralTracker.sol#L1558-L1561)
+- `CollateralTracker.sol` [L1637-L1640](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/CollateralTracker.sol#L1637-L1640)
+- `RiskEngine.sol` [L253-L264](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/RiskEngine.sol#L253-L264)
+- `PanopticPool.sol` [L839](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/PanopticPool.sol#L839)
+- `PanopticPool.sol` [L1634](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/PanopticPool.sol#L1634)
 
 ### Summary
 
@@ -1681,23 +1694,23 @@ A stronger implication than “LP yield leakage” also exists: **fee self-rebat
 
 ### Finding description and impact
 
-Panoptic distributes some value to shareholders by *burning shares* (reducing `totalSupply()` without removing assets), which increases `assetsPerShare` immediately for whoever holds shares at that moment. This is inherently **Just-In-Time (JIT) liquidity-capturable**: an MEV searcher can temporarily deposit to become a dominant shareholder right before a burn event, then unwind after, capturing most of the distribution that was economically intended for incumbent LPs.
+Panoptic distributes some value to shareholders by _burning shares_ (reducing `totalSupply()` without removing assets), which increases `assetsPerShare` immediately for whoever holds shares at that moment. This is inherently **Just-In-Time (JIT) liquidity-capturable**: an MEV searcher can temporarily deposit to become a dominant shareholder right before a burn event, then unwind after, capturing most of the distribution that was economically intended for incumbent LPs.
 
 **Root cause mechanics**
 
 The share price is defined by ERC4626-style conversions:
 
-* `assetsPerShare ≈ totalAssets() / totalSupply()`
-* `totalAssets()` includes tracked pool assets, assets in AMM, and unrealized interest
-* `totalSupply()` is `_internalSupply + s_creditedShares`
+- `assetsPerShare ≈ totalAssets() / totalSupply()`
+- `totalAssets()` includes tracked pool assets, assets in AMM, and unrealized interest
+- `totalSupply()` is `_internalSupply + s_creditedShares`
 
 Any event that burns shares but does **not** remove assets causes:
 
-* `totalSupply()` ↓ (burn)
-* `totalAssets()` ≈ constant
-* `assetsPerShare` ↑ instantly
+- `totalSupply()` ↓ (burn)
+- `totalAssets()` ≈ constant
+- `assetsPerShare` ↑ instantly
 
-That instant uplift is captured pro-rata by *whoever is a shareholder at that exact moment*.
+That instant uplift is captured pro-rata by _whoever is a shareholder at that exact moment_.
 
 **Why `builderCode == 0` is not “rare misconfiguration”**:
 
@@ -1713,13 +1726,13 @@ if (riskParameters.feeRecipient() == 0) {
 
 Critically, `feeRecipient == 0` is produced by the DEFAULT builder flow:
 
-* `RiskEngine.getRiskParameters()` computes `feeRecipient` from `builderCode`
-* `_computeBuilderWallet(builderCode)` returns `address(0)` if `builderCode == 0`
+- `RiskEngine.getRiskParameters()` computes `feeRecipient` from `builderCode`
+- `_computeBuilderWallet(builderCode)` returns `address(0)` if `builderCode == 0`
 
 **More importantly, several critical protocol maintenance paths HARDCODE `getRiskParameters(0)`:**
 
-* `_burnAllOptionsFrom(...)` (used by liquidations): `(RiskParameters riskParameters, ) = getRiskParameters(0);` (Line 839)
-* `_forceExercise(...)`: `(RiskParameters riskParameters, ) = getRiskParameters(0);` (Line 1634)
+- `_burnAllOptionsFrom(...)` (used by liquidations): `(RiskParameters riskParameters, ) = getRiskParameters(0);` (Line 839)
+- `_forceExercise(...)`: `(RiskParameters riskParameters, ) = getRiskParameters(0);` (Line 1634)
 
 This means an attacker can **actively trigger** commission-burn distributions by initiating liquidation/forced-exercise flows when a target account is eligible, rather than passively waiting to sandwich a victim’s optional `builderCode==0` transaction.
 
@@ -1742,8 +1755,8 @@ This means an attacker can **actively trigger** commission-burn distributions by
 
 **How the attacker finds margin-called accounts (practically):**
 
-* Off-chain: call `PanopticPool.getAccumulatedFeesAndPositionsData(...)` + `RiskEngine.isAccountSolvent(...)` / `RiskEngine.getMargin(...)` to evaluate solvency at relevant ticks.
-* On-chain: simply attempt `dispatchFrom(...)` for a candidate account; the call reverts unless the account is fully margin-called, so failed attempts are self-pruning.
+- Off-chain: call `PanopticPool.getAccumulatedFeesAndPositionsData(...)` + `RiskEngine.isAccountSolvent(...)` / `RiskEngine.getMargin(...)` to evaluate solvency at relevant ticks.
+- On-chain: simply attempt `dispatchFrom(...)` for a candidate account; the call reverts unless the account is fully margin-called, so failed attempts are self-pruning.
 
 The attacker’s captured value is approximately:
 
@@ -1771,20 +1784,20 @@ Examples: `p=90%` → `A≈9×T`; `p=99%` → `A≈99×T`. The PoC uses large de
 
 **Flash loan severity multiplier:**
 
-Flash loans are **not** a universal multiplier for a passive mempool sandwich (the attacker must hold shares across a *separate* victim transaction). However, when the attacker can **actively trigger** the commission-burn event (e.g., via liquidation / force exercise paths that hardcode `getRiskParameters(0)`), they can wrap “enter → trigger burn → exit” in a single transaction, making **flash-loan-funded entry feasible**.
+Flash loans are **not** a universal multiplier for a passive mempool sandwich (the attacker must hold shares across a _separate_ victim transaction). However, when the attacker can **actively trigger** the commission-burn event (e.g., via liquidation / force exercise paths that hardcode `getRiskParameters(0)`), they can wrap “enter → trigger burn → exit” in a single transaction, making **flash-loan-funded entry feasible**.
 
 **Practical constraints:**
 
-* Realized, in-tx profit is bounded by withdrawable liquidity: `maxWithdraw/maxRedeem` are capped by `s_depositedAssets` (not `totalAssets()`, which includes `s_assetsInAMM` and unrealized interest), and withdrawals are blocked when `numberOfLegs(owner) != 0`.
-* In liquidation / force-exercise flows, the protocol delegates virtual shares to the distressed account; any “burn” that only consumes phantom shares is compensated on `revoke()` (i.e., it does not persist as a net `totalSupply()` decrease). The extractable “donation size” depends on how many *real* shares are actually burned.
+- Realized, in-tx profit is bounded by withdrawable liquidity: `maxWithdraw/maxRedeem` are capped by `s_depositedAssets` (not `totalAssets()`, which includes `s_assetsInAMM` and unrealized interest), and withdrawals are blocked when `numberOfLegs(owner) != 0`.
+- In liquidation / force-exercise flows, the protocol delegates virtual shares to the distressed account; any “burn” that only consumes phantom shares is compensated on `revoke()` (i.e., it does not persist as a net `totalSupply()` decrease). The extractable “donation size” depends on how many _real_ shares are actually burned.
 
 ### Impact
 
-* **Systematic MEV capture of commission distributions:** value intended for longer-term LPs can be captured by JIT entrants.
-* **Fee self-rebating / fee bypass:** large or flash-funded actors can materially reduce effective commission paid, undermining the fee model.
-* **LP incentive degradation:** Passive LP returns become MEV-farmable, reducing the attractiveness of providing liquidity.
-* **MEV arms race:** Sophisticated searchers can bundle entry/exit around high-value option interactions.
-* **MEV around risk events:** forced-exercise/liquidation flows can become predictable “donation” farming opportunities when they route through `getRiskParameters(0)`.
+- **Systematic MEV capture of commission distributions:** value intended for longer-term LPs can be captured by JIT entrants.
+- **Fee self-rebating / fee bypass:** large or flash-funded actors can materially reduce effective commission paid, undermining the fee model.
+- **LP incentive degradation:** Passive LP returns become MEV-farmable, reducing the attractiveness of providing liquidity.
+- **MEV arms race:** Sophisticated searchers can bundle entry/exit around high-value option interactions.
+- **MEV around risk events:** forced-exercise/liquidation flows can become predictable “donation” farming opportunities when they route through `getRiskParameters(0)`.
 
 ### Recommended Mitigation Steps
 
@@ -1792,16 +1805,18 @@ There is no free lunch here: “burn-based instant distribution to current share
 
 1. **Disallow burn-based distribution for commissions (Strongest, Simplest):**
 
-   * Treat `builderCode == 0` as “protocol receives fees” rather than “burn to LPs”.
-   * Enforce `feeRecipient != 0` for all dispatch paths, or route `builderCode == 0` to a non-zero treasury recipient, then distribute via a separate time-weighted mechanism.
+   - Treat `builderCode == 0` as “protocol receives fees” rather than “burn to LPs”.
+   - Enforce `feeRecipient != 0` for all dispatch paths, or route `builderCode == 0` to a non-zero treasury recipient, then distribute via a separate time-weighted mechanism.
+
 2. **Stream/Vest distributions instead of instantaneous uplift:**
 
-   * Accumulate commissions in a buffer and drip them into `totalAssets()` over a window (e.g., X blocks).
-   * This makes same-block JIT capture unprofitable because the “uplift” is smeared over time.
+   - Accumulate commissions in a buffer and drip them into `totalAssets()` over a window (e.g., X blocks).
+   - This makes same-block JIT capture unprofitable because the “uplift” is smeared over time.
+
 3. **Cooldown / Time-weighting (Partial mitigation):**
 
-   * A 1-block withdrawal cooldown reduces risk-free atomic sandwiches but does not remove the economic issue (attackers can hold across blocks).
-   * If implemented, it must also cover transfers (otherwise deposit→transfer→withdraw bypass exists).
+   - A 1-block withdrawal cooldown reduces risk-free atomic sandwiches but does not remove the economic issue (attackers can hold across blocks).
+   - If implemented, it must also cover transfers (otherwise deposit→transfer→withdraw bypass exists).
 
 ### Proof of Concept
 
@@ -1811,7 +1826,7 @@ There is no free lunch here: “burn-based instant distribution to current share
 2. Apply the diff below (or copy the full file content)
 3. Run the tests via `forge test --match-path test/foundry/poc/CollateralTrackerCommissionBurnJITPoC.t.sol -vvv`
 
-> *Note:* This PoC uses a minimal mock `PanopticPool` solely to satisfy `onlyPanopticPool` and to simulate the liquidation-style `delegate()` → `settleBurn()` → `revoke()` sequence that the real `PanopticPool` uses during `dispatchFrom` liquidations/forced exercises. A full `dispatchFrom` end-to-end liquidation PoC would require spinning up real option positions + solvency/oracle plumbing (typically via a forked environment) and is orthogonal to demonstrating the JIT-capturable share-burn mechanism inside `CollateralTracker`.
+> _Note:_ This PoC uses a minimal mock `PanopticPool` solely to satisfy `onlyPanopticPool` and to simulate the liquidation-style `delegate()` → `settleBurn()` → `revoke()` sequence that the real `PanopticPool` uses during `dispatchFrom` liquidations/forced exercises. A full `dispatchFrom` end-to-end liquidation PoC would require spinning up real option positions + solvency/oracle plumbing (typically via a forked environment) and is orthogonal to demonstrating the JIT-capturable share-burn mechanism inside `CollateralTracker`.
 
 **PoC diff:**
 
@@ -1838,7 +1853,7 @@ All 10 tests pass, demonstrating:
 
 ## [[M-16] Force exercise lacks caller-side bounds for exercise fee](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-389)
 
-*Submitted by [Nyx](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1239)*
+_Submitted by [Nyx](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1239)_
 
 `PanopticPool.sol` [L1598-L1664](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/PanopticPool.sol#L1598-L1664)
 
@@ -1852,29 +1867,24 @@ The force exercise mechanism computes a fee (`exerciseFees`) that the force exer
 
 ```solidity
 function _forceExercise(
-    address account,
-    TokenId tokenId,
-    int24 twapTick,
-    int24 currentTick
+  address account,
+  TokenId tokenId,
+  int24 twapTick,
+  int24 currentTick
 ) internal {
-    // ...
-    exerciseFees = riskEngine().exerciseCost(
-        currentTick,
-        twapTick,
-        tokenId,
-        positionBalance
-    );
-    // ...
-    LeftRightSigned refundAmounts = riskEngine().getRefundAmounts(
-        account,
-        exerciseFees,
-        twapTick,
-        ct0,
-        ct1
-    );
-    ct0.refund(account, msg.sender, refundAmounts.rightSlot());
-    ct1.refund(account, msg.sender, refundAmounts.leftSlot());
-    // ...
+  // ...
+  exerciseFees = riskEngine().exerciseCost(currentTick, twapTick, tokenId, positionBalance);
+  // ...
+  LeftRightSigned refundAmounts = riskEngine().getRefundAmounts(
+    account,
+    exerciseFees,
+    twapTick,
+    ct0,
+    ct1
+  );
+  ct0.refund(account, msg.sender, refundAmounts.rightSlot());
+  ct1.refund(account, msg.sender, refundAmounts.leftSlot());
+  // ...
 }
 ```
 
@@ -1904,7 +1914,7 @@ In `PanopticPool.t.sol`, import a `PositionBalanceLibrary`:
 
 ## [[M-17] High divergence check in `isSafeMode` is unreachable dead code providing false sense of security](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-397)
 
-*Submitted by [anchabadze](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-920)*
+_Submitted by [anchabadze](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-920)_
 
 `RiskEngine.sol` [L929](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/RiskEngine.sol#L929)
 
@@ -1956,7 +1966,7 @@ Recalculate the threshold based on actual achievable divergence. A threshold of 
 
 ## [[M-18] Solvency tick divergence blind spot in `RiskEngine.getSolvencyTicks`](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-429)
 
-*Submitted by [qed](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1197)*
+_Submitted by [qed](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1197)_
 
 `RiskEngine.sol` [L962-L967](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/RiskEngine.sol#L962-L967)
 
@@ -1969,30 +1979,30 @@ The `getSolvencyTicks()` function uses a 3D squared-Euclidean-norm gate centered
 ```solidity
 // contracts/RiskEngine.sol:962-978
 function getSolvencyTicks(
-    int24 currentTick,
-    OraclePack _oraclePack
+  int24 currentTick,
+  OraclePack _oraclePack
 ) external view returns (int24[] memory, OraclePack) {
-    (int24 spotTick, int24 medianTick, int24 latestTick, OraclePack oraclePack) = _oraclePack
-        .getOracleTicks(currentTick, EMA_PERIODS, MAX_CLAMP_DELTA);
+  (int24 spotTick, int24 medianTick, int24 latestTick, OraclePack oraclePack) = _oraclePack
+    .getOracleTicks(currentTick, EMA_PERIODS, MAX_CLAMP_DELTA);
 
-    int24[] memory atTicks;
+  int24[] memory atTicks;
 
-    // Gate uses sum of squared distances from median
-    if (
-        int256(spotTick - medianTick) ** 2 +
-            int256(latestTick - medianTick) ** 2 +
-            int256(currentTick - medianTick) ** 2 >
-        MAX_TICKS_DELTA ** 2
-    ) {
-        // Multi-tick check (4 ticks)
-        atTicks = new int24[](4);
-        // ...
-    } else {
-        // Single tick check (only spotTick)
-        atTicks = new int24[](1);
-        atTicks[0] = spotTick;
-    }
+  // Gate uses sum of squared distances from median
+  if (
+    int256(spotTick - medianTick) ** 2 +
+      int256(latestTick - medianTick) ** 2 +
+      int256(currentTick - medianTick) ** 2 >
+    MAX_TICKS_DELTA ** 2
+  ) {
+    // Multi-tick check (4 ticks)
+    atTicks = new int24[](4);
     // ...
+  } else {
+    // Single tick check (only spotTick)
+    atTicks = new int24[](1);
+    atTicks[0] = spotTick;
+  }
+  // ...
 }
 ```
 
@@ -2000,8 +2010,8 @@ function getSolvencyTicks(
 
 If `medianTick = M`, `latestTick = M`, and:
 
-* `spotTick = M + 0.70 * MAX_TICKS_DELTA`
-* `currentTick = M - 0.70 * MAX_TICKS_DELTA`
+- `spotTick = M + 0.70 * MAX_TICKS_DELTA`
+- `currentTick = M - 0.70 * MAX_TICKS_DELTA`
 
 Then the squared norm calculation:
 
@@ -2028,10 +2038,10 @@ But `getSolvencyTicks()` does not use this same check. This creates an inconsist
 
 **Step 1:** Market conditions create a symmetric tick divergence around the median:
 
-* `medianTick = 0` (from TWAP)
-* `latestTick = 0` (same as median)
-* `spotTick = +667` (0.7 \* 953)
-* `currentTick = -667`
+- `medianTick = 0` (from TWAP)
+- `latestTick = 0` (same as median)
+- `spotTick = +667` (0.7 \* 953)
+- `currentTick = -667`
 
 **Step 2:** The squared norm calculation:
 
@@ -2043,8 +2053,8 @@ The gate doesn’t trigger - only `spotTick` (667) is returned for solvency chec
 
 **Step 3:** A position that is:
 
-* Solvent at `spotTick = 667`
-* Insolvent at `currentTick = -667`
+- Solvent at `spotTick = 667`
+- Insolvent at `currentTick = -667`
 
 …passes the solvency check because only `spotTick` is evaluated.
 
@@ -2062,31 +2072,30 @@ Add an explicit pairwise check for spot-current divergence to align with `isSafe
 
 ```solidity
 function getSolvencyTicks(
-    int24 currentTick,
-    OraclePack _oraclePack
+  int24 currentTick,
+  OraclePack _oraclePack
 ) external view returns (int24[] memory, OraclePack) {
-    (int24 spotTick, int24 medianTick, int24 latestTick, OraclePack oraclePack) = _oraclePack
-        .getOracleTicks(currentTick, EMA_PERIODS, MAX_CLAMP_DELTA);
+  (int24 spotTick, int24 medianTick, int24 latestTick, OraclePack oraclePack) = _oraclePack
+    .getOracleTicks(currentTick, EMA_PERIODS, MAX_CLAMP_DELTA);
 
-    int24[] memory atTicks;
+  int24[] memory atTicks;
 
-    int256 d1 = int256(spotTick - medianTick);
-    int256 d2 = int256(latestTick - medianTick);
-    int256 d3 = int256(currentTick - medianTick);
-    int256 d4 = int256(currentTick - spotTick);  // Pairwise check
+  int256 d1 = int256(spotTick - medianTick);
+  int256 d2 = int256(latestTick - medianTick);
+  int256 d3 = int256(currentTick - medianTick);
+  int256 d4 = int256(currentTick - spotTick); // Pairwise check
 
-    if (
-        d1 ** 2 + d2 ** 2 + d3 ** 2 > MAX_TICKS_DELTA ** 2 ||
-        Math.abs(d4) > MAX_TICKS_DELTA  // Align with isSafeMode logic
-    ) {
-        // Multi-tick check
-        atTicks = new int24[](4);
-        // ...
-    } else {
-        atTicks = new int24[](1);
-        atTicks[0] = spotTick;
-    }
+  if (
+    d1 ** 2 + d2 ** 2 + d3 ** 2 > MAX_TICKS_DELTA ** 2 || Math.abs(d4) > MAX_TICKS_DELTA // Align with isSafeMode logic
+  ) {
+    // Multi-tick check
+    atTicks = new int24[](4);
     // ...
+  } else {
+    atTicks = new int24[](1);
+    atTicks[0] = spotTick;
+  }
+  // ...
 }
 ```
 
@@ -2114,7 +2123,7 @@ Run with: `forge test --match-test test_poc_solvencyBlindSpot -vvv`
 
 ## [[M-19] Withdrawing just before a bad debt event can increase losses for remaining liquidity providers](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/F-529)
 
-*Submitted by [Valves](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-849)*
+_Submitted by [Valves](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-849)_
 
 `CollateralTracker.sol` [L1262](https://github.com/code-423n4/2025-12-panoptic/blob/fe557748210a529ae414d7c487b6514be0d9e220/contracts/CollateralTracker.sol#L1262)
 
@@ -2165,7 +2174,7 @@ The withdrawal amount available to Charlie immediately before liquidation is gre
 
 For this audit, 108 QA reports were submitted by wardens compiling low risk and informational issues. The [QA report highlighted below](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1263) by **jerry0422** received the top score from the judge. 41 Low-severity findings were also submitted individually, and can be viewed [here](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions?groupByPrimary=true&severity=low&filter=valid-findings).
 
-*The following wardens also submitted QA reports: [0x0burn](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-597), [0xanony](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-753), [0xcode](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1357), [0xFBI](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-106), [0xhp9](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1265), [0xki](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-711), [0xnija](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1313), [0xvictorsr](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-943), [adeolu](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1321), [adexgee](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-271), [Afriauditor](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1412), [AgengDev](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-188), [Agontuk](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-787), [Agrawain](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-483), [Ahmerdrarerh](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-281), [aliabouzeid](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1063), [allan31](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1091), [anon1one](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1014), [AriF9212](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-86), [Arrow](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-280), [aster](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1038), [Auttrs](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-603), [blackgrease](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1054), [Brainiac001](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1351), [Budaishere](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-504), [BugNet](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1414), [caesar49](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1327), [Charming](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1119), [chuvak](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-828), [cosin3](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1270), [cybertechajju](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-437), [DevBear0411](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1163), [Diavolo](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-262), [Dps4356](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-844), [edoscoba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1022), [eightzerofour](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-492), [Engama](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-249), [erpal](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-423), [EVDoc](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1152), [Fatma](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1023), [felconsec](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1044), [francoHacker](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1293), [freebird0323](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-291), [golu25012000](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-410), [Henri](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1338), [hiram](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-830), [hirusha](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-229), [home1344](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1086), [I1iveF0rTh1Sh1t](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-367), [johnyfwesh](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-653), [justingoro](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1007), [K42](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-191), [KineticsOfWeb3](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-537), [kishorsinghpatel](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-206), [kl4r10n](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-396), [legat](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1411), [Maheskarre](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-595), [MakeIChop](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-282), [mayursinh](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-103), [mccarthyquilox](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-964), [mddragon18](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-218), [Meks079](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-438), [merlin\_san](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-228), [mijaluz](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-344), [MinionTechs](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1161), [Mnemor](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1138), [MrFlickery](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-642), [Nepker](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-181), [NI97](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-661), [niffylord](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-555), [Nkolv](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-789), [Oxseenerh](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-804), [padma](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-230), [PillarsOfLight](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-977), [prk0](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-884), [ProngsDev](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1103), [qed](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1198), [Race](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1181), [raz-uh](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-777), [ret2basic](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1301), [reverb006](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-223), [Rifter](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-333), [SAGEisbuilding](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-878), [sam](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1060), [saneryee](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-886), [SarveshLimaye](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1253), [sexretxt](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-524), [shanemi](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1350), [slvDev](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1029), [SnowX](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-345), [spectator](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-301), [Specter07](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-585), [spikeDu](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-313), [TOSHI](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1082), [Trynax](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-827), [udaykiranpedda](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-667), [UnvirsalX](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1271), [v12](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-156), [valarislife](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-328), [Vemus](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1319), [Venkat5599](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-729), [Vinay](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-926), [WinningTeam](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1416), [Wizax](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1004), [xmaryo](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-724), [Yu4n](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-900), and [Zhenyazhd](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1262).*
+_The following wardens also submitted QA reports: [0x0burn](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-597), [0xanony](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-753), [0xcode](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1357), [0xFBI](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-106), [0xhp9](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1265), [0xki](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-711), [0xnija](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1313), [0xvictorsr](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-943), [adeolu](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1321), [adexgee](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-271), [Afriauditor](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1412), [AgengDev](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-188), [Agontuk](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-787), [Agrawain](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-483), [Ahmerdrarerh](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-281), [aliabouzeid](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1063), [allan31](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1091), [anon1one](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1014), [AriF9212](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-86), [Arrow](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-280), [aster](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1038), [Auttrs](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-603), [blackgrease](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1054), [Brainiac001](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1351), [Budaishere](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-504), [BugNet](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1414), [caesar49](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1327), [Charming](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1119), [chuvak](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-828), [cosin3](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1270), [cybertechajju](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-437), [DevBear0411](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1163), [Diavolo](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-262), [Dps4356](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-844), [edoscoba](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1022), [eightzerofour](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-492), [Engama](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-249), [erpal](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-423), [EVDoc](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1152), [Fatma](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1023), [felconsec](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1044), [francoHacker](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1293), [freebird0323](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-291), [golu25012000](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-410), [Henri](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1338), [hiram](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-830), [hirusha](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-229), [home1344](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1086), [I1iveF0rTh1Sh1t](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-367), [johnyfwesh](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-653), [justingoro](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1007), [K42](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-191), [KineticsOfWeb3](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-537), [kishorsinghpatel](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-206), [kl4r10n](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-396), [legat](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1411), [Maheskarre](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-595), [MakeIChop](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-282), [mayursinh](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-103), [mccarthyquilox](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-964), [mddragon18](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-218), [Meks079](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-438), [merlin_san](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-228), [mijaluz](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-344), [MinionTechs](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1161), [Mnemor](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1138), [MrFlickery](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-642), [Nepker](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-181), [NI97](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-661), [niffylord](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-555), [Nkolv](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-789), [Oxseenerh](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-804), [padma](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-230), [PillarsOfLight](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-977), [prk0](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-884), [ProngsDev](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1103), [qed](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1198), [Race](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1181), [raz-uh](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-777), [ret2basic](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1301), [reverb006](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-223), [Rifter](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-333), [SAGEisbuilding](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-878), [sam](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1060), [saneryee](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-886), [SarveshLimaye](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1253), [sexretxt](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-524), [shanemi](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1350), [slvDev](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1029), [SnowX](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-345), [spectator](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-301), [Specter07](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-585), [spikeDu](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-313), [TOSHI](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1082), [Trynax](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-827), [udaykiranpedda](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-667), [UnvirsalX](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1271), [v12](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-156), [valarislife](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-328), [Vemus](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1319), [Venkat5599](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-729), [Vinay](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-926), [WinningTeam](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1416), [Wizax](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1004), [xmaryo](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-724), [Yu4n](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-900), and [Zhenyazhd](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1262)._
 
 ## [01] `validateCollateralWithdrawable()` hardcodes `safeMode=0`, bypassing stricter collateral requirements during volatile conditions
 
@@ -2177,18 +2186,18 @@ The `validateCollateralWithdrawable()` function hardcodes `safeMode = 0` when ca
 
 ```solidity
 function validateCollateralWithdrawable(
-    address user,
-    TokenId[] calldata positionIdList,
-    bool usePremiaAsCollateral
+  address user,
+  TokenId[] calldata positionIdList,
+  bool usePremiaAsCollateral
 ) external view {
-    (RiskParameters riskParameters, ) = getRiskParameters(0);
-    _validateSolvency(
-        user,
-        positionIdList,
-        riskParameters.bpDecreaseBuffer(),
-        usePremiaAsCollateral,
-        0  // @audit safeMode hardcoded to 0
-    );
+  (RiskParameters riskParameters, ) = getRiskParameters(0);
+  _validateSolvency(
+    user,
+    positionIdList,
+    riskParameters.bpDecreaseBuffer(),
+    usePremiaAsCollateral,
+    0 // @audit safeMode hardcoded to 0
+  );
 }
 ```
 
@@ -2227,19 +2236,18 @@ Pass the actual `safeMode` value from `riskParameters` instead of hardcoding 0:
 
 ```solidity
 function validateCollateralWithdrawable(
-    address user,
-    TokenId[] calldata positionIdList,
-    bool usePremiaAsCollateral
+  address user,
+  TokenId[] calldata positionIdList,
+  bool usePremiaAsCollateral
 ) external view {
-    (RiskParameters riskParameters, ) = getRiskParameters(0);
-    _validateSolvency(
-        user,
-        positionIdList,
-        riskParameters.bpDecreaseBuffer(),
-        usePremiaAsCollateral,
--       0
-+       riskParameters.safeMode()
-    );
+  (RiskParameters riskParameters, ) = getRiskParameters(0);
+  _validateSolvency(
+    user,
+    positionIdList,
+    riskParameters.bpDecreaseBuffer(),
+    usePremiaAsCollateral,
+    -0 + riskParameters.safeMode()
+  );
 }
 ```
 
@@ -2253,17 +2261,17 @@ The `deposit()` function in `CollateralTracker.sol` validates that assets `!= 0`
 
 ```solidity
 function deposit(uint256 assets, address receiver) external payable returns (uint256 shares) {
-    _accrueInterest(msg.sender, IS_DEPOSIT);
-    if (assets > type(uint104).max) revert Errors.DepositTooLarge();
-    if (assets == 0) revert Errors.BelowMinimumRedemption();
+  _accrueInterest(msg.sender, IS_DEPOSIT);
+  if (assets > type(uint104).max) revert Errors.DepositTooLarge();
+  if (assets == 0) revert Errors.BelowMinimumRedemption();
 
-    shares = previewDeposit(assets);  // @audit can return 0
+  shares = previewDeposit(assets); // @audit can return 0
 
-    // ... assets transferred ...
-    
-    _mint(receiver, shares);  // @audit mints 0 shares
-    s_depositedAssets += uint128(assets);
-    // ...
+  // ... assets transferred ...
+
+  _mint(receiver, shares); // @audit mints 0 shares
+  s_depositedAssets += uint128(assets);
+  // ...
 }
 ```
 
@@ -2271,14 +2279,14 @@ The `previewDeposit()` function uses `Math.mulDiv` which rounds down:
 
 ```solidity
 function previewDeposit(uint256 assets) public view returns (uint256 shares) {
-    shares = Math.mulDiv(assets, totalSupply(), totalAssets());
+  shares = Math.mulDiv(assets, totalSupply(), totalAssets());
 }
 ```
 
 When `assets * totalSupply() < totalAssets()`, the result rounds down to zero. This can occur when:
 
-* The share price has appreciated significantly (e.g., through interest accrual or donations)
-* A user deposits a relatively small amount of assets
+- The share price has appreciated significantly (e.g., through interest accrual or donations)
+- A user deposits a relatively small amount of assets
 
 In this scenario, the user’s assets are transferred to the pool and `s_depositedAssets` is incremented, but the user receives zero shares in return, resulting in complete loss of the deposited funds. While the protocol initializes with virtual shares (`10^6`) and virtual assets (1) to mitigate inflation attacks, over time as `totalAssets` grows through interest accrual (`unrealizedInterest`) or donations, small deposits can still round to zero shares.
 
@@ -2292,21 +2300,21 @@ Add a check to revert when zero shares would be minted:
 
 ```solidity
 function deposit(uint256 assets, address receiver) external payable returns (uint256 shares) {
-    _accrueInterest(msg.sender, IS_DEPOSIT);
-    if (assets > type(uint104).max) revert Errors.DepositTooLarge();
-    if (assets == 0) revert Errors.BelowMinimumRedemption();
+  _accrueInterest(msg.sender, IS_DEPOSIT);
+  if (assets > type(uint104).max) revert Errors.DepositTooLarge();
+  if (assets == 0) revert Errors.BelowMinimumRedemption();
 
-    shares = previewDeposit(assets);
-    if (shares == 0) revert Errors.BelowMinimumRedemption();  // @audit add this check
+  shares = previewDeposit(assets);
+  if (shares == 0) revert Errors.BelowMinimumRedemption(); // @audit add this check
 
-    // ... rest of function
+  // ... rest of function
 }
 ```
 
 ## [03] `CommissionPaid` event emits `protocolSplit` instead of `builderSplit` for `commissionPaidBuilder` parameter
 
-* `CollateralTracker.sol` [L1577](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/CollateralTracker.sol#L1577)
-* `CollateralTracker.sol` [L1656](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/CollateralTracker.sol#L1656)
+- `CollateralTracker.sol` [L1577](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/CollateralTracker.sol#L1577)
+- `CollateralTracker.sol` [L1656](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/CollateralTracker.sol#L1656)
 
 ### Finding description and impact
 
@@ -2316,10 +2324,10 @@ The `CommissionPaid` event is defined with four parameters, where `commissionPai
 /// @param commissionPaidProtocol The amount of assets paid that goes to the PLPs (if builder == address(0)) or to the protocol
 /// @param commissionPaidBuilder The amount of assets paid that goes to the builder
 event CommissionPaid(
-    address indexed owner,
-    address indexed builder,
-    uint128 commissionPaidProtocol,
-    uint128 commissionPaidBuilder
+  address indexed owner,
+  address indexed builder,
+  uint128 commissionPaidProtocol,
+  uint128 commissionPaidBuilder
 );
 ```
 
@@ -2369,20 +2377,20 @@ However, `unlockPool()` emits true instead of false:
 
 ```solidity
 function lockPool(PanopticPool pool) external onlyGuardian {
-    emit GuardianSafeModeUpdated(true);  // Correct: locking emits true
-    pool.lockSafeMode();
+  emit GuardianSafeModeUpdated(true); // Correct: locking emits true
+  pool.lockSafeMode();
 }
 
 function unlockPool(PanopticPool pool) external onlyGuardian {
-    emit GuardianSafeModeUpdated(true);  // Incorrect: unlocking should emit false
-    pool.unlockSafeMode();
+  emit GuardianSafeModeUpdated(true); // Incorrect: unlocking should emit false
+  pool.unlockSafeMode();
 }
 ```
 
 Per the event’s NatSpec documentation:
 
-* true = “safe mode is forcibly locked”
-* false = “lock is lifted”
+- true = “safe mode is forcibly locked”
+- false = “lock is lifted”
 
 Since `unlockPool()` lifts the lock, it should emit false, not true. This appears to be a copy-paste error from `lockPool()`. Off-chain systems, monitoring tools, and front-ends relying on this event to track the safe mode state of pools will receive incorrect information, showing pools as locked when they have actually been unlocked.
 
@@ -2462,13 +2470,13 @@ The `onERC1155Received` function in `PanopticPool.sol` unconditionally returns t
 
 ```solidity
 function onERC1155Received(
-    address,
-    address,
-    uint256,
-    uint256,
-    bytes memory
+  address,
+  address,
+  uint256,
+  uint256,
+  bytes memory
 ) external pure returns (bytes4) {
-    return this.onERC1155Received.selector;
+  return this.onERC1155Received.selector;
 }
 ```
 
@@ -2484,22 +2492,22 @@ Add sender validation to ensure only the SFPM can trigger successful token recei
 
 ```solidity
 function onERC1155Received(
-    address,
-    address,
-    uint256,
-    uint256,
-    bytes memory
+  address,
+  address,
+  uint256,
+  uint256,
+  bytes memory
 ) external view returns (bytes4) {
-    if (msg.sender != address(SFPM)) revert Errors.NotAuthorized();
-    return this.onERC1155Received.selector;
+  if (msg.sender != address(SFPM)) revert Errors.NotAuthorized();
+  return this.onERC1155Received.selector;
 }
 ```
 
 ## [07] `deposit()` and `mint()` are payable but do not refund ETH for ERC20 collateral, causing user funds to be trapped
 
-* `CollateralTracker.sol` [L557](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/CollateralTracker.sol#L557)
-* `CollateralTracker.sol` [L611](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/CollateralTracker.sol#L611)
-* `CollateralTracker.sol` [L465-L474](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/CollateralTracker.sol#L465-L474)
+- `CollateralTracker.sol` [L557](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/CollateralTracker.sol#L557)
+- `CollateralTracker.sol` [L611](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/CollateralTracker.sol#L611)
+- `CollateralTracker.sol` [L465-L474](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/CollateralTracker.sol#L465-L474)
 
 ### Finding description
 
@@ -2530,10 +2538,10 @@ Add validation at the start of `deposit()` and `mint()` to reject ETH when the c
 
 ```solidity
 function deposit(uint256 assets, address receiver) external payable returns (uint256 shares) {
-    if (msg.value > 0 && !Currency.wrap(underlyingToken()).isAddressZero()) {
-        revert Errors.UnexpectedETH();
-    }
-    // ... rest of function
+  if (msg.value > 0 && !Currency.wrap(underlyingToken()).isAddressZero()) {
+    revert Errors.UnexpectedETH();
+  }
+  // ... rest of function
 }
 ```
 
@@ -2544,7 +2552,7 @@ Alternatively, refund any `msg.value` in the ERC20 branch of `unlockCallback()`:
     poolManager().sync(Currency.wrap(underlyingAsset));
     SafeTransferLib.safeTransferFrom(underlyingAsset, account, address(poolManager()), uint256(delta));
     poolManager().settle();
-    
+
     // Refund any accidentally sent ETH
     if (valueOrigin > 0) SafeTransferLib.safeTransferETH(account, valueOrigin);
 }
@@ -2560,26 +2568,26 @@ In `OraclePack.sol`, the `getMedianTick` function calculates the median of 8 pri
 
 ```solidity
 function getMedianTick(OraclePack oraclePack) internal pure returns (int24) {
-    unchecked {
-        int24 rank3 = oraclePack.residualTickOrdered(3);
-        int24 rank4 = oraclePack.residualTickOrdered(4);
+  unchecked {
+    int24 rank3 = oraclePack.residualTickOrdered(3);
+    int24 rank4 = oraclePack.residualTickOrdered(4);
 
-        int24 _referenceTick = oraclePack.referenceTick();
+    int24 _referenceTick = oraclePack.referenceTick();
 
-        return _referenceTick + ((rank3) + (rank4)) / 2;
-    }
+    return _referenceTick + ((rank3) + (rank4)) / 2;
+  }
 }
 ```
 
 Solidity’s signed integer division rounds toward zero rather than flooring. This creates an asymmetric rounding behavior:
 
-* Positive odd sums round down: `3 / 2 = 1`
-* Negative odd sums round up: `-3 / 2 = -1` (floor would give -2)
+- Positive odd sums round down: `3 / 2 = 1`
+- Negative odd sums round up: `-3 / 2 = -1` (floor would give -2)
 
 For example, when `rank3 = -1` and `rank4 = 0`:
 
-* Current behavior: `(-1 + 0) / 2 = 0`
-* Floor behavior: `(-1 + 0) / 2 = -1`
+- Current behavior: `(-1 + 0) / 2 = 0`
+- Floor behavior: `(-1 + 0) / 2 = -1`
 
 This results in a systematic bias toward zero of up to 1 tick when the sum of the two middle residuals is an odd negative number. While the magnitude is small (`~0.01%` price difference per tick), oracle calculations typically use consistent floor rounding to avoid any directional bias.
 
@@ -2619,9 +2627,9 @@ An inactive leg has all bits set to zero, meaning `riskPartner()` returns 0 for 
 
 For example, with a 2-leg position (legs 0 and 1 active, legs 2 and 3 inactive):
 
-* Leg 0: `riskPartner = 2` (pointing to inactive leg)
-* Leg 2: inactive (all zeros, so `riskPartner = 0`)
-* Mutuality check: `riskPartner(2) != 0 → 0 != 0 → false → no revert`
+- Leg 0: `riskPartner = 2` (pointing to inactive leg)
+- Leg 2: inactive (all zeros, so `riskPartner = 0`)
+- Mutuality check: `riskPartner(2) != 0 → 0 != 0 → false → no revert`
 
 This allows a structurally inconsistent `TokenId` to pass validation where leg 0 believes it has a risk partner relationship with a non-existent leg.
 
@@ -2667,8 +2675,8 @@ The protocol has two independent safety mechanisms that should share a single so
 
 ```solidity
 // isSafeMode() - correctly checks lockMode
-uint8 lockMode = oraclePack.lockMode();  
-safeMode = ... + lockMode;                
+uint8 lockMode = oraclePack.lockMode();
+safeMode = ... + lockMode;
 
 // getSolvencyTicks() - does NOT check lockMode
 if (
@@ -2685,14 +2693,14 @@ if (
 
 When the guardian calls `lockPool()`, the intention is to put the protocol into maximum protection mode. However:
 
-* New mints: Blocked (correct, via `safeMode > 2`)
-* Solvency checks: May still use only 1 tick (incorrect)
+- New mints: Blocked (correct, via `safeMode > 2`)
+- Solvency checks: May still use only 1 tick (incorrect)
 
 This inconsistency means that during an emergency lock—when the guardian has identified a threat requiring intervention—existing positions are still evaluated using potentially weaker solvency criteria. If the guardian locked preemptively before oracle metrics triggered the 3D norm threshold, or locked for reasons unrelated to tick divergence, solvency checks remain in “normal” mode, despite the emergency state. This could allow:
 
-* Positions that should be liquidated to avoid liquidation.
-* Unfair liquidations at manipulated tick values.
-* General inconsistency between the protocol’s stated safety posture and actual enforcement.
+- Positions that should be liquidated to avoid liquidation.
+- Unfair liquidations at manipulated tick values.
+- General inconsistency between the protocol’s stated safety posture and actual enforcement.
 
 ### Recommended mitigation steps
 
@@ -2700,32 +2708,32 @@ Modify `getSolvencyTicks()` to check `lockMode` and force 4-tick solvency checks
 
 ```solidity
 function getSolvencyTicks(
-    int24 currentTick,
-    OraclePack _oraclePack
+  int24 currentTick,
+  OraclePack _oraclePack
 ) external view returns (int24[] memory, OraclePack) {
-    (int24 spotTick, int24 medianTick, int24 latestTick, OraclePack oraclePack) = _oraclePack
-        .getOracleTicks(currentTick, EMA_PERIODS, MAX_CLAMP_DELTA);
+  (int24 spotTick, int24 medianTick, int24 latestTick, OraclePack oraclePack) = _oraclePack
+    .getOracleTicks(currentTick, EMA_PERIODS, MAX_CLAMP_DELTA);
 
-    int24[] memory atTicks;
+  int24[] memory atTicks;
 
-    if (
-        _oraclePack.lockMode() == 3 ||  // @audit: Add lockMode check
-        int256(spotTick - medianTick) ** 2 +
-            int256(latestTick - medianTick) ** 2 +
-            int256(currentTick - medianTick) ** 2 >
-        MAX_TICKS_DELTA ** 2
-    ) {
-        atTicks = new int24[](4);
-        atTicks[0] = spotTick;
-        atTicks[1] = medianTick;
-        atTicks[2] = latestTick;
-        atTicks[3] = currentTick;
-    } else {
-        atTicks = new int24[](1);
-        atTicks[0] = spotTick;
-    }
+  if (
+    _oraclePack.lockMode() == 3 || // @audit: Add lockMode check
+    int256(spotTick - medianTick) ** 2 +
+      int256(latestTick - medianTick) ** 2 +
+      int256(currentTick - medianTick) ** 2 >
+    MAX_TICKS_DELTA ** 2
+  ) {
+    atTicks = new int24[](4);
+    atTicks[0] = spotTick;
+    atTicks[1] = medianTick;
+    atTicks[2] = latestTick;
+    atTicks[3] = currentTick;
+  } else {
+    atTicks = new int24[](1);
+    atTicks[0] = spotTick;
+  }
 
-    return (atTicks, oraclePack);
+  return (atTicks, oraclePack);
 }
 ```
 
@@ -2758,9 +2766,9 @@ int256 public constant TARGET_UTILIZATION = 2 ether / int256(3);
 
 ## [12] NatSpec comments in `Math.sol` incorrectly document boundary conditions for `getAmountsForLiquidity`
 
-* `Math.sol` [L300](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/libraries/Math.sol#L300)
-* `Math.sol` [L322](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/libraries/Math.sol#L322)
-* `Math.sol` [L352](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/libraries/Math.sol#L352)
+- `Math.sol` [L300](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/libraries/Math.sol#L300)
+- `Math.sol` [L322](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/libraries/Math.sol#L322)
+- `Math.sol` [L352](https://github.com/code-423n4/2025-12-panoptic/blob/main/contracts/libraries/Math.sol#L352)
 
 ### Finding description and impact
 
@@ -2801,9 +2809,9 @@ if (currentTick <= liquidityChunk.tickLower()) {
 ```
 
 | Boundary | NatSpec | Implementation |
-| --- | --- | --- |
-| Lower | < | <= |
-| Upper | > | >= |
+| -------- | ------- | -------------- |
+| Lower    | <       | <=             |
+| Upper    | >       | >=             |
 
 The implementation correctly matches Uniswap V3’s `LiquidityAmounts.sol`, but the documentation is misleading.
 
@@ -2831,8 +2839,8 @@ Following the C4 audit, 4 wardens (Team [Valves](https://code4rena.com/@Valves) 
 
 Additional details can be found within the Panoptic: Next Core Mitigation Review repositories:
 
-* [Round 1](https://github.com/code-423n4/2026-02-panoptic-next-core-mitigation)
-* [Round 2](https://github.com/code-423n4/2026-02-panoptic-next-core-mitigation-round2)
+- [Round 1](https://github.com/code-423n4/2026-02-panoptic-next-core-mitigation)
+- [Round 2](https://github.com/code-423n4/2026-02-panoptic-next-core-mitigation-round2)
 
 ## Mitigation Review Scope & Summary
 
@@ -2840,34 +2848,34 @@ During the mitigation review, the wardens confirmed that all in-scope findings w
 
 The table below provides details regarding the status of each in-scope vulnerability from the original audit, followed by full details on the new issues.
 
-| Original Issue | Status | Mitigation URL |
-| --- | --- | --- |
-| [H-01](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-16) | 🟢 Mitigation Confirmed | [Commit `249fb90`](https://github.com/panoptic-labs/panoptic-next-core-private/commit/249fb9051db9beba531866d932c05e12527b258a) |
-| [H-02](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-195) | 🟢 Mitigation Confirmed | [Commit `8d603d3`](https://github.com/panoptic-labs/panoptic-next-core-private/pull/229/changes/8d603d3186d46196d0fbd9819e3e3bf4bf59959f) |
-| [H-03](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-350) | 🟢 Mitigation Confirmed | [Commit `5bff34b`](https://github.com/panoptic-labs/panoptic-next-core-private/commit/5bff34b98471fed7258b14db8459a917284479d2) |
-| [M-01](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-763) | 🟢 Mitigation Confirmed | [Commit `a5cfcd6`](https://github.com/panoptic-labs/panoptic-next-core-private/pull/229/changes/a5cfcd6b92eb947ec05b19ce5aa83a39ff49e3d6) |
-| [M-02](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-675) | 🟢 Mitigation Confirmed | [Commit `4ef0998`](https://github.com/panoptic-labs/panoptic-next-core-private/commit/4ef09984647c60bfdb250d4943ca59e131b6707a) |
-| [M-03](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-61) | 🟢 Mitigation Confirmed | [Commit `bebe915`](https://github.com/panoptic-labs/panoptic-next-core-private/commit/bebe915385d62ff48f0fff6ff2f4cd400a382a36) |
-| [M-04](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-185) | 🟢 Mitigation Confirmed | [Commit `d434388`](https://github.com/panoptic-labs/panoptic-next-core-private/pull/229/changes/d434388bb614bb4ba32c8605e77ce0ec6da4b715) |
-| [M-05](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-382) | 🟢 Mitigation Confirmed | [Commit `6b154d9`](https://github.com/panoptic-labs/panoptic-next-core-private/pull/229/changes/6b154d96ba3a2d676a2a99ac3c06da345f5f9045) |
-| [M-06](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-441) | 🟢 Mitigation Confirmed | [Commit `069c00b`](https://github.com/panoptic-labs/panoptic-next-core-private/pull/229/changes/069c00bd35f395f4b5a31f0e9046cd2d56b32fa7) |
-| [M-07](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-463) | 🟢 Mitigation Confirmed | [Commit `fb73717`](https://github.com/panoptic-labs/panoptic-next-core-private/commit/fb737178a125dd4733d516c41484319e749ce5bd) |
+| Original Issue                                                                     | Status                  | Mitigation URL                                                                                                                            |
+| ---------------------------------------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| [H-01](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-16)   | 🟢 Mitigation Confirmed | [Commit `249fb90`](https://github.com/panoptic-labs/panoptic-next-core-private/commit/249fb9051db9beba531866d932c05e12527b258a)           |
+| [H-02](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-195)  | 🟢 Mitigation Confirmed | [Commit `8d603d3`](https://github.com/panoptic-labs/panoptic-next-core-private/pull/229/changes/8d603d3186d46196d0fbd9819e3e3bf4bf59959f) |
+| [H-03](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-350)  | 🟢 Mitigation Confirmed | [Commit `5bff34b`](https://github.com/panoptic-labs/panoptic-next-core-private/commit/5bff34b98471fed7258b14db8459a917284479d2)           |
+| [M-01](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-763)  | 🟢 Mitigation Confirmed | [Commit `a5cfcd6`](https://github.com/panoptic-labs/panoptic-next-core-private/pull/229/changes/a5cfcd6b92eb947ec05b19ce5aa83a39ff49e3d6) |
+| [M-02](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-675)  | 🟢 Mitigation Confirmed | [Commit `4ef0998`](https://github.com/panoptic-labs/panoptic-next-core-private/commit/4ef09984647c60bfdb250d4943ca59e131b6707a)           |
+| [M-03](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-61)   | 🟢 Mitigation Confirmed | [Commit `bebe915`](https://github.com/panoptic-labs/panoptic-next-core-private/commit/bebe915385d62ff48f0fff6ff2f4cd400a382a36)           |
+| [M-04](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-185)  | 🟢 Mitigation Confirmed | [Commit `d434388`](https://github.com/panoptic-labs/panoptic-next-core-private/pull/229/changes/d434388bb614bb4ba32c8605e77ce0ec6da4b715) |
+| [M-05](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-382)  | 🟢 Mitigation Confirmed | [Commit `6b154d9`](https://github.com/panoptic-labs/panoptic-next-core-private/pull/229/changes/6b154d96ba3a2d676a2a99ac3c06da345f5f9045) |
+| [M-06](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-441)  | 🟢 Mitigation Confirmed | [Commit `069c00b`](https://github.com/panoptic-labs/panoptic-next-core-private/pull/229/changes/069c00bd35f395f4b5a31f0e9046cd2d56b32fa7) |
+| [M-07](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-463)  | 🟢 Mitigation Confirmed | [Commit `fb73717`](https://github.com/panoptic-labs/panoptic-next-core-private/commit/fb737178a125dd4733d516c41484319e749ce5bd)           |
 | [M-09](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1049) | 🟢 Mitigation Confirmed | [Commit `949a3f4`](https://github.com/panoptic-labs/panoptic-next-core-private/pull/229/changes/949a3f47760d18757d93d8d8b0ff6528a41f4050) |
 | [M-10](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1215) | 🟢 Mitigation Confirmed | [Commit `b3b005e`](https://github.com/panoptic-labs/panoptic-next-core-private/pull/229/changes/b3b005ef0fdc4bfd0113e95079565cafdeb6748f) |
-| [M-12](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1224) | 🟢 Mitigation Confirmed | [Commit `8d603d3`](https://github.com/panoptic-labs/panoptic-next-core-private/commit/8d603d3186d46196d0fbd9819e3e3bf4bf59959f) |
+| [M-12](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1224) | 🟢 Mitigation Confirmed | [Commit `8d603d3`](https://github.com/panoptic-labs/panoptic-next-core-private/commit/8d603d3186d46196d0fbd9819e3e3bf4bf59959f)           |
 | [M-13](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1221) | 🟢 Mitigation Confirmed | [Commit `14bb7cc`](https://github.com/panoptic-labs/panoptic-next-core-private/pull/229/changes/14bb7cc7ada9b53b55b19837047c2a3a5a096c43) |
-| [M-18](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1197) | 🟢 Mitigation Confirmed | [Commit `30f90cc`](https://github.com/panoptic-labs/panoptic-next-core-private/commit/30f90cc75b3ea5d346b3222d2c8202241e126079) |
+| [M-18](https://code4rena.com/audits/2025-12-panoptic-next-core/submissions/S-1197) | 🟢 Mitigation Confirmed | [Commit `30f90cc`](https://github.com/panoptic-labs/panoptic-next-core-private/commit/30f90cc75b3ea5d346b3222d2c8202241e126079)           |
 
 ---
 
 ## [Attacker can DoS liquidation by manipulating `currentTick` where the target poistion appears solvent](https://code4rena.com/audits/2026-02-panoptic-next-core-mitigation-review/submissions/S-14)
 
-*Submitted by [Valves](https://code4rena.com/audits/2026-02-panoptic-next-core-mitigation-review/submissions/S-14).*
+_Submitted by [Valves](https://code4rena.com/audits/2026-02-panoptic-next-core-mitigation-review/submissions/S-14)._
 
 **Severity: Low**
 
-* `PanopticPool.sol` [L1526](https://github.com/panoptic-labs/panoptic-next-core-private/blob/7d1733dab3106d9d7aa4effcc0751788ce2f98a3/contracts/PanopticPool.sol#L1526)
-* `PanopticPool.sol` [L1461](https://github.com/panoptic-labs/panoptic-next-core-private/blob/7d1733dab3106d9d7aa4effcc0751788ce2f98a3/contracts/PanopticPool.sol#L1461)
+- `PanopticPool.sol` [L1526](https://github.com/panoptic-labs/panoptic-next-core-private/blob/7d1733dab3106d9d7aa4effcc0751788ce2f98a3/contracts/PanopticPool.sol#L1526)
+- `PanopticPool.sol` [L1461](https://github.com/panoptic-labs/panoptic-next-core-private/blob/7d1733dab3106d9d7aa4effcc0751788ce2f98a3/contracts/PanopticPool.sol#L1461)
 
 ### Finding description
 

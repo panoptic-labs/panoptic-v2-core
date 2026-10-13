@@ -17,8 +17,11 @@ This runbook covers the deterministic contract deployment flow driven by:
 - `build-config-v3.json`
 - `build-config-v4.json`
 - `build-config-RiskEngine.json`
+- `build-config-RiskEngineXStocks.json`
+- `build-config-RiskEngine-upgrade.json`
 - `build_release.py`
 - `gen_safetx.py`
+- `gen_upgrade_safetx.py`
 - `script/select_vanity_addresses.py`
 - `script/optimize_runs.py`
 - `script/verify_deployment.py`
@@ -45,6 +48,7 @@ If you need to mine `builderCode` values whose CREATE2 wallet addresses fit insi
   - `PanopticGuardian`
   - `BuilderFactory`
   - `RiskEngine`
+  - `RiskEngineProxy`
 - Because of that sharing, if both v3 and v4 are deployed from the current configs, the shared contracts must only be deployed once.
 
 ## Required tooling
@@ -78,6 +82,183 @@ Generated outputs:
 - `safe-txns-v3/`
 - `safe-txns-v4/`
 
+## RiskEngine proxy
+
+Every RiskEngine is deployed behind `contracts/RiskEngineProxy.sol`, an OpenZeppelin v5
+`TransparentUpgradeableProxy`. Pools and collateral trackers embed the **proxy** address as an immutable clone
+argument, so the proxy is the long-lived address and the one that gets a vanity slot. The implementation
+(`RiskEngineV2` in `contracts/RiskEngine.sol`) is redeployed on every upgrade and does not need a vanity address.
+
+There is a single engine source. Risk tiers (blue-chip, xStocks) are the same contract deployed
+with different constructor arguments: guardian, builder factory and a `RiskEngineV2.Parameters` struct holding the
+cross buffers and every tier knob. In the build configs the struct is the third constructor arg, typed as a tuple
+whose member order must match the struct declaration; the canonical values live in
+`test/foundry/testUtils/RiskEngineParams.sol` and `build-config-RiskEngineXStocks.json`. Each tier has its own
+proxy and its own implementation, so a logic fix is one source change and one upgrade per tier.
+
+The engine exposes no on-chain getters for the tier parameters (they cost ~50 bytes of bytecode each and nothing
+on-chain reads them). To see what a live proxy is running, read its ERC-1967 implementation slot and decode that
+implementation's verified constructor arguments on Etherscan, or consult the build config it was deployed from.
+`CROSS_BUFFER_0()` / `CROSS_BUFFER_1()` remain because `PanopticQuery` (panoptic-helper) calls them.
+
+Config layout:
+
+- `RiskEngine` is the implementation. Its `deployment` triple only needs to be a valid, unused CREATE3 slot.
+- `RiskEngineProxy` holds the vanity address that pools key on. Its constructor args are `["@RiskEngine", "$RISK_ENGINE_OWNER"]`.
+- `env.RISK_ENGINE_OWNER` is the initial owner of the `ProxyAdmin` the proxy creates in its constructor (the upgrade
+  authority). Set it to the multisig before building. Ownership is later moved with `ProxyAdmin.transferOwnership`
+  to a `TimelockController`, and later again to governance; neither step touches the proxy or the pools.
+
+Proxies (the addresses pools key on):
+
+| Tier                                | Proxy                                        | Config                                             |
+| ----------------------------------- | -------------------------------------------- | -------------------------------------------------- |
+| Blue-chip (90% / 90% cross buffers) | `0x000000000000ffE5eFdB5AE76b9200263C58b4c0` | `build-config-RiskEngine.json` (shared with v3/v4) |
+| xStocks (75% / 75%, symmetric)      | `0x000000000000FfADa7c641E2aD6B13b51b50Cc94` | `build-config-RiskEngineXStocks.json`              |
+| Reserved A (TBD)                    | `0x000000000000ff1F72EB9b4a215DDac4d9dDa3dA` | `build-config-RiskEngine.json`                     |
+| Reserved B (TBD)                    | `0x000000000000Ff944ed41CbFa03edc0b477cBbf4` | `build-config-RiskEngine.json`                     |
+
+The reserved proxies point at `RiskEngineStub`, which reverts on every call, so the factory cannot create a pool
+against them (`riskEngine.vegoid()` fails). Bring one into service with the normal upgrade flow once its
+parameters are decided.
+
+Deploy order inside a batch is implementation first, then proxy, since the proxy constructor reads the
+implementation address.
+
+Upgrading: see [Upgrading a RiskEngine](#upgrading-a-riskengine) below.
+
+Finding the `ProxyAdmin` address: it is stored in the proxy's ERC-1967 admin slot.
+
+```bash
+cast storage <proxy> 0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103
+```
+
+## Deploying the same engines on another chain
+
+The deployment-info files are chain-independent: CREATE3 addresses depend only on the deployer and the salt, and
+the engine constructor args reference the Guardian, BuilderFactory and init code hash. The same files can be
+replayed on any chain where all of the following hold at the **same addresses** as mainnet:
+
+- the CREATE3 deployer `0x000000000000b361194cfe6312EE3210d53C15AA`
+- the deploying Safe `0x82BF455e9ebd6a541EF10b683dE1edCaf05cE7A1` (the mint recipient embedded in every salt)
+- the owner Safe `RISK_ENGINE_OWNER` (otherwise the ProxyAdmins are owned by nobody and can never upgrade)
+- the Guardian and the BuilderFactory, with the factory deriving the same wallet for our init code hash
+  (`predictBuilderWallet(1)` must equal the CREATE2 address computed from `0x6a0d5c65…e7412`)
+- Cancun opcode support (Arbitrum chains: ArbOS 30 or later)
+
+Check all of that in one go by pointing the fork replay at the chain, then regenerate the batches with its id:
+
+```bash
+ETH_RPC_URL=<chain rpc> forge test --match-path test/foundry/core/DeploySimulation.t.sol -vv
+python3 gen_safetx.py deployment-info-RiskEngine.json safe-txns-RiskEngine-<chain> --chain-id <id>
+python3 gen_safetx.py deployment-info-RiskEngineXStocks.json safe-txns-RiskEngineXStocks-<chain> --chain-id <id> \
+  --exclude-addresses-from deployment-info-RiskEngine.json
+```
+
+Robinhood chain (chain id 4663) was verified this way on 2026-10-11: every precondition holds and the replay passes.
+
+## Upgrading a RiskEngine
+
+An upgrade is one Safe transaction: deploy the new implementation through the CREATE3 deployer, then call
+`ProxyAdmin.upgradeAndCall(proxy, newImplementation, "")`. Pools and trackers pick up the new code in the same
+block. Nothing else is redeployed. Config and generator:
+
+- `build-config-RiskEngine-upgrade.json`: the implementation to build (`logicContracts.RiskEngine`) and the
+  `upgrades` list mapping each proxy to the implementation it should point at.
+- `gen_upgrade_safetx.py`: turns the built initcode into Safe Transaction Builder JSON.
+
+The `ProxyAdmin` address is derived offline as `CREATE(proxy, nonce 1)` because `RiskEngineProxy` creates it in
+its constructor. `test_proxyAdminIsCreateNonce1` in `RiskEngineProxy.t.sol` pins that derivation.
+
+### 1. Change the code and test it behind the proxy
+
+```bash
+forge test
+RISK_ENGINE_PROXY=true forge test --match-path test/foundry/core/PanopticPool.t.sol
+forge test --match-path test/foundry/core/RiskEngine/RiskEngineProxy.t.sol
+```
+
+Checklist for the diff: `IRiskEngine` selectors and return types unchanged; `RiskParameters`, `OraclePack`,
+`MarketState` packing unchanged; `VEGOID` unchanged; deployed size under 24,576 bytes
+(`test_implementationSize_fitsUnderLimit` fails otherwise). To upgrade the xStocks tiers too, add
+`logicContracts` entries with their constructor args (copy them from `build-config-RiskEngineXStocks.json`) and an
+`upgrades` entry per proxy. Pass the tier parameters a proxy was deployed with unless changing one is the point of
+the upgrade; `emaPeriods` must never change for a live proxy, since every pool's stored oracle pack depends on it.
+
+### 2. Give the implementation an unused CREATE3 slot
+
+The implementation address is not user-facing, so any unused triple from `script/vanity-addresses.tsv` works.
+Exclude every address that is already live:
+
+```bash
+python3 script/select_vanity_addresses.py build-config-RiskEngine-upgrade.json \
+  --exclude-config build-config-v4.json --exclude-config build-config-v3.json \
+  --exclude-config build-config-RiskEngine.json --in-place
+```
+
+Keep a freeze file of deployed addresses once mainnet is live and pass it with `--freeze`.
+
+### 3. Build the initcode
+
+```bash
+python3 build_release.py --dry-run build-config-RiskEngine-upgrade.json
+python3 build_release.py build-config-RiskEngine-upgrade.json
+python3 script/verify_deployment.py deployment-info-RiskEngine-upgrade.json --config build-config-RiskEngine-upgrade.json
+```
+
+### 4. Generate the Safe batch
+
+Multisig owns the `ProxyAdmin` (current setup):
+
+```bash
+python3 gen_upgrade_safetx.py generate build-config-RiskEngine-upgrade.json \
+  deployment-info-RiskEngine-upgrade.json safe-txns-upgrade --rpc-url $RPC_URL
+```
+
+Writes `safe-txns-upgrade/upgrade.json` with mint, deploy and `upgradeAndCall` in one atomic transaction.
+`--rpc-url` is optional but recommended: it reads the live ERC-1967 admin and implementation slots and refuses to
+generate if the derived `ProxyAdmin` does not match.
+
+A `TimelockController` owns the `ProxyAdmin` (later setup):
+
+```bash
+python3 gen_upgrade_safetx.py generate build-config-RiskEngine-upgrade.json \
+  deployment-info-RiskEngine-upgrade.json safe-txns-upgrade \
+  --timelock $TIMELOCK --delay 172800 --rpc-url $RPC_URL
+```
+
+Writes three files, each one Safe transaction:
+
+- `deploy.json`: mint + deploy of the implementation
+- `schedule.json`: `scheduleBatch` on the timelock with the `upgradeAndCall` payload
+- `execute.json`: `executeBatch` with the identical payload, valid once the delay has passed
+
+CREATE3 addresses depend only on the salt, so `schedule.json` can be executed before `deploy.json`. For a
+security fix, schedule first and deploy the code only right before `execute.json`, so the bytecode is public only
+when it activates. For ordinary changes, deploy and verify first so the code can be reviewed during the delay.
+`--salt` lets you reschedule an identical operation; the timelock rejects a duplicate operation id otherwise.
+
+### 5. Execute and verify
+
+Import the JSON into the Safe Transaction Builder and execute in order. Then:
+
+```bash
+python3 gen_upgrade_safetx.py check build-config-RiskEngine-upgrade.json \
+  --deployment-info deployment-info-RiskEngine-upgrade.json --rpc-url $RPC_URL
+python3 script/verify_etherscan.py build-config-RiskEngine-upgrade.json --etherscan-api-key $ETHERSCAN_API_KEY
+```
+
+`check` prints the live `ProxyAdmin`, its owner, the current implementation and whether the new implementation has
+code. Confirm `current impl` equals the new address, then spot-check a pool: `cast call <pool>
+"getRiskParameters(uint256)" 0` should reflect the new parameters.
+
+### Rolling back
+
+A rollback is an upgrade whose target is the previous implementation, which is still deployed. Edit `upgrades[]`
+to point at the old address, skip steps 2 and 3, and run `gen_upgrade_safetx.py generate` against a
+deployment-info that lists the old implementation. The quickest path is to keep each release's
+`deployment-info-RiskEngine-upgrade.json` under version control so it is available for this.
+
 ## Config structure
 
 Each build config has:
@@ -97,6 +278,14 @@ Each build config has:
 Constructor arguments support `@ContractName` references (resolved to that contract's deployment address from the same config) and `$ENV_VAR` references (resolved from the `env` block). For partial redeployments where a referenced contract is not being redeployed, inline its address as a literal string instead of using `@`.
 
 `build_release.py` does not mine or discover vanity addresses. It only consumes the addresses already present in the config file.
+
+### BuilderWallet init code hash
+
+The RiskEngine takes `keccak256(BuilderWallet creation code ++ abi.encode(BuilderFactory))` as its third
+constructor argument and checks it against `BuilderFactory.predictBuilderWallet(1)` at construction. It no longer
+embeds `type(BuilderWallet).creationCode`, so it is **not** part of the `BuilderWallet` shared-creation-code group
+and can be compiled with whatever optimizer runs fit. The mainnet value, for the factory compiled at 3,333 runs, is
+`0x6a0d5c6577773db023c0a2ffa778aa7bd42daedbce4a5b9ad7ddd38b422e7412`; a wrong value makes the deployment revert.
 
 ### Shared creation code
 
@@ -152,6 +341,7 @@ Important selector behavior:
   - `PanopticGuardian`
   - `BuilderFactory`
   - `RiskEngine`
+  - `RiskEngineProxy`
 - In `disjoint` mode, every slot gets a separate vanity address.
 - The selector automatically excludes addresses already used by legacy `build-config.json`, unless that file is one of the explicit selector targets.
 
@@ -382,6 +572,22 @@ python3 script/verify_etherscan.py build-config-v4.json --verifier-url https://e
 ```
 
 The script exits non-zero if any verification fails. Shared contracts (PanopticMath, InteractionHelper, CollateralTrackerV2, PanopticGuardian, BuilderFactory, RiskEngine) only need to be verified once — running against either v3 or v4 config is sufficient since they share the same addresses.
+
+## Verifying on chains Foundry does not know (e.g. Robinhood Chain)
+
+`forge verify-contract` refuses chain ids outside its built-in list even when a verifier URL is configured, and
+it takes optimizer runs from the cached artifact rather than from `--optimizer-runs`. For those chains, and as a
+robust alternative on mainnet, use the Etherscan v2 API directly:
+
+```bash
+ETHERSCAN_API_KEY=$KEY python3 script/verify_etherscan_v2.py build-config-RiskEngine.json --chain-id 4663
+ETHERSCAN_API_KEY=$KEY python3 script/verify_etherscan_v2.py build-config-RiskEngineXStocks.json --chain-id 4663
+```
+
+The script builds the standard-JSON input with forge, sets each contract's `optimizeRuns` from the config, submits
+to `https://api.etherscan.io/v2/api?chainid=<id>`, polls the result, and skips contracts Etherscan already
+verified (identical bytecode is auto-matched: once one RiskEngineProxy is verified the others are too). Any chain in
+`https://api.etherscan.io/v2/chainlist` works with the same key. Robinhood Chain explorer: https://robin.etherscan.io
 
 ## Suggested review checklist
 

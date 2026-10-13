@@ -87,6 +87,23 @@ def parse_args():
 
 
 def _format_abi_arg(type_name, value):
+    if type_name.startswith("(") and type_name.endswith(")"):
+        # tuple / struct: split top-level components and format each
+        inner, depth, parts, cur = type_name[1:-1], 0, [], ""
+        for ch in inner:
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+            if ch == "," and depth == 0:
+                parts.append(cur)
+                cur = ""
+            else:
+                cur += ch
+        parts.append(cur)
+        if len(parts) != len(value):
+            raise ValueError(f"tuple {type_name} expects {len(parts)} values, got {len(value)}")
+        return "(" + ",".join(_format_abi_arg(t, v) for t, v in zip(parts, value)) + ")"
     if type_name.endswith("[]"):
         inner_type = type_name[:-2]
         return "[" + ",".join(_format_abi_arg(inner_type, item) for item in value) + "]"

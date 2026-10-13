@@ -41,28 +41,12 @@ interface IRiskEngine {
                         PUBLIC STATE VARIABLES
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Constant, in seconds, used to determine the max elapsed time between adaptive interest rate updates.
-    function IRM_MAX_ELAPSED_TIME() external view returns (int256);
+    /// @notice Cross-collateral haircut on token0 balances, scaled by DECIMALS (kept for panoptic-helper).
+    function CROSS_BUFFER_0() external view returns (uint256);
 
-    /// @notice Curve steepness (scaled by WAD).
-    function CURVE_STEEPNESS() external view returns (int256);
+    /// @notice Cross-collateral haircut on token1 balances, scaled by DECIMALS (kept for panoptic-helper).
+    function CROSS_BUFFER_1() external view returns (uint256);
 
-    /// @notice Minimum rate at target per second (scaled by WAD).
-    function MIN_RATE_AT_TARGET() external view returns (int256);
-
-    /// @notice Maximum rate at target per second (scaled by WAD).
-    function MAX_RATE_AT_TARGET() external view returns (int256);
-
-    /// @notice Target utilization (scaled by WAD).
-    function TARGET_UTILIZATION() external view returns (int256);
-
-    /// @notice Initial rate at target per second (scaled by WAD).
-    function INITIAL_RATE_AT_TARGET() external view returns (int256);
-
-    /// @notice Adjustment speed per second (scaled by WAD).
-    function ADJUSTMENT_SPEED() external view returns (int256);
-
-    /// @notice Address allowed to override the automatically computed safe mode.
     function GUARDIAN() external view returns (address);
 
     /// @notice Address of the builder factory.
@@ -70,66 +54,6 @@ interface IRiskEngine {
 
     /// @notice Decimals for computation (1 millitick precision).
     function DECIMALS() external view returns (uint256);
-
-    /// @notice Packed EMA periods for spot, fast, and slow EMAs.
-    function EMA_PERIODS() external view returns (uint96);
-
-    /// @notice The maximum allowed cumulative delta between oracle ticks.
-    function MAX_TICKS_DELTA() external view returns (int256);
-
-    /// @notice The maximum allowed delta between the currentTick and the Uniswap TWAP tick during dispatch.
-    function MAX_TWAP_DELTA_DISPATCH() external view returns (uint16);
-
-    /// @notice The maximum spread for long premium calculations.
-    function MAX_SPREAD() external view returns (uint24);
-
-    /// @notice Multiplier for the collateral requirement during buying power decrease.
-    function BP_DECREASE_BUFFER() external view returns (uint32);
-
-    /// @notice The maximum amount of change, in ticks, permitted between internal median updates.
-    function MAX_CLAMP_DELTA() external view returns (int24);
-
-    /// @notice The notional fee, in basis points, collected from PLPs at option mint.
-    function NOTIONAL_FEE() external view returns (uint16);
-
-    /// @notice The premium fee, in basis points, collected from the premium paid/received.
-    function PREMIUM_FEE() external view returns (uint16);
-
-    /// @notice The protocol split, in basis points, when a builder code is present.
-    function PROTOCOL_SPLIT() external view returns (uint16);
-
-    /// @notice The builder split, in basis points, when a builder code is present.
-    function BUILDER_SPLIT() external view returns (uint16);
-
-    /// @notice Required collateral ratio for selling options, scaled by 10_000_000.
-    function SELLER_COLLATERAL_RATIO() external view returns (uint256);
-
-    /// @notice Required collateral ratio for buying options, scaled by 10_000_000.
-    function BUYER_COLLATERAL_RATIO() external view returns (uint256);
-
-    /// @notice Required collateral margin for loans in excess of notional, scaled by 10_000_000.
-    function MAINT_MARGIN_RATE() external view returns (uint256);
-
-    /// @notice Basal cost (in bps of notional) to force exercise an out-of-range position.
-    function FORCE_EXERCISE_COST() external view returns (uint256);
-
-    /// @notice Target pool utilization below which buying+selling is optimal, scaled by 10_000_000.
-    function TARGET_POOL_UTIL() external view returns (uint256);
-
-    /// @notice Pool utilization above which selling is 100% collateral backed, scaled by 10_000_000.
-    function SATURATED_POOL_UTIL() external view returns (uint256);
-
-    /// @notice Cross buffer parameter for token0.
-    function CROSS_BUFFER_0() external view returns (uint256);
-
-    /// @notice Cross buffer parameter for token1.
-    function CROSS_BUFFER_1() external view returns (uint256);
-
-    /// @notice Maximum number of open legs allowed.
-    function MAX_OPEN_LEGS() external view returns (uint256);
-
-    /// @notice Max raw per-token bonus rate during liquidations (currently 20% of required)
-    function MAX_BONUS() external view returns (uint256);
 
     /*//////////////////////////////////////////////////////////////
                                 GUARDIAN
@@ -188,7 +112,7 @@ interface IRiskEngine {
         int24 oracleTick,
         TokenId tokenId,
         PositionBalance positionBalance
-    ) external pure returns (LeftRightSigned exerciseFees);
+    ) external view returns (LeftRightSigned exerciseFees);
 
     /// @notice Compute the pre-haircut liquidation bonuses to be paid to the liquidator and the protocol loss caused by the liquidation (pre-haircut).
     /// @param tokenData0 LeftRight encoded word with balance of token0 in the right slot, and required balance in left slot
@@ -206,7 +130,7 @@ interface IRiskEngine {
         LeftRightSigned netPaid,
         LeftRightUnsigned shortPremium,
         LeftRightUnsigned creditAmounts
-    ) external pure returns (LeftRightSigned, LeftRightSigned);
+    ) external view returns (LeftRightSigned, LeftRightSigned);
 
     /// @notice Haircut/clawback any premium paid by `liquidatee` on `positionIdList` over the protocol loss threshold during a liquidation.
     /// @param positionIdList The list of position ids being liquidated
@@ -289,7 +213,7 @@ interface IRiskEngine {
     function isSafeMode(
         int24 currentTick,
         OraclePack oraclePack
-    ) external pure returns (uint8 safeMode);
+    ) external view returns (uint8 safeMode);
 
     /// @notice Determines which ticks to check for solvency based on market volatility.
     /// @param currentTick The current tick
@@ -365,7 +289,7 @@ interface IRiskEngine {
         PositionBalance[] calldata positionBalanceArray,
         TokenId[] calldata positionIdList,
         int24 atTick
-    ) external pure returns (LeftRightUnsigned[] memory collateralRequirements);
+    ) external view returns (LeftRightUnsigned[] memory collateralRequirements);
 
     /*//////////////////////////////////////////////////////////////
                         ADAPTIVE INTEREST RATE MODEL

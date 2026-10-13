@@ -6,9 +6,10 @@ import "forge-std/Script.sol";
 import {PanopticFactoryV3} from "@contracts/PanopticFactoryV3.sol";
 import {PanopticFactoryV4} from "@contracts/PanopticFactoryV4.sol";
 import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
-import {RiskEngine} from "@contracts/RiskEngine.sol";
-import {RiskEngineXStocks} from "@contracts/RiskEngineXStocks.sol";
-import {BuilderFactory} from "@contracts/Builder.sol";
+import {RiskEngineV2} from "@contracts/RiskEngine.sol";
+import {RiskEngineProxy} from "@contracts/RiskEngineProxy.sol";
+import {RiskEngineStub} from "@contracts/RiskEngineStub.sol";
+import {BuilderFactory, BuilderWallet} from "@contracts/Builder.sol";
 import {PanopticGuardian} from "@contracts/PanopticGuardian.sol";
 import {PanopticPoolV2} from "@contracts/PanopticPool.sol";
 import {ISemiFungiblePositionManager} from "@contracts/interfaces/ISemiFungiblePositionManager.sol";
@@ -18,6 +19,7 @@ import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {Pointer, PointerLibrary} from "@types/Pointer.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
+import {RiskEngineParams} from "./params/RiskEngineParams.sol";
 
 // TEST RUN:
 // forge script script/DeployProtocol.s.sol --rpc-url sepolia --turnkey --sender 0x62CB5f6E9F8Bca7032dDf993de8A02ae437D39b8
@@ -104,31 +106,13 @@ contract DeployProtocol is Script {
 
         BuilderFactory builderFactory = new BuilderFactory(address(panopticGuardian));
 
-        // risk engine MED
-        new RiskEngine(10_000_000, 10_000_000, address(panopticGuardian), address(builderFactory));
-
-        // risk engine xstocks (conservative): CROSS_BUFFER_0 = 75% (wSPCXx/token0), CROSS_BUFFER_1 = 90% (USDC/token1)
-        new RiskEngineXStocks(
-            7_500_000,
-            9_000_000,
-            address(panopticGuardian),
-            address(builderFactory)
-        );
-
-        // risk engine xstocks (reverse): for markets with flipped token0/token1, so the
-        // conservative buffer sits on the xstock side. CROSS_BUFFER_0 = 90%, CROSS_BUFFER_1 = 75%.
-        new RiskEngineXStocks(
-            9_000_000,
-            7_500_000,
-            address(panopticGuardian),
-            address(builderFactory)
-        );
+        _deployRiskEngines(address(panopticGuardian), address(builderFactory));
 
         /*
         // risk engine LOW
-        new RiskEngine(500_000, 250_000, 128, 5_000_000, 9_000_000);
+        new RiskEngineV2(500_000, 250_000, 128, 5_000_000, 9_000_000);
         // risk engine HIGH
-        new RiskEngine(4_500_000, 2_250_000, 128, 5_000_000, 9_000_000);
+        new RiskEngineV2(4_500_000, 2_250_000, 128, 5_000_000, 9_000_000);
         */
         address collateralTracker = address(new CollateralTrackerV2());
 
@@ -162,5 +146,43 @@ contract DeployProtocol is Script {
 
         // factory.tokenURI(0x00c34C41289e6c433723542BB1Eba79c6919504EDD);
         vm.stopBroadcast();
+    }
+
+    /// @dev Deploys each RiskEngine implementation behind its own RiskEngineProxy. Pools bind to the proxy
+    /// address, never to the implementation. RISK_ENGINE_OWNER owns every ProxyAdmin (multisig today; later a
+    /// TimelockController, then governance, via ProxyAdmin.transferOwnership).
+    function _deployRiskEngines(address guardian, address builderFactory) internal {
+        address owner = vm.envAddress("RISK_ENGINE_OWNER");
+        // same compilation unit as the BuilderFactory deployed above, so this reproduces its wallet addresses
+        bytes32 builderInitCodeHash = keccak256(
+            abi.encodePacked(type(BuilderWallet).creationCode, abi.encode(builderFactory))
+        );
+
+        // risk engine MED
+        address med = address(
+            new RiskEngineV2(
+                guardian,
+                builderFactory,
+                builderInitCodeHash,
+                RiskEngineParams.blueChip(9_000_000, 9_000_000)
+            )
+        );
+        new RiskEngineProxy(med, owner);
+
+        // risk engine xstocks: symmetric 75% cross buffers, so one engine serves both token orderings
+        address xstocks = address(
+            new RiskEngineV2(
+                guardian,
+                builderFactory,
+                builderInitCodeHash,
+                RiskEngineParams.xStocks(7_500_000, 7_500_000)
+            )
+        );
+        new RiskEngineProxy(xstocks, owner);
+
+        // two reserved proxies for tiers still to be defined; they revert on every call until upgraded
+        address stub = address(new RiskEngineStub());
+        new RiskEngineProxy(stub, owner);
+        new RiskEngineProxy(stub, owner);
     }
 }
