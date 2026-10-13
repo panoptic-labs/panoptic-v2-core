@@ -87,6 +87,7 @@ struct CliArgs {
     deployer: [u8; 20],
     risk_engine: [u8; 20],
     pool_id: [u8; 32],
+    v3_pool: Option<[u8; 20]>,
     start_salt: u128,
     loops: Option<u128>,
     min_target_rarity: u8,
@@ -172,6 +173,7 @@ fn parse_args() -> Result<CliArgs, CliError> {
     let mut deployer = None;
     let mut risk_engine = None;
     let mut pool_id = None;
+    let mut v3_pool = None;
     let mut pool_key = ParsedPoolKey::default();
     let mut start_salt = 0u128;
     let mut loops = None;
@@ -188,6 +190,7 @@ fn parse_args() -> Result<CliArgs, CliError> {
             "--deployer" => deployer = Some(parse_address(&take_value(&mut args, &flag)?)?),
             "--risk-engine" => risk_engine = Some(parse_address(&take_value(&mut args, &flag)?)?),
             "--pool-id" => pool_id = Some(parse_bytes32(&take_value(&mut args, &flag)?)?),
+            "--v3-pool" => v3_pool = Some(parse_address(&take_value(&mut args, &flag)?)?),
             "--currency0" => {
                 pool_key.currency0 = Some(parse_address(&take_value(&mut args, &flag)?)?)
             }
@@ -233,17 +236,27 @@ fn parse_args() -> Result<CliArgs, CliError> {
     let deployer = deployer.ok_or_else(|| CliError("missing required --deployer".into()))?;
     let risk_engine =
         risk_engine.ok_or_else(|| CliError("missing required --risk-engine".into()))?;
-    let pool_id = match (pool_id, pool_key.finish()?) {
-        (Some(id), None) => id,
-        (None, Some(key)) => encode_pool_id(key),
-        (Some(_), Some(_)) => {
+    let pool_key = pool_key.finish()?;
+    let pool_input_count = usize::from(pool_id.is_some())
+        + usize::from(v3_pool.is_some())
+        + usize::from(pool_key.is_some());
+    if pool_input_count > 1 {
+        return Err(CliError(
+            "pass exactly one of --v3-pool, --pool-id, or the full v4 PoolKey fields".into(),
+        ));
+    }
+    let pool_id = match (pool_id, v3_pool, pool_key) {
+        (Some(id), None, None) => id,
+        (None, Some(pool), None) => v3_pool_as_salt_input(pool),
+        (None, None, Some(key)) => encode_pool_id(key),
+        (Some(_), _, _) | (_, Some(_), Some(_)) => {
             return Err(CliError(
-                "pass either --pool-id or the full PoolKey fields, not both".into(),
+                "pass exactly one of --v3-pool, --pool-id, or the full v4 PoolKey fields".into(),
             ))
         }
-        (None, None) => {
+        (None, None, None) => {
             return Err(CliError(
-                "missing pool input; pass --pool-id or --currency0/--currency1/--fee/--tick-spacing/--hooks"
+                "missing pool input; pass --v3-pool, --pool-id, or --currency0/--currency1/--fee/--tick-spacing/--hooks"
                     .into(),
             ))
         }
@@ -279,6 +292,7 @@ fn parse_args() -> Result<CliArgs, CliError> {
         deployer,
         risk_engine,
         pool_id,
+        v3_pool,
         start_salt,
         loops,
         min_target_rarity,
@@ -593,6 +607,15 @@ fn encode_pool_id(key: PoolKeyInput) -> [u8; 32] {
     keccak256(&encoded)
 }
 
+fn v3_pool_as_salt_input(pool: [u8; 20]) -> [u8; 32] {
+    // Reuse the v4 pool-id salt extraction path below. PanopticFactoryV3 keeps
+    // the first five bytes of the v3 pool address, while the v4 factory keeps
+    // bytes 12..17 of the PoolId.
+    let mut input = [0u8; 32];
+    input[12..17].copy_from_slice(&pool[0..5]);
+    input
+}
+
 fn make_fixed_prefix(deployer: [u8; 20], pool_id: [u8; 32], risk_engine: [u8; 20]) -> [u8; 20] {
     let mut prefix = [0u8; 20];
     prefix[0..10].copy_from_slice(&deployer[0..10]);
@@ -779,11 +802,11 @@ fn u96_to_be_bytes(value: u128) -> [u8; 12] {
 fn print_help() {
     println!(
         "\
-Multithreaded local miner for PanopticFactoryV4 pool addresses.
+Multithreaded local miner for PanopticFactoryV3 and PanopticFactoryV4 pool addresses.
 The output also includes distinct last-nibble type choices at one rarity below the best result found.
 
 Required inputs:
-  --factory <address>        PanopticFactoryV4 address; CREATE3 depends on this
+  --factory <address>        PanopticFactoryV3/V4 address; CREATE3 depends on this
   --deployer <address>       Exact factory msg.sender for deployNewPool
   --risk-engine <address>    Risk engine passed to deployNewPool
 
@@ -792,6 +815,8 @@ Important:
   If a Safe, router, or another contract sends the transaction, use that contract address.
 
 Pool input:
+  --v3-pool <address>
+  or
   --pool-id <bytes32>
   or
   --currency0 <address> --currency1 <address> --fee <uint24> --tick-spacing <int24> --hooks <address>
@@ -806,6 +831,13 @@ Search controls:
   --json                     Emit machine-readable JSON
 
 Examples:
+  cargo run --release --manifest-path script/pool-address-miner/Cargo.toml -- \\
+    --factory 0x1111111111111111111111111111111111111111 \\
+    --deployer 0x2222222222222222222222222222222222222222 \\
+    --risk-engine 0x3333333333333333333333333333333333333333 \\
+    --v3-pool 0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640 \\
+    --salt 0 --loops 1000000 --min-target-rarity 6
+
   cargo run --release --manifest-path script/pool-address-miner/Cargo.toml -- \\
     --factory 0x1111111111111111111111111111111111111111 \\
     --deployer 0x2222222222222222222222222222222222222222 \\
@@ -837,7 +869,11 @@ fn print_human(
     println!("factory: {}", hex_address(args.factory));
     println!("deployer: {}", hex_address(args.deployer));
     println!("risk_engine: {}", hex_address(args.risk_engine));
-    println!("pool_id: {}", hex_bytes(&args.pool_id));
+    if let Some(v3_pool) = args.v3_pool {
+        println!("v3_pool: {}", hex_address(v3_pool));
+    } else {
+        println!("pool_id: {}", hex_bytes(&args.pool_id));
+    }
     println!("start_salt: {}", args.start_salt);
     if let Some(loops) = args.loops {
         println!("loops: {}", loops);
@@ -894,12 +930,27 @@ fn print_json(
     hashes_per_second: f64,
 ) {
     let lower_rarity = result.result.rarity.saturating_sub(1);
+    let (pool_kind, v3_pool, pool_id) = if let Some(v3_pool) = args.v3_pool {
+        (
+            "v3",
+            format!("\"{}\"", hex_address(v3_pool)),
+            "null".to_string(),
+        )
+    } else {
+        (
+            "v4",
+            "null".to_string(),
+            format!("\"{}\"", hex_bytes(&args.pool_id)),
+        )
+    };
     println!(
         "{{\
 \"factory\":\"{}\",\
 \"deployer\":\"{}\",\
 \"riskEngine\":\"{}\",\
-\"poolId\":\"{}\",\
+\"poolKind\":\"{}\",\
+\"v3Pool\":{},\
+\"poolId\":{},\
 \"startSalt\":\"{}\",\
 \"threads\":{},\
 \"minTargetRarity\":{},\
@@ -918,7 +969,9 @@ fn print_json(
         hex_address(args.factory),
         hex_address(args.deployer),
         hex_address(args.risk_engine),
-        hex_bytes(&args.pool_id),
+        pool_kind,
+        v3_pool,
+        pool_id,
         args.start_salt,
         args.threads,
         args.min_target_rarity,
@@ -1158,6 +1211,23 @@ mod tests {
         assert_eq!(
             hex_bytes(&encode_pool_id(key)),
             "0xe541b44249066366e0edc2f6b71f431169e5747a50cbc3506e85203079af215a"
+        );
+    }
+
+    #[test]
+    fn v3_salt_prefix_matches_factory_encoding() {
+        let deployer = parse_address("0x2222222222222222222222222222222222222222").unwrap();
+        let v3_pool = parse_address("0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640").unwrap();
+        let risk_engine = parse_address("0x3333333333333333333333333333333333333333").unwrap();
+        let fixed_prefix = make_fixed_prefix(deployer, v3_pool_as_salt_input(v3_pool), risk_engine);
+
+        assert_eq!(
+            hex_bytes(&fixed_prefix),
+            "0x2222222222222222222288e6a0c2dd3333333333"
+        );
+        assert_eq!(
+            hex_bytes(&make_full_salt(fixed_prefix, 12345)),
+            "0x2222222222222222222288e6a0c2dd3333333333000000000000000000003039"
         );
     }
 
