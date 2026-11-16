@@ -539,6 +539,8 @@ contract RiskEngineInterestShortfallTest is Test {
         assertEq(eoa.code.length, 0, "setup: no code");
         LeftRightUnsigned owed = LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1);
         int24[3] memory ticks = [int24(0), int24(1_000), int24(-100_000)];
+        // read before the pranks: an external call in the arguments would use up the prank
+        uint256 dec = E.DECIMALS();
         for (uint256 i; i < ticks.length; ++i) {
             vm.prank(eoa);
             assertFalse(
@@ -551,7 +553,7 @@ contract RiskEngineInterestShortfallTest is Test {
                     ZERO,
                     CollateralTrackerV2(address(ct0)),
                     CollateralTrackerV2(address(ct1)),
-                    E.DECIMALS()
+                    dec
                 ),
                 "no code, flagged: insolvent"
             );
@@ -566,7 +568,7 @@ contract RiskEngineInterestShortfallTest is Test {
                     owed,
                     CollateralTrackerV2(address(ct0)),
                     CollateralTrackerV2(address(ct1)),
-                    E.DECIMALS()
+                    dec
                 ),
                 "no code, flagged and owing long premium: insolvent, no exception"
             );
