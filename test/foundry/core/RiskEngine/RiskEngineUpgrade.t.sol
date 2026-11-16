@@ -783,9 +783,28 @@ contract RiskEngineUpgradeTest is Test {
 
     /// @dev Every selector in IRiskEngine must exist on the implementation. Pools and trackers are not upgradable,
     /// so a renamed function or a changed argument type bricks them. Reads the compiler's method tables.
+    /// With several solc versions in the build, forge writes one artifact per version (IRiskEngine.0.8.38.json, ...)
+    /// and no unversioned one, so every interface artifact is checked against the RiskEngineV2 artifact of the same name.
     function test_implementationAnswersEveryIRiskEngineSelector() public view {
-        string memory iface = vm.readFile("out/IRiskEngine.sol/IRiskEngine.json");
-        string memory impl = vm.readFile("out/RiskEngine.sol/RiskEngineV2.json");
+        Vm.DirEntry[] memory entries = vm.readDir("out/IRiskEngine.sol");
+        uint256 checked;
+        for (uint256 i; i < entries.length; ++i) {
+            if (
+                entries[i].isDir ||
+                vm.indexOf(entries[i].path, "/IRiskEngine.") == type(uint256).max
+            ) continue;
+            string memory implPath = vm.replace(
+                entries[i].path,
+                "IRiskEngine.sol/IRiskEngine.",
+                "RiskEngine.sol/RiskEngineV2."
+            );
+            _assertAnswersEverySelector(vm.readFile(entries[i].path), vm.readFile(implPath));
+            ++checked;
+        }
+        assertGt(checked, 0, "no IRiskEngine artifact in out/");
+    }
+
+    function _assertAnswersEverySelector(string memory iface, string memory impl) internal view {
         string[] memory signatures = vm.parseJsonKeys(iface, ".methodIdentifiers");
         assertGt(signatures.length, 20, "interface method table not found");
 

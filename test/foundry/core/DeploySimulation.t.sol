@@ -71,6 +71,11 @@ contract DeploySimulation is Test {
     }
 
     function test_replayReleaseBatches() public {
+        // A pre-deployment check: once the release is live at the fork block, the CREATE3 slots are taken.
+        if (address(0x000000000000ffE5eFdB5AE76b9200263C58b4c0).code.length != 0) {
+            vm.skip(true);
+            return;
+        }
         _replay("deployment-info-RiskEngine.json");
         _replay("deployment-info-RiskEngineXStocks.json");
 
