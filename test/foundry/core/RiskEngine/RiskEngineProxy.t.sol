@@ -93,9 +93,10 @@ contract RiskEngineProxyTest is Test {
     }
 
     /// @dev The default profile (200 runs) is not the release profile; the release optimizer runs are chosen by
-    /// script/optimize_runs.py so the implementation fits EIP-170. Guard here only against gross regressions.
+    /// script/optimize_runs.py so the implementation fits EIP-170 there. The runtime grows with the run count, so
+    /// a build that does not fit here cannot fit at the release setting either: enforce the limit, not a headroom.
     function test_implementationSize_withinReleaseHeadroom() public view {
-        assertLe(address(implV1).code.length, 24_576 + 512, "impl far over EIP-170");
+        assertLe(address(implV1).code.length, 24_576, "impl over EIP-170");
     }
 
     /// @dev Pure functions in IRiskEngine are invoked via STATICCALL; DELEGATECALL inside a static context must succeed.

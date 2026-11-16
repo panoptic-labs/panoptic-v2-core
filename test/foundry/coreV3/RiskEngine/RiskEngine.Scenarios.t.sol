@@ -49,23 +49,23 @@ contract RiskEngineScenarios is Test {
         assertGt(rITM, rOTM, "adverse move increases requirement");
     }
 
-    function test_Directed_LongDecayHalvesPerWidth() public {
+    function test_Directed_LongRequirementFlatAtEveryTick() public {
         uint64 poolId = 1 + (10 << 48);
-        // Long call with width 600. Distance = n*width should ~ halve per n step
+        // Long call with width 600: the requirement is the buyer ratio at every tick, above and below the strike
         TokenId longCall = PositionFactory.makeLeg(poolId, 0, 1, 0, 1, 0, 0, int24(0), int24(60));
         uint128 size = 1e9;
         int16 util = 0;
         uint256 r0 = E.reqSingleNoPartner(longCall, 0, size, 0, util);
         for (int24 t; t < 1000; ++t) {
             uint256 r1 = E.reqSingleNoPartner(longCall, 0, size, t * int24(10), util);
-            assertLe(r1, r0, "monotonically decreasing");
+            assertEq(r1, r0, "flat at every tick");
             r0 = r1;
         }
 
         r0 = E.reqSingleNoPartner(longCall, 0, size, 0, util);
         for (int24 t; t < 1000; ++t) {
             uint256 r1 = E.reqSingleNoPartner(longCall, 0, size, -t * int24(10), util);
-            assertLe(r1, r0, "monotonically decreasing");
+            assertEq(r1, r0, "flat at every tick");
             r0 = r1;
         }
     }

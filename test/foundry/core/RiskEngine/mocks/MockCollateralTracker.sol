@@ -9,6 +9,7 @@ import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 ///
 /// Functions used by RiskEngine:
 /// - assetsAndInterest(address)
+/// - interestState(address)
 /// - balanceOf(address)
 /// - convertToShares(uint128)
 /// - convertToAssets(uint256)
@@ -20,6 +21,7 @@ import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
     mapping(address => uint256) internal _assets;
     mapping(address => uint256) internal _interest;
     mapping(address => uint256) internal _shares;
+    mapping(address => int128) internal _netBorrows; // interest-bearing principal (tolerance anchor)
 
     // global accounting
     uint256 internal _totalAssets;
@@ -46,6 +48,10 @@ import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
         _assets[user] = assets_;
         _interest[user] = interest_;
         _shares[user] = shares_;
+    }
+
+    function setNetBorrows(address user, int128 netBorrows_) external {
+        _netBorrows[user] = netBorrows_;
     }
 
     function setGlobal(uint256 totalAssets_, uint256 totalSupply_) external {
@@ -75,6 +81,10 @@ import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 
     function assetsAndInterest(address user) external view returns (uint256, uint256) {
         return (_assets[user], _interest[user]);
+    }
+
+    function interestState(address user) external view returns (int128, int128) {
+        return (0, _netBorrows[user]);
     }
 
     function balanceOf(address user) external view returns (uint256) {

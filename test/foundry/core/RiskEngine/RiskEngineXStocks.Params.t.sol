@@ -18,7 +18,7 @@ contract RiskEngineXStocksParamsTest is Test {
     function test_xStocksParameterSet() public pure {
         RiskEngineParameters memory p = RiskEngineParams.xStocks();
         assertEq(p.sellerCollateralRatio, 2_000_000, "seller 20%, as blue-chip");
-        assertEq(p.buyerCollateralRatio, 100_000, "buyer 1%, as blue-chip");
+        assertEq(p.buyerCollateralRatio, 200_000, "buyer 2%, as blue-chip");
         assertEq(p.maintMarginRate, 2_500_000, "maint 25%");
         assertEq(p.maxTicksDelta, 953, "max ticks delta ~10%");
         assertEq(p.bpDecreaseBuffer, 10_750_000, "bp decrease buffer, as blue-chip");
@@ -39,7 +39,7 @@ contract RiskEngineXStocksParamsTest is Test {
     function test_blueChipParameterSet() public pure {
         RiskEngineParameters memory p = RiskEngineParams.blueChip();
         assertEq(p.sellerCollateralRatio, 2_000_000);
-        assertEq(p.buyerCollateralRatio, 100_000);
+        assertEq(p.buyerCollateralRatio, 200_000);
         assertEq(p.maintMarginRate, 1_000_000);
         assertEq(p.maxTicksDelta, 724);
         assertEq(p.bpDecreaseBuffer, 10_750_000);
@@ -47,7 +47,7 @@ contract RiskEngineXStocksParamsTest is Test {
         assertEq(p.minRateAtTarget, 0.02 ether / int256(365 days));
         assertEq(p.emaPeriods, uint96(60 + (120 << 24) + (240 << 48) + (960 << 72)));
         assertEq(p.notionalFee, 3);
-        assertEq(p.premiumFee, 250);
+        assertEq(p.premiumFee, 750);
         assertEq(p.protocolSplit, 5_000);
         assertEq(p.builderSplit, 4_000);
         assertEq(p.maxTwapDeltaDispatch, 513);

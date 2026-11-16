@@ -59,10 +59,8 @@ contract RiskEngineV2 {
     uint256 public constant DECIMALS = 10_000_000;
 
     int16 internal constant MAX_UTILIZATION = 10_000;
-    uint256 internal constant LN2_SCALED = 6931472;
 
     uint256 internal constant ONE_BPS = 1000;
-    uint256 internal constant TEN_BPS = 10000;
 
     /// @dev Calendar-spread max-loss divisor: `8 / ln(1.0001) ≈ 80_004`, rounded down to over-estimate collateral.
     uint256 internal constant LONG_WIDTH_COLLATERAL_DIVISOR = 80_000;
@@ -121,8 +119,10 @@ contract RiskEngineV2 {
     uint256 internal immutable SELLER_COLLATERAL_RATIO;
 
     /// @notice Required collateral ratio for buying options, fraction of 1, scaled by 10_000_000.
-    /// @dev i.e 1% -> 0.01 * 10_000_000 = 100_000. Covers streamed premium until liquidation; the leg's remaining
-    /// extrinsic value, returned at close, covers the rest while in range.
+    /// @dev i.e 2% -> 0.02 * 10_000_000 = 200_000. A long leg requires this share of its notional at every price,
+    /// with no decay away from the strike. It covers streamed premium until liquidation, and a liquidation that
+    /// settles the leg at a current tick up to `BUYER_COLLATERAL_RATIO / ONE_BPS` ticks from the oracle's (the band
+    /// `isAccountSolvent` uses; one tick is about one basis point).
     uint256 internal immutable BUYER_COLLATERAL_RATIO;
 
     /// @notice Required collateral margin for loans in excess of notional, fraction of 1, scaled by 10_000_000.
@@ -467,11 +467,15 @@ contract RiskEngineV2 {
     }
 
     /// @notice Get the cost of exercising an option. Used during a forced exercise.
-    /// @notice The exercisor pays the exercisee `FORCE_EXERCISE_COST` of each long leg's remaining extrinsic value:
+    /// @notice The exercisor pays the exercisee `FORCE_EXERCISE_COST` of the remaining extrinsic value of the cheapest long leg:
     /// - A range [tL, tU] of width W = tU - tL ticks has extrinsic value ~ D^2 / (2W) bps of notional at tick t,
     ///   where D = min(t - tL, tU - t). This peaks at W/8 bps at the strike and is zero at the edges.
     /// - The fee is evaluated at the oracle tick so the exercisor cannot move spot to a range edge to cut it.
-    /// - Each leg pays at least NOTIONAL_FEE bps (the commission paid to open it) and at most FORCE_EXERCISE_COST (extrinsic value never exceeds notional).
+    /// - The charged leg pays at least NOTIONAL_FEE bps (the commission paid to open it) and at most FORCE_EXERCISE_COST (extrinsic value never exceeds notional).
+    /// - Only the width>0 long leg with the lowest fee, valued in the cheaper token at the oracle tick (the first one on ties), is charged.
+    ///   Adding long legs can therefore only lower the fee, never raise it: a leg padded with a large `optionRatio` or a wide
+    ///   range carries a larger fee of its own and is never the one selected. The token deltas between the current and oracle
+    ///   ticks are still reversed for every long leg.
     /// @param currentTick The current price tick
     /// @param oracleTick The price oracle tick
     /// @param tokenId The position to be exercised
@@ -483,6 +487,13 @@ contract RiskEngineV2 {
         TokenId tokenId,
         PositionBalance positionBalance
     ) external view returns (LeftRightSigned exerciseFees) {
+        // fee of the cheapest long leg seen so far, valued in token1 at the oracle tick (the first one on ties)
+        uint256 minFeeValue = type(uint256).max;
+        LeftRightSigned minFee;
+
+        // oracle price used to compare the per-leg fees in one token
+        uint160 oracleSqrtPriceX96 = Math.getSqrtRatioAtTick(oracleTick);
+
         // keep everything checked to catch any under/overflow or miscastings
         for (uint256 leg = 0; leg != tokenId.countLegs(); ++leg) {
             // short legs are not counted - exercise is intended to be based on long legs
@@ -491,69 +502,95 @@ contract RiskEngineV2 {
             // credit/loans are not counted
             if (tokenId.width(leg) == 0) continue;
 
-            // notional moved by this leg
-            (LeftRightSigned longs, ) = PanopticMath.calculateIOAmounts(
+            // the chunk the exercisee had to mint in Uniswap for this leg; reused for the fee notional and the composition delta
+            LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
                 tokenId,
-                positionBalance.positionSize(),
                 leg,
-                true
+                positionBalance.positionSize()
             );
 
-            // per-leg fee, scaled by DECIMALS
-            int256 fee = int256(uint256(RISK_PARAMETERS_TEMPLATE.notionalFee()) * ONE_BPS);
             {
-                (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(
-                    tokenId.width(leg),
-                    tokenId.tickSpacing()
-                );
+                // per-leg fee, scaled by DECIMALS
+                int256 fee = int256(uint256(RISK_PARAMETERS_TEMPLATE.notionalFee()) * ONE_BPS);
+                {
+                    int256 tickLower;
+                    int256 tickUpper;
+                    {
+                        (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(
+                            tokenId.width(leg),
+                            tokenId.tickSpacing()
+                        );
 
-                int256 tickLower = int256(tokenId.strike(leg)) - rangeDown;
-                int256 tickUpper = int256(tokenId.strike(leg)) + rangeUp;
-                int256 t = int256(oracleTick);
+                        tickLower = int256(tokenId.strike(leg)) - rangeDown;
+                        tickUpper = int256(tokenId.strike(leg)) + rangeUp;
+                    }
+                    int256 t = int256(oracleTick);
 
-                if (t >= tickLower && t < tickUpper) {
-                    fee = Math.max(fee, (int256(tokenId.tickSpacing()) * int256(ONE_BPS)) / 2);
-                    int256 W = tickUpper - tickLower;
-                    int256 dLower = t - tickLower;
-                    int256 dUpper = tickUpper - t;
-                    int256 D = dLower < dUpper ? dLower : dUpper;
+                    if (t >= tickLower && t < tickUpper) {
+                        int256 ts = int256(tokenId.tickSpacing());
+                        fee = Math.max(fee, (ts * int256(ONE_BPS)) / 2);
+                        int256 W = tickUpper - tickLower;
+                        int256 dLower = t - tickLower;
+                        int256 dUpper = tickUpper - t;
+                        int256 D = dLower < dUpper ? dLower : dUpper;
 
-                    // extrinsic ~= D^2 / (2W) bps of notional; 1 bp = DECIMALS / 10_000
-                    int256 extrinsicFee = (D * D * int256(FORCE_EXERCISE_COST)) / (2 * W * 10_000);
+                        int256 forceExerciseCost = int256(FORCE_EXERCISE_COST);
+                        // extrinsic ~= D^2 / (2W) bps of notional; 1 bp = DECIMALS / 10_000
+                        int256 extrinsicFee = (D * D * forceExerciseCost) / (2 * W * 10_000);
 
-                    // the approximation grows without bound for very wide legs; true extrinsic is <= 100% of notional
-                    if (extrinsicFee > int256(FORCE_EXERCISE_COST))
-                        extrinsicFee = int256(FORCE_EXERCISE_COST);
-                    if (extrinsicFee > fee) fee = extrinsicFee;
+                        // the approximation grows without bound for very wide legs; true extrinsic is <= 100% of notional
+                        if (extrinsicFee > forceExerciseCost) extrinsicFee = forceExerciseCost;
+                        if (extrinsicFee > fee) fee = extrinsicFee;
+                    }
+                }
+                // notional moved by this leg (a long leg being opened rounds down, as in `calculateIOAmounts`)
+                LeftRightSigned legFee;
+                if (tokenId.tokenType(leg) == 0) {
+                    legFee = LeftRightSigned.wrap(0).addToRightSlot(
+                        Math.toInt128(
+                            (int256(
+                                Math.toInt128(uint128(Math.getAmount0ForLiquidity(liquidityChunk)))
+                            ) * fee) / int256(DECIMALS)
+                        )
+                    );
+                } else {
+                    legFee = LeftRightSigned.wrap(0).addToLeftSlot(
+                        Math.toInt128(
+                            (int256(
+                                Math.toInt128(uint128(Math.getAmount1ForLiquidity(liquidityChunk)))
+                            ) * fee) / int256(DECIMALS)
+                        )
+                    );
+                }
+
+                // a leg's notional is in one token only; compare legs at the oracle price, denominated in the cheaper token
+                // (token0 at or below tick 0, token1 above) so the conversion scales the fee up rather than truncating it
+                uint256 feeValue = oracleTick > 0
+                    ? PanopticMath.convert0to1(
+                        uint256(int256(legFee.rightSlot())),
+                        oracleSqrtPriceX96
+                    ) + uint256(int256(legFee.leftSlot()))
+                    : uint256(int256(legFee.rightSlot())) +
+                        PanopticMath.convert1to0(
+                            uint256(int256(legFee.leftSlot())),
+                            oracleSqrtPriceX96
+                        );
+
+                if (feeValue < minFeeValue) {
+                    minFeeValue = feeValue;
+                    minFee = legFee;
                 }
             }
 
-            exerciseFees = exerciseFees
-                .addToRightSlot(Math.toInt128(-(longs.rightSlot() * fee) / int256(DECIMALS)))
-                .addToLeftSlot(Math.toInt128(-(longs.leftSlot() * fee) / int256(DECIMALS)));
+            (uint256 currentValue0, uint256 currentValue1) = Math.getAmountsForLiquidity(
+                currentTick,
+                liquidityChunk
+            );
 
-            uint256 currentValue0;
-            uint256 currentValue1;
-            uint256 oracleValue0;
-            uint256 oracleValue1;
-
-            {
-                LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
-                    tokenId,
-                    leg,
-                    positionBalance.positionSize()
-                );
-
-                (currentValue0, currentValue1) = Math.getAmountsForLiquidity(
-                    currentTick,
-                    liquidityChunk
-                );
-
-                (oracleValue0, oracleValue1) = Math.getAmountsForLiquidity(
-                    oracleTick,
-                    liquidityChunk
-                );
-            }
+            (uint256 oracleValue0, uint256 oracleValue1) = Math.getAmountsForLiquidity(
+                oracleTick,
+                liquidityChunk
+            );
 
             // reverse any token deltas between the current and oracle prices for the chunk the exercisee had to mint in Uniswap
             // the outcome of current price crossing a long chunk will always be less favorable than the status quo, i.e.,
@@ -568,6 +605,9 @@ contract RiskEngineV2 {
                     .addToLeftSlot(int128(uint128(currentValue1)) - int128(uint128(oracleValue1)))
             );
         }
+
+        // charge the fee of the cheapest long leg only (zero when the position has no width-positive long leg)
+        exerciseFees = exerciseFees.sub(minFee);
     }
 
     /// @notice Compute the pre-haircut liquidation bonuses to be paid to the liquidator and the protocol loss caused by the liquidation (pre-haircut).
@@ -599,17 +639,23 @@ contract RiskEngineV2 {
             // by the collateral cap that follows it. `required` is derived from option parameters and
             // price, not user balances, so an adversary cannot inflate the bonus without minting a
             // larger position.
+            //
+            // One exception is applied upstream: for an account that is liquidatable only because of
+            // the interest shortfall flag, `_getMargin` replaces `required` (`_bonusRequirement`) so
+            // that this floor pays exactly twice the uncollected interest rather than MAX_BONUS of
+            // the requirement. This function needs no knowledge of it.
             {
                 uint256 bal0 = tokenData0.rightSlot();
                 uint256 bal1 = tokenData1.rightSlot();
                 uint256 req0 = tokenData0.leftSlot();
                 uint256 req1 = tokenData1.leftSlot();
+                uint256 maxBonus = MAX_BONUS;
 
                 bonus0 = Math
-                    .min((req0 * MAX_BONUS) / DECIMALS, req0 > bal0 ? req0 - bal0 : 0)
+                    .min((req0 * maxBonus) / DECIMALS, req0 > bal0 ? req0 - bal0 : 0)
                     .toInt256();
                 bonus1 = Math
-                    .min((req1 * MAX_BONUS) / DECIMALS, req1 > bal1 ? req1 - bal1 : 0)
+                    .min((req1 * maxBonus) / DECIMALS, req1 > bal1 ? req1 - bal1 : 0)
                     .toInt256();
             }
 
@@ -1050,10 +1096,12 @@ contract RiskEngineV2 {
     /// @notice Checks for significant oracle deviation to determine if Safe Mode should be active.
     /// @param currentTick The current tick of the pool
     /// @param oraclePack The oracle pack containing historical price data
-    /// @dev Safe Mode is triggered if ANY of three conditions are met:
-    ///      1. "External Shock": The live spot price deviates too far from the responsive spot EMA
-    ///      2. "Internal Disagreement": The fast EMA deviates too far from the more stable slow EMA, indicating high volatility
-    ///      3. "High Divergence": The EMAs show significant divergence from each other
+    /// @dev Safe Mode is triggered if ANY of these conditions are met; their contributions add up:
+    ///      1. "External Shock": the live spot price deviates from the spot EMA by more than MAX_TICKS_DELTA (+1)
+    ///      2. "Severe Shock": the same deviation exceeds 2 * MAX_TICKS_DELTA (+2 more, so mode 3: no new mints)
+    ///      3. "Internal Disagreement": the spot EMA deviates from the fast EMA, indicating high volatility (+1)
+    ///      4. "High Divergence": the median tick deviates from the slow EMA, indicating lag (+1)
+    ///      A guardian lock adds 3. The pool forces covered mints/burns above 1 and refuses new mints above 2.
     /// @return safeMode A number representing whether the protocol is in Safe Mode.
     function isSafeMode(
         int24 currentTick,
@@ -1062,27 +1110,37 @@ contract RiskEngineV2 {
         // Extract the relevant EMAs from oraclePack
         (int24 spotEMA, int24 fastEMA, int24 slowEMA, , int24 medianTick) = oraclePack.getEMAs();
 
+        // (one immutable read; each reference costs a 32-byte push)
+        int256 maxTicksDelta = MAX_TICKS_DELTA;
+
         unchecked {
             // can never miscast because all math is int24 or below
             // Condition 1: Check for a sudden deviation of the spot price from the spot EMA.
             // This is your primary defense against a flash crash or single-block manipulation.
-            bool externalShock = Math.abs(currentTick - spotEMA) > MAX_TICKS_DELTA;
+            bool externalShock = Math.abs(currentTick - spotEMA) > maxTicksDelta;
 
-            // Condition 2: Check for high internal volatility by comparing the spot and fast EMAs.
+            // Condition 2: The same deviation beyond 2 * MAX_TICKS_DELTA. A move this large that the oracle has not
+            // seen is either a crash in progress or a swap in this transaction; either way the spot tick cannot be
+            // trusted to price a new position (it is stored as the position's mint tick), so new mints are refused
+            // until the oracle catches up. Closes and withdrawals are unaffected.
+            bool severeShock = Math.abs(currentTick - spotEMA) > 2 * maxTicksDelta;
+
+            // Condition 3: Check for high internal volatility by comparing the spot and fast EMAs.
             // If the spot EMA is moving much faster than the fast EMA, it signals an unstable market.
             // We use a smaller threshold here (e.g., half of the main delta) to be more sensitive to internal stress.
-            bool internalDisagreement = Math.abs(spotEMA - fastEMA) > (MAX_TICKS_DELTA / 2);
+            bool internalDisagreement = Math.abs(spotEMA - fastEMA) > (maxTicksDelta / 2);
 
-            // Condition 3: Check for high internal divergence due to staleness by comparing the median and slow EMAs.
+            // Condition 4: Check for high internal divergence due to staleness by comparing the median and slow EMAs.
             // If the median tick is deviating too much from the slow EMA, it signals an unstable market.
             // We use a smaller threshold here (e.g., half of the main delta) to be more sensitive to lag.
-            bool highDivergence = Math.abs(medianTick - slowEMA) > (MAX_TICKS_DELTA / 2);
+            bool highDivergence = Math.abs(medianTick - slowEMA) > (maxTicksDelta / 2);
 
             // check lock mode, add value = 3 to returned safeMode.
             uint8 lockMode = oraclePack.lockMode();
 
             safeMode =
                 uint8(externalShock ? 1 : 0) +
+                uint8(severeShock ? 2 : 0) + // a severe shock is also an external shock: 1 + 2 = 3, no new mints
                 uint8(internalDisagreement ? 1 : 0) +
                 uint8(highDivergence ? 1 : 0) +
                 lockMode;
@@ -1124,6 +1182,12 @@ contract RiskEngineV2 {
             atTicks[1] = medianTick;
             atTicks[2] = latestTick;
             atTicks[3] = currentTick;
+        } else if (
+            int256(spotTick - currentTick) ** 2 >= int256(BUYER_COLLATERAL_RATIO / ONE_BPS) ** 2
+        ) {
+            atTicks = new int24[](2);
+            atTicks[0] = spotTick;
+            atTicks[1] = currentTick;
         } else {
             // Normal operation; check against the spot tick.
             atTicks = new int24[](1);
@@ -1145,7 +1209,20 @@ contract RiskEngineV2 {
     /// @param ct0 The Address of the CollateralTracker for token0
     /// @param ct1 The Address of the CollateralTracker for token1
     /// @param buffer The buffer to apply to the collateral requirement
-    /// @return Whether the account is solvent at the given tick
+    /// @return Whether the account is solvent at the given tick: `_isSolventAcrossTokens` on the margin data, with two
+    /// exceptions.
+    /// - Interest shortfall flag (`_getMargin`): owed interest can only be collected from the same-token balance, so
+    ///   once that balance is exhausted and the uncollected remainder exceeds one mint commission on the token's
+    ///   interest-bearing principal (`netBorrows * notionalFee`, see `_settleInterest`), collateral in the other token
+    ///   does not make the account solvent. A flagged account fails every buffered check. With no buffer (the check
+    ///   `dispatchFrom` makes before a liquidation) it fails at ticks closer than `BUYER_COLLATERAL_RATIO / ONE_BPS`
+    ///   ticks to the calling pool's current tick; at ticks that far or further the flag is ignored.
+    /// - Displaced price: with no buffer, an account that owes long premium reads solvent at ticks that far or
+    ///   further from the calling pool's current tick. `dispatchFrom` liquidates only if the spot, TWAP, latest and
+    ///   current ticks all fail, so such an account cannot be liquidated while the pool's tick is displaced from the
+    ///   oracle's: the burn would settle its long legs at the displaced tick.
+    /// A caller that has no code, or whose `getCurrentTick()` reverts (a contract that is not a pool), gets the flag
+    /// at every tick and no displaced-price exception.
     function isAccountSolvent(
         PositionBalance[] calldata positionBalanceArray,
         TokenId[] calldata positionIdList,
@@ -1171,6 +1248,58 @@ contract RiskEngineV2 {
                 ct0,
                 ct1
             );
+
+        // interest shortfall flag (see `_getMargin`): uncollected interest is not cross-marginable
+        uint256 interestShortfallFlag = globalUtilizations.positionSize();
+
+        // No buffer means this check comes from `dispatchFrom`, which liquidates only if every tick it checks fails.
+        // At a tick `BUYER_COLLATERAL_RATIO / ONE_BPS` ticks or more from the calling pool's current tick:
+        // - an account that owes long premium reads solvent, so it cannot be liquidated at a displaced price;
+        // - otherwise the interest shortfall flag is ignored and the account is judged on its collateral alone.
+        // Closer to the current tick nothing changes: the flag fails and the collateral decides for the rest.
+        if (
+            buffer == DECIMALS &&
+            msg.sender.code.length != 0 &&
+            (interestShortfallFlag | LeftRightUnsigned.unwrap(longPremia)) != 0
+        ) {
+            try PanopticPoolV2(msg.sender).getCurrentTick() returns (int24 currentTick) {
+                if (
+                    int256(atTick - currentTick) ** 2 >=
+                    int256(BUYER_COLLATERAL_RATIO / ONE_BPS) ** 2
+                ) {
+                    if (LeftRightUnsigned.unwrap(longPremia) != 0) return true;
+                    interestShortfallFlag = 0;
+                }
+            } catch {}
+        }
+
+        // the flag fails every buffered check, every tick near the pool's current tick, and any caller that has no
+        // code or whose `getCurrentTick()` reverts
+        if (interestShortfallFlag != 0) return false;
+
+        return _isSolventAcrossTokens(tokenData0, tokenData1, globalUtilizations, atTick, buffer);
+    }
+
+    /// @notice Whether margin data passes the cross-collateralized solvency test at `atTick`.
+    /// @dev Each token's balance must cover `buffer` times its requirement, where a shortfall in one token may be
+    /// covered by the other token's surplus over its own buffered requirement, scaled by `crossBufferRatio` at the
+    /// account-wide utilization and converted at `atTick`. Conversions are done in the cheaper token (token0 below
+    /// tick 0, token1 above) so they scale up instead of truncating. Does not look at the interest shortfall flag:
+    /// `isAccountSolvent` applies that first, and `_getMargin` calls this with no buffer to tell an account that is
+    /// liquidatable only because of the flag from one that is also short of collateral.
+    /// @param tokenData0 Token0 margin data: requirement in the left slot, available balance in the right slot
+    /// @param tokenData1 Token1 margin data: requirement in the left slot, available balance in the right slot
+    /// @param globalUtilizations Account-wide max utilizations in the utilization slots (other slots ignored)
+    /// @param atTick The tick at which the two tokens are converted into one another
+    /// @param buffer The multiplier applied to both requirements (`DECIMALS` = no buffer)
+    /// @return True if the account is solvent at `atTick` with `buffer`
+    function _isSolventAcrossTokens(
+        LeftRightUnsigned tokenData0,
+        LeftRightUnsigned tokenData1,
+        PositionBalance globalUtilizations,
+        int24 atTick,
+        uint256 buffer
+    ) internal view returns (bool) {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
 
         uint256 maintReq0 = Math.mulDivRoundingUp(tokenData0.leftSlot(), buffer, DECIMALS);
@@ -1212,6 +1341,10 @@ contract RiskEngineV2 {
     ///        - Requirements are in raw token units
     ///        - Balances are in raw token units
     ///        - Ratios elsewhere in the engine use DECIMALS = 10_000_000
+    ///      For an account that is liquidatable only because of the interest shortfall flag (it still passes
+    ///      `_isSolventAcrossTokens` at `atTick` with no buffer), the returned requirements are replaced so that the
+    ///      liquidation bonus is exactly twice the uncollected interest instead of `MAX_BONUS` of the requirement
+    ///      (see `_getMargin`). Readers computing headroom from these values see that replaced requirement.
     /// @param user Account to evaluate
     /// @param positionBalanceArray Array of [balanceOrUtilAtMint] for all open positions of `user`
     /// @param atTick Tick at which exposures are valued
@@ -1222,6 +1355,8 @@ contract RiskEngineV2 {
     /// @param ct1 CollateralTracker for token1
     /// @return tokenData0 LeftRightUnsigned for token0 with left = maintenance requirement, right = available balance
     /// @return tokenData1 LeftRightUnsigned for token1 with left = maintenance requirement, right = available balance
+    /// @return globalUtilizations Account-wide max utilizations in the utilization slots, and the interest shortfall
+    /// flag in the positionSize slot (bit 0 = token0, bit 1 = token1; nonzero means `isAccountSolvent` is false)
     function getMargin(
         PositionBalance[] calldata positionBalanceArray,
         int24 atTick,
@@ -1259,6 +1394,14 @@ contract RiskEngineV2 {
     ///      LeftRightUnsigned pairs for token0 and token1 where:
     ///        - left slot = total maintenance requirement in that token
     ///        - right slot = total available balance in that token including settled short premia
+    ///      Owed interest is netted from the same-token balance; any uncollected remainder is added to that
+    ///      token's requirement (so it sizes the liquidation bonus) and, once it exceeds one mint commission on the
+    ///      token's interest-bearing principal (`_settleInterest`), sets the interest shortfall flag in the
+    ///      positionSize slot of `globalUtilizations`.
+    ///      A flagged account that still passes `_isSolventAcrossTokens` with no buffer is liquidatable only for
+    ///      its uncollected interest, so its requirements are replaced to make the liquidation bonus exactly twice
+    ///      that interest (`_bonusRequirement`) and zero in the other token. `getLiquidationBonus` sees only
+    ///      `tokenData`, which is why this happens here.
     ///      Caller is responsible for any cross-asset conversion, haircuts, and final solvency logic.
     /// @param user Account to evaluate
     /// @param positionBalanceArray Array of [balanceOrUtilAtMint] for all open positions of `user`
@@ -1270,6 +1413,9 @@ contract RiskEngineV2 {
     /// @param ct1 CollateralTracker for token1
     /// @return tokenData0 LeftRightUnsigned for token0 with left = maintenance requirement, right = available balance
     /// @return tokenData1 LeftRightUnsigned for token1 with left = maintenance requirement, right = available balance
+    /// @return globalUtilizations Account-wide max utilizations (utilization slots) plus the interest shortfall flag
+    /// (positionSize slot: bit 0 = token0, bit 1 = token1). When the flag is set and the account is otherwise solvent,
+    /// the requirements in `tokenData0`/`tokenData1` are the bonus-sizing values described above
     function _getMargin(
         PositionBalance[] calldata positionBalanceArray,
         TokenId[] calldata positionIdList,
@@ -1291,7 +1437,9 @@ contract RiskEngineV2 {
         LeftRightUnsigned creditAmounts;
         uint256[2] memory tokensRequiredMem;
         {
-            (tokensRequiredMem, creditAmounts, globalUtilizations) = _getTotalRequiredCollateral(
+            // get the global utilizations, which is the max utilizations for all open positions
+            globalUtilizations = _getGlobalUtilization(positionBalanceArray);
+            (tokensRequiredMem, creditAmounts) = _getTotalRequiredCollateral(
                 positionBalanceArray,
                 positionIdList,
                 atTick,
@@ -1306,24 +1454,26 @@ contract RiskEngineV2 {
             (balance0, interest0) = ct0.assetsAndInterest(user);
             (balance1, interest1) = ct1.assetsAndInterest(user);
 
-            // Insolvent-interest case: a user cannot pay more interest than their balance.
-            // Cap interest to available balance and zero the balance so we don't treat the same funds
-            // as both spendable collateral and interest payment.
-            // The capped interest is later added to collateral requirements.
-            if (interest0 > balance0) {
-                interest0 = balance0; // Cap interest
-                balance0 = 0; // Zero balance
-            } else {
-                balance0 -= interest0; // Subtract interest from balance
-                interest0 = 0; // Zero interest (nothing to add to requirements)
-            }
-            if (interest1 > balance1) {
-                interest1 = balance1;
-                balance1 = 0;
-            } else {
-                balance1 -= interest1; // Subtract interest from balance
-                interest1 = 0; // Zero interest (nothing to add to requirements)
-            }
+            // Owed interest is paid from the same-token balance; any remainder is added to the requirement.
+            // Interest is only collectible in its own token, so a remainder above the tolerance sets the
+            // shortfall flag (positionSize slot of `globalUtilizations`) and `isAccountSolvent` returns false.
+            // token0 is bit 0, token1 is bit 1
+            (balance0, interest0, globalUtilizations) = _settleInterest(
+                ct0,
+                user,
+                balance0,
+                interest0,
+                1,
+                globalUtilizations
+            );
+            (balance1, interest1, globalUtilizations) = _settleInterest(
+                ct1,
+                user,
+                balance1,
+                interest1,
+                2,
+                globalUtilizations
+            );
         }
         unchecked {
             balance0 += shortPremia.rightSlot();
@@ -1342,6 +1492,91 @@ contract RiskEngineV2 {
         tokenData1 = LeftRightUnsigned.wrap(balance1.toUint128()).addToLeftSlot(
             tokensRequiredMem[1].toUint128Capped()
         );
+
+        // (local copy keeps `atTick` reachable on the stack for the call below)
+        int24 _atTick = atTick;
+        // Flagged but solvent across tokens: the account is liquidatable only for its uncollected interest, so size
+        // the bonus to that debt. A flagged token's requirement becomes `_bonusRequirement` (bonus = 2I, raised
+        // above the balance if premia or credits cover it, so keepers are always paid); the other token's is
+        // brought down to its balance (bonus = 0). Accounts also short of collateral keep their requirements.
+        uint256 flags = globalUtilizations.positionSize(); // bit 0 = token0 shortfall, bit 1 = token1 shortfall
+        if (
+            (flags != 0) &&
+            _isSolventAcrossTokens(tokenData0, tokenData1, globalUtilizations, _atTick, DECIMALS)
+        ) {
+            tokensRequiredMem[0] = (flags & 1) != 0
+                ? _bonusRequirement(balance0, interest0)
+                : Math.min(tokensRequiredMem[0], balance0);
+            tokensRequiredMem[1] = (flags & 2) != 0
+                ? _bonusRequirement(balance1, interest1)
+                : Math.min(tokensRequiredMem[1], balance1);
+            // repack with the new requirements
+            tokenData0 = LeftRightUnsigned.wrap(balance0.toUint128()).addToLeftSlot(
+                tokensRequiredMem[0].toUint128Capped()
+            );
+            tokenData1 = LeftRightUnsigned.wrap(balance1.toUint128()).addToLeftSlot(
+                tokensRequiredMem[1].toUint128Capped()
+            );
+        }
+    }
+
+    /// @notice Requirement to report for a flagged token so that its liquidation bonus is exactly twice the
+    /// uncollected interest `I`.
+    /// @dev The bonus floor is `min(req * MAX_BONUS / DECIMALS, req - bal)`; both terms reach `2 * I` at
+    /// `max(10 * I, bal + 2 * I)`. The `10` assumes `MAX_BONUS == DECIMALS / 5` (20%).
+    /// @param bal The token's balance as `getLiquidationBonus` reads it (premia and credits included)
+    /// @param I The token's uncollected interest
+    /// @return The requirement to report
+    function _bonusRequirement(uint256 bal, uint256 I) internal pure returns (uint256) {
+        unchecked {
+            return Math.max(10 * I, bal + 2 * I);
+        }
+    }
+
+    /// @notice Pay the interest an account owes in one token out of its balance in that token, and flag an uncollectable remainder.
+    /// @dev The remainder is tolerated up to one mint commission on the token's interest-bearing principal (`netBorrows`),
+    /// so the grace period is `notionalFee / rate` whatever the account holds, and the interest a close can leave
+    /// uncollected is bounded by the commission paid on the borrowed notional. The tolerance is zero when the account
+    /// owes no interest at all (`netBorrows <= 0`). A remainder above it adds `flag` to `globalUtilizations`.
+    /// @param ct The CollateralTracker of the token
+    /// @param user The account
+    /// @param balance The account's balance in the token
+    /// @param interest The interest owed in the token
+    /// @param flag The shortfall bit of the token (1 for token0, 2 for token1)
+    /// @param globalUtilizations The packed utilizations word carrying the shortfall flags in its positionSize slot
+    /// @return The balance left after paying interest
+    /// @return The uncollected interest remainder (added to the requirement by the caller)
+    /// @return `globalUtilizations`, with `flag` added when the remainder exceeds the tolerance
+    function _settleInterest(
+        CollateralTrackerV2 ct,
+        address user,
+        uint256 balance,
+        uint256 interest,
+        uint256 flag,
+        PositionBalance globalUtilizations
+    ) internal view returns (uint256, uint256, PositionBalance) {
+        unchecked {
+            // nothing left over: the balance covers the interest
+            if (interest <= balance) return (balance - interest, 0, globalUtilizations);
+
+            // balance fully consumed; the remainder is uncollected
+            interest -= balance;
+
+            (, int128 netBorrows) = ct.interestState(user);
+            uint256 tolerance = netBorrows <= 0
+                ? 0
+                : (uint256(uint128(netBorrows)) *
+                    RISK_PARAMETERS_TEMPLATE.notionalFee() *
+                    ONE_BPS) / DECIMALS;
+
+            if (interest > tolerance) {
+                globalUtilizations = PositionBalance.wrap(
+                    PositionBalance.unwrap(globalUtilizations) + flag
+                );
+            }
+
+            return (0, interest, globalUtilizations);
+        }
     }
 
     /// @notice Gets the highest pool utilization (for token0 and token1) recorded at mint across an array of positions.
@@ -1350,7 +1585,8 @@ contract RiskEngineV2 {
     /// writing a sentinel at index 0 (see `_isSafeModeSentinel`), that entry is skipped and the result is floored
     /// at `SAFE_MODE_UTIL_FLOOR`. An empty array yields zero utilizations.
     /// @param positionBalanceArray The array of a user's `PositionBalance` structs.
-    /// @return globalUtilizations A packed PositionBalance that contains only the utilization data, recoverable as .utilization0() and .utilization1()
+    /// @return globalUtilizations A packed PositionBalance with only the utilization slots set (recoverable as
+    /// .utilization0() and .utilization1()); `_getMargin` later uses its zeroed positionSize slot for the interest shortfall flag
     function _getGlobalUtilization(
         PositionBalance[] calldata positionBalanceArray
     ) internal view returns (PositionBalance globalUtilizations) {
@@ -1411,6 +1647,9 @@ contract RiskEngineV2 {
 
     /// @notice Get the collateral requirement for each individual position in a list.
     /// @dev Returns net collateral requirements (required - credits) per position, packed as LeftRightUnsigned (token0: right, token1: left).
+    /// In a token where the list mints shares without cash (a loan, or short notional its chunk did not hold when minted),
+    /// credits are not netted: the account-level margin re-margins such credits in full, so each position reports its gross
+    /// requirement there and the sum stays consistent with `getMargin` for a reader that uses the raw vault balance.
     /// @param positionBalanceArray The list of all open positions, stored as `[balance/poolUtilizationAtMint, ...]`
     /// @param positionIdList The list of all option positions
     /// @param atTick The tick at which to evaluate positions
@@ -1421,46 +1660,62 @@ contract RiskEngineV2 {
         int24 atTick
     ) external view returns (LeftRightUnsigned[] memory collateralRequirements) {
         uint256 len = positionBalanceArray.length;
+        // first pass: gross requirements (in the output array) and credits of each position, per token
         collateralRequirements = new LeftRightUnsigned[](len);
+        LeftRightUnsigned[] memory credits = new LeftRightUnsigned[](len);
+        // bit 0 (token0) / bit 1 (token1): set when any position in the list mints shares without cash in that token
+        // (a loan or unfunded short notional, see `_getRequiredCollateralAtTickSinglePosition`)
+        uint256 hasLoan;
 
         for (uint256 i; i != len; ) {
-            TokenId tokenId = positionIdList[i];
-            uint128 positionSize = positionBalanceArray[i].positionSize();
-            int16 utilization0 = int16(positionBalanceArray[i].utilization0());
-            int16 utilization1 = int16(positionBalanceArray[i].utilization1());
+            // token0 fills the right slot, token1 the left slot
+            for (uint256 token; token != 2; ) {
+                (
+                    uint256 required,
+                    uint256 credit,
+                    uint256 loans
+                ) = _getRequiredCollateralAtTickSinglePosition(
+                        positionIdList[i],
+                        positionBalanceArray[i],
+                        atTick,
+                        token == 0
+                    );
+                collateralRequirements[i] = token == 0
+                    ? collateralRequirements[i].addToRightSlot(required.toUint128())
+                    : collateralRequirements[i].addToLeftSlot(required.toUint128());
+                credits[i] = token == 0
+                    ? credits[i].addToRightSlot(credit.toUint128Capped())
+                    : credits[i].addToLeftSlot(credit.toUint128Capped());
+                // bit 0 for token0, bit 1 for token1: any position minting shares without cash disables credit netting in that token
+                if (loans > 0) hasLoan |= 1 << token;
 
-            uint256 req0;
-            uint256 req1;
-            {
-                uint256 credits0;
-                uint256 credits1;
                 unchecked {
-                    (req0, credits0, ) = _getRequiredCollateralAtTickSinglePosition(
-                        tokenId,
-                        positionSize,
-                        atTick,
-                        utilization0,
-                        true
-                    );
+                    ++token;
                 }
-                unchecked {
-                    (req1, credits1, ) = _getRequiredCollateralAtTickSinglePosition(
-                        tokenId,
-                        positionSize,
-                        atTick,
-                        utilization1,
-                        false
-                    );
-                }
-                // net credits against requirements
-                req0 = req0 > credits0 ? req0 - credits0 : 0;
-                req1 = req1 > credits1 ? req1 - credits1 : 0;
             }
 
+            unchecked {
+                ++i;
+            }
+        }
+
+        // second pass: net credits against requirements
+        // a credit in a token with a loan or unfunded short notional is re-margined in full, so it no longer reduces the requirement
+        for (uint256 i; i != len; ) {
+            uint256 req0 = collateralRequirements[i].rightSlot();
+            uint256 req1 = collateralRequirements[i].leftSlot();
+            if ((hasLoan & 1) == 0) {
+                uint256 credit0 = credits[i].rightSlot();
+                req0 = req0 > credit0 ? req0 - credit0 : 0;
+            }
+            if ((hasLoan & 2) == 0) {
+                uint256 credit1 = credits[i].leftSlot();
+                req1 = req1 > credit1 ? req1 - credit1 : 0;
+            }
             collateralRequirements[i] = LeftRightUnsigned
                 .wrap(0)
-                .addToRightSlot(req0.toUint128())
-                .addToLeftSlot(req1.toUint128());
+                .addToRightSlot(uint128(req0))
+                .addToLeftSlot(uint128(req1));
 
             unchecked {
                 ++i;
@@ -1473,24 +1728,16 @@ contract RiskEngineV2 {
     /// @param positionBalanceArray The list of all open positions held by the `optionOwner`, stored as `[balance/poolUtilizationAtMint, ...]`
     /// @param positionIdList The list of all option positions held by `owner`
     /// @param atTick The tick at which to evaluate the account's positions
-    /// @return tokensRequired The amount of token0 (right) and token1 (left) required to stay above the margin threshold for all active positions of user
-    /// @return creditAmounts The amount of credit token0 (right) and token1 (left) in the user's portfolio
+    /// @return tokensRequired The amount of token0 (right) and token1 (left) required to stay above the margin threshold for all active positions of user.
+    /// Includes the account's credits in any token where it also holds a loan or short notional its chunk did not hold when minted,
+    /// so that credits funded by shares minted without cash are re-margined in full
+    /// @return creditAmounts The gross amount of credit token0 (right) and token1 (left) in the user's portfolio (not reduced by loans)
     function _getTotalRequiredCollateral(
         PositionBalance[] calldata positionBalanceArray,
         TokenId[] calldata positionIdList,
         int24 atTick,
         LeftRightUnsigned longPremia
-    )
-        internal
-        view
-        returns (
-            uint256[2] memory tokensRequired,
-            LeftRightUnsigned creditAmounts,
-            PositionBalance globalUtilizations
-        )
-    {
-        // get the global utilizations, which is the max utilizations for all open positions
-        globalUtilizations = _getGlobalUtilization(positionBalanceArray);
+    ) internal view returns (uint256[2] memory tokensRequired, LeftRightUnsigned creditAmounts) {
         // add long premia to tokens required
         {
             tokensRequired[0] = tokensRequired[0] + longPremia.rightSlot();
@@ -1505,8 +1752,6 @@ contract RiskEngineV2 {
             {
                 TokenId tokenId = positionIdList[i];
                 PositionBalance positionBalance = positionBalanceArray[i];
-                uint128 positionSize = positionBalance.positionSize();
-                int24 _atTick = atTick;
 
                 unchecked {
                     // can never miscast because utilization < 10_000
@@ -1518,9 +1763,8 @@ contract RiskEngineV2 {
                         _loans0
                     ) = _getRequiredCollateralAtTickSinglePosition(
                         tokenId,
-                        positionSize,
-                        _atTick,
-                        int16(positionBalance.utilization0()),
+                        positionBalance,
+                        atTick,
                         true
                     );
                     credits[0] = credits[0] + _credits0;
@@ -1536,9 +1780,8 @@ contract RiskEngineV2 {
                         _loans1
                     ) = _getRequiredCollateralAtTickSinglePosition(
                         tokenId,
-                        positionSize,
-                        _atTick,
-                        int16(positionBalance.utilization1()),
+                        positionBalance,
+                        atTick,
                         false
                     );
                     credits[1] = credits[1] + _credits1;
@@ -1556,6 +1799,15 @@ contract RiskEngineV2 {
         if (loans[0] > uint128(type(int128).max) || loans[1] > uint128(type(int128).max))
             revert Errors.PositionTooLarge();
 
+        // Re-margin a credit in full when the account also mints shares without cash in the same token.
+        // A loan, or the part of a short's notional its chunk did not hold at its mint tick, mints shares with no cash
+        // deposited; a credit funded by those shares reserves PLP cash that never entered the vault, and the pair
+        // nets to zero in `netBorrows`, so it accrues no interest and is never liquidatable. Adding the credit to
+        // the requirement forces the loan or short margin to be met with real deposits, so the position always
+        // costs more cash than it can reserve.
+        if (loans[0] > 0) tokensRequired[0] = tokensRequired[0] + credits[0];
+        if (loans[1] > 0) tokensRequired[1] = tokensRequired[1] + credits[1];
+
         // Use Capped uint128 to prevent reverts on large credits
         creditAmounts = creditAmounts.addToRightSlot(credits[0].toUint128Capped()).addToLeftSlot(
             credits[1].toUint128Capped()
@@ -1564,49 +1816,86 @@ contract RiskEngineV2 {
 
     /// @notice Get the required amount of collateral tokens corresponding to a specific single position `tokenId` at a price `atTick`.
     /// @param tokenId The option position
-    /// @param positionSize The size of the option position
+    /// @param positionBalance The position's balance entry: size, utilizations at mint and the tick it was minted at
     /// @param atTick The tick at which to evaluate the account's positions
-    /// @param poolUtilization The utilization of the collateral vault (balance of buying and selling)
     /// @param underlyingIsToken0 Cached `s_underlyingIsToken0` value for this CollateralTracker instance
     /// @return tokenRequired Total required tokens for all legs of the specified tokenId.
+    /// @return credits Notional of the width-0 long legs (credits) in the requested token
+    /// @return loans Notional minted as shares without cash in the requested token: the width-0 short legs (loans) plus,
+    /// for each width-positive short leg, the part of its notional that its chunk did not hold at the tick it was
+    /// minted at (`tickAtMint`). When positionBalance is the pool's safe-mode sentinel, which carries no mint tick,
+    /// the whole notional of each width-positive short counts as unfunded.
     function _getRequiredCollateralAtTickSinglePosition(
         TokenId tokenId,
-        uint128 positionSize,
+        PositionBalance positionBalance,
         int24 atTick,
-        int16 poolUtilization,
         bool underlyingIsToken0
     ) internal view returns (uint256 tokenRequired, uint256 credits, uint256 loans) {
-        uint256 numLegs = tokenId.countLegs();
+        // The pool's safe-mode sentinel (index 0 of the list) carries no mint tick, and the list order is
+        // caller-chosen, so a short placed there cannot be trusted to have been funded: treat its whole
+        // notional as minted without cash. A credit or long at index 0 is unaffected.
+        bool noMintTick = _isSafeModeSentinel(positionBalance);
 
         unchecked {
-            for (uint256 index = 0; index != numLegs; ++index) {
+            for (uint256 index = 0; index != tokenId.countLegs(); ++index) {
                 // bypass the collateral calculation if tokenType doesn't match the requested token (underlyingIsToken0)
                 if (tokenId.tokenType(index) != (underlyingIsToken0 ? 0 : 1)) continue;
+                uint128 positionSize = positionBalance.positionSize();
 
-                if (tokenId.width(index) == 0) {
+                // the notional only matters for credits/loans (width 0) and for shorts minted without cash;
+                // a width-positive long needs no amounts moved here
+                if (tokenId.width(index) == 0 || tokenId.isLong(index) == 0) {
                     LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
                         tokenId,
                         positionSize,
                         index,
                         false
                     );
-                    if (tokenId.isLong(index) == 1) {
-                        credits += tokenId.tokenType(index) == 0
-                            ? amountsMoved.rightSlot()
-                            : amountsMoved.leftSlot();
+                    // this leg's tokenType matches `underlyingIsToken0` (see the `continue` above)
+                    uint256 amountMoved = underlyingIsToken0
+                        ? amountsMoved.rightSlot()
+                        : amountsMoved.leftSlot();
+
+                    if (tokenId.width(index) == 0) {
+                        if (tokenId.isLong(index) == 1) {
+                            credits += amountMoved;
+                        } else {
+                            loans += amountMoved;
+                        }
                     } else {
-                        loans += tokenId.tokenType(index) == 0
-                            ? amountsMoved.rightSlot()
-                            : amountsMoved.leftSlot();
+                        uint256 currentValue0;
+                        uint256 currentValue1;
+                        if (!noMintTick) {
+                            LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
+                                tokenId,
+                                index,
+                                positionSize
+                            );
+
+                            (currentValue0, currentValue1) = Math.getAmountsForLiquidity(
+                                positionBalance.tickAtMint(),
+                                liquidityChunk
+                            );
+                        }
+
+                        // unfunded part of the short's notional: minted as shares with no cash at open.
+                        // Cannot underflow: `getAmountsMoved(..., false)` rounds a short down, as does
+                        // `getAmountsForLiquidity`, and the held sub-chunk never exceeds the whole chunk
+                        loans += amountMoved - (underlyingIsToken0 ? currentValue0 : currentValue1);
                     }
                 }
+
                 // Increment the tokenRequired accumulator
                 tokenRequired += _getRequiredCollateralSingleLeg(
                     tokenId,
                     index,
                     positionSize,
                     atTick,
-                    poolUtilization
+                    int16(
+                        underlyingIsToken0
+                            ? positionBalance.utilization0()
+                            : positionBalance.utilization1()
+                    )
                 );
             }
         }
@@ -1645,6 +1934,8 @@ contract RiskEngineV2 {
     }
 
     /// @notice Calculate the required amount of collateral for leg `index` of position `tokenId` when the leg does not have a risk partner.
+    /// @dev A long leg requires the buyer collateral ratio of its notional at every `atTick`. A short leg requires the
+    /// seller ratio at utilization out of the money, rising with price once at or in the money.
     /// @param tokenId The option position
     /// @param index The leg index (associated with a liquidity chunk) to consider a partner for
     /// @param positionSize The size of the position
@@ -1682,10 +1973,11 @@ contract RiskEngineV2 {
                     // buying power requirement for a Loan position is 100% + maintenanceLoanMargin
                     // the margin ramps from MAINT_MARGIN_RATE to DECIMALS / LOAN_MARGIN_DIVISOR over the same
                     // utilization range as short options: scale the floor up into the curve, then the result back down
+                    uint256 loanMarginDivisor = LOAN_MARGIN_DIVISOR;
                     uint256 maintenanceLoanMargin = _sellCollateralRatio(
                         poolUtilization,
-                        LOAN_MARGIN_DIVISOR * MAINT_MARGIN_RATE
-                    ) / LOAN_MARGIN_DIVISOR;
+                        loanMarginDivisor * MAINT_MARGIN_RATE
+                    ) / loanMarginDivisor;
                     required = Math.mulDivRoundingUp(
                         amountMoved,
                         maintenanceLoanMargin + DECIMALS,
@@ -1714,6 +2006,7 @@ contract RiskEngineV2 {
                 (int24 tickLower, int24 tickUpper) = tokenId.asTicks(index);
                 int24 strike = tokenId.strike(index);
 
+                // a long leg keeps the base requirement (the buyer ratio) at every price
                 if (isLong == 0) {
                     // if position is short, check whether the position is out-the-money
 
@@ -1777,54 +2070,6 @@ contract RiskEngineV2 {
                             r0;
                     }
                     required = Math.max(Math.max(r2, r1), r0);
-                } else {
-                    uint256 positionWidth = uint256(uint24(tickUpper - tickLower));
-
-                    uint256 distanceFromStrike = Math.max(
-                        Math.unsafeDivRoundingUp(positionWidth, 2),
-                        atTick > strike
-                            ? uint256(uint24(atTick - strike))
-                            : uint256(uint24(strike - atTick))
-                    );
-
-                    // Calculate the exponent: distance / width
-
-                    uint256 expValue;
-                    {
-                        uint256 scaledRatio = (distanceFromStrike * DECIMALS) / (positionWidth);
-                        // Divide by ln(2) to get the number of doublings
-                        // LN2_SCALED = ln(2) * DECIMALS
-                        uint256 shifts = scaledRatio / LN2_SCALED;
-                        uint256 remainder = scaledRatio % LN2_SCALED;
-
-                        // Calculate e^(remainder/DECIMALS) - now always less than e^(ln(2)) = 2
-                        // This means Taylor expansion is very accurate
-                        uint256 expFractional = Math.sTaylorCompounded(remainder, DECIMALS);
-                        // Combine: e^x = 2^shifts * e^remainder
-                        // We divide by DECIMALS at the end to maintain precision
-                        if (shifts < 128) {
-                            // Prevent overflow
-                            expValue = (expFractional << shifts);
-                        } else {
-                            expValue = type(uint128).max; // Cap at uint128 max value
-                        }
-                    }
-                    // Apply the exponential decay to required collateral
-                    uint256 _required = required;
-
-                    {
-                        uint256 floorRequirement = Math.mulDivRoundingUp(
-                            amountMoved,
-                            TEN_BPS,
-                            DECIMALS
-                        );
-                        required = Math.min(
-                            required,
-                            (DECIMALS * _required * positionWidth) /
-                                (distanceFromStrike * expValue) +
-                                floorRequirement
-                        );
-                    }
                 }
             }
         }
@@ -1861,11 +2106,10 @@ contract RiskEngineV2 {
         // -Vertical Spreads and Calendar Spreads (short put + long put) or (short call + long call) = requirement is max loss
         // -Synthetic Stocks (short put + long call) or (short call + long put) = requirement is short leg only
         //
-        // FUNDED OPTIONS
-        // -Prepaid long option (long put or call + credit) "Purchases pre-pays for the cost of the option" = requirement is max(long - credit, 1)
-        // -Upfront short option (short put or call + loan) "Upfront payment to seller" = requirement is max(loan, short option)
-        // -Option-protected loan (long put or call + loan) "Get a loan with an embedded long option for capital protection" = requirement is max(loan, short option)
-        // -Cash-Secured Option (short put or call + credit) "Allocate collateral to that specific option" = requirement is max(short - credit, 1)
+        // FUNDED OPTIONS (an option leg partnered with a credit or a loan of the same token) have no composite
+        // rule: each leg reports its own single-leg requirement. A credit needs nothing on its own and counts in the
+        // account balance; a loan carries its own margin. A cash-secured option is therefore margined like any short,
+        // and the credit backs the whole account rather than that one leg.
         //
         {
             // only proceed if the partners have the same asset
@@ -1931,38 +2175,6 @@ contract RiskEngineV2 {
                                     : 0;
                         }
                     }
-                } else if (_width != widthP) {
-                    if (_tokenType == tokenTypeP) {
-                        if (isLongP == 1) {
-                            // CASH-SECURED OPTION
-                            // PREPAID LONG OPTION
-                            // only compute it once for the option leg
-                            return
-                                _width
-                                    ? _computeCreditOptionComposite(
-                                        tokenId,
-                                        positionSize,
-                                        index,
-                                        atTick
-                                    )
-                                    : 0;
-                        } else {
-                            // OPTION-PROTECTED LOAN
-                            // UPFRONT SHORT OPTION
-                            // only compute it once for the option leg
-                            return
-                                _width
-                                    ? _computeLoanOptionComposite(
-                                        tokenId,
-                                        positionSize,
-                                        index,
-                                        partnerIndex,
-                                        atTick,
-                                        poolUtilization
-                                    )
-                                    : 0;
-                        }
-                    }
                 }
             }
         }
@@ -2015,7 +2227,7 @@ contract RiskEngineV2 {
 
     /// @notice Calculates the total collateral requirement for a defined-risk spread position.
     /// @dev A spread's collateral is the minimum of its defined max loss or the sum of its legs' individual (unpartnered) requirements.
-    /// @dev This provides capital efficiency, as deep OTM spreads may require less collateral than their max loss due to OTM decay on the long leg.
+    /// @dev This provides capital efficiency: a spread whose legs' individual requirements add up to less than its max loss is charged the smaller amount.
     /// @param tokenId The option position
     /// @param positionSize The size of the position
     /// @param index The leg index of the LONG leg in the spread position
@@ -2072,19 +2284,36 @@ contract RiskEngineV2 {
                 // Taylor expand to get a rough approximation of: contractSize * ∆width * tickSpacing / LONG_WIDTH_COLLATERAL_DIVISOR
                 // This is strictly larger than the real one, so OK to use that for a collateral requirement.
                 TokenId _tokenId = tokenId;
-                int24 deltaWidth = _tokenId.width(index) - _tokenId.width(partnerIndex);
+                int24 width = _tokenId.width(index);
+                int24 widthPartner = _tokenId.width(partnerIndex);
+                int24 tickSpacing = _tokenId.tickSpacing();
+
+                // width difference, in ticks
+                int24 deltaWidth = (width - widthPartner) * tickSpacing;
 
                 if (deltaWidth < 0) deltaWidth = -deltaWidth;
 
+                // a spread with a leg narrower than the liquidation band (`BUYER_COLLATERAL_RATIO / ONE_BPS` ticks) is
+                // charged a width difference of at least ten bands, 1.25 times the buyer ratio of notional: its long
+                // leg can be crossed alone inside the band, which the strike difference does not cover. A width
+                // difference already above ten bands is kept.
+                {
+                    int24 minWidth = int24(int256(BUYER_COLLATERAL_RATIO / ONE_BPS));
+                    if (
+                        (width * tickSpacing < minWidth || widthPartner * tickSpacing < minWidth) &&
+                        deltaWidth < 10 * minWidth
+                    ) {
+                        deltaWidth = 10 * minWidth;
+                    }
+                }
+
                 if (tokenType == 0) {
                     spreadRequirement +=
-                        (amountsMoved.rightSlot() *
-                            uint256(int256(deltaWidth * _tokenId.tickSpacing()))) /
+                        (amountsMoved.rightSlot() * uint256(int256(deltaWidth))) /
                         LONG_WIDTH_COLLATERAL_DIVISOR;
                 } else {
                     spreadRequirement +=
-                        (amountsMoved.leftSlot() *
-                            uint256(int256(deltaWidth * _tokenId.tickSpacing()))) /
+                        (amountsMoved.leftSlot() * uint256(int256(deltaWidth))) /
                         LONG_WIDTH_COLLATERAL_DIVISOR;
                 }
             }
@@ -2200,77 +2429,6 @@ contract RiskEngineV2 {
         }
     }
 
-    /// @notice Computes the required collateral for a composite position with a loan option strategy
-    /// @dev Calculates requirements for both the loan leg and its partner, returning the maximum of the two
-    /// @param tokenId The token ID representing the position
-    /// @param positionSize The size of the position in contracts
-    /// @param index The leg index of the loan option
-    /// @param partnerIndex The leg index of the partner to the loan option
-    /// @param atTick The tick at which to evaluate the collateral requirement
-    /// @param poolUtilization The current pool utilization percentage
-    /// @return The required collateral amount for the composite position
-    function _computeLoanOptionComposite(
-        TokenId tokenId,
-        uint128 positionSize,
-        uint256 index,
-        uint256 partnerIndex,
-        int24 atTick,
-        int16 poolUtilization
-    ) internal view returns (uint256) {
-        // compute both token requirements. Can directly compare them because they have the same tokenType
-        uint256 _required = _getRequiredCollateralSingleLegNoPartner(
-            tokenId,
-            index,
-            positionSize,
-            atTick,
-            poolUtilization
-        );
-        uint256 requiredPartner = _getRequiredCollateralSingleLegNoPartner(
-            tokenId,
-            partnerIndex,
-            positionSize,
-            atTick,
-            poolUtilization
-        );
-
-        unchecked {
-            if (tokenId.isLong(index) == 0) {
-                return _required + requiredPartner;
-            } else {
-                // return the max of the requirement between a loan and the long option position
-                return Math.max(_required, requiredPartner);
-            }
-        }
-    }
-
-    /// @notice Computes the required collateral for a composite position with a credit option strategy
-    /// @dev Assumes 100% utilization (cash account requirement) for sold options. Only called when partnerIndex is the credit
-    /// @param tokenId The token ID representing the position
-    /// @param positionSize The size of the position in contracts
-    /// @param index The leg index of the option
-    /// @param atTick The tick at which to evaluate the collateral requirement
-    /// @return The required collateral amount for the credit option
-    function _computeCreditOptionComposite(
-        TokenId tokenId,
-        uint128 positionSize,
-        uint256 index,
-        int24 atTick
-    ) internal view returns (uint256) {
-        // can only be called when partnerIndex is the credit
-        // required amount for the option leg
-        // Assume 100% utilization, which means
-        //  - 100% collateralization for sold options (cash account requirement)
-        uint256 _required = _getRequiredCollateralSingleLegNoPartner(
-            tokenId,
-            index,
-            positionSize,
-            atTick,
-            MAX_UTILIZATION
-        );
-
-        return _required;
-    }
-
     /// @notice Get the base collateral requirement for a short leg at a given pool utilization.
     /// @dev This is computed at the time the position is minted.
     /// @param utilization The pool utilization of this collateral vault at the time the position is minted
@@ -2310,21 +2468,23 @@ contract RiskEngineV2 {
         unchecked {
             utilization *= 1_000;
         }
+        uint256 targetPoolUtil = TARGET_POOL_UTIL;
         // return the basal sell ratio if pool utilization is lower than target
-        if (uint256(utilization) < TARGET_POOL_UTIL) {
+        if (uint256(utilization) < targetPoolUtil) {
             return minRatio;
         }
 
+        uint256 saturatedPoolUtil = SATURATED_POOL_UTIL;
         // return 100% collateral ratio if utilization is above saturated pool utilization
-        if (uint256(utilization) > SATURATED_POOL_UTIL) {
+        if (uint256(utilization) > saturatedPoolUtil) {
             return DECIMALS;
         }
 
         unchecked {
             return
                 minRatio +
-                ((DECIMALS - minRatio) * (uint256(utilization) - TARGET_POOL_UTIL)) /
-                (SATURATED_POOL_UTIL - TARGET_POOL_UTIL);
+                ((DECIMALS - minRatio) * (uint256(utilization) - targetPoolUtil)) /
+                (saturatedPoolUtil - targetPoolUtil);
         }
     }
 
@@ -2365,20 +2525,21 @@ contract RiskEngineV2 {
                           90%     95% 100%      UTILIZATION
          */
         unchecked {
+            uint256 saturatedPoolUtil = SATURATED_POOL_UTIL;
             uint256 utilizationScaled = uint256(utilization * 1_000);
             // return the basal cross buffer ratio if pool utilization is lower than target
-            if (utilizationScaled < SATURATED_POOL_UTIL) {
+            if (utilizationScaled < saturatedPoolUtil) {
                 return crossBuffer;
             }
 
-            uint256 cutoffPoolUtilization = (SATURATED_POOL_UTIL + DECIMALS) / 2;
+            uint256 cutoffPoolUtilization = (saturatedPoolUtil + DECIMALS) / 2;
             // return 0 if pool utilization is above halfway between the saturated pool utilization and 100%
             if (utilizationScaled > cutoffPoolUtilization) {
                 return 0;
             }
 
             return ((crossBuffer * (cutoffPoolUtilization - utilizationScaled)) /
-                (cutoffPoolUtilization - SATURATED_POOL_UTIL));
+                (cutoffPoolUtilization - saturatedPoolUtil));
         }
     }
 

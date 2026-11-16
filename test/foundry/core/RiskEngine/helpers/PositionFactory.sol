@@ -126,12 +126,22 @@ library PositionFactory {
         uint16 util0, // int16 packed in PositionBalance
         uint16 util1
     ) internal pure returns (PositionBalance) {
+        return posBalance(positionSize, util0, util1, 0);
+    }
+
+    /// @dev Same, with an explicit mint tick (the chunk composition the vault settled the mint against).
+    function posBalance(
+        uint128 positionSize,
+        uint16 util0,
+        uint16 util1,
+        int24 tickAtMint
+    ) internal pure returns (PositionBalance) {
         uint32 utilPacked = uint32(util0) | (uint32(util1) << 16);
         return
             PositionBalanceLibrary.storeBalanceData(
                 positionSize,
                 utilPacked,
-                0,
+                tickAtMint,
                 TIMESTAMP_AT_MINT,
                 BLOCK_AT_MINT,
                 false

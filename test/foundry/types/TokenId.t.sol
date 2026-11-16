@@ -1507,7 +1507,11 @@ contract TokenIdTest is Test, PositionUtils {
 
                 // bound strike
                 strike = int24(
-                    bound(strikeSeed, lowerBound / tickSpacing, upperBound / tickSpacing)
+                    bound(
+                        strikeSeed,
+                        _minStrikeIndex(lowerBound, strikeOffset),
+                        _maxStrikeIndex(upperBound, strikeOffset)
+                    )
                 );
                 strike = int24(strike * tickSpacing + strikeOffset);
             }
@@ -1540,6 +1544,24 @@ contract TokenIdTest is Test, PositionUtils {
         }
 
         return tokenId;
+    }
+
+    /// @dev Lowest strike index (in units of tickSpacing) for `fuzzedPosition`. The window around the current tick
+    /// can reach past the pool's tick range, so it is clamped to keep `index * tickSpacing + strikeOffset` strictly
+    /// above MIN_TICK: `validate` rejects a strike equal to either end of the range before any other leg check.
+    function _minStrikeIndex(int24 lowerBound, int24 strikeOffset) internal view returns (int24) {
+        // the numerator is negative, so the division (towards zero) rounds up
+        int24 minIndex = (TickMath.MIN_TICK + 1 - strikeOffset) / tickSpacing;
+        int24 index = lowerBound / tickSpacing;
+        return index > minIndex ? index : minIndex;
+    }
+
+    /// @dev Highest strike index for `fuzzedPosition`, keeping the strike strictly below MAX_TICK.
+    function _maxStrikeIndex(int24 upperBound, int24 strikeOffset) internal view returns (int24) {
+        // the numerator is positive, so the division rounds down
+        int24 maxIndex = (TickMath.MAX_TICK - 1 - strikeOffset) / tickSpacing;
+        int24 index = upperBound / tickSpacing;
+        return index < maxIndex ? index : maxIndex;
     }
 
     // Mimicks Uniswapv3 pool possible states

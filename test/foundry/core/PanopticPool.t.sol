@@ -269,6 +269,30 @@ contract PanopticPoolTest is PositionUtils {
 
     int256 rangesFromStrike;
     int256[2] exerciseFeeAmounts;
+    // fee of the cheapest long leg seen so far: [fee0, fee1, value + 1]; value == 0 means unset
+    int256[3] minLegFee;
+
+    /// @notice Track the fee of the cheapest long leg by value at the oracle tick (first one on ties, ascending leg order), kept in storage to stay under the stack limit.
+    // minLegFee[2] holds the candidate's value in the cheaper token at the oracle tick (token0 at or below tick 0,
+    // token1 above, as in RiskEngine.exerciseCost), plus one (0 = unset)
+    function _pickMinLegFee(TokenId _tokenId, uint256 leg, int256 legFee) internal {
+        (LeftRightSigned legLongs, ) = PanopticMath.calculateIOAmounts(
+            _tokenId,
+            positionSize,
+            leg,
+            true
+        );
+        int256 fee0 = (legLongs.rightSlot() * legFee) / 10_000_000;
+        int256 fee1 = (legLongs.leftSlot() * legFee) / 10_000_000;
+        uint160 sqrtP = TickMath.getSqrtRatioAtTick(TWAPtick);
+        int256 value = TWAPtick > 0
+            ? int256(PanopticMath.convert0to1(uint256(fee0), sqrtP)) + fee1
+            : fee0 + int256(PanopticMath.convert1to0(uint256(fee1), sqrtP));
+        if (minLegFee[2] != 0 && value + 1 >= minLegFee[2]) return;
+        minLegFee[0] = fee0;
+        minLegFee[1] = fee1;
+        minLegFee[2] = value + 1;
+    }
 
     LeftRightSigned $longAmounts;
     LeftRightSigned $shortAmounts;
@@ -563,6 +587,33 @@ contract PanopticPoolTest is PositionUtils {
 
     function _initPool(uint256 seed) internal {
         _initWorld(seed);
+    }
+
+    /// @dev Whether the risk engine flags `account` for an interest shortfall (uncollected interest in a token
+    /// whose balance is exhausted). A flagged account fails `isAccountSolvent` at every tick regardless of its
+    /// cross-margin surplus; `PanopticHelper.checkCollateral` does not model the flag.
+    function _hasInterestShortfall(
+        address account,
+        TokenId[] memory posIdList
+    ) internal view returns (bool) {
+        (
+            LeftRightUnsigned shortPremium,
+            LeftRightUnsigned longPremium,
+            PositionBalance[] memory positionBalanceArray,
+            ,
+
+        ) = pp.getFullPositionsData(account, false, posIdList);
+        (, , PositionBalance globalUtilizations) = pp.riskEngine().getMargin(
+            positionBalanceArray,
+            pp._getTWAP(),
+            account,
+            posIdList,
+            shortPremium,
+            longPremium,
+            ct0,
+            ct1
+        );
+        return globalUtilizations.positionSize() != 0;
     }
 
     function _initWorldAtTick(uint256 seed, int24 tick) internal {
@@ -8295,8 +8346,9 @@ contract PanopticPoolTest is PositionUtils {
 
             TWAPtick = pp._getTWAP();
 
-            // per-leg extrinsic-value fee at the oracle tick: SHARE * D^2 / (2W) bps of this leg's notional,
-            // floored at NOTIONAL_FEE bps (max(NOTIONAL_FEE, tickSpacing / 2) bps in range) and bounded at SHARE (see RiskEngine.exerciseCost)
+            // extrinsic-value fee rate at the oracle tick: SHARE * D^2 / (2W) bps of this leg's notional,
+            // floored at NOTIONAL_FEE bps (max(NOTIONAL_FEE, tickSpacing / 2) bps in range) and bounded at SHARE.
+            // Only the cheapest long leg (valued in the cheaper token at the oracle tick) is charged (see RiskEngine.exerciseCost); the composition delta below applies to every leg.
             {
                 (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(
                     tokenId.width(i),
@@ -8315,14 +8367,7 @@ contract PanopticPoolTest is PositionUtils {
                         ex = int256(RiskEngineParams.blueChip().forceExerciseCost);
                     if (ex > legFee) legFee = ex;
                 }
-                (LeftRightSigned legLongs, ) = PanopticMath.calculateIOAmounts(
-                    tokenId,
-                    positionSize,
-                    i,
-                    true
-                );
-                exerciseFeeAmounts[0] += (legLongs.rightSlot() * legFee) / 10_000_000;
-                exerciseFeeAmounts[1] += (legLongs.leftSlot() * legFee) / 10_000_000;
+                _pickMinLegFee(tokenId, i, legFee);
             }
             console2.log("currentTick", currentTick);
             console2.log("twap", TWAPtick);
@@ -8352,6 +8397,10 @@ contract PanopticPoolTest is PositionUtils {
             exerciseFeeAmounts[0] += int256(currentValue0) - int256(medianValue0);
             exerciseFeeAmounts[1] += int256(currentValue1) - int256(medianValue1);
         }
+
+        // charge the fee of the cheapest long leg only
+        exerciseFeeAmounts[0] += minLegFee[0];
+        exerciseFeeAmounts[1] += minLegFee[1];
 
         console2.log("exerciseFeeAmounts0", exerciseFeeAmounts[0]);
         console2.log("exerciseFeeAmounts1", exerciseFeeAmounts[1]);
@@ -11202,6 +11251,10 @@ contract PanopticPoolTest is PositionUtils {
             )
         );
 
+        // the interest shortfall flag makes an account insolvent at every tick regardless of its cross-margin
+        // surplus (e.g. zero balance in a token it net-borrows); this test is about accounts the engine
+        // considers solvent, so exclude flagged ones
+        vm.assume(!_hasInterestShortfall(Alice, $posIdLists[1]));
         {
             (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
                 pp,

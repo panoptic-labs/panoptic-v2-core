@@ -9,19 +9,19 @@
     "RiskEngine": {
       "path": "./contracts/RiskEngine.sol",
       "deployment": {
-        "address": "TODO_ASSIGN_UNUSED_SLOT",
-        "salt": "TODO",
-        "nonce": 0
+        "address": "0x000000000000f69c150aFEa8Cc4f8fC4462AdBB4",
+        "salt": "0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a13ad26f2f0934b901902d3ac8",
+        "nonce": 20
       },
-      "optimizeRuns": 500,
+      "optimizeRuns": 50,
       "constructorArgs": [
         [
           "0x0000000000000D329aCC1514f4Ba05584a8369ed",
           "0x0000000000000a3D22E158417AA639D7F71b0FF7",
           "0x6a0d5c6577773db023c0a2ffa778aa7bd42daedbce4a5b9ad7ddd38b422e7412",
           [
-            10000000, 10000000, 4533471891108855828971580, 724, 149, 513, 90000, 10750000, 2000000,
-            100000, 1000000, 4, 5000000, 6666667, 9000000, 26, 2000000, 3, 250, 5000, 4000,
+            9000000, 9000000, 4533471891108855828971580, 724, 149, 513, 90000, 10750000, 2000000,
+            200000, 1000000, 4, 5000000, 6666667, 9000000, 26, 2000000, 3, 750, 5000, 4000,
             634195839
           ]
         ],
@@ -38,7 +38,8 @@
   "upgrades": [
     {
       "proxy": "0x000000000000ffE5eFdB5AE76b9200263C58b4c0",
-      "implementation": "RiskEngine"
+      "implementation": "RiskEngine",
+      "pools": { "1": ["0x00000000000E98f6c5aE16835bAdF2f7cC0d49D7"], "4663": [] }
     }
   ]
 }

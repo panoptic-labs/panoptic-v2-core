@@ -7,11 +7,12 @@ import {MockCollateralTracker} from "./mocks/MockCollateralTracker.sol";
 import {LeftRightUnsigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {OraclePack} from "@types/OraclePack.sol";
-import {PositionBalance} from "@types/PositionBalance.sol";
+import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
 import {PositionFactory} from "./helpers/PositionFactory.sol";
 import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 
 contract RiskEngineInvariants is Test {
+    PositionBalance internal $routingGlobal;
     using PositionFactory for *;
 
     RiskEngineHarness internal E;
@@ -142,14 +143,14 @@ contract RiskEngineInvariants is Test {
         uint256 sell = E.sellCollateralRatio(u);
         uint256 buy = E.buyCollateralRatio(uint16(u < int16(0) ? int16(0) : int16(u)));
 
-        // Ranges: 0 < buy ≤ SELL and sell ≤ 100%
+        // The long-leg ratio is flat in utilization and is exactly the configured parameter:
+        // nothing may scale it on the way to the requirement maths.
         assertGt(buy, 0, "buy>0");
-        assertLe(buy, 2_000_000, "buy leq baseSELL cap proxy");
+        assertEq(buy, E.buyerCollateralRatioParam(), "buy == configured buyer ratio");
         assertLe(sell, DEC, "sell leq 100%");
 
-        // At saturation, buy roughly halves, sell→100%
+        // At saturation, sell→100%
         if (uint256(int256(u < 0 ? int16(0) : u)) * 1000 >= 9_000_000) {
-            assertLe(buy, 1_000_000 + 2, "buy halves at saturation (pm slack)");
             assertEq(sell, DEC, "sell=100% at saturation");
         }
     }
@@ -431,7 +432,9 @@ contract RiskEngineInvariants is Test {
             .addToRightSlot(uint128(bound(premLong0, 0, 1e18)))
             .addToLeftSlot(uint128(bound(premLong1, 0, 1e18)));
 
-        (LeftRightUnsigned td0, LeftRightUnsigned td1, ) = E.getMarginInternal(
+        LeftRightUnsigned td0;
+        LeftRightUnsigned td1;
+        (td0, td1, $routingGlobal) = E.getMarginInternal(
             u,
             arr,
             0,
@@ -463,9 +466,38 @@ contract RiskEngineInvariants is Test {
             "balance1 = assets1 + shortPrem1"
         );
 
-        // Requirements side must include long premia and interest.
-        assertGe(td0.leftSlot(), longPrem.rightSlot(), "long premia -> req0");
-        assertGe(td1.leftSlot(), longPrem.leftSlot(), "long premia -> req1");
+        // Requirements side must include long premia and interest, unless the interest shortfall flag replaced it.
+        _assertRequirementRouting(
+            td0,
+            longPrem.rightSlot(),
+            interest0 > assets0 ? interest0 - assets0 : 0
+        );
+        _assertRequirementRouting(
+            td1,
+            longPrem.leftSlot(),
+            interest1 > assets1 ? interest1 - assets1 : 0
+        );
+    }
+
+    /// @dev Unflagged: long premia are in the requirement. Flagged: the requirement is unmodified if the account also
+    /// fails the cross-token test, and otherwise only sizes the liquidation bonus, so it need not cover long premia
+    /// (see `RiskEngine.InterestShortfall.t.sol`).
+    function _assertRequirementRouting(
+        LeftRightUnsigned td,
+        uint256 longPremia,
+        uint256 uncollected
+    ) internal view {
+        uint256 req = td.leftSlot();
+        if (PositionBalanceLibrary.positionSize($routingGlobal) == 0) {
+            assertGe(req, longPremia, "long premia -> req");
+            return;
+        }
+        uint256 forBonus = td.rightSlot() + 2 * uncollected;
+        if (10 * uncollected > forBonus) forBonus = 10 * uncollected;
+        assertTrue(
+            req == longPremia + uncollected || req == forBonus,
+            "flagged: unmodified requirement or the bonus requirement"
+        );
     }
 
     // 9) Rounding discipline: favorable move never increases requirement for a given short.

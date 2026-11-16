@@ -18,7 +18,7 @@ struct RiskEngineParameters {
     // ---- collateral ----
     uint32 bpDecreaseBuffer; // 10_750_000
     uint256 sellerCollateralRatio; // 2_000_000 (20%)
-    uint256 buyerCollateralRatio; // 100_000 (1%)
+    uint256 buyerCollateralRatio; // 200_000 (2%)
     uint256 maintMarginRate; // 1_000_000 (10%)
     uint256 loanMarginDivisor; // 4
     uint256 forceExerciseCost; // 5_000_000 (50%)
@@ -28,7 +28,7 @@ struct RiskEngineParameters {
     uint256 maxBonus; // 2_000_000
     // ---- fees ----
     uint16 notionalFee; // 3 bps
-    uint16 premiumFee; // 250 bps
+    uint16 premiumFee; // 750 bps
     uint16 protocolSplit; // 5_000 bps
     uint16 builderSplit; // 4_000 bps
     // ---- interest rate model (per-second, WAD) ----

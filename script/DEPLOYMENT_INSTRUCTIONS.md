@@ -103,7 +103,8 @@ implementation's verified constructor arguments on Etherscan, or consult the bui
 
 Config layout:
 
-- `RiskEngine` is the implementation. Its `deployment` triple only needs to be a valid, unused CREATE3 slot.
+- `RiskEngine` is the implementation. Nobody sees its address, so its `deployment` triple must come from the
+  `0x000000000000F…` list in "Give the implementation an unused CREATE3 slot" below, never from a rarer address.
 - `RiskEngineProxy` holds the vanity address that pools key on. Its constructor args are `["@RiskEngine", "$RISK_ENGINE_OWNER"]`.
 - `env.RISK_ENGINE_OWNER` is the initial owner of the `ProxyAdmin` the proxy creates in its constructor (the upgrade
   authority). Set it to the multisig before building. Ownership is later moved with `ProxyAdmin.transferOwnership`
@@ -159,12 +160,32 @@ Robinhood chain (chain id 4663) was verified this way on 2026-10-11: every preco
 
 ## Upgrading a RiskEngine
 
-An upgrade is one Safe transaction: deploy the new implementation through the CREATE3 deployer, then call
+An upgrade is two Safe transactions, because two Safes are involved. The deploying Safe
+`0x82BF455e9ebd6a541EF10b683dE1edCaf05cE7A1` deploys the new implementation through the CREATE3 deployer (the
+deployer only lets the address embedded in the salt mint it). The Safe that owns the `ProxyAdmin` then, in one
+transaction, calls `accrueInterest()` on both collateral trackers of every pool bound to the proxy, then
 `ProxyAdmin.upgradeAndCall(proxy, newImplementation, "")`. Pools and trackers pick up the new code in the same
-block. Nothing else is redeployed. Config and generator:
+block. Nothing else is redeployed.
+
+The accrual comes first because tracker interest is lazy: the first interaction after an idle interval asks the
+current engine for the rate and compounds it over the whole interval. Accruing in the same transaction as, and
+before, the upgrade prices that interval at the rate of the engine that was live during it. `accrueInterest()` is
+permissionless and idempotent within a block. Config and generator:
 
 - `build-config-RiskEngine-upgrade.json`: the implementation to build (`logicContracts.RiskEngine`) and the
-  `upgrades` list mapping each proxy to the implementation it should point at.
+  `upgrades` list mapping each proxy to the implementation it should point at, with the `pools` bound to that
+  proxy (list every pool from the factories' `PoolDeployed` events whose `riskEngine()` is the proxy). The
+  generator reads each pool's trackers and refuses a pool that is bound elsewhere.
+- `build-config-RiskEngineXStocks-upgrade.json`: the same for the xStocks proxy
+  `0x000000000000FfADa7c641E2aD6B13b51b50Cc94`, with the xStocks tier parameters.
+- `pools` is keyed by chain id, because the same implementation goes to every chain but the pools differ. As of
+  2026-11-05:
+
+  | Proxy              | Mainnet (1)                                  | Robinhood chain (4663)                       |
+  | ------------------ | -------------------------------------------- | -------------------------------------------- |
+  | Blue-chip `…ffE5…` | `0x00000000000E98f6c5aE16835bAdF2f7cC0d49D7` | none                                         |
+  | xStocks `…FfAD…`   | none                                         | `0x000000000056475506823b2BedBD89f55232DA40` |
+
 - `gen_upgrade_safetx.py`: turns the built initcode into Safe Transaction Builder JSON.
 
 The `ProxyAdmin` address is derived offline as `CREATE(proxy, nonce 1)` because `RiskEngineProxy` creates it in
@@ -187,16 +208,42 @@ the upgrade; `emaPeriods` must never change for a live proxy, since every pool's
 
 ### 2. Give the implementation an unused CREATE3 slot
 
-The implementation address is not user-facing, so any unused triple from `script/vanity-addresses.tsv` works.
-Exclude every address that is already live:
+The implementation address is not user-facing: only the proxy address is public, and it never changes. Do not
+spend a rare vanity address on an implementation. Take the next unused row of the `0x000000000000F…` block of
+`script/vanity-addresses.tsv` (12 zeros; the 13-zero addresses and the rows with rarity `314649014` are kept for
+contracts people look at) and write its address, salt and nonce into `logicContracts.RiskEngine.deployment` by
+hand:
 
-```bash
-python3 script/select_vanity_addresses.py build-config-RiskEngine-upgrade.json \
-  --exclude-config build-config-v4.json --exclude-config build-config-v3.json \
-  --exclude-config build-config-RiskEngine.json --in-place
-```
+| Address                                      | Rarity    | Salt                                                                 | Nonce | Status                                               |
+| -------------------------------------------- | --------- | -------------------------------------------------------------------- | ----- | ---------------------------------------------------- |
+| `0x000000000000F0b287c19f606bC3A471F260c502` | 16777216  | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1fdacbdc9c0b26403e17431f4` | 13    | used: RiskEngine implementation (2026-10-12)         |
+| `0x000000000000F4901018445c697e1e358DAb8dAD` | 16777216  | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a193504ab8db09dd0096f7e01b` | 21    | used: RiskEngineXStocks implementation               |
+| `0x000000000000F4a3109180d77f4d8242863c6e8A` | 16777216  | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a17a320301fd88da01ca485af5` | 13    | used: RiskEngineStub                                 |
+| `0x000000000000f69c150aFEa8Cc4f8fC4462AdBB4` | 16777216  | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a13ad26f2f0934b901902d3ac8` | 20    | assigned: RiskEngine implementation, 2026-11 upgrade |
+| `0x000000000000F7D509a1583A2947059683137BcA` | 16777216  | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a12c176515ee1fe70191935b7d` | 11    | assigned: RiskEngineXStocks impl., 2026-11 upgrade   |
+| `0x000000000000f893CEE070d72ec7418e6dE2c602` | 16777216  | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1a9d14047efd1cd024157f363` | 11    | free                                                 |
+| `0x000000000000FA4a009a0E6b5A457983d3E21d82` | 314649014 | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a14e714c919c11d302fad76639` | 11    | free, rarer: keep for a proxy                        |
+| `0x000000000000FACD60Ed64a84882B752B3766B85` | 16777216  | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1bcd03559bb8ac303badbd3de` | 28    | free                                                 |
+| `0x000000000000fb2D57fc55f94a69cFfD01d13268` | 16777216  | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1dbaed5d669542c00be880218` | 15    | free                                                 |
+| `0x000000000000FB874a9959A7C7b1B58c7F58452b` | 16777216  | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a12e5c20330f8c0d03cb080d12` | 23    | free                                                 |
+| `0x000000000000FbEd71Cf013770F078B1cD241431` | 16777216  | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1bd68c041d8203d00ee60c218` | 21    | free                                                 |
+| `0x000000000000fc0dD891863b898Fb2b9E6C6A98F` | 16777216  | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a19e4e881ed2710900be62e590` | 12    | free                                                 |
+| `0x000000000000fC18A6C1139f25F62d964bF1d089` | 16777216  | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a14fcdb617e5ad26002586d6f8` | 2     | free                                                 |
+| `0x000000000000FCff5346774366a0F503a40799a3` | 16777216  | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a16ff80e2bb2627f00e03d4b1c` | 11    | free                                                 |
+| `0x000000000000fD0F530F0B6cB14b3d1b00A81b5B` | 314649014 | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1ebaf03ae10b74f014fe3ffcc` | 4     | free, rarer: keep for a proxy                        |
+| `0x000000000000fDaD65E6239e8858FDBf11775D57` | 16777216  | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1faa71eef303349005d9c1a7c` | 17    | free                                                 |
+| `0x000000000000FE8c0555184e44600c8B98a95222` | 16777216  | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1b2a6e56c68baea003bffd594` | 13    | free                                                 |
+| `0x000000000000ff1F72EB9b4a215DDac4d9dDa3dA` | 16777216  | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a181369280dea35202c6275b2f` | 11    | used: RiskEngineReservedProxyA                       |
+| `0x000000000000Ff944ed41CbFa03edc0b477cBbf4` | 16777216  | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1d950b166d1357200c21530d8` | 26    | used: RiskEngineReservedProxyB                       |
+| `0x000000000000FfADa7c641E2aD6B13b51b50Cc94` | 16777216  | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a1f03a05a8b523a602989260cb` | 31    | used: RiskEngineXStocksProxy                         |
+| `0x000000000000ffE5eFdB5AE76b9200263C58b4c0` | 314649014 | `0x82bf455e9ebd6a541ef10b683de1edcaf05ce7a15c19650e26fc010329d99434` | 1     | used: RiskEngineProxy (the public address)           |
 
-Keep a freeze file of deployed addresses once mainnet is live and pass it with `--freeze`.
+Status as of 2026-11-05 (mainnet code and the build configs). Mark a row used here when you take it, and confirm
+it is still empty first: `cast code <address> --rpc-url $RPC` must print `0x`.
+
+Do not use `script/select_vanity_addresses.py` for an implementation. It ranks by the rarity column alone, which
+is the same for a 12-zero and a 13-zero address, so it hands out 13-zero addresses first: on 2026-11-05 it
+proposed `0x000000000000010Dd64d8fA43F47dCA1fC566C1d` for this upgrade.
 
 ### 3. Build the initcode
 
@@ -215,9 +262,29 @@ python3 gen_upgrade_safetx.py generate build-config-RiskEngine-upgrade.json \
   deployment-info-RiskEngine-upgrade.json safe-txns-upgrade --rpc-url $RPC_URL
 ```
 
-Writes `safe-txns-upgrade/upgrade.json` with mint, deploy and `upgradeAndCall` in one atomic transaction.
-`--rpc-url` is optional but recommended: it reads the live ERC-1967 admin and implementation slots and refuses to
-generate if the derived `ProxyAdmin` does not match.
+Writes two files, each one Safe transaction:
+
+- `safe-txns-upgrade/deploy.json`: mint + deploy of the implementation, sent by the deploying Safe
+- `safe-txns-upgrade/upgrade.json`: `accrueInterest()` on each tracker and `upgradeAndCall`, atomic, sent by the
+  Safe that owns the `ProxyAdmin` once `deploy.json` has run
+
+`--rpc-url` reads the live ERC-1967 admin and implementation slots and refuses to
+generate if the derived `ProxyAdmin` does not match; it is required when `pools` are listed, since the trackers
+are read from each pool.
+
+Each proxy and each chain gets its own pair. `--chain-id` (default 1) sets the chain the files are for and picks
+that chain's `pools`; it must match the chain behind `--rpc-url`. The implementation address is the same on every
+chain, since the same initcode goes through the same CREATE3 salt:
+
+```bash
+python3 gen_upgrade_safetx.py generate build-config-RiskEngineXStocks-upgrade.json \
+  deployment-info-RiskEngineXStocks-upgrade.json safe-txns-upgrade-xstocks --rpc-url $RPC_URL
+python3 gen_upgrade_safetx.py generate build-config-RiskEngine-upgrade.json \
+  deployment-info-RiskEngine-upgrade.json safe-txns-upgrade-robinhood --chain-id 4663 --rpc-url $ROBINHOOD_RPC_URL
+python3 gen_upgrade_safetx.py generate build-config-RiskEngineXStocks-upgrade.json \
+  deployment-info-RiskEngineXStocks-upgrade.json safe-txns-upgrade-xstocks-robinhood --chain-id 4663 \
+  --rpc-url $ROBINHOOD_RPC_URL
+```
 
 A `TimelockController` owns the `ProxyAdmin` (later setup):
 
@@ -230,7 +297,7 @@ python3 gen_upgrade_safetx.py generate build-config-RiskEngine-upgrade.json \
 Writes three files, each one Safe transaction:
 
 - `deploy.json`: mint + deploy of the implementation
-- `schedule.json`: `scheduleBatch` on the timelock with the `upgradeAndCall` payload
+- `schedule.json`: `scheduleBatch` on the timelock with the `accrueInterest()` and `upgradeAndCall` payloads
 - `execute.json`: `executeBatch` with the identical payload, valid once the delay has passed
 
 CREATE3 addresses depend only on the salt, so `schedule.json` can be executed before `deploy.json`. For a

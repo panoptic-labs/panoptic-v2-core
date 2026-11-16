@@ -131,7 +131,7 @@ contract ERC1155Minimal is Test {
     function test_fail__safeTransferFrom_unsafeRecipient(uint256 id, uint256 amount) public {
         token.mint(id, amount);
         UnsafeRecipient unsafeRecipient = new UnsafeRecipient();
-        vm.expectRevert("UnsafeRecipient()");
+        vm.expectRevert(ERC1155.UnsafeRecipient.selector);
         token.safeTransferFrom(address(1), address(unsafeRecipient), id, amount, "");
     }
 
@@ -197,7 +197,7 @@ contract ERC1155Minimal is Test {
             token.mint(ids[i], amounts[i]);
         }
         UnsafeRecipient unsafeRecipient = new UnsafeRecipient();
-        vm.expectRevert("UnsafeRecipient()");
+        vm.expectRevert(ERC1155.UnsafeRecipient.selector);
         token.safeBatchTransferFrom(
             address(1),
             address(unsafeRecipient),
@@ -235,7 +235,7 @@ contract ERC1155Minimal is Test {
         vm.assume(approvee != address(1));
         token.mint(id, amount);
         vm.startPrank(approvee);
-        vm.expectRevert("NotAuthorized()");
+        vm.expectRevert(ERC1155.NotAuthorized.selector);
         token.safeTransferFrom(address(1), approvee, id, amount, "");
     }
 
@@ -276,7 +276,7 @@ contract ERC1155Minimal is Test {
             token.mint(ids[i], amounts[i]);
         }
         vm.startPrank(approvee);
-        vm.expectRevert("NotAuthorized()");
+        vm.expectRevert(ERC1155.NotAuthorized.selector);
         token.safeBatchTransferFrom(
             address(1),
             approvee,

@@ -49,6 +49,9 @@ contract RiskEnginePropertiesPlus is Test {
         // One-token-only book: only token0 can move, token1 empty
         ct0.setUser(u, 7 ether, 3 ether, 7 ether);
         ct1.setUser(u, 0, 5 ether, 0); // interest1 should be added into requirement1 only
+        // principal large enough that the uncollected interest1 is within its tolerance: an unflagged account, whose
+        // requirements are not replaced (flagged accounts: RiskEngine.InterestShortfall.t.sol)
+        ct1.setNetBorrows(u, int128(int256(1e23)));
 
         // No positions, but add premia: short premia credits increase balances only
         LeftRightUnsigned shortPrem = LeftRightUnsigned
@@ -83,8 +86,9 @@ contract RiskEnginePropertiesPlus is Test {
             "bal0 = assets0 -interest0 + shortPrem0"
         );
 
-        // token1: requirement gets longPrem.left + interest1=0 (becasue balance1=0); balance gets assets1 + shortPrem.left
-        assertEq(td1.leftSlot(), 13, "req1 = interest1 + longPrem1");
+        // token1: balance1 = 0 cannot pay any of interest1, so the whole uncollected interest stays in the
+        // requirement next to longPrem.left; balance gets assets1 + shortPrem.left
+        assertEq(td1.leftSlot(), 5 ether + 13, "req1 = uncollected interest1 + longPrem1");
         assertEq(td1.rightSlot(), 0 + 4 ether, "bal1 = assets1 + shortPrem1");
     }
 
@@ -166,10 +170,10 @@ contract RiskEnginePropertiesPlus is Test {
         uint256 itm = E.reqSingleNoPartner(sCall, 0, size, int24(6000), int16(0));
         assertGt(itm, otm, "short adverse increases");
 
-        // Long: requirement never exceeds base long requirement at same util
+        // Long: the requirement is the base long requirement at every tick
         uint256 base = E.reqSingleNoPartner(lCall, 0, size, int24(0), int16(0));
         uint256 far = E.reqSingleNoPartner(lCall, 0, size, int24(6000), int16(0));
-        assertLe(far, base, "long decays below base");
+        assertEq(far, base, "long requirement is flat");
     }
 
     // ---------- C. Strategy identities ----------
@@ -297,7 +301,7 @@ contract RiskEnginePropertiesPlus is Test {
         assertTrue((cs0 > 0 && cs1 == 0) || (cs1 > 0 && cs0 == 0), "CS: option side only");
         uint256 ol0 = E.reqSinglePartner(ol, 0, size, 0, 0);
         uint256 ol1 = E.reqSinglePartner(ol, 1, size, 0, 0);
-        assertTrue((ol0 > 0 && ol1 == 0) || (ol1 > 0 && ol0 == 0), "OL: option side only");
+        assertTrue(ol0 > 0 && ol1 > 0, "OL: both legs return");
     }
 
     function testC6_Calendar_spread_taylor_term_monotone_in_dWidth() public {
