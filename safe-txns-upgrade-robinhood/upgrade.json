@@ -1,0 +1,44 @@
+{
+  "chainId": "4663",
+  "meta": {
+    "name": "RiskEngine upgrade step 2: accrue + upgrade (atomic)",
+    "notes": [
+      "RiskEngine: ProxyAdmin 0x22BD5EC2Ee6685C373781420E12c1426dd7776F2.upgradeAndCall(0x000000000000ffE5eFdB5AE76b9200263C58b4c0, 0x000000000000f69c150aFEa8Cc4f8fC4462AdBB4, 0x)",
+      "send from the Safe that owns the ProxyAdmin",
+      "only valid once deploy.json has run"
+    ]
+  },
+  "transactions": [
+    {
+      "to": "0x22BD5EC2Ee6685C373781420E12c1426dd7776F2",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          {
+            "internalType": "address",
+            "name": "proxy",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "implementation",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes",
+            "name": "data",
+            "type": "bytes"
+          }
+        ],
+        "name": "upgradeAndCall",
+        "payable": true
+      },
+      "contractInputsValues": {
+        "proxy": "0x000000000000ffE5eFdB5AE76b9200263C58b4c0",
+        "implementation": "0x000000000000f69c150aFEa8Cc4f8fC4462AdBB4",
+        "data": "0x"
+      }
+    }
+  ]
+}

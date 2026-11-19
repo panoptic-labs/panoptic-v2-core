@@ -1065,6 +1065,8 @@ contract Misctest is Test, PositionUtils {
 
         token0 = new ERC20S("token0", "T0", 18);
         token1 = new ERC20S("token1", "T1", 18);
+        // CREATE addresses follow the deployer's nonce, so their order is not stable across Foundry versions
+        if (address(token0) > address(token1)) (token0, token1) = (token1, token0);
 
         token0Supply = bound(token0Supply, 0, type(uint256).max / 10_000);
         token1Supply = bound(token1Supply, 0, type(uint256).max / 10_000);
@@ -1328,6 +1330,8 @@ contract Misctest is Test, PositionUtils {
 
         token0 = new ERC20S("token0", "T0", 18);
         token1 = new ERC20S("token1", "T1", 18);
+        // CREATE addresses follow the deployer's nonce, so their order is not stable across Foundry versions
+        if (address(token0) > address(token1)) (token0, token1) = (token1, token0);
 
         token0SupplyOrig = bound(token0SupplyOrig, 0, type(uint256).max / 10_000);
         token1SupplyOrig = bound(token1SupplyOrig, 0, type(uint256).max / 10_000);
@@ -3677,13 +3681,13 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             int256(assetsBefore0) - int256(ct0.convertToAssets(ct0.balanceOf(Buyers[0]))),
-            33_883,
+            35_535,
             "Incorrect Buyer 1 1st Collect 0"
         );
 
         assertEq(
             int256(assetsBefore1) - int256(ct1.convertToAssets(ct1.balanceOf(Buyers[0]))),
-            33_770_946,
+            35_418_310,
             "Incorrect Buyer 1 1st Collect 1: "
         );
 
@@ -3704,12 +3708,12 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            253_932,
+            245_324,
             "Incorrect Bob Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Bob)) - assetsBefore1,
-            253_932_594,
+            245_324_704,
             "Incorrect Bob Delta 1"
         );
 
@@ -3755,37 +3759,37 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             int256(assetsBefore0Arr[0]) - int256(ct0.convertToAssets(ct0.balanceOf(Buyers[0]))),
-            225,
+            236,
             "Incorrect Buyer 1 2nd Collect 0"
         );
 
         assertEq(
             int256(assetsBefore1Arr[0]) - int256(ct1.convertToAssets(ct1.balanceOf(Buyers[0]))),
-            2_251,
+            2_361,
             "Incorrect Buyer 1 2nd Collect 1"
         );
 
         assertEq(
             int256(assetsBefore0Arr[1]) - int256(ct0.convertToAssets(ct0.balanceOf(Buyers[1]))),
-            11_594,
+            12_159,
             "Incorrect Buyer 2 2nd Collect 0"
         );
 
         assertEq(
             int256(assetsBefore1Arr[1]) - int256(ct1.convertToAssets(ct1.balanceOf(Buyers[1]))),
-            11_259_983,
+            11_809_251,
             "Incorrect Buyer 2 2nd Collect 1"
         );
 
         assertEq(
             int256(assetsBefore0Arr[2]) - int256(ct0.convertToAssets(ct0.balanceOf(Buyers[2]))),
-            11_594,
+            12_159,
             "Incorrect Buyer 3 2nd Collect 0"
         );
 
         assertEq(
             int256(assetsBefore1Arr[2]) - int256(ct1.convertToAssets(ct1.balanceOf(Buyers[2]))),
-            11_259_983,
+            11_809_251,
             "Incorrect Buyer 3 2nd Collect 1"
         );
 
@@ -3806,12 +3810,12 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
-            522_264,
+            504_560,
             "Incorrect Alice Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Alice)) - assetsBefore1,
-            522_263_886,
+            504_560_014,
             "Incorrect Alice Delta 1"
         );
 
@@ -3889,31 +3893,31 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             int256(assetsBefore1Arr[0]) - int256(ct1.convertToAssets(ct1.balanceOf(Buyers[0]))),
-            0,
+            -1, // 1 wei of rounding under the 750bps PREMIUM_FEE
             "Incorrect Buyer 1 4th Collect 1"
         );
 
         assertEq(
             int256(assetsBefore0Arr[1]) - int256(ct0.convertToAssets(ct0.balanceOf(Buyers[1]))),
-            22_514,
+            23_612,
             "Incorrect Buyer 2 4th Collect 0"
         );
 
         assertEq(
             int256(assetsBefore1Arr[1]) - int256(ct1.convertToAssets(ct1.balanceOf(Buyers[1]))),
-            22_513_214,
+            23_611_419,
             "Incorrect Buyer 2 4th Collect 1:"
         );
 
         assertEq(
             int256(assetsBefore0Arr[2]) - int256(ct0.convertToAssets(ct0.balanceOf(Buyers[2]))),
-            22_514,
+            23_612,
             "Incorrect Buyer 3 4th Collect 0"
         );
 
         assertEq(
             int256(assetsBefore1Arr[2]) - int256(ct1.convertToAssets(ct1.balanceOf(Buyers[2]))),
-            22_513_214,
+            23_611_419,
             "Incorrect Buyer 3 4th Collect 1"
         );
 
@@ -3934,12 +3938,12 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
-            270_131,
+            260_973,
             "Incorrect Charlie Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Charlie)) - assetsBefore1,
-            270_131_127,
+            260_974_134,
             "Incorrect Charlie Delta 1"
         );
 
@@ -3989,13 +3993,13 @@ contract Misctest is Test, PositionUtils {
             // commission redistributed across holders when other buyers settle in this loop)
             assertEq(
                 int256(ct0.convertToAssets(ct0.balanceOf(Buyers[i]))) - int256(assetsBefore0),
-                i == 0 ? int256(104) : i == 1 ? int256(104) : int256(95),
+                i == 0 ? int256(98) : i == 1 ? int256(98) : int256(89),
                 "Buyer paid premium twice"
             );
 
             assertEq(
                 int256(ct1.convertToAssets(ct1.balanceOf(Buyers[i]))) - int256(assetsBefore1),
-                i == 0 ? int256(1057) : i < 2 ? int256(1058) : int256(1052),
+                i == 0 ? int256(1003) : i < 2 ? int256(1004) : int256(998),
                 "Buyer paid premium twice"
             );
         }
@@ -4095,14 +4099,14 @@ contract Misctest is Test, PositionUtils {
         int256 balanceDelta1 = int256(ct1.convertToAssets(ct1.balanceOf(Buyers[0]))) -
             int256(settleeBalanceBefore1);
 
-        // Buyer pays the premium plus the PREMIUM_FEE settle commission (min(250bps * premium,
-        // 30bps * notional) per leg; notional cap binds, hence the explicit term). The commission
+        // Buyer pays the premium plus the PREMIUM_FEE settle commission (min(750bps * premium,
+        // 30bps * notional) per leg; the notional cap binds on part of the legs, hence the explicit term). The commission
         // wobbles a few wei as the TWAP-derived price shifts, so allow a small tolerance.
         assertApproxEqAbs(
             -balanceDelta0,
             premium0 +
                 int256(PanopticMath.convert1to0RoundingUp(uint256(premium1), lastObservedPrice)) +
-                155_314, // settle commission, token0 terms
+                673_030, // settle commission, token0 terms
             64,
             "Fail: balance delta0 does not match premium"
         );
@@ -4115,13 +4119,13 @@ contract Misctest is Test, PositionUtils {
         // Alice's settled balance changes are pinned to the contract's authoritative output.
         assertApproxEqAbs(
             int256(settlerBalanceBefore0) - int256(ct0.convertToAssets(ct0.balanceOf(Alice))),
-            -10_602_646,
+            -11_120_017,
             1,
             "bal0 a"
         );
         assertApproxEqAbs(
             int256(settlerBalanceBefore1) - int256(ct1.convertToAssets(ct1.balanceOf(Alice))),
-            10_521_621,
+            10_866_591,
             1,
             "bal1 a"
         );
@@ -4145,26 +4149,26 @@ contract Misctest is Test, PositionUtils {
             int256(settleeBalanceBefore1);
 
         assertEq(balanceDelta0, 0);
-        // Buyer pays the premium plus the PREMIUM_FEE settle commission (notional cap binds); small
+        // Buyer pays the premium plus the PREMIUM_FEE settle commission (notional cap binds on part of the legs); small
         // tolerance absorbs the few-wei commission wobble from the TWAP-derived price.
         assertApproxEqAbs(
             -balanceDelta1,
             premium1 +
                 int256(PanopticMath.convert0to1RoundingUp(uint256(premium0), lastObservedPrice)) +
-                155_392, // settle commission, token1 terms
+                673_366, // settle commission, token1 terms
             64
         );
 
         // See "bal0 a"/"bal1 a": leakage heuristic re-pinned to the contract's output.
         assertApproxEqAbs(
             int256(settlerBalanceBefore0) - int256(ct0.convertToAssets(ct0.balanceOf(Alice))),
-            10_523,
+            10_868,
             1,
             "bal0 b"
         );
         assertApproxEqAbs(
             int256(settlerBalanceBefore1) - int256(ct1.convertToAssets(ct1.balanceOf(Alice))),
-            -96_857,
+            -269_860,
             1,
             "bal1 b"
         );
@@ -4308,7 +4312,7 @@ contract Misctest is Test, PositionUtils {
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Bob)) - assetsBefore1,
-            245_833_329,
+            237_499_990,
             "Incorrect Bob Delta 1"
         );
 
@@ -4361,7 +4365,7 @@ contract Misctest is Test, PositionUtils {
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Alice)) - assetsBefore1,
-            524_054_016,
+            506_289_461,
             "Incorrect Alice Delta 1"
         );
 
@@ -4397,7 +4401,7 @@ contract Misctest is Test, PositionUtils {
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Charlie)) - assetsBefore1,
-            270_123_846,
+            260_967_100,
             "Incorrect Charlie Delta 1"
         );
     }
@@ -4689,7 +4693,7 @@ contract Misctest is Test, PositionUtils {
         );
     }
 
-    function test_Success_InsolventAtCurrentTick_itmPut() public {
+    function test_Fail_MintInsolventAtCurrentTick_itmPut() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
@@ -4750,7 +4754,32 @@ contract Misctest is Test, PositionUtils {
         //ct0.deposit(0, Bob);
         ct1.deposit(17_818, Bob);
 
-        // mint succeeds
+        // the current tick is at least the band from spot, so it is checked with spot: the mint reverts
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(1), uint256(2))
+        );
+        mintOptions(
+            pp,
+            $posIdList,
+            100_000,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        // control: one tick inside the band only spot is checked, and the same mint goes through
+        vm.startPrank(Swapper);
+        {
+            (, int24 spot, , , ) = pp.getOracleTicks();
+            int24 inside = spot -
+                (int24(int256(uint256(RiskEngineParams.blueChip().buyerCollateralRatio) / 1000)) -
+                    1);
+            swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(inside));
+        }
+        vm.startPrank(Bob);
+        // the ITM put settles at the current tick, which leaves less collateral closer to spot
+        ct1.deposit(10_000, Bob);
         mintOptions(
             pp,
             $posIdList,
@@ -4766,52 +4795,7 @@ contract Misctest is Test, PositionUtils {
             staleTick,
             $posIdList
         );
-
         assertTrue(totalCollateralBalance0 > totalCollateralRequired0, "Is solvent at stale tick!");
-
-        (, currentTick, , , , , ) = uniPool.slot0();
-
-        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
-            pp,
-            Bob,
-            currentTick,
-            $posIdList
-        );
-
-        console2.log("reqs", totalCollateralBalance0, totalCollateralRequired0);
-
-        assertTrue(
-            totalCollateralBalance0 <= totalCollateralRequired0,
-            "Is liquidatable at current tick!"
-        );
-
-        vm.startPrank(Swapper);
-
-        // setup mini-median price array
-        for (uint256 i = 0; i < 10; ++i) {
-            swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
-            vm.warp(block.timestamp + 3600);
-            vm.roll(block.number + 1);
-            pp.pokeOracle();
-            swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
-        }
-
-        vm.startPrank(Alice);
-
-        deal(ct0.asset(), Alice, 1_000_000);
-        deal(ct1.asset(), Alice, 1_000_000);
-
-        IERC20Partial(ct0.asset()).approve(address(ct0), 1_000_000);
-        IERC20Partial(ct1.asset()).approve(address(ct1), 1_000_000);
-
-        liquidate(pp, new TokenId[](0), Bob, $posIdList);
-
-        (uint256 after0, uint256 after1) = (
-            ct0.convertToAssets(ct0.balanceOf(Bob)),
-            ct1.convertToAssets(ct1.balanceOf(Bob))
-        );
-
-        assertTrue((after0 > 0) || (after1 > 0), "no protocol loss");
 
         vm.revertTo(snapshot);
 
@@ -4873,7 +4857,7 @@ contract Misctest is Test, PositionUtils {
         );
     }
 
-    function test_Success_InsolventAtCurrentTick_itmCall() public {
+    function test_Fail_MintInsolventAtCurrentTick_itmCall() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
@@ -4937,7 +4921,30 @@ contract Misctest is Test, PositionUtils {
         ct1.deposit(20_000, Bob);
         console2.log("Bob mint");
 
-        // mint succeeds
+        // the current tick is at least the band from spot, so it is checked with spot: the mint reverts
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.AccountInsolvent.selector, uint256(1), uint256(2))
+        );
+        mintOptions(
+            pp,
+            $posIdList,
+            100_000,
+            0,
+            Constants.MAX_POOL_TICK,
+            Constants.MIN_POOL_TICK,
+            true
+        );
+
+        // control: one tick inside the band only spot is checked, and the same mint goes through
+        vm.startPrank(Swapper);
+        {
+            (, int24 spot, , , ) = pp.getOracleTicks();
+            int24 inside = spot +
+                (int24(int256(uint256(RiskEngineParams.blueChip().buyerCollateralRatio) / 1000)) -
+                    1);
+            swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(inside));
+        }
+        vm.startPrank(Bob);
         mintOptions(
             pp,
             $posIdList,
@@ -4953,63 +4960,7 @@ contract Misctest is Test, PositionUtils {
             staleTick,
             $posIdList
         );
-
         assertTrue(totalCollateralBalance0 > totalCollateralRequired0, "Is solvent at stale tick!");
-
-        (, currentTick, , , , , ) = uniPool.slot0();
-
-        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
-            pp,
-            Bob,
-            currentTick,
-            $posIdList
-        );
-
-        console2.log(
-            "totalCollateralBalance0, totalCollateralRequired0",
-            totalCollateralBalance0,
-            totalCollateralRequired0
-        );
-        assertTrue(
-            totalCollateralBalance0 <= totalCollateralRequired0,
-            "Is liquidatable at current tick!"
-        );
-
-        vm.startPrank(Swapper);
-
-        // setup mini-median price array
-        for (uint256 i = 0; i < 60; ++i) {
-            swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
-            vm.warp(block.timestamp + 3600); // 1h steps
-            vm.roll(block.number + 1);
-            pp.pokeOracle();
-            (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
-                .getOracleTicks();
-            int24 TWAPtick = re.twapEMA(oraclePack);
-            console2.log(i, uint24(fastOracleTick), uint24(TWAPtick), uint24(lastObservedTick));
-            swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
-        }
-
-        vm.startPrank(Alice);
-
-        deal(ct0.asset(), Alice, 1_000_000);
-        deal(ct1.asset(), Alice, 1_000_000);
-
-        IERC20Partial(ct0.asset()).approve(address(ct0), 1_000_000);
-        IERC20Partial(ct1.asset()).approve(address(ct1), 1_000_000);
-
-        (currentTick, , , , oraclePack) = pp.getOracleTicks();
-        int24 TWAPtick = re.twapEMA(oraclePack);
-        console2.log("TWAPtick", TWAPtick);
-
-        liquidate(pp, new TokenId[](0), Bob, $posIdList);
-
-        (uint256 after0, uint256 after1) = (
-            ct0.convertToAssets(ct0.balanceOf(Bob)),
-            ct1.convertToAssets(ct1.balanceOf(Bob))
-        );
-
-        assertTrue((after0 > 0) || (after1 > 0), "no protocol loss");
 
         vm.revertTo(snapshot);
 
@@ -5182,6 +5133,44 @@ contract Misctest is Test, PositionUtils {
             "small price deviation1 "
         );
         assertTrue(pp.isSafeMode() > 0, "in safe mode");
+    }
+
+    function test_SafeMode_severeShock_blocks_mints_up() public {
+        _assertSevereShockBlocksMints(false);
+    }
+
+    function test_SafeMode_severeShock_blocks_mints_down() public {
+        _assertSevereShockBlocksMints(true);
+    }
+
+    function _assertSevereShockBlocksMints(bool down) internal {
+        vm.startPrank(Swapper);
+        swapperc.mint(uniPool, -10_000, 10_000, 10 ** 18);
+        assertEq(pp.isSafeMode(), 0, "oracle starts aligned");
+
+        int24 delta = 2 * int24(RiskEngineParams.blueChip().maxTicksDelta) + 1;
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(down ? -delta : delta));
+        assertEq(pp.isSafeMode(), 3, "severe spot shock alone blocks new positions");
+
+        TokenId[] memory ids = new TokenId[](1);
+        ids[0] = TokenId.wrap(0).addPoolId(pp.poolId()).addLeg(0, 1, 1, 0, 0, 0, 3000, 2);
+        vm.startPrank(Bob);
+
+        // Even fully collateralized OTM mints are blocked, with either order of tick limits.
+        vm.expectRevert(Errors.StaleOracle.selector);
+        mintOptions(pp, ids, 100_000, 0, Constants.MIN_POOL_TICK, Constants.MAX_POOL_TICK, true);
+        vm.expectRevert(Errors.StaleOracle.selector);
+        mintOptions(pp, ids, 100_000, 0, Constants.MAX_POOL_TICK, Constants.MIN_POOL_TICK, true);
+
+        // A recovered spot price clears the shock without a guardian unlock or oracle update.
+        vm.startPrank(Swapper);
+        swapperc.swapTo(uniPool, 2 ** 96);
+        assertEq(pp.isSafeMode(), 0, "recovered spot clears severe shock");
+
+        vm.startPrank(Bob);
+        mintOptions(pp, ids, 100_000, 0, Constants.MIN_POOL_TICK, Constants.MAX_POOL_TICK, true);
+        (uint128 balance, , ) = ph.optionPositionInfo(pp, Bob, ids[0]);
+        assertEq(balance, 100_000, "same position can be minted after recovery");
     }
 
     function test_Success_SafeMode_pokes() public {
@@ -6569,7 +6558,7 @@ contract Misctest is Test, PositionUtils {
         // the accumulator overflowed, so the accumulation was frozen. If she had poked before the accumulator overflowed,
         // she could have still earned some fees, but now the accumulation is frozen forever.
         // old with itmSpreadFee = -1244790
-        // re-pinned for the 250bps PREMIUM_FEE on settled premium (more negative: Alice pays more)
+        // re-pinned for the 750bps PREMIUM_FEE on settled premium (more negative: Alice pays more)
         assertEq(
             int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0),
             -464427
@@ -6578,7 +6567,7 @@ contract Misctest is Test, PositionUtils {
         // but she earns all of fees on token 1 since the premium accumulator did not overflow (!)
         assertEq(
             int256(ct1.convertToAssets(ct1.balanceOf(Alice))) - int256(balanceBefore1),
-            983_333_322_220
+            949_999_966_664
         );
     }
 

@@ -43,6 +43,11 @@ contract RiskEngineHarness is RiskEngineV2 {
         return _buyCollateralRatio();
     }
 
+    /// @dev The configured long-leg ratio, as stored at construction (the immutable is internal).
+    function buyerCollateralRatioParam() external view returns (uint256) {
+        return BUYER_COLLATERAL_RATIO;
+    }
+
     function reqAtUtil(
         uint128 amount,
         uint256 isLong,
@@ -106,36 +111,6 @@ contract RiskEngineHarness is RiskEngineV2 {
         return _computeStrangle(tokenId, index, positionSize, atTick, poolUtilization);
     }
 
-    function computeLoanOptionComposite(
-        TokenId tokenId,
-        uint128 positionSize,
-        uint256 index,
-        uint256 partnerIndex,
-        int24 atTick,
-        int16 poolUtilization
-    ) external view returns (uint256) {
-        return
-            _computeLoanOptionComposite(
-                tokenId,
-                positionSize,
-                index,
-                partnerIndex,
-                atTick,
-                poolUtilization
-            );
-    }
-
-    function computeCreditOptionComposite(
-        TokenId tokenId,
-        uint128 positionSize,
-        uint256 index,
-        uint256 partnerIndex,
-        int24 atTick,
-        int16 poolUtilization
-    ) external view returns (uint256) {
-        return _computeCreditOptionComposite(tokenId, positionSize, index, atTick);
-    }
-
     // Safe-mode / global utilization shims
     function globalUtilization(
         PositionBalance[] calldata positionBalanceArray
@@ -160,9 +135,10 @@ contract RiskEngineHarness is RiskEngineV2 {
     ) external view returns (LeftRightUnsigned, LeftRightUnsigned, PositionBalance) {
         (
             uint256[2] memory tokensRequired,
-            LeftRightUnsigned creditAmounts,
-            PositionBalance globalUtilizations
+            LeftRightUnsigned creditAmounts
         ) = _getTotalRequiredCollateral(positionBalanceArray, positionIdList, atTick, longPremia);
+        // the engine now computes the global utilizations in `_getMargin`; keep the shim's three-value shape
+        PositionBalance globalUtilizations = _getGlobalUtilization(positionBalanceArray);
         return (
             LeftRightUnsigned.wrap(Math.toUint128(tokensRequired[0])).addToLeftSlot(
                 Math.toUint128(tokensRequired[1])

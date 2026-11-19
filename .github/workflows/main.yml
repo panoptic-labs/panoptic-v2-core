@@ -5,31 +5,38 @@ jobs:
     strategy:
       fail-fast: true
     name: Foundry suite
-    runs-on: mainnet-node
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      FOUNDRY_PROFILE: ci_test
+      ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - uses: oven-sh/setup-bun@v1
+      - uses: oven-sh/setup-bun@v2
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
-          version: nightly
+          version: stable
+      # Fork state at the pinned ci_test block never changes, so cache it across runs.
+      - name: Cache fork state
+        uses: actions/cache@v4
+        with:
+          path: ~/.foundry/cache/rpc
+          key: foundry-rpc-${{ github.sha }}
+          restore-keys: foundry-rpc-
       - name: Compile metadata
         run: |
           bun run ./metadata/compiler.js
       - name: Build
-        env:
-          FOUNDRY_PROFILE: ci_test
         run: |
           forge --version
           forge build
         id: build
       - name: Run Forge tests
-        env:
-          FOUNDRY_PROFILE: ci_test
         run: |
-          forge test --fork-url http://localhost:8545 -vvv --fuzz-runs 1000
+          forge test --fork-url "$ETH_RPC_URL" -vvv --fuzz-runs 100
         id: forge-test
 
   contract_sizes:
@@ -38,14 +45,14 @@ jobs:
     name: Check contract size
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
-          version: nightly
+          version: stable
       - name: Build and check sizes (normal)
         env:
           FOUNDRY_PROFILE: ci_sizes

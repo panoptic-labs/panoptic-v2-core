@@ -1,139 +1,247 @@
 # Main Invariants
 
-## SFPM (SemiFungiblePositionManager)
+This is the shared spec for the protocol: reviews, fuzz and invariant tests, and formal verification all work from the same statements. Each entry states a property against an **independent reference** (ideal arithmetic, a conservation law, a monotonicity or bound) wherever one exists. It does not restate the code.
 
-- Fees collected from Uniswap during any given operation should not exceed the amount of fees earned by the liquidity owned by the user performing the operation.
-- Fees paid to a given user should not exceed the amount of fees earned by the liquidity owned by that user.
+## Conventions
 
-## CollateralTracker
+- **ID**: `RE-*` RiskEngine, `CT-*` CollateralTracker, `PP-*` PanopticPool, `SF-*` SFPM, `X-*` cross-contract. Older IDs from `audits/BONUS_INVARIANTS_AUDIT.md` (I1, I2, I3, I6, I9, C1–C7) are kept as aliases.
+- **Kind**:
+  - `safety`: a violation loses funds or breaks accounting.
+  - `econ`: an economic soundness property.
+  - `design`: a deliberate behaviour that a future change must not silently drop.
+  - `param`: an expected parameter value or shape.
+- **Status**:
+  - `holds`: argued or proved for the current tree.
+  - `proved(...)`: proved by Halmos at full 104-bit width in the named scenario, trusting `mulDiv` (see Formal verification).
+  - `proved(exhaustive)`: checked at every value of a finite input domain by a plain Foundry test.
+  - `partial(...)`: some Halmos regions proved, the rest unfinished; no counterexample found.
+  - `tol(ε)`: holds within a stated rounding tolerance.
+  - `limit`: a documented, accepted limitation.
+  - `open`: not yet argued or proved.
+  - `stale?`: carried over without re-checking against the current tree.
+- Units: ratios are scaled by `DECIMALS = 10_000_000`. Utilization is stored in bps (0–10_000) and multiplied by 1_000 before it is compared with ratio-scaled params.
+- "Rounds against the account" means every rounding choice makes the account look less solvent, or the liquidator or user receive less.
 
-### Asset Accounting
+RiskEngine entries were re-checked against the current tree (branch `fix/credits-and-fe-cost`, 2026-10-23). The other sections were only spot-checked and are marked where it matters.
 
-- `totalAssets()` must equal `s_depositedAssets + s_assetsInAMM + unrealizedGlobalInterest` at all times
-- `totalSupply()` must equal `_internalSupply + s_creditedShares` at all times
-- `s_depositedAssets` should never underflow below 1 (the initial virtual asset)
-- The share price (`totalAssets() / totalSupply()`) must be non-decreasing over time (except for rounding in favor of the protocol and during liquidations with protocol loss)
+---
 
-### Interest Accrual
+## Review notes (2026-10-23)
 
-- The global `borrowIndex` must be monotonically increasing over time and start at 1e18 (WAD)
-- For any user with `netBorrows > 0`, their `userBorrowIndex` must be ≤ the current global `borrowIndex`
-- Interest owed by a user must equal: `netBorrows * (currentBorrowIndex - userBorrowIndex) / userBorrowIndex`
-- `unrealizedGlobalInterest` must never exceed the sum of all individual users' interest owed
-- After `_accrueInterest()`, the user's `userBorrowIndex` must equal the current global `borrowIndex` (unless insolvent and unable to pay)
+### Corrected stale entries from the previous version
 
-### Credited Shares
+| Old statement                                                          | Current behaviour                                                                                                                                                  |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Liquidation bonus = `min(bal/2, req − bal)`                            | Per-token floor `min(MAX_BONUS·req/D, max(req−bal,0))`, scaled globally to backable collateral, then cross-converted, then capped per token at backable. See RE-L. |
+| Force exercise: flat 1.024% in range, 1 bp out of range, all long legs | Extrinsic-value fee on the **cheapest** long leg only (valued at the oracle tick), floored at `notionalFee` and capped at `FORCE_EXERCISE_COST`. See RE-F.         |
+| Cross buffer constant below 90%, zero above 95%                        | Breakpoints are `SATURATED_POOL_UTIL` and `(SATURATED_POOL_UTIL + 100%)/2`. These are deployment params, not fixed values.                                         |
+| `crossBufferRatio` is "less conservative" at high utilization          | It is **more** conservative: less cross-margin is allowed as utilization rises.                                                                                    |
+| Global utilization (max at mint) drives requirements                   | Each position is priced at **its own** mint utilization. The account-wide max only feeds the cross buffer.                                                         |
+| Safe mode prices at 100% util with no cross-margin                     | Safe mode is soft: index-0 sentinel plus a 91% floor on the account max utilization.                                                                               |
+| Fixed 953 / 513 tick thresholds                                        | `MAX_TICKS_DELTA` (immutable) and `tickDeltaDispatch` (risk param).                                                                                                |
+| I1: liquidatable ⇒ bonus > 0                                           | False by design in bad debt: the bonus is 0 once backable collateral is 0. Restated as RE-L3.                                                                      |
+| Maintenance requirement includes "− short premia − credits"            | Short premia and credits are added to the **balance** side. A credit in a token that also has a loan is added back to the requirement.                             |
 
-- `s_creditedShares` represents shares for long positions and can only increase when positions are created and decrease when closed
-- When a long position is closed, if `creditDelta > s_creditedShares`, the difference must be paid by the option owner as a rounding haircut
-- The rounding haircut from Uniswap position management should not exceed a few wei per position
+### Questions raised by this pass (owner decision needed)
 
-### Deposits and Withdrawals
+1. ~~`_computeLoanOptionComposite` comment vs code~~ **Resolved: the composites were removed** (`1989a7f3`). An option leg partnered with a credit or a loan of the same token has no composite rule: each leg reports its own single-leg requirement, so an option plus a loan requires `option + loan` (both legs can carry a positive requirement) and a credit needs nothing on its own but counts in the account balance. See RE-P1 and RE-P5.
+2. ~~PanopticPool safe-mode comment~~ **Resolved: the comment is stale but can't be fixed.** PanopticPool is immutable. RE-O4 is the source of truth.
+3. ~~Per-position view versus account margin~~ **Resolved: keep the floor.** The contract is documented as RE-M8. Still to do: confirm the SDK and hedger subtract these values from the raw vault balance, not from `D + C`.
 
-- Users with open positions (`numberOfLegs > 0`) cannot transfer shares via `transfer()` or `transferFrom()`
-- Users with open positions can only withdraw if they provide `positionIdList` and remain solvent after withdrawal
-- Deposits must not exceed `type(uint104).max` (2^104 - 1)
-- Withdrawals must leave at least 1 asset in `s_depositedAssets` (cannot fully drain the pool)
+---
 
 ## RiskEngine
 
-### Solvency Checks
+### Margin requirement (`_getMargin`, `_getTotalRequiredCollateral`, per-leg functions)
 
-- An account is solvent if and only if: `balance0 + convert(scaledSurplus1) >= maintReq0` AND `balance1 + convert(scaledSurplus0) >= maintReq1` (where conversion direction depends on price)
-- The maintenance requirement includes: position collateral requirements + accrued interest owed + long premia owed - short premia owed - credit amounts
-- Cross-collateralization uses a `crossBufferRatio` that is constant below 90% utilization, linearly decreases to zero between 90–95%, and is zero above 95% (higher utilization = less conservative buffer)
-- Solvency must be checked at the oracle tick, not the current tick, to prevent manipulation
+Notation for one token `t`:
 
-### Collateral Requirements
+- `A_t` = vault assets of the user
+- `I_t` = interest owed
+- `SP_t` = short premia counted as collateral
+- `LP_t` = long premia owed
+- `C_t` = gross credits (long width-0 legs)
+- `L_t` = notional minted as shares without cash: gross loans (short width-0 legs) plus, for each width>0 short, the part of its notional its chunk did not hold at its mint tick (an in-range or ITM short at mint). `L_t > 0` triggers the full re-margin of credits (RE-M2) even with no width-0 loan.
+- `R_t` = sum of per-leg requirements
 
-- Collateral requirements must scale with pool utilization (higher utilization = higher requirements)
-- The "global utilization" used for margin calculations is the maximum utilization across all of a user's positions at the time they were minted
+| ID    | Kind   | Statement                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Status                                                                                     |
+| ----- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --- | ----- |
+| RE-M1 | safety | **Margin identity (unflagged accounts).** Over the integers, `bal_t − req_t = (A_t − I_t) + SP_t + C_t − (R_t + LP_t + [L_t>0]·C_t)`, except that `bal_t` saturates at 0 when `I_t > A_t`, with the remainder carried into `req_t`. Interest is counted once: it is never both spendable and owed. **Not unconditional:** when an account is interest-flagged (`I_t > A_t` beyond tolerance in some token) but solvent across tokens, `_getMargin` replaces the requirements used for bonus sizing: a flagged token's becomes `_bonusRequirement` (`max(10·I, bal + 2·I)`) and the other token's is capped at its balance. Such an account can hold enough cross-token collateral and still fail `isAccountSolvent`, and its reported requirement then sizes the liquidation bonus rather than measuring margin. | holds for unflagged accounts (`47910804`); flagged branch by design (`d32833ef`)           |
+| RE-M2 | safety | **Unfunded shares re-margin credits.** If `L_t > 0` (a loan, or a width>0 short whose chunk did not hold its whole notional at the mint tick), credits in token `t` add nothing to `bal_t − req_t`. Shares minted without cash can never fund a credit that reduces the requirement.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | holds (`072c5555`, mint-tick rule)                                                         |
+| RE-M3 | safety | **No downward narrowing.** Every narrowing cast in the margin path either reverts or saturates **upward** on the requirement side (`toUint128Capped`). An overflowing requirement must never wrap to a small value, and an account must never become unliquidatable through overflow. Loans above `int128.max` revert with `PositionTooLarge`. Balance-side casts revert (`toUint128`).                                                                                                                                                                                                                                                                                                                                                                                                                          | open (FV target)                                                                           |
+| RE-M4 | econ   | **Monotone in size.** For a fixed tick, utilization and leg shape, each leg's requirement is non-decreasing in `positionSize`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | open                                                                                       |
+| RE-M5 | econ   | **Monotone in utilization.** `_sellCollateralRatio(u, r)` is non-decreasing in `u`, equals `r` below `TARGET_POOL_UTIL`, equals `DECIMALS` above `SATURATED_POOL_UTIL`, and is linear in between. A strangle (`u<0`) uses `r/2` at `                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `proved(exhaustive)`, all utilizations 0–10,000 (`RiskEngine.RatioCurvesExhaustive.t.sol`) | `.  | holds |
+| RE-M6 | econ   | **Loan margin ramp.** Loan requirement = `ceil(amount·(DECIMALS + m(u))/DECIMALS)` with `m(u)` running from `MAINT_MARGIN_RATE` (low util) to `DECIMALS/LOAN_MARGIN_DIVISOR` (saturated), non-decreasing in `u`. The requirement is always ≥ the loaned amount.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `proved(exhaustive)`, all utilizations 0–10,000 (`RiskEngine.RatioCurvesExhaustive.t.sol`) |
+| RE-M7 | econ   | **Positive floor.** Every width>0 leg priced unpartnered requires ≥ 1. A spread requires ≥ 1.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | holds                                                                                      |
+| RE-M8 | design | **Per-position view is conservative against the raw balance.** `getPerPositionCollateralRequirements` returns each position's requirement net of its own credit, floored at 0. In a token with a loan, credits are not netted. Read against the raw vault balance `D`, the view's headroom `D − Σ view_i` = engine headroom `− Σ_{no-loan tokens} max(C_i − R_i, 0)`: exact unless a position's credit exceeds its own requirement, and never higher than the engine. A reader that uses `D + C` instead counts netted credits twice and overstates buying power. Off-chain only (`getFullPositionsData` → SDK, hedger); solvency never uses it.                                                                                                                                                                 | holds; pinned (`test_perPositionView_*` in `RiskEngine.LoanCreditNetting.t.sol`)           |
+| RE-M9 | design | **Each position at its own utilization.** Each position's requirement uses the utilization recorded at its mint. Only `crossBufferRatio` uses the account max.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | holds                                                                                      |
 
-### Liquidation Bonuses
+### Partnered strategies
 
-- Liquidation bonus = `min(collateralBalance / 2, required - collateralBalance)`
-- The bonus is computed cross-collaterally using both tokens converted to the same denomination
-- If the liquidatee has insufficient balance in one token, excess balance in the other token can be used to mitigate protocol loss through token conversion
-- If premium was paid to sellers during liquidation, it must be clawed back (haircut) if it would cause protocol loss to exceed the remaining collateral
+Reference: the unpartnered requirement of the same legs, and the strategy's defined max loss.
 
-### Premium Haircutting
+| ID    | Kind   | Statement                                                                                                                                                                                                                                                                                                                                                                                                   | Status                                  |
+| ----- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| RE-P1 | econ   | **Partnering never costs more.** The requirement of a partnered pair is ≤ the sum of its legs' unpartnered requirements. Strangle, synthetic and spread all satisfy this. An option partnered with a credit or a loan has no composite rule and is priced as the sum of its legs (see question 1), so it costs exactly the same.                                                                            | open                                    |
+| RE-P2 | safety | **Spread ≥ max loss.** For a vertical or calendar spread, the requirement is ≥ the true max loss at any price, or the unpartnered sum is lower and binds. The calendar term `Δwidth·tickSpacing/80_000` must over-estimate `contractSize·(1/(√r1+1) − 1/(√r2+1))`.                                                                                                                                          | open (FV target; independent reference) |
+| RE-P3 | safety | **Synthetic: the long leg is free only at the same strike.** A synthetic is recognised only when the strikes are equal. Otherwise both legs are priced unpartnered.                                                                                                                                                                                                                                         | holds                                   |
+| RE-P4 | safety | **Partner validity.** Partner handling applies only when `asset` and `optionRatio` match. Any other pairing falls back to unpartnered pricing, never to 0.                                                                                                                                                                                                                                                  | holds                                   |
+| RE-P5 | design | **Each pair is charged once.** In every option-option partnered branch (spread, synthetic) exactly one leg of the pair carries the requirement and the other returns 0. Exceptions: a strangle, where each leg carries its own halved requirement, and an option partnered with a credit or a loan, where each leg is priced on its own, so both an option leg and a loan can carry a positive requirement. | holds                                   |
 
-- If `collateralRemaining < 0` (protocol loss exists), premium paid to sellers during the liquidation must be proportionally clawed back
-- The haircut is applied per-leg based on the ratio of protocol loss to premium paid
-- After haircutting, the adjusted bonus must not result in protocol loss exceeding the initial collateral balance
+### Solvency (`isAccountSolvent`)
 
-### Force Exercise Costs
+| ID    | Kind   | Statement                                                                                                                                                                                                                                                                                                                                                                                                          | Status                                                                                     |
+| ----- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| RE-S1 | safety | **Definition.** `maintReq_t = ceil(req_t·buffer/D)`. Surplus `s_t = max(bal_t − maintReq_t, 0)·xbuf(u_t)/D`. Solvent iff for both `t`: `bal_t + conv(s_{¬t}) ≥ maintReq_t`. The comparison is made in the cheaper token's denomination. For an interest-flagged account, `req_t` here is the bonus-sizing requirement of RE-M1, so the account can fail this test while its unmodified requirements would pass it. | holds                                                                                      |
+| RE-S2 | safety | **Rounding against the account.** Converted requirements round up. Converted balances and surpluses round down.                                                                                                                                                                                                                                                                                                    | holds                                                                                      |
+| RE-S3 | econ   | **Monotonicity.** Solvency is non-decreasing in `bal_t` and non-increasing in `req_t` and in `buffer`.                                                                                                                                                                                                                                                                                                             | open: Halmos times out comparing two divisions (see Formal verification)                   |
+| RE-S4 | econ   | **Cross buffer shape.** `crossBufferRatio(u, b)` is non-increasing in `u`: `= b` below `SAT`, `= 0` above `(SAT+D)/2`, linear in between.                                                                                                                                                                                                                                                                          | `proved(exhaustive)`, all utilizations 0–10,000 (`RiskEngine.RatioCurvesExhaustive.t.sol`) |
+| RE-S5 | safety | **No cross-margin from a deficit.** A token in deficit contributes 0 surplus. Cross-collateral can only move value from surplus to deficit.                                                                                                                                                                                                                                                                        | holds                                                                                      |
+| RE-S6 | safety | **Token symmetry (C5).** Swapping token0 and token1 (and inverting the price) mirrors the result.                                                                                                                                                                                                                                                                                                                  | solvency pinned by test; bonus `proved(cross-margin, price 1, 6/6)`                        |
 
-- Base force exercise cost = 1.024% (`FORCE_EXERCISE_COST = 102_400 / 10_000_000`) of notional for in-range positions
-- Cost for out-of-range positions = 1 bps (`ONE_BPS = 1000 / 10_000_000`)
-- The cost must account for token deltas between current and oracle prices for all long legs
-- Only long legs (not short legs) contribute to force exercise costs
+### Oracle and solvency ticks
 
-### Interest Rate Model
+| ID    | Kind   | Statement                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Status                     |
+| ----- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| RE-O1 | safety | **Safe-mode level.** `safeMode = [\|cur−spotEMA\| > Δ] + 2·[\|cur−spotEMA\| > 2Δ] + [\|spotEMA−fastEMA\| > Δ/2] + [\|median−slowEMA\| > Δ/2] + lockMode`, with `Δ = MAX_TICKS_DELTA`. A severe shock (`> 2Δ`) also counts as an external shock, so it alone gives 3: no new mints.                                                                                                                                                                                                                                                                                                                                                                       | holds                      |
+| RE-O2 | safety | **More ticks when stressed or displaced.** If `safeMode > 0` or `‖(spot−med, latest−med, cur−med)‖₂ > Δ`, solvency is checked at all 4 ticks (spot, median, latest, current). Otherwise, if `\|spot − cur\| ≥ BUYER_COLLATERAL_RATIO / ONE_BPS` (200 ticks at 2%), it is checked at spot and current. Otherwise only at spot. The tick set only grows under stress or displacement.                                                                                                                                                                                                                                                                      | holds                      |
+| RE-O3 | safety | **Manipulation resistance.** Solvency for mint, burn and withdraw is never decided at the current tick alone when the oracle disagrees with it beyond Δ.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | holds (follows from RE-O2) |
+| RE-O4 | design | **Safe mode is soft.** In safe mode the account max utilization is floored at `SAFE_MODE_UTIL_FLOOR` (91%), and each position keeps its own mint utilization. Safe mode slows new risk and must not by itself make a position liquidatable. Liquidation uses `safeMode = 0`.                                                                                                                                                                                                                                                                                                                                                                             | holds                      |
+| RE-O5 | design | **Sentinel can't be faked by a real position.** `_isSafeModeSentinel` matches only `blockAtMint == 0 ∧ timestampAtMint == 0 ∧ u0 = u1 = 100%`. A minted position always has `blockAtMint ≠ 0`.                                                                                                                                                                                                                                                                                                                                                                                                                                                           | holds                      |
+| RE-O6 | design | **Sentinel position effect.** The position at index 0 is priced at 100%/100% in safe mode, and the list order is chosen by the caller. A single-position seller can't withdraw or mint during safe mode. The sentinel must stay for live pools. The sentinel also carries a zero mint tick, so `_getRequiredCollateralAtTickSinglePosition` counts the whole notional of every width-positive short at index 0 as minted without cash (its same-token credits are re-margined in full); the hide direction is closed and an account routes around the over-trigger by listing a credit or long first. Entries at index ≥ 1 keep their mint tick (RE-O5). | limit                      |
 
-- Interest rate must be bounded: `MIN_RATE_AT_TARGET ≤ rate ≤ MAX_RATE_AT_TARGET`
-- Rate adjusts continuously based on utilization error: `targetUtilization - currentUtilization`
-- The adaptive rate (`rateAtTarget`) compounds at speed `ADJUSTMENT_SPEED * error` per second
-- Initial `rateAtTarget` = 4% APR (`INITIAL_RATE_AT_TARGET`)
-- Target utilization = 66.67% (`TARGET_UTILIZATION = 2/3 in WAD`)
+### Liquidation bonus (`getLiquidationBonus`, `_scaleFloorsToBackable`)
 
-### Oracle Safety
+Notation:
 
-- The maximum allowed delta between fast and slow oracle ticks = 953 ticks (~10% price move)
-- During force exercises and premium settlements, current tick must be within 513 ticks of the TWAP (~5% deviation)
-- If oracle deltas exceed thresholds, the protocol enters safe mode using more conservative price estimates
-- The median tick buffer can only be updated if sufficient time has elapsed since the last observation
+- `balance_t = bal_t − shortPremium_t`
+- `backable_t = balance_t − netPaid_t − credit_t`
+- `B = max(backable_0 + conv(backable_1), 0)`, valued at TWAP
 
-## PanopticPool
+| ID     | Kind   | Statement                                                                                                                                                                                                                                                                                                                                                                              | Status                                                                                                                                                                                  |
+| ------ | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| RE-L1  | safety | **I9: no self-liquidation profit.** For any actor controlling both liquidatee and liquidator, combined TWAP value change ≤ 0. The engine's part is `bonus_value ≤ B`.                                                                                                                                                                                                                  | engine part `proved(cross-margin, 6/6)`, `partial(bad debt, 3/6)`, `proved(credit present)`; full I9 pinned by `Misc.t.sol` `test_Success_loanBonusClamp_crossCollateralized_zeroBonus` |
+| RE-L2  | safety | **A credit counts exactly once, like a deposit.** Holding a credit of notional K (+K to balance, −K to netPaid, +K to credits) gives the same bonus as depositing K. Because the cap subtracts credits, the credit is not counted a second time (the `94fab92f` fix).                                                                                                                  | `partial(cross-margin, 5/6)`                                                                                                                                                            |
+| RE-L3  | econ   | **I1 restated: incentive when backable.** If the account is short and `B > 0`, then `bonus_value > 0`, provided `req_t ≥ ⌈DECIMALS / MAX_BONUS⌉` (5 wei at `MAX_BONUS = 20%`). Below that the floor `MAX_BONUS·req/DECIMALS` rounds to 0 (dust; counterexample `bal0 = 2`, `req0 = 4`). If `B = 0`, the bonus is 0 by design, and the deep-bad-debt incentive is an external backstop. | `proved(single-token account, req ≥ 5)`; dust counterexample below                                                                                                                      |
+| RE-L4  | econ   | **I6: continuity.** The bonus is continuous in `bal_t` at the solvency boundary (`bal → req⁻`) and at the bad-debt boundary (`B → 0⁺`). No snap-back floor. Discrete form checked: one more wei of balance moves the total bonus by at most 2 wei.                                                                                                                                     | `proved(cross-margin, 6/6)`, `partial(bad debt, 4/6)`                                                                                                                                   |
+| RE-L5  | econ   | **I3: monotone in distress.** Per token, the pre-cap floor is non-decreasing in `req_t − bal_t` at fixed `req_t`.                                                                                                                                                                                                                                                                      | holds per token (argued); Halmos times out comparing two divisions; aggregate `tol(1 wei)`                                                                                              |
+| RE-L6  | safety | **Per-token cap.** After conversion, `bonus_t ≤ max(backable_t, 0)` for both tokens. There is no lower bound: a bonus can be negative, meaning the liquidator pays that token and is paid in the other.                                                                                                                                                                                | `proved(cross-margin, bal1/netPaid1)`, `proved(bad debt, req0/req1)`                                                                                                                    |
+| RE-L7  | safety | **Cross-conversion is value-neutral.** The conversion arm moves value between tokens at TWAP without creating it: `bonus_value` after conversion ≤ before + 1 wei (C1). It only acts when exactly one token is short (`¬(paid0>bal0 ∧ paid1>bal1)`).                                                                                                                                   | tol(1 wei)                                                                                                                                                                              |
+| RE-L8  | safety | **I2: loss only when exhausted.** If protocol loss is realized in any token, the liquidatee's post-liquidation balance is ≤ 0 in every token.                                                                                                                                                                                                                                          | tol(≤ legs wei per token), BONUS-I2-01                                                                                                                                                  |
+| RE-L9  | econ   | **C3: homogeneity.** Scaling (req, bal, netPaid, credits, premia) by k scales the bonus by k, up to rounding.                                                                                                                                                                                                                                                                          | holds                                                                                                                                                                                   |
+| RE-L11 | safety | **Liquidation cannot revert.** `getLiquidationBonus` does not revert for any inputs the pool can produce, so an insolvent account can always be liquidated. Precondition: every `netPaid` slot satisfies `                                                                                                                                                                             | netPaid_t                                                                                                                                                                               | < 2^126`(PP-L6). Without it, Halmos finds a revert:`netPaid0 ≈ −2^127`pushes backable collateral past`int128`and`toInt128()` reverts. | `partial(bad debt, 3/6 at full int128 width under PP-L6)`; fails without PP-L6 |
+| RE-L10 | design | **No swap.** A liquidation settles in-kind at the current tick. The only TWAP-versus-spot difference is the cross-token bonus conversion.                                                                                                                                                                                                                                              | holds                                                                                                                                                                                   |
 
-### Entry Points
+### Premium haircut (`haircutPremia`)
 
-- All user actions must originate from `dispatch()` or `dispatchFrom()` entry points
-- `dispatchFrom()` requires the caller to have operator approval from the account owner
-- Each dispatch call can execute exactly multiple action (mint, burn, mint, mint, burn etc.) and allows transiently insolvent states
+| ID    | Kind   | Statement                                                                                                                                                                                                                                       | Status           |
+| ----- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| RE-H1 | safety | **Haircut bounded by premium paid.** Each long leg's haircut is ≤ the premium it paid, plus 1 wei of rounding. Total haircut is ≤ `longPremium_t`, plus a number of wei equal to the number of legs.                                            | tol (C6)         |
+| RE-H2 | safety | **Haircut bounded by loss.** In the same-token case the haircut base is `min(loss_t, longPremium_t)`. Cross-token, premium in the surplus token covers the other token's loss at TWAP, and the liquidator is compensated through `bonusDeltas`. | open             |
+| RE-H3 | safety | **No haircut without loss.** If `collateralRemaining ≥ 0` in both tokens, the haircut is 0.                                                                                                                                                     | holds            |
+| RE-H4 | safety | **The unchecked block is safe.** The function is fully `unchecked`. All products fit under the stated bound (≤ 2^127 sums from LeftRight slots).                                                                                                | open (FV target) |
 
-### Position Management
+### Force exercise (`exerciseCost`)
 
-- Users can mint up to `MAX_OPEN_LEGS = 26` position legs total across all their positions (configurable per-pool via `RiskParameters.maxLegs`)
-- Commission is split between protocol and builder (if builder code present) according to `PROTOCOL_SPLIT` and `BUILDER_SPLIT`
-- Option sellers must pay back exact `shortAmounts` of tokens when positions are burned
-- Option buyers must add back exact liquidity amounts that were removed when positions are burned
+| ID    | Kind   | Statement                                                                                                                                                                                                                                                                                | Status     |
+| ----- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | --------------------- | -------------------- |
+| RE-F1 | econ   | **Only the cheapest leg is charged.** The fee is charged on exactly one long leg with width > 0: the one whose fee has the lowest value in the cheaper token at the oracle tick (the first on ties). Adding a long leg can only lower the fee, never raise it. Width-0 legs are ignored. | holds      |
+| RE-F2 | econ   | **Fee bounds.** The charged leg pays `fee/D` of notional with `notionalFee·1bp ≤ fee ≤ FORCE_EXERCISE_COST`. In range: `fee ≥ tickSpacing/2` bps and `fee ≥ D²·FEC/(2W·10⁴)` (the extrinsic-value estimate). Out of range: `fee = notionalFee` bps.                                      | holds      |
+| RE-F3 | safety | **Oracle tick only.** The fee depends on the oracle tick only. Moving spot can't reduce it. The current-versus-oracle composition delta is reversed for every long leg, so the exercisee is not hurt by spot manipulation.                                                               | holds      |
+| RE-F4 | design | The exercise path requires solvency at all 4 ticks and `                                                                                                                                                                                                                                 | cur − twap | ≤ tickDeltaDispatch`. | holds (PanopticPool) |
 
-### Solvency Requirements
+### Refunds (`getRefundAmounts`)
 
-- Users must remain solvent (per RiskEngine) after any mint, burn, or withdrawal operation
-- Solvency is checked at the fast oracle tick, or at several oracle ticks if they diverge beyond the threshold
+| ID    | Kind   | Statement                                                                                                                                                                                                                                                                                                          | Status |
+| ----- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| RE-R1 | safety | **Value-preserving substitution.** If the payor lacks shares in one token, the shortfall is replaced by the other token at `atTick`, rounded up in the payor's favour. In value at `atTick`, the result is ≥ `fees` and differs by at most the rounding. When there is no shortfall, `fees` is returned unchanged. | open   |
 
-### Premium Settlement
+### Interest rate model
 
-- Option sellers should not receive unsettled premium (premium not yet collected from Uniswap or paid by long holders)
-- Sellers' share of settled premium must be proportional to their share of liquidity in the chunk
-- Premium distribution ratio: `min(settled / owed, 1)` applies to all sellers in a chunk
-- Long premium can be settled against solvent buyers to force payment
+| ID    | Kind   | Statement                                                                                                                                                            | Status                                     |
+| ----- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| RE-I1 | safety | `MIN_RATE_AT_TARGET ≤ rateAtTarget ≤ MAX_RATE_AT_TARGET (200% APR)` after any update.                                                                                | holds (`Math.bound` in `_newRateAtTarget`) |
+| RE-I2 | econ   | Rate = `curve(rateAtTarget, err)`, with `rateAtTarget/4 ≤ rate ≤ 4·rateAtTarget` (`CURVE_STEEPNESS = 4`). It is non-decreasing in utilization at a fixed state.      | open                                       |
+| RE-I3 | param  | Initial `rateAtTarget` = 4% APR. Target utilization = 2/3. Adjustment speed = 50/yr. The elapsed time used per update is capped at `IRM_MAX_ELAPSED_TIME = 16384` s. | holds                                      |
 
-### Liquidations
+---
 
-- Liquidations can only occur when `RiskEngine.isAccountSolvent()` returns false at the oracle tick
-- The liquidator must close all positions held by the liquidatee
-- Liquidation bonus paid to liquidator must not exceed the liquidatee's pre-liquidation collateral balance
-- If the liquidation results in protocol loss, shares are minted to the liquidator to cover the difference
-- It is acceptable for protocol loss to occur even if the liquidatee has residual token balance, if that balance is insufficient when converted
+### Formal verification (Halmos)
 
-### Premium Haircutting Invariant
+Checks live in `test/foundry/core/RiskEngine/halmos/LiquidationBonus.halmos.t.sol`.
+Run one check with:
+`FOUNDRY_PROFILE=halmos halmos --forge-build-out out-halmos --contract LiquidationBonusHalmos --function <check>`
+(build first with `FOUNDRY_PROFILE=halmos forge build --ast --extra-output storageLayout metadata`).
 
-- If premium is paid to sellers during a liquidation AND protocol loss exists after the liquidation, the premium must be haircut (clawed back) to reduce protocol loss
-- After haircutting, protocol loss must be minimized but may still be positive if premium clawback is insufficient
+- **Trusted, not proved:** the `mulDiv` family. The `halmos` profile remaps `@libraries/Math.sol` to `halmos/summaries/Math.sol`. There, each variant takes an exact shortcut when one applies and otherwise falls back to the original code.
+- **Scope:** price fixed at 1 (`sqrtPriceX96 = 2^96`). Inputs are full width: 104-bit balances and `netPaid`, `int128` for no-revert.
+- **Method:** a check over many symbolic inputs does not finish, so each property is proved region by region. `_region(bal, netPaid, req)` splits on balance versus requirement and on the sign and size of `netPaid`. Regions 0–5 partition the inputs, so a property is `proved` once all six regions pass. A region that does not finish under 55s is split again into four sub-regions (`_sub`: sign of total backable, sign of the other token's backable). A sub-region that no input can reach is proved empty by a matching `check_empty_*`.
+- **Known limit:** monotonicity properties that compare two floor divisions (RE-S3, RE-L5, and the ratio curves) time out even with a constant divisor, because the solver bit-blasts 256-bit division. Finite-domain ones are proved by exhaustion instead.
 
-### Position Size Limits
+### Asset accounting
 
-- Individual position sizes are limited by the available liquidity in the Uniswap pool
-- The maximum spread ratio (removed/net liquidity) is capped at `MAX_SPREAD = 90_000` (i.e., removedLiquidity/netLiquidity ≤ 9x)
-- Position sizes must not cause integer overflows in any token amount or liquidity calculations
+- CT-A1 `totalAssets() = s_depositedAssets + s_assetsInAMM + unrealizedInterest`. (holds)
+- CT-A2 `totalSupply() = _internalSupply + s_creditedShares`. (holds)
+- CT-A3 `s_depositedAssets ≥ 1`. It is initialized to 1 and withdrawals can't drain it. (stale?)
+- CT-A4 Share price is non-decreasing, except for protocol loss realized in a liquidation and rounding in the protocol's favour. (stale?)
+- CT-A5 Deposits and mints are ≤ `type(uint104).max` assets. (holds)
 
-## Cross-Contract Invariants
+### Interest
 
-### Oracle Consistency
+- CT-I1 `borrowIndex` starts at 1e18 and is non-decreasing.
+- CT-I2 For any user with `netBorrows > 0`, `userBorrowIndex ≤ borrowIndex`.
+- CT-I3 Interest owed is `netBorrows·(borrowIndex − userBorrowIndex)/userBorrowIndex`, rounded against the borrower.
+- CT-I4 `unrealizedGlobalInterest ≤ Σ_users interestOwed`. It is reduced when interest is paid or burnt for an insolvent user.
+- CT-I5 After `_accrueInterest`, `userBorrowIndex = borrowIndex`, unless the user is insolvent and can't pay.
+- CT-I6 `assetsAndInterest` agrees with what `_accrueInterest` would charge, so the margin view and settlement agree (feeds RE-M1).
 
-- The oracle tick used for solvency checks must come from PanopticPool's oracle management
-- All operations in a single transaction must use consistent oracle tick(s)
-- The oracle must account for volatility via EMA and median filters to prevent manipulation
+### Credited shares
+
+- CT-C1 `s_creditedShares` increases only when a long position opens and decreases only when it closes.
+- CT-C2 On close, if `creditDelta > s_creditedShares`, the owner pays the difference as a rounding haircut of a few wei per position.
+- CT-C3 A loan plus a credit in the same token never creates value: see RE-M2. `netBorrows` nets to zero for the pair.
+
+### Transfers and withdrawals
+
+- CT-W1 An account with open legs can't `transfer` or `transferFrom` shares.
+- CT-W2 An account with open legs can withdraw only with `positionIdList`, and only if it stays solvent afterwards (RE-O2 tick set).
+
+## PanopticPool (spot-checked)
+
+### Entry points
+
+- PP-E1 Every user action goes through `dispatch` or `dispatchFrom`. `dispatchFrom` requires operator approval.
+- PP-E2 One dispatch can run many actions and may pass through insolvent states in between, but it must end solvent at the RE-O2 tick set, with the buffer applied.
+
+### Liquidation, force exercise and settle gate (`dispatchFrom`)
+
+- PP-L1 Liquidation requires insolvency at **all four** ticks (spot, twap, latest, current), with no buffer and premia counted as collateral.
+- PP-L2 If the account is solvent at all four ticks, only settle (same list) or force exercise (list one shorter) is allowed, and only when `|cur − twap| ≤ tickDeltaDispatch`. The callee must remain solvent afterwards.
+- PP-L3 Mixed results (solvent at some ticks but not all) revert. Liquidation and exercise are both refused.
+- PP-L4 A liquidation closes every position of the liquidatee.
+- PP-L6 **Obligation from RE-L11.** Every `netPaid` slot the pool passes to `getLiquidationBonus` satisfies `|netPaid_t| < 2^126`. Expected to hold because deposits are capped at 2^104 and Uniswap amounts are bounded by real token supply. Not yet argued formally.
+- PP-L5 If the bonus exceeds the liquidatee's collateral, the shortfall is minted to the liquidator as protocol loss. This is bounded by RE-L1 and RE-L8.
+
+### Positions
+
+- PP-P1 Open legs per account ≤ `riskParameters.maxLegs()` (default 26), enforced in `_updatePositionsHash`.
+- PP-P2 The removed/net liquidity spread is ≤ `MAX_SPREAD` at mint (long) and at burn (short).
+- PP-P3 On burn, sellers return exactly `shortAmounts` and buyers add back exactly the removed liquidity.
+- PP-P4 Commission is split between protocol and builder per `PROTOCOL_SPLIT` and `BUILDER_SPLIT`. The builder wallet is derived deterministically.
+
+### Premium
+
+- PP-S1 Sellers never receive unsettled premium (premium not yet collected from Uniswap or paid by longs).
+- PP-S2 Within a chunk, sellers share settled premium in proportion to their liquidity, scaled by `min(settled/owed, 1)`.
+- PP-S3 Premium accounting survives keep-open settles. `grossPremiumLast` stays consistent (ticket #432).
+
+## SFPM
+
+- SF-1 Fees collected in any operation are ≤ the fees earned by the caller's owned liquidity.
+- SF-2 Fees paid to a user are ≤ the fees earned by that user's liquidity.
+
+## Cross-contract
+
+- X-1 Every solvency decision in one transaction uses one consistent oracle snapshot.
+- X-2 `PositionBalance` utilization fields are written once at mint and never change. RE-M9 depends on this.
+- X-3 The `RiskEngine` is a pure function of its inputs plus CT views: no storage writes outside guardian `lockPool`, `unlockPool` and `collect`.

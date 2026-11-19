@@ -44,7 +44,8 @@ import {PositionFactory} from "./helpers/PositionFactory.sol";
 // Shared types / libs
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
-import {PositionBalance} from "@types/PositionBalance.sol";
+import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
+import {Errors} from "@libraries/Errors.sol";
 import {OraclePack} from "@types/OraclePack.sol";
 import {Pointer} from "@types/Pointer.sol";
 import {Constants} from "@libraries/Constants.sol";
@@ -1355,6 +1356,7 @@ contract SwapperC {
 /// the Uniswap V4 price, and call `liquidate`. setUp mirrors `Misc.t.sol`
 /// because the moved tests depend on its exact deposit/liquidity layout.
 contract BonusInvariantsIntegration is Test, PositionUtils {
+    using PositionBalanceLibrary for PositionBalance;
     // -----------------------------------------------------------
     // State (subset of Misc.t.sol — only what the moved tests need)
     // -----------------------------------------------------------
@@ -1402,6 +1404,14 @@ contract BonusInvariantsIntegration is Test, PositionUtils {
 
     TokenId[] $posIdList;
     TokenId[] $tempIdList;
+
+    // scratch storage for the ITM-mint lock test (keeps its stack shallow)
+    uint256 $plpMaxBefore;
+    uint256 $bobToken1Before;
+    uint256 $creditedBefore;
+    uint256 $token1Paid;
+    uint256 $reqShort;
+    uint256 $deposit0;
 
     // -----------------------------------------------------------
     // setUp — identical shape to Misctest.setUp() in Misc.t.sol so
@@ -1576,6 +1586,51 @@ contract BonusInvariantsIntegration is Test, PositionUtils {
 
         _pp.dispatch(
             mintList,
+            positionIdList,
+            sizeList,
+            tickAndSpreadLimits,
+            premiaAsCollateral,
+            0
+        );
+    }
+
+    /// @dev token0 Bob must add so that his ct0 balance covers `requirement` at the 1.075 mint buffer, plus 1%
+    function _bufferedTopUp(uint256 requirement) internal view returns (uint256) {
+        return
+            Math.mulDivRoundingUp(requirement, 10_750_000, 10_000_000) -
+            ct0.convertToAssets(ct0.balanceOf(Bob)) +
+            requirement /
+            100;
+    }
+
+    /// @dev Bob: 1_000 of token0 dust and exactly the token1 the ITM chunk of `shortId` needs (plus dust)
+    function _fundBobForItmShort(TokenId shortId, uint128 N) internal {
+        uint256 token1Needed = PanopticMath.getAmountsMoved(shortId, N, 0, true).leftSlot();
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+        token0.approve(address(ct0), 10_000_000);
+        ct0.deposit(1_000, Bob);
+        token1.approve(address(ct1), token1Needed + 1_000);
+        ct1.deposit(token1Needed + 1_000, Bob);
+    }
+
+    function burnOptions(
+        PanopticPoolV2 _pp,
+        TokenId tokenId,
+        TokenId[] memory positionIdList,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
+        bool premiaAsCollateral
+    ) internal {
+        uint128[] memory sizeList = new uint128[](1);
+        TokenId[] memory burnList = new TokenId[](1);
+        int24[3][] memory tickAndSpreadLimits = new int24[3][](1);
+        burnList[0] = tokenId;
+        tickAndSpreadLimits[0][0] = tickLimitLow;
+        tickAndSpreadLimits[0][1] = tickLimitHigh;
+        _pp.dispatch(
+            burnList,
             positionIdList,
             sizeList,
             tickAndSpreadLimits,
@@ -3557,5 +3612,1351 @@ contract BonusInvariantsIntegration is Test, PositionUtils {
         } catch {
             console2.log("liquidation reverted");
         }
+    }
+
+    // -----------------------------------------------------------
+    // Loan-funded credit (PLP-lock position) is liquidatable
+    // -----------------------------------------------------------
+
+    /// @notice A token0 loan X and a token0 credit X in one account reserve X of PLP cash in `ct0`
+    /// (`s_creditedShares`) without any cash having entered, and the pair nets to zero interest. The engine
+    /// re-margins the credit in full, so the account must carry the whole loan requirement in real collateral.
+    /// Here that collateral is token1 (a pure same-token lock cannot be opened under the new rule); a token0
+    /// price rise makes it insufficient, the pair is liquidated with a positive bonus bounded by the real
+    /// collateral, no protocol loss is booked, and the credited reserve is released.
+    function test_Success_lockPosition_liquidatable_releasesCreditReserve() public {
+        uint128 X = 1_000_000;
+        uint256 deposit1 = 1_600_000;
+
+        // --- Bob: token1 collateral only (plus token0 dust) ---
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+        token0.approve(address(ct0), 1_000);
+        ct0.deposit(1_000, Bob);
+        token1.approve(address(ct1), deposit1);
+        ct1.deposit(deposit1, Bob);
+
+        poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+        poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+
+        (, , uint256 creditedBefore, ) = ct0.getPoolData();
+
+        // --- loan X in token0, then credit X in token0 ---
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, 0, 0));
+        mintOptions(
+            pp,
+            $posIdList,
+            X,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, 0, 0));
+        mintOptions(
+            pp,
+            $posIdList,
+            X,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        // the credit reserved X of PLP cash in ct0 that never entered the vault
+        {
+            (, , uint256 creditedAfterMint, ) = ct0.getPoolData();
+            assertApproxEqAbs(
+                creditedAfterMint - creditedBefore,
+                ct0.convertToShares(X),
+                2,
+                "credited reserve == X"
+            );
+        }
+
+        // the engine charges the credit on both sides of the token0 margin: balance ~ X (+ dust),
+        // requirement = loan requirement + X > 2X. The shortfall is covered by the token1 deposit.
+        {
+            (
+                LeftRightUnsigned shortPrem,
+                LeftRightUnsigned longPrem,
+                PositionBalance[] memory posBal,
+                ,
+
+            ) = pp.getFullPositionsData(Bob, false, $posIdList);
+            (LeftRightUnsigned td0, , ) = re.getMargin(
+                posBal,
+                pp.getCurrentTick(),
+                Bob,
+                $posIdList,
+                shortPrem,
+                longPrem,
+                ct0,
+                ct1
+            );
+            // dust minus the two mint commissions, plus the credit added back
+            assertGe(td0.rightSlot(), X, "token0 balance >= credit");
+            assertLe(td0.rightSlot(), X + 1_000, "token0 balance <= dust + credit");
+            assertGt(td0.leftSlot(), 2 * uint256(X), "token0 requirement > loan + credit");
+            (uint256 bal, uint256 req) = ph.checkCollateral(
+                pp,
+                Bob,
+                pp.getCurrentTick(),
+                $posIdList
+            );
+            assertGe(bal, req, "solvent at mint thanks to the token1 collateral");
+        }
+
+        // --- token0 price up: the token1 collateral is now worth less in token0 terms ---
+        vm.startPrank(Swapper);
+        swapperc.mint(uniPool, -800000, 800000, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -800000, 800000, 10 ** 18);
+        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(7500));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(7500));
+        for (uint256 j = 0; j < 100; ++j) {
+            vm.warp(block.timestamp + 600);
+            vm.roll(block.number + 1);
+            pp.pokeOracle();
+        }
+
+        (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
+        {
+            int24[4] memory ticks = [currentTick, fastOracleTick, slowOracleTick, lastObservedTick];
+            for (uint256 k; k < 4; ++k) {
+                (uint256 bal, uint256 req) = ph.checkCollateral(pp, Bob, ticks[k], $posIdList);
+                assertLt(bal, req, "lock position must be insolvent at every oracle tick");
+            }
+        }
+
+        // --- liquidate with a fresh liquidator ---
+        address Liquidator = address(0xCAFE);
+        vm.startPrank(Liquidator);
+        deal(ct0.asset(), Liquidator, 100_000_000);
+        deal(ct1.asset(), Liquidator, 100_000_000);
+        IERC20Partial(ct0.asset()).approve(address(ct0), 100_000_000);
+        IERC20Partial(ct1.asset()).approve(address(ct1), 100_000_000);
+
+        uint256 liqBefore0 = ct0.convertToAssets(ct0.balanceOf(Liquidator)) +
+            token0.balanceOf(Liquidator);
+        uint256 liqBefore1 = ct1.convertToAssets(ct1.balanceOf(Liquidator)) +
+            token1.balanceOf(Liquidator);
+        uint256 bobBefore1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+
+        vm.recordLogs();
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+        // collateralRemaining >= 0: no protocol loss, so no premium haircut either
+        {
+            Vm.Log[] memory entries = vm.getRecordedLogs();
+            bytes32 sig = keccak256("ProtocolLossRealized(address,address,uint256,uint256)");
+            for (uint256 i = 0; i < entries.length; i++) {
+                assertFalse(
+                    entries[i].topics.length > 0 && entries[i].topics[0] == sig,
+                    "no protocol loss on a lock-position liquidation"
+                );
+            }
+        }
+
+        int256 gain0 = int256(
+            ct0.convertToAssets(ct0.balanceOf(Liquidator)) + token0.balanceOf(Liquidator)
+        ) - int256(liqBefore0);
+        int256 gain1 = int256(
+            ct1.convertToAssets(ct1.balanceOf(Liquidator)) + token1.balanceOf(Liquidator)
+        ) - int256(liqBefore1);
+
+        assertEq(pp.numberOfLegs(Bob), 0, "position closed");
+        assertGt(gain1, 0, "liquidator bonus is positive");
+        assertLe(uint256(gain1), bobBefore1, "bonus bounded by the liquidatee's real collateral");
+        assertGe(gain0, 0, "liquidator does not pay token0");
+        assertLe(gain0, 1_000, "token0 bonus is at most Bob's token0 dust");
+
+        // the credited reserve is released
+        (, , uint256 creditedAfterLiq, ) = ct0.getPoolData();
+        assertLe(creditedAfterLiq, creditedBefore + 1, "credited reserve released (dust at most)");
+    }
+
+    /// @notice Same lock position, in a ct0 whose PLP cash is small enough for the credited reserve to bind:
+    /// the lone PLP's `maxWithdraw` drops by the credit while the pair is open, and recovers once it is
+    /// liquidated. Also pins that the pool's per-position collateral view under-reads the account requirement
+    /// for this account, so monitoring must use the engine's account-level margin.
+    function test_Success_lockPosition_plpMaxWithdrawRecovers() public {
+        uint128 X = 1_000_000;
+        uint256 plpDeposit = 5_000_000;
+
+        // --- shrink ct0 to a single small PLP (Charlie); ct1 stays large ---
+        vm.startPrank(Alice);
+        ct0.withdraw(ct0.maxWithdraw(Alice), Alice, Alice);
+        vm.startPrank(Charlie);
+        ct0.withdraw(ct0.maxWithdraw(Charlie), Charlie, Charlie);
+        token0.approve(address(ct0), plpDeposit);
+        ct0.deposit(plpDeposit, Charlie);
+
+        // --- Bob: token1 collateral only (plus token0 dust) ---
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+        token0.approve(address(ct0), 1_000);
+        ct0.deposit(1_000, Bob);
+        token1.approve(address(ct1), 1_600_000);
+        ct1.deposit(1_600_000, Bob);
+
+        uint256 plpMaxBefore = ct0.maxWithdraw(Charlie);
+        assertApproxEqAbs(plpMaxBefore, plpDeposit, 2, "setup: the PLP can withdraw its deposit");
+
+        poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+        poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+
+        // --- loan X in token0, then credit X in token0 ---
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, 0, 0));
+        mintOptions(
+            pp,
+            $posIdList,
+            X,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+        uint256 plpMaxAfterLoan = ct0.maxWithdraw(Charlie);
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, 0, 0));
+        mintOptions(
+            pp,
+            $posIdList,
+            X,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        // the credit reserves X of PLP cash that never entered: the PLP's withdrawable amount drops by X
+        uint256 plpMaxLocked = ct0.maxWithdraw(Charlie);
+        // (within 0.1%: the credit's mint commission entered the vault and moved the share price)
+        assertApproxEqAbs(
+            plpMaxAfterLoan - plpMaxLocked,
+            X,
+            X / 1_000,
+            "credit locks X of PLP cash"
+        );
+        assertLt(plpMaxLocked, plpMaxBefore - X / 2, "reserve binds the lone PLP");
+
+        // per-position view under-reads the account requirement by the re-margined credit
+        {
+            (
+                LeftRightUnsigned shortPrem,
+                LeftRightUnsigned longPrem,
+                PositionBalance[] memory posBal,
+                LeftRightUnsigned[] memory perPosition,
+
+            ) = pp.getFullPositionsData(Bob, false, $posIdList);
+            (LeftRightUnsigned td0, , ) = re.getMargin(
+                posBal,
+                pp.getCurrentTick(),
+                Bob,
+                $posIdList,
+                shortPrem,
+                longPrem,
+                ct0,
+                ct1
+            );
+            uint256 sum0;
+            for (uint256 i; i < perPosition.length; ++i) sum0 += perPosition[i].rightSlot();
+            assertLt(
+                sum0,
+                td0.leftSlot(),
+                "per-position sum reads lower than the account requirement"
+            );
+            assertApproxEqAbs(td0.leftSlot() - sum0, X, 2, "the gap is the re-margined credit");
+        }
+
+        // --- token0 price up, then liquidate ---
+        vm.startPrank(Swapper);
+        swapperc.mint(uniPool, -800000, 800000, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -800000, 800000, 10 ** 18);
+        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(7500));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(7500));
+        for (uint256 j = 0; j < 100; ++j) {
+            vm.warp(block.timestamp + 600);
+            vm.roll(block.number + 1);
+            pp.pokeOracle();
+        }
+        {
+            (uint256 bal, uint256 req) = ph.checkCollateral(
+                pp,
+                Bob,
+                pp.getCurrentTick(),
+                $posIdList
+            );
+            assertLt(bal, req, "lock position is insolvent");
+        }
+
+        address Liquidator = address(0xCAFE);
+        vm.startPrank(Liquidator);
+        deal(ct0.asset(), Liquidator, 100_000_000);
+        deal(ct1.asset(), Liquidator, 100_000_000);
+        IERC20Partial(ct0.asset()).approve(address(ct0), 100_000_000);
+        IERC20Partial(ct1.asset()).approve(address(ct1), 100_000_000);
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+        assertEq(pp.numberOfLegs(Bob), 0, "position closed");
+
+        // --- the reserve is released: the PLP can withdraw its deposit again, and actually does ---
+        uint256 plpMaxAfter = ct0.maxWithdraw(Charlie);
+        assertGe(plpMaxAfter + 2, plpMaxBefore, "PLP maxWithdraw recovers");
+
+        vm.startPrank(Charlie);
+        uint256 walletBefore = token0.balanceOf(Charlie);
+        ct0.withdraw(plpMaxAfter, Charlie, Charlie);
+        assertEq(token0.balanceOf(Charlie) - walletBefore, plpMaxAfter, "PLP withdrawal succeeds");
+        assertGe(plpMaxAfter + 2, plpDeposit, "PLP gets its whole deposit back");
+    }
+
+    /// @notice ITM-mint route of the PLP lock. A short put minted with its chunk entirely ITM moves no token0 into
+    /// Uniswap: the vault hands Bob N of token0 shares for the token1 he pays in (worth ~rho*N), and a same-token
+    /// credit of N funded from those shares reserves N of PLP cash that never entered `ct0`. Without the
+    /// unfunded-short trigger Bob holds that reserve with no token0 at all. With it the credit mint reverts as
+    /// insolvent until Bob deposits the short's requirement in token0; the lone PLP's withdrawable amount then
+    /// drops by at most `N - deposit`, less than the token1 Bob committed, and recovers when the pair is closed.
+    function test_Success_itmMintLock_requiresRealDeposit_plpMaxWithdrawRecovers() public {
+        uint128 N = 1_000_000;
+        uint256 plpDeposit = 5_000_000;
+
+        // --- shrink ct0 to a single small PLP (Charlie); ct1 stays large ---
+        vm.startPrank(Alice);
+        ct0.withdraw(ct0.maxWithdraw(Alice), Alice, Alice);
+        vm.startPrank(Charlie);
+        ct0.withdraw(ct0.maxWithdraw(Charlie), Charlie, Charlie);
+        token0.approve(address(ct0), plpDeposit);
+        ct0.deposit(plpDeposit, Charlie);
+
+        poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+        poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+
+        // --- short put, tokenType 0, chunk [-20010, -19990]: entirely ITM at the current tick (~78) ---
+        TokenId shortId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, -20000, 2);
+        TokenId credit = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, 0, 0);
+
+        // --- Bob: exactly the token1 the ITM chunk needs (plus dust), no other collateral to cross-margin with ---
+        // (a surplus in token1 would fund the credit through cross-margining: that is the capital-for-capital
+        // residual, not the free lock this test is about)
+        _fundBobForItmShort(shortId, N);
+
+        $plpMaxBefore = ct0.maxWithdraw(Charlie);
+        assertApproxEqAbs($plpMaxBefore, plpDeposit, 2, "setup: the PLP can withdraw its deposit");
+        $bobToken1Before = ct1.convertToAssets(ct1.balanceOf(Bob));
+        (, , $creditedBefore, ) = ct0.getPoolData();
+
+        $posIdList.push(shortId);
+        mintOptions(
+            pp,
+            $posIdList,
+            N,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+        $token1Paid = $bobToken1Before - ct1.convertToAssets(ct1.balanceOf(Bob));
+        assertGt($token1Paid, 0, "the ITM chunk is funded with Bob's token1");
+        assertLt($token1Paid, N / 4, "... worth far less than the notional (deep ITM)");
+        // the whole notional was handed to Bob as token0 shares, no token0 entered the vault
+        assertApproxEqAbs(
+            ct0.convertToAssets(ct0.balanceOf(Bob)),
+            uint256(N) + 1_000,
+            uint256(N) / 100,
+            "Bob holds ~N of token0 shares minted without cash"
+        );
+        {
+            (, , uint256 creditedAfterShort, ) = ct0.getPoolData();
+            assertEq(creditedAfterShort, $creditedBefore, "a short reserves nothing");
+        }
+
+        // short's token0 requirement (what the minted shares already cover): the lock is free without the rule
+        // the short's requirement lives in storage ($reqShort) to keep the stack shallow
+        {
+            (
+                LeftRightUnsigned shortPrem,
+                LeftRightUnsigned longPrem,
+                PositionBalance[] memory posBal,
+                ,
+
+            ) = pp.getFullPositionsData(Bob, false, $posIdList);
+            (LeftRightUnsigned td0, , ) = re.getMargin(
+                posBal,
+                pp.getCurrentTick(),
+                Bob,
+                $posIdList,
+                shortPrem,
+                longPrem,
+                ct0,
+                ct1
+            );
+            $reqShort = td0.leftSlot();
+            assertGt(
+                td0.rightSlot(),
+                $reqShort,
+                "minted shares alone cover the short's requirement"
+            );
+        }
+
+        // --- credit of N funded from the minted shares: re-margined, so Bob is insolvent and the mint reverts ---
+        $posIdList.push(credit);
+        vm.expectPartialRevert(Errors.AccountInsolvent.selector);
+        mintOptions(
+            pp,
+            $posIdList,
+            N,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        // --- Bob deposits real token0: the mint check runs at the 1.075 buffer on ($reqShort + N), and his minted
+        // shares (~N) cover part of it. The rest exceeds N itself: Bob brings in more token0 than the credit reserves.
+        $deposit0 = _bufferedTopUp($reqShort + N);
+        assertGt(
+            $deposit0,
+            N,
+            "token0 deposit needed to open the credit exceeds the reserve it creates"
+        );
+        ct0.deposit($deposit0, Bob);
+        mintOptions(
+            pp,
+            $posIdList,
+            N,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+        {
+            (, , uint256 creditedAfterCredit, ) = ct0.getPoolData();
+            // (within 0.1%: the credit's mint commission entered the vault and moved the share price)
+            assertApproxEqAbs(
+                creditedAfterCredit - $creditedBefore,
+                ct0.convertToShares(N),
+                ct0.convertToShares(N) / 1_000,
+                "credited reserve == N"
+            );
+        }
+
+        // --- the reserve is fully backed by Bob's own cash: the lone PLP's withdrawable amount is untouched ---
+        assertGe(
+            ct0.maxWithdraw(Charlie) + 2,
+            $plpMaxBefore,
+            "no PLP cash is bound: Bob's deposit exceeds the reserve"
+        );
+        assertGt($deposit0 + $token1Paid, N, "capital Bob committed > the credited reserve");
+
+        // --- Bob closes the pair: the reserve is released and the PLP can withdraw its deposit again ---
+        $tempIdList.push(shortId);
+        burnOptions(
+            pp,
+            credit,
+            $tempIdList,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+        burnOptions(
+            pp,
+            shortId,
+            new TokenId[](0),
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+        assertEq(pp.numberOfLegs(Bob), 0, "pair closed");
+        uint256 plpMaxAfter = ct0.maxWithdraw(Charlie);
+        assertGe(plpMaxAfter + 2, $plpMaxBefore, "PLP maxWithdraw recovers");
+
+        vm.startPrank(Charlie);
+        uint256 walletBefore = token0.balanceOf(Charlie);
+        ct0.withdraw(plpMaxAfter, Charlie, Charlie);
+        assertEq(token0.balanceOf(Charlie) - walletBefore, plpMaxAfter, "PLP withdrawal succeeds");
+    }
+
+    // -----------------------------------------------------------
+    // Interest shortfall flag: uncollected interest is not cross-marginable
+    // -----------------------------------------------------------
+
+    /// @notice A borrower with (near) zero balance in the borrow token and ample collateral in the other token is
+    /// solvent on the numbers, so under the remainder-only rule it was never liquidatable while its interest went
+    /// uncollected. With the interest shortfall flag it becomes liquidatable once the uncollected remainder
+    /// exceeds the tolerance (one commission on `netBorrows`), independently of the other-token collateral, and
+    /// a deposit of the borrow token that covers the owed interest cures it.
+    function test_Success_interestShortfall_dustBorrowerLiquidatableAfterTolerance() public {
+        uint128 X = 1_000_000;
+
+        // --- Bob: just enough token0 for the loan's commission, generous token1 collateral ---
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+        token0.approve(address(ct0), 1_000);
+        ct0.deposit(320, Bob);
+        token1.approve(address(ct1), 3_000_000);
+        ct1.deposit(3_000_000, Bob);
+
+        poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+        poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+
+        // token0 loan X: interest accrues in token0, where Bob holds only dust after the commission
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, 0, 0));
+        mintOptions(
+            pp,
+            $posIdList,
+            X,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+        // withdraw the loan proceeds against the token1 collateral, leaving only dust in token0
+        ct0.withdraw(X, Bob, Bob, $posIdList, true);
+        uint256 dust = ct0.convertToAssets(ct0.balanceOf(Bob));
+        assertLt(dust, 100, "setup: token0 balance is dust after the commission");
+
+        // tolerance: one mint commission on the token0 principal (the loan X)
+        uint256 tol;
+        {
+            (
+                LeftRightUnsigned shortPrem,
+                LeftRightUnsigned longPrem,
+                PositionBalance[] memory posBal,
+                ,
+
+            ) = pp.getFullPositionsData(Bob, false, $posIdList);
+            (, , PositionBalance g) = re.getMargin(
+                posBal,
+                pp.getCurrentTick(),
+                Bob,
+                $posIdList,
+                shortPrem,
+                longPrem,
+                ct0,
+                ct1
+            );
+            assertEq(g.positionSize(), 0, "no interest owed at mint: no flag");
+            (, int128 netBorrows) = ct0.interestState(Bob);
+            assertEq(netBorrows, int128(X), "setup: the loan is the whole token0 principal");
+            tol =
+                (uint256(X) * uint256(RiskEngineParams.blueChip().notionalFee) * 1000) /
+                10_000_000;
+            assertGt(tol, 0, "setup: tolerance is positive");
+        }
+
+        // --- fresh liquidator ---
+        address Liquidator = address(0xCAFE);
+        vm.startPrank(Liquidator);
+        deal(ct0.asset(), Liquidator, 100_000_000);
+        deal(ct1.asset(), Liquidator, 100_000_000);
+        IERC20Partial(ct0.asset()).approve(address(ct0), 100_000_000);
+        IERC20Partial(ct1.asset()).approve(address(ct1), 100_000_000);
+
+        // solvent on the numbers and under the tolerance: not liquidatable (a solvent account with a
+        // one-shorter final list is read as a force exercise, and a loan has no exercisable leg)
+        vm.expectRevert(Errors.NoLegsExercisable.selector);
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+        // --- let interest accrue, one day at a time, until the remainder crosses the tolerance ---
+        uint256 owed;
+        uint256 daysElapsed;
+        while (daysElapsed < 400) {
+            vm.warp(block.timestamp + 1 days);
+            vm.roll(block.number + 7_000);
+            pp.pokeOracle();
+            ++daysElapsed;
+            owed = ct0.owedInterest(Bob);
+            if (owed > dust + tol) break;
+        }
+        console2.log("days to cross the tolerance:", daysElapsed);
+        console2.log("owed interest / dust / tolerance:", owed, dust, tol);
+        assertGt(owed, dust + tol, "setup: uncollected remainder exceeds the tolerance");
+        assertLt(daysElapsed, 400, "setup: crossed within the horizon");
+
+        // still comfortably collateralized on the numbers in the other token ...
+        {
+            (uint256 bal, uint256 req) = ph.checkCollateral(
+                pp,
+                Bob,
+                pp.getCurrentTick(),
+                $posIdList
+            );
+            assertGt(bal, (req * 110) / 100, "numbers alone would call the account solvent");
+        }
+        // ... but flagged, so insolvent at every oracle tick
+        {
+            (
+                LeftRightUnsigned shortPrem,
+                LeftRightUnsigned longPrem,
+                PositionBalance[] memory posBal,
+                ,
+
+            ) = pp.getFullPositionsData(Bob, false, $posIdList);
+            (, , PositionBalance g) = re.getMargin(
+                posBal,
+                pp.getCurrentTick(),
+                Bob,
+                $posIdList,
+                shortPrem,
+                longPrem,
+                ct0,
+                ct1
+            );
+            assertEq(g.positionSize(), 1, "token0 interest shortfall flag set");
+            (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
+            int24[4] memory ticks = [currentTick, fastOracleTick, slowOracleTick, lastObservedTick];
+            // the engine reads the current tick from its caller: ask as the pool, as `dispatchFrom` does
+            vm.startPrank(address(pp));
+            for (uint256 k; k < 4; ++k) {
+                assertFalse(
+                    re.isAccountSolvent(
+                        posBal,
+                        $posIdList,
+                        ticks[k],
+                        Bob,
+                        shortPrem,
+                        longPrem,
+                        ct0,
+                        ct1,
+                        10_000_000
+                    ),
+                    "flagged: insolvent at every oracle tick"
+                );
+            }
+        }
+
+        // --- cure: a borrow-token deposit covering the owed interest clears the flag ---
+        uint256 snapshot = vm.snapshot();
+        vm.startPrank(Bob);
+        token0.approve(address(ct0), owed + 1);
+        ct0.deposit(owed + 1, Bob);
+        vm.startPrank(Liquidator);
+        vm.expectRevert(Errors.NoLegsExercisable.selector);
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+        vm.revertTo(snapshot);
+
+        // --- otherwise: liquidated, bonus paid from the token1 collateral, loan closed ---
+        vm.startPrank(Liquidator);
+        uint256 liqBefore1 = ct1.convertToAssets(ct1.balanceOf(Liquidator)) +
+            token1.balanceOf(Liquidator);
+        uint256 bobBefore1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+        assertEq(pp.numberOfLegs(Bob), 0, "loan closed");
+        int256 gain1 = int256(
+            ct1.convertToAssets(ct1.balanceOf(Liquidator)) + token1.balanceOf(Liquidator)
+        ) - int256(liqBefore1);
+        assertGt(gain1, 0, "liquidator bonus is positive");
+        assertLe(uint256(gain1), bobBefore1, "bonus bounded by the liquidatee's real collateral");
+        assertEq(ct0.owedInterest(Bob), 0, "no interest owed after the loan is closed");
+    }
+
+    // -----------------------------------------------------------
+    // Interest bonus cap: liquidatable only because of the flag
+    // -----------------------------------------------------------
+
+    /// @notice The loan of the dust borrower tests.
+    uint128 internal constant DUST_LOAN = 1_000_000;
+    /// @notice Token0 requirement of the dust borrower's loan alone, read at mint.
+    uint256 internal $dustBaseReq0;
+    // scratch for the liquidation accounting checks
+    uint256 internal $dustOwed;
+    uint256 internal $dustShares;
+    uint256 internal $dustBobAssets1;
+    uint256 internal $dustAssets0;
+    uint256 internal $dustSupply0;
+    uint256 internal $dustAssets1;
+    uint256 internal $dustSupply1;
+
+    /// @notice The dust borrower of the test above, left past its tolerance: token0 loan `DUST_LOAN` withdrawn
+    /// against token1 collateral `deposit1`, and a fresh funded liquidator.
+    function _dustBorrowerPastTolerance(uint256 deposit1) internal returns (address Liquidator) {
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+        token0.approve(address(ct0), 1_000);
+        ct0.deposit(320, Bob);
+        token1.approve(address(ct1), deposit1);
+        ct1.deposit(deposit1, Bob);
+
+        poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+        poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        $posIdList.push(TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, 0, 0));
+        mintOptions(
+            pp,
+            $posIdList,
+            DUST_LOAN,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+        ct0.withdraw(DUST_LOAN, Bob, Bob, $posIdList, true);
+        (LeftRightUnsigned td0, , , ) = _marginAtTwap();
+        $dustBaseReq0 = td0.leftSlot();
+
+        Liquidator = address(0xCAFE);
+        vm.startPrank(Liquidator);
+        deal(ct0.asset(), Liquidator, 100_000_000);
+        deal(ct1.asset(), Liquidator, 100_000_000);
+        IERC20Partial(ct0.asset()).approve(address(ct0), 100_000_000);
+        IERC20Partial(ct1.asset()).approve(address(ct1), 100_000_000);
+
+        uint256 tol = (uint256(DUST_LOAN) *
+            uint256(RiskEngineParams.blueChip().notionalFee) *
+            1000) / 10_000_000;
+        for (uint256 d; d < 400; ++d) {
+            vm.warp(block.timestamp + 1 days);
+            vm.roll(block.number + 7_000);
+            pp.pokeOracle();
+            if (ct0.owedInterest(Bob) > ct0.convertToAssets(ct0.balanceOf(Bob)) + tol) {
+                return Liquidator;
+            }
+        }
+        revert("setup: tolerance not crossed");
+    }
+
+    /// @notice `getMargin` for Bob at the tick `_liquidate` reads it at.
+    function _marginAtTwap()
+        internal
+        returns (LeftRightUnsigned td0, LeftRightUnsigned td1, PositionBalance g, int24 tick)
+    {
+        (
+            LeftRightUnsigned shortPrem,
+            LeftRightUnsigned longPrem,
+            PositionBalance[] memory posBal,
+            ,
+
+        ) = pp.getFullPositionsData(Bob, false, $posIdList);
+        tick = pp.getTWAP();
+        (td0, td1, g) = re.getMargin(posBal, tick, Bob, $posIdList, shortPrem, longPrem, ct0, ct1);
+    }
+
+    function _uncollectedInterest0() internal view returns (uint256) {
+        (uint256 bal, uint256 interest) = ct0.assetsAndInterest(Bob);
+        return interest - bal;
+    }
+
+    /// @notice Adds deep liquidity and swaps the pool to `targetTick`; the oracle has not observed it yet.
+    function _pushSpotTo(int24 targetTick) internal {
+        vm.startPrank(Swapper);
+        swapperc.mint(uniPool, -800000, 800000, 10 ** 18);
+        routerV4.modifyLiquidity(address(0), poolKey, -800000, 800000, 10 ** 18);
+        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(targetTick));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(targetTick));
+    }
+
+    /// @notice The band around the pool's current tick in which the flag alone makes an account liquidatable.
+    function _flagBand() internal pure returns (int24) {
+        return int24(int256(uint256(RiskEngineParams.blueChip().buyerCollateralRatio) / 1000));
+    }
+
+    /// @notice Pokes the oracle until every tick `dispatchFrom` checks is inside the band around the current tick.
+    function _settleOracleIntoBand() internal {
+        int256 band = _flagBand();
+        for (uint256 j; j < 1_000; ++j) {
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 10);
+            pp.pokeOracle();
+            (int24 cur, int24 spot, , int24 latest, ) = pp.getOracleTicks();
+            if (
+                Math.abs(int256(cur) - spot) < band &&
+                Math.abs(int256(cur) - latest) < band &&
+                Math.abs(int256(cur) - pp.getTWAP()) < band
+            ) return;
+        }
+        revert("setup: the oracle did not settle");
+    }
+
+    /// @notice Moves the oracle towards `targetTick` over about an hour, which adds interest worth less than the
+    /// cap's margin: `_moveOracleTo` warps over a year and would push `10I` past the requirement.
+    function _moveOracleBriefly(int24 targetTick) internal {
+        _pushSpotTo(targetTick);
+        for (uint256 j; j < 40; ++j) {
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 10);
+            pp.pokeOracle();
+        }
+    }
+
+    /// @notice Liquidates Bob and returns the liquidator's gain in each token (shares at asset value plus wallet)
+    /// and the assets of the emitted `ProtocolLossRealized` events.
+    function _liquidateBob(
+        address Liquidator
+    ) internal returns (int256 gain0, int256 gain1, uint256 lossAssets) {
+        vm.startPrank(Liquidator);
+        int256 before0 = int256(
+            ct0.convertToAssets(ct0.balanceOf(Liquidator)) + token0.balanceOf(Liquidator)
+        );
+        int256 before1 = int256(
+            ct1.convertToAssets(ct1.balanceOf(Liquidator)) + token1.balanceOf(Liquidator)
+        );
+        vm.recordLogs();
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+        lossAssets = _protocolLossAssets(vm.getRecordedLogs());
+        gain0 =
+            int256(ct0.convertToAssets(ct0.balanceOf(Liquidator)) + token0.balanceOf(Liquidator)) -
+            before0;
+        gain1 =
+            int256(ct1.convertToAssets(ct1.balanceOf(Liquidator)) + token1.balanceOf(Liquidator)) -
+            before1;
+        assertEq(pp.numberOfLegs(Bob), 0, "loan closed");
+    }
+
+    /// @notice Flag only: the requirement read at the TWAP is `10I` and the liquidator earns `2I` of value. The
+    /// closing loan's `X` token0 has no token0 behind it, so the liquidator fronts `X` in token0 and is repaid
+    /// `X + 2I` in token1, out of Bob's token1. The interest itself is not covered by anyone: `ProtocolLossRealized`
+    /// reports it (`assets == I`) and it stays PLP dilution, as `settleLiquidation` books the virtual-share shortfall.
+    function test_Success_interestShortfall_cappedBonus_liquidatorEarnsTwiceInterest() public {
+        address Liquidator = _dustBorrowerPastTolerance(3_000_000);
+        (
+            LeftRightUnsigned td0,
+            LeftRightUnsigned td1,
+            PositionBalance g,
+            int24 tick
+        ) = _marginAtTwap();
+        uint256 I = _uncollectedInterest0();
+        assertEq(g.positionSize(), 1, "flagged");
+        assertEq(td0.leftSlot(), 10 * I, "requirement read at the TWAP is 10I");
+        assertLt(td0.leftSlot(), $dustBaseReq0, "and below the unmodified requirement");
+        assertEq(td0.rightSlot(), 0, "token0 balance exhausted");
+        assertEq(td1.rightSlot(), 3_000_000, "token1 collateral untouched");
+
+        _snapshotDustBorrowerVaults();
+        assertEq(
+            $dustOwed,
+            ct0.convertToAssets($dustShares) + I,
+            "setup: owed interest is the dust plus the remainder"
+        );
+
+        (int256 gain0, int256 gain1, uint256 lossAssets) = _liquidateBob(Liquidator);
+
+        _assertLiquidatorGains(gain0, gain1, I, tick);
+        _assertInterestBookedAsDilution(lossAssets, I);
+    }
+
+    /// @notice Stores what the liquidation is expected to move, read just before it.
+    function _snapshotDustBorrowerVaults() internal {
+        $dustOwed = ct0.owedInterest(Bob);
+        $dustShares = ct0.balanceOf(Bob);
+        $dustBobAssets1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+        $dustAssets0 = ct0.totalAssets();
+        $dustSupply0 = ct0.totalSupply();
+        $dustAssets1 = ct1.totalAssets();
+        $dustSupply1 = ct1.totalSupply();
+    }
+
+    function _assertLiquidatorGains(int256 gain0, int256 gain1, uint256 I, int24 tick) internal {
+        uint160 sp = Math.getSqrtRatioAtTick(tick);
+        assertEq(gain0, -int256(uint256(DUST_LOAN)), "liquidator fronts the loan in token0");
+        assertEq(
+            gain1,
+            int256(PanopticMath.convert0to1(uint256(DUST_LOAN) + 2 * I, sp)),
+            "and is repaid the loan plus 2I in token1"
+        );
+        assertApproxEqAbs(
+            _toToken1(gain0, gain1, sp),
+            int256(PanopticMath.convert0to1(2 * I, sp)),
+            2,
+            "liquidator's value gain is 2I"
+        );
+        assertEq(
+            $dustBobAssets1 - ct1.convertToAssets(ct1.balanceOf(Bob)),
+            uint256(gain1),
+            "Bob's token1 loss is the liquidator's token1 gain"
+        );
+    }
+
+    function _assertInterestBookedAsDilution(uint256 lossAssets, uint256 I) internal view {
+        assertEq(ct0.balanceOf(Bob), 0, "token0 dust taken for the interest");
+        assertEq(lossAssets, I, "the event reports the uncollected remainder, and nothing more");
+        assertEq(ct0.owedInterest(Bob), 0, "no interest owed after the loan is closed");
+        assertEq($dustAssets0 - ct0.totalAssets(), $dustOwed, "the receivable leaves totalAssets");
+        assertEq(
+            $dustSupply0 - ct0.totalSupply(),
+            $dustShares,
+            "supply falls by the dust only: the shortfall is re-added, diluting PLPs by I"
+        );
+        assertEq(ct1.totalAssets(), $dustAssets1, "token1 vault assets unchanged");
+        assertEq(ct1.totalSupply(), $dustSupply1, "token1 vault supply unchanged");
+    }
+
+    /// @notice The flag alone does not liquidate while the pool's tick is away from the oracle's: the account reads
+    /// solvent at the ticks outside the band, so it is not margin called. Once the oracle has caught up, the capped
+    /// bonus is converted at the TWAP: with the account still covered there, the value gain is `2I` at that tick.
+    function test_Success_interestShortfall_cappedBonus_atMovedTwap() public {
+        address Liquidator = _dustBorrowerPastTolerance(3_000_000);
+
+        // spot moves 3,000 ticks; the oracle has not followed
+        _pushSpotTo(3_000);
+        vm.startPrank(Liquidator);
+        vm.expectRevert(Errors.NotMarginCalled.selector);
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+        _settleOracleIntoBand();
+        (LeftRightUnsigned td0, , PositionBalance g, int24 tick) = _marginAtTwap();
+        uint256 I = _uncollectedInterest0();
+        assertGt(tick, 1_000, "setup: the oracle moved");
+        assertEq(g.positionSize(), 1, "flagged");
+        assertEq(td0.leftSlot(), 10 * I, "still capped at the moved TWAP");
+
+        (int256 gain0, int256 gain1, ) = _liquidateBob(Liquidator);
+        uint160 sp = Math.getSqrtRatioAtTick(tick);
+        assertApproxEqAbs(
+            _toToken1(gain0, gain1, sp),
+            int256(PanopticMath.convert0to1(2 * I, sp)),
+            2,
+            "liquidator's value gain is 2I at the TWAP"
+        );
+    }
+
+    /// @notice Same account with collateral that no longer covers the requirement at the TWAP: it is short of
+    /// collateral in its own right, so the requirement is not capped and the bonus floor is the full `MAX_BONUS` share.
+    /// Past the cross-token boundary that floor is larger than what the collateral backs after closing the loan, so
+    /// `_scaleFloorsToBackable` limits the payout to the backable amount, as it does for any account without the flag.
+    /// The collateral cannot be trimmed below the no-buffer boundary directly (withdrawals are checked with a buffer),
+    /// so the price moves it there, short of the bad debt where the backable amount reaches zero.
+    function test_Success_interestShortfall_crossInsolvent_uncappedBonusLimitedByBacking() public {
+        uint256 D1 = 1_500_000;
+        address Liquidator = _dustBorrowerPastTolerance(D1);
+        (LeftRightUnsigned td0, , , ) = _marginAtTwap();
+        assertEq(td0.leftSlot(), 10 * _uncollectedInterest0(), "setup: capped before the move");
+
+        _moveOracleBriefly(3_365);
+        PositionBalance g;
+        int24 tick;
+        (td0, , g, tick) = _marginAtTwap();
+        uint256 I = _uncollectedInterest0();
+        assertEq(g.positionSize(), 1, "flagged");
+        assertEq(td0.leftSlot(), $dustBaseReq0 + I, "cross-insolvent: requirement not capped");
+
+        uint160 sp = Math.getSqrtRatioAtTick(tick);
+        uint256 full1 = PanopticMath.convert0to1(
+            (td0.leftSlot() * RiskEngineParams.blueChip().maxBonus) / 10_000_000,
+            sp
+        );
+        uint256 loan1 = PanopticMath.convert0to1(uint256(DUST_LOAN), sp);
+        assertGt(D1, loan1, "setup: not bad debt");
+        uint256 expected = Math.min(full1, D1 - loan1);
+        assertGt(
+            expected,
+            10 * PanopticMath.convert0to1(2 * I, sp),
+            "setup: far above the capped bonus"
+        );
+
+        (int256 gain0, int256 gain1, ) = _liquidateBob(Liquidator);
+        assertApproxEqAbs(
+            _toToken1(gain0, gain1, sp),
+            int256(expected),
+            2,
+            "liquidator's value gain is the uncapped bonus, limited by what is backable"
+        );
+    }
+
+    /// @notice A deposit covering the interest clears the flag, and with it the cap: the requirement is back to the
+    /// loan's own, with no interest term.
+    function test_Success_interestShortfall_depositRestoresUncappedRequirement() public {
+        address Liquidator = _dustBorrowerPastTolerance(3_000_000);
+        (LeftRightUnsigned td0, , PositionBalance g, ) = _marginAtTwap();
+        uint256 I = _uncollectedInterest0();
+        assertEq(g.positionSize(), 1, "setup: flagged");
+        assertEq(td0.leftSlot(), 10 * I, "setup: capped");
+
+        uint256 owed = ct0.owedInterest(Bob);
+        vm.startPrank(Bob);
+        token0.approve(address(ct0), owed + 1);
+        ct0.deposit(owed + 1, Bob);
+
+        (td0, , g, ) = _marginAtTwap();
+        assertEq(g.positionSize(), 0, "cured: no flag");
+        assertEq(td0.leftSlot(), $dustBaseReq0, "cured: the loan's own requirement, uncapped");
+
+        vm.startPrank(Liquidator);
+        vm.expectRevert(Errors.NoLegsExercisable.selector);
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+    }
+
+    // -----------------------------------------------------------
+    // Flag-only liquidation at a displaced price
+    // -----------------------------------------------------------
+    // An account that is liquidatable only because of the interest shortfall flag fails solvency without looking at
+    // the oracle ticks, so the four-tick requirement of `dispatchFrom` did not protect it: a liquidator could push
+    // the pool through a width>0 long leg, liquidate (the burn re-adds the long's liquidity at the pushed tick and
+    // charges the owner its strike distance at the TWAP), and swap back through that liquidity. The flag now only
+    // fails solvency at ticks within `_flagBand()` of the pool's current tick, and a narrow long or a spread with a
+    // narrow leg carries a requirement that covers a push across that band.
+    //
+    // The push has a second way past the four-tick requirement, with no flag: crossing the long's chunk accrues
+    // premium on the long, the premium owed raises the requirement at every tick, and a thinly collateralized owner is
+    // short of collateral at all four. An account that owes long premium therefore reads solvent at ticks a band or
+    // more from the pool's current tick, and is not liquidated until the pool's tick and the oracle's agree.
+
+    uint128 internal constant FP_N = 1e12; // notional of the long, token0
+    uint128 internal constant FP_LOAN = 1e6; // token1 loan that gets Bob flagged
+    address internal constant FP_LIQUIDATOR = address(0xCAFE);
+    TokenId[] internal $fpSeller;
+
+    function _fpFlag() internal view returns (uint256) {
+        (
+            LeftRightUnsigned shortPrem,
+            LeftRightUnsigned longPrem,
+            PositionBalance[] memory posBal,
+            ,
+
+        ) = pp.getFullPositionsData(Bob, false, $posIdList);
+        (, , PositionBalance g) = re.getMargin(
+            posBal,
+            pp.getCurrentTick(),
+            Bob,
+            $posIdList,
+            shortPrem,
+            longPrem,
+            ct0,
+            ct1
+        );
+        return g.positionSize();
+    }
+
+    /// @notice Bob's collateral at asset value; the pool is at price 1 so the two tokens add up.
+    function _fpBobValue() internal view returns (uint256) {
+        return ct0.convertToAssets(ct0.balanceOf(Bob)) + ct1.convertToAssets(ct1.balanceOf(Bob));
+    }
+
+    function _fpPoolId() internal returns (uint64) {
+        poolId = uint40(uint256(PoolId.unwrap(poolKey.toId()))) + uint64(uint256(vegoid) << 40);
+        poolId += uint64(uint24(uniPool.tickSpacing())) << 48;
+        return poolId;
+    }
+
+    /// @notice A long token0 leg (or its seller's chunk) at `strike`, `width` tick spacings wide.
+    function _fpLeg(uint256 isLong, int24 strike, int24 width) internal returns (TokenId) {
+        return TokenId.wrap(0).addPoolId(_fpPoolId()).addLeg(0, 1, 0, isLong, 0, 0, strike, width);
+    }
+
+    /// @notice Charlie sells `chunk`; Bob holds a token1 loan he withdrew and `bobPos`, against token0 collateral
+    /// trimmed to 1.09x his requirement, and (if `flagged`) is left until the token1 interest shortfall flag is set.
+    function _fpHolder(TokenId chunk, TokenId bobPos, bool flagged) internal {
+        vm.startPrank(Swapper);
+        routerV4.modifyLiquidity(address(0), poolKey, -800000, 800000, 10 ** 14);
+
+        vm.startPrank(Charlie);
+        $fpSeller.push(chunk);
+        mintOptions(
+            pp,
+            $fpSeller,
+            2 * FP_N,
+            0,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+        token0.approve(address(ct0), type(uint256).max);
+        token1.approve(address(ct1), type(uint256).max);
+        ct0.deposit(FP_N / 2, Bob);
+        ct1.deposit(320, Bob);
+        $posIdList.push(_fpLoan());
+        _fpMint(FP_LOAN);
+        ct1.withdraw(FP_LOAN, Bob, Bob, $posIdList, true);
+        $posIdList.push(bobPos);
+        _fpMint(FP_N);
+        {
+            (uint256 bal, uint256 req) = ph.checkCollateral(
+                pp,
+                Bob,
+                pp.getCurrentTick(),
+                $posIdList
+            );
+            ct0.withdraw(bal - (req * 109) / 100, Bob, Bob, $posIdList, true);
+        }
+
+        for (uint256 d; flagged && d < 400 && _fpFlag() == 0; ++d) {
+            vm.warp(block.timestamp + 1 days);
+            vm.roll(block.number + 7_000);
+            pp.pokeOracle();
+        }
+        if (!flagged) {
+            for (uint256 j; j < 10; ++j) {
+                vm.warp(block.timestamp + 600);
+                vm.roll(block.number + 50);
+                pp.pokeOracle();
+            }
+        }
+        assertEq(_fpFlag(), flagged ? 2 : 0, "setup: token1 interest shortfall flag");
+
+        vm.startPrank(FP_LIQUIDATOR);
+        deal(ct0.asset(), FP_LIQUIDATOR, 1e14);
+        deal(ct1.asset(), FP_LIQUIDATOR, 1e14);
+        IERC20Partial(ct0.asset()).approve(address(ct0), type(uint256).max);
+        IERC20Partial(ct1.asset()).approve(address(ct1), type(uint256).max);
+    }
+
+    function _fpLoan() internal returns (TokenId) {
+        return TokenId.wrap(0).addPoolId(_fpPoolId()).addLeg(0, 1, 0, 0, 1, 0, 0, 0);
+    }
+
+    function _fpMint(uint128 size) internal {
+        mintOptions(
+            pp,
+            $posIdList,
+            size,
+            type(uint24).max / 2,
+            Constants.MIN_POOL_TICK,
+            Constants.MAX_POOL_TICK,
+            true
+        );
+    }
+
+    function _fpPush(int24 tick) internal {
+        vm.startPrank(Swapper);
+        routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(tick));
+    }
+
+    /// @notice Liquidates Bob and returns the assets of the emitted `ProtocolLossRealized` events.
+    function _fpLiquidate() internal returns (uint256 lossAssets) {
+        vm.startPrank(FP_LIQUIDATOR);
+        vm.recordLogs();
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+        lossAssets = _protocolLossAssets(vm.getRecordedLogs());
+        assertEq(pp.numberOfLegs(Bob), 0, "account closed");
+    }
+
+    /// @notice A push far through an out-of-the-money long does not liquidate a flagged owner who is otherwise well
+    /// collateralized; back at the fair price the same account is liquidated for its interest, and keeps the rest
+    /// of its collateral.
+    /// @dev The owner holds 5% of the notional on top of the requirement, so the premium the push accrues on the
+    /// long (the swap fees crossing its chunk) does not make the account short of collateral in its own right.
+    function test_Success_flagOnly_deepPush_notLiquidatable() public {
+        _fpHolder(_fpLeg(0, 1500, 10), _fpLeg(1, 1500, 10), true);
+        vm.startPrank(Bob);
+        ct0.deposit(FP_N / 20, Bob);
+        assertEq(_fpFlag(), 2, "setup: still flagged in token1");
+        uint256 bobBefore = _fpBobValue();
+
+        _fpPush(2_500);
+        vm.startPrank(FP_LIQUIDATOR);
+        vm.expectRevert(Errors.NotMarginCalled.selector);
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+        _fpPush(0);
+        uint256 loss = _fpLiquidate();
+        assertLt(loss, FP_LOAN / 100, "protocol loss is the uncollected interest only");
+        // Bob repays the loan he withdrew, pays the premium the two crossings accrued on his long (about 13 bps of the
+        // notional here) and the interest-sized bonus: three orders of magnitude under the 16% strike distance
+        uint256 bobLoss = bobBefore - _fpBobValue() - FP_LOAN;
+        assertLt(bobLoss, FP_N / 500, "the owner is not charged the long's strike distance");
+    }
+
+    /// @notice The band is `BUYER_COLLATERAL_RATIO / ONE_BPS` ticks: one tick inside it the flag liquidates, at it and
+    /// beyond it does not. A long one tick spacing wide, placed as far as the band allows and held at the minimum
+    /// collateral, is covered: the push charges its owner the strike distance and leaves no protocol loss.
+    function test_Success_flagOnly_bandEdge_narrowLongCovered() public {
+        int24 band = _flagBand();
+        assertEq(band, 200, "blue chip: a 2% buyer ratio, 200 ticks");
+        _fpHolder(_fpLeg(0, band - 15, 1), _fpLeg(1, band - 15, 1), true);
+        uint256 bobBefore = _fpBobValue();
+
+        uint256 snap = vm.snapshotState();
+        _fpPush(band);
+        vm.startPrank(FP_LIQUIDATOR);
+        vm.expectRevert(Errors.NotMarginCalled.selector);
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+        vm.revertToState(snap);
+
+        // crosses the long's range [band - 20, band - 10] in full
+        _fpPush(band - 1);
+        uint256 loss = _fpLiquidate();
+        assertLt(loss, FP_LOAN / 100, "protocol loss is the uncollected interest only");
+        uint256 bobLoss = bobBefore - _fpBobValue() - FP_LOAN;
+        assertGt(
+            bobLoss,
+            (uint256(FP_N) * uint24(band - 20)) / 10_000,
+            "the owner is charged the strike distance"
+        );
+        assertLt(bobLoss, bobBefore - FP_LOAN, "out of collateral that covers it");
+    }
+
+    /// @notice A tight debit spread with narrow legs is margined above its strike difference, so a push that crosses
+    /// its long leg and stops before its short leg is covered by the owner too.
+    function test_Success_flagOnly_tightDebitSpread_covered() public {
+        int24 band = _flagBand();
+        TokenId spread = TokenId.wrap(0).addPoolId(_fpPoolId()).addLeg(
+            0,
+            1,
+            0,
+            1,
+            0,
+            1,
+            band - 15,
+            1
+        );
+        spread = spread.addLeg(1, 1, 0, 0, 0, 0, band - 5, 1);
+        _fpHolder(_fpLeg(0, band - 15, 1), spread, true);
+        {
+            (, uint256 req) = ph.checkCollateral(pp, Bob, pp.getCurrentTick(), $posIdList);
+            assertGt(
+                req,
+                (uint256(FP_N) * 250) / 10_000,
+                "narrow-leg spread: required more than ten bands, 2.5% at a 2% buyer ratio"
+            );
+        }
+
+        // past the long's upper tick (band - 10), short of the short's range
+        _fpPush(band - 9);
+        uint256 loss = _fpLiquidate();
+        assertLt(loss, FP_LOAN / 100, "protocol loss is the uncollected interest only");
+    }
+
+    /// @notice The same narrow long without the flag is not liquidatable at a pushed price, as before.
+    function test_Success_unflagged_pushedLiquidationRefused() public {
+        int24 band = _flagBand();
+        _fpHolder(_fpLeg(0, band - 15, 1), _fpLeg(1, band - 15, 1), false);
+        _fpPush(band - 1);
+        vm.startPrank(FP_LIQUIDATOR);
+        vm.expectRevert(Errors.NotMarginCalled.selector);
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+    }
+
+    /// @notice Whether Bob's collateral covers his requirement at the oracle's tick (tick 0 in these tests).
+    function _fpCoveredAtOracleTick() internal view returns (bool) {
+        (uint256 bal, uint256 req) = ph.checkCollateral(pp, Bob, int24(0), $posIdList);
+        return bal >= req;
+    }
+
+    /// @notice Crosses the long's chunk [1450, 1550] back and forth until the premium the crossings accrue on the
+    /// long leaves Bob short of collateral at the oracle's tick, then `extra` more times. The long's requirement is
+    /// flat, so the 9% Bob holds above it has to be worn down by premium alone, which takes a few crossings.
+    function _fpCrossUntilShort(uint256 extra) internal {
+        uint256 k = 1;
+        for (; k <= 80 && _fpCoveredAtOracleTick(); ++k) {
+            _fpPush(k % 2 == 1 ? int24(1_600) : int24(1_400));
+        }
+        assertFalse(
+            _fpCoveredAtOracleTick(),
+            "setup: the crossings' premium leaves the account short at the oracle tick"
+        );
+        for (uint256 j; j < extra; ++j) {
+            _fpPush((k + j) % 2 == 1 ? int24(1_600) : int24(1_400));
+        }
+    }
+
+    /// @notice The selector a liquidation of Bob reverts with (zero if it goes through).
+    function _fpRefusal() internal returns (bytes4 selector) {
+        vm.startPrank(FP_LIQUIDATOR);
+        (bool ok, bytes memory data) = address(pp).call(
+            abi.encodeCall(
+                pp.dispatchFrom,
+                (
+                    new TokenId[](0),
+                    Bob,
+                    $posIdList,
+                    new TokenId[](0),
+                    LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1)
+                )
+            )
+        );
+        if (!ok) selector = bytes4(data);
+    }
+
+    /// @notice No flag: an owner at the minimum collateral is made short of it by pushes alone, through the premium
+    /// the crossings accrue on his long. He is not liquidated at the pushed price; back at the fair price he is,
+    /// and the loss is his premium shortfall, not the long's 16% strike distance.
+    function test_Success_thinLong_deepPush_notLiquidatable() public {
+        _fpHolder(_fpLeg(0, 1500, 10), _fpLeg(1, 1500, 10), false);
+        assertTrue(_fpCoveredAtOracleTick(), "setup: covered before the push");
+
+        // ten crossings past the point where he is short, so that he is short at the pushed tick as well
+        _fpCrossUntilShort(10);
+        _fpPush(2_500);
+        vm.startPrank(FP_LIQUIDATOR);
+        vm.expectRevert(Errors.NotMarginCalled.selector);
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+
+        _fpPush(0);
+        assertFalse(_fpCoveredAtOracleTick(), "still short at the fair price: the premium is owed");
+        uint256 loss = _fpLiquidate();
+        assertLt(
+            loss,
+            FP_N / 500,
+            "protocol loss bounded by the premium, far under the strike distance"
+        );
+    }
+
+    /// @notice An owner short of collateral who owes long premium cannot act through `dispatchFrom` at a price pushed
+    /// past the band from spot: its post-operation check is judged on collateral at the current tick, not passed at
+    /// spot because it owes long premium (Nethermind N-08, where the pass let it pay away borrowed shares).
+    function test_Fail_dispatchFrom_callerOwingLongPremium_pushedPastBand() public {
+        _fpHolder(_fpLeg(0, 1500, 10), _fpLeg(1, 1500, 10), false);
+        _fpCrossUntilShort(10);
+        int24 band = _flagBand();
+
+        // away from the long's chunk, so the push accrues no more premium; inside the dispatch TWAP limit
+        _fpPush(-(band + 100));
+        (int24 cur, int24 spot, , , ) = pp.getOracleTicks();
+        assertGe(
+            Math.abs(int256(spot) - cur),
+            band,
+            "setup: spot at least the band from the current tick"
+        );
+        {
+            (uint256 bal, uint256 req) = ph.checkCollateral(pp, Bob, cur, $posIdList);
+            assertLt(bal, req, "setup: short of collateral at the current tick");
+        }
+
+        // settles Charlie's chunk; Charlie stays solvent, Bob's own post-operation check must fail
+        vm.startPrank(Bob);
+        vm.expectRevert(abi.encodeWithSelector(Errors.AccountInsolvent.selector, 1, 2));
+        pp.dispatchFrom(
+            $posIdList,
+            Charlie,
+            $fpSeller,
+            $fpSeller,
+            LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1)
+        );
+    }
+
+    /// @notice Same for an owner with an interest shortfall at the minimum collateral: short of collateral and
+    /// flagged, still not liquidated at the pushed price.
+    function test_Success_thinLong_flagged_deepPush_notLiquidatable() public {
+        _fpHolder(_fpLeg(0, 1500, 10), _fpLeg(1, 1500, 10), true);
+        _fpCrossUntilShort(0);
+        _fpPush(2_500);
+        vm.startPrank(FP_LIQUIDATOR);
+        vm.expectRevert(Errors.NotMarginCalled.selector);
+        liquidate(pp, new TokenId[](0), Bob, $posIdList);
+    }
+
+    /// @notice Crossing the long's chunk again and again accrues more premium each time, which used to wear down any
+    /// surplus until the liquidation went through at the pushed price. It is refused after every crossing: while the
+    /// account is still covered it is not margin called at any tick, and once the premium leaves it short it reads
+    /// solvent at the oracle's ticks, a band or more from the pushed price.
+    function test_Success_thinLong_repeatedCrossings_notLiquidatable() public {
+        _fpHolder(_fpLeg(0, 1500, 10), _fpLeg(1, 1500, 10), false);
+        vm.startPrank(Bob);
+        ct0.deposit(FP_N / 200, Bob); // 50 bps of the notional above the requirement
+
+        uint256 marginCallRefused;
+        for (uint256 k = 1; k <= 41; ++k) {
+            // one crossing of [1450, 1550]
+            _fpPush(k % 2 == 1 ? int24(1_600) : int24(1_400));
+            // covered at the pushed tick: solvent at every tick, the call is not a liquidation and the oracle gap
+            // stops it (`StaleOracle`); short at the pushed tick: still solvent at the displaced oracle ticks
+            bytes4 refusal = _fpRefusal();
+            assertTrue(
+                refusal == Errors.NotMarginCalled.selector ||
+                    refusal == Errors.StaleOracle.selector,
+                "refused after every crossing"
+            );
+            if (refusal == Errors.NotMarginCalled.selector) ++marginCallRefused;
+        }
+        assertFalse(
+            _fpCoveredAtOracleTick(),
+            "setup: the crossings did leave the account short of collateral"
+        );
+        assertGt(marginCallRefused, 5, "short at the pushed tick, and still refused");
     }
 }

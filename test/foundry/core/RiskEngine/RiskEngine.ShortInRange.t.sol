@@ -139,6 +139,23 @@ contract RiskEngineShortInRangeTest is Test {
         return A > 0 && quantum * 1000 < A;
     }
 
+    /// @notice One wei of the leg's other token, valued in the leg's token at tick t.
+    /// @dev `_closingCost` values the chunk from integer token amounts, which floor the other-token side by up to one
+    /// wei, so its reference overstates the closing cost by up to this much. `_roundingImmaterial` only bounds it at
+    /// 0.1% of notional, ten times the 1 bp tolerance: on a very wide range at an extreme tick the whole other-token
+    /// side can be half a wei worth several bps of notional.
+    function _otherTokenWei(TokenId id, uint256 leg, int24 t) internal pure returns (uint256) {
+        uint160 sqrtP = Math.getSqrtRatioAtTick(t);
+        return id.tokenType(leg) == 0 ? _toToken0(1, sqrtP) : _toToken1(1, sqrtP);
+    }
+
+    /// @notice What the requirement of leg `leg` may fall short of the reference closing cost by: 1 bp of notional `A`
+    /// and a few wei for the rounding of the two value computations, plus the one wei of the other token the
+    /// reference floors away.
+    function _slack(TokenId id, uint256 leg, int24 t, uint256 A) internal pure returns (uint256) {
+        return A / 10_000 + 10 + _otherTokenWei(id, leg, t);
+    }
+
     /// @notice Random tick inside [tL, tU).
     function _inRangeTick(TokenId id, uint256 leg, uint256 seed) internal pure returns (int24) {
         (int24 tL, int24 tU) = id.asTicks(leg);
@@ -185,8 +202,7 @@ contract RiskEngineShortInRangeTest is Test {
 
         (uint256 A, uint256 cost) = _closingCost(id, 0, size, t);
         uint256 req = E.reqSingleNoPartner(id, 0, size, t, util);
-        // 1 bp of notional plus a few wei of tolerance for rounding in the two value computations
-        assertGe(req + A / 10_000 + 10, cost, "requirement below closing cost");
+        assertGe(req + _slack(id, 0, t, A), cost, "requirement below closing cost");
     }
 
     /// @notice A 4094 x 60-tick leg at 85% utilization is covered at every decile of its range, and never by more
@@ -288,7 +304,12 @@ contract RiskEngineShortInRangeTest is Test {
         (uint256 A, uint256 net) = _netClosingCost(id, 1e18, t);
         uint256 req = E.reqSinglePartner(id, 0, 1e18, t, util) +
             E.reqSinglePartner(id, 1, 1e18, t, util);
-        assertGe(req + A / 10_000 + 10, net, "spread requirement below net closing cost");
+        // the net reference floors one wei of the other token on each leg
+        assertGe(
+            req + _slack(id, 0, t, A) + _otherTokenWei(id, 1, t),
+            net,
+            "spread requirement below net closing cost"
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -342,7 +363,7 @@ contract RiskEngineShortInRangeTest is Test {
             (uint256 A, uint256 cost) = _closingCost(id, leg, 1e18, t);
             uint256 req = E.reqSinglePartner(id, leg, 1e18, t, util);
             assertGe(
-                req + A / 10_000 + 10,
+                req + _slack(id, leg, t, A),
                 cost,
                 leg == 0 ? "call leg below closing cost" : "put leg below closing cost"
             );
@@ -402,7 +423,7 @@ contract RiskEngineShortInRangeTest is Test {
         uint256 req = E.reqSinglePartner(id, 0, 1e18, t, util) +
             E.reqSinglePartner(id, 1, 1e18, t, util);
         assertGe(
-            req + A / 10_000 + 10,
+            req + _slack(id, 0, t, A),
             cost + principal,
             "short+loan below closing cost plus principal"
         );
@@ -452,7 +473,7 @@ contract RiskEngineShortInRangeTest is Test {
         (uint256 A, uint256 cost) = _closingCost(id, 0, 1e18, t);
         uint256 req = E.reqSinglePartner(id, 0, 1e18, t, util) +
             E.reqSinglePartner(id, 1, 1e18, t, util);
-        assertGe(req + A / 10_000 + 10, cost, "short+credit below closing cost");
+        assertGe(req + _slack(id, 0, t, A), cost, "short+credit below closing cost");
     }
 
     function _funded(
@@ -507,7 +528,7 @@ contract RiskEngineShortInRangeTest is Test {
         (uint256 A, uint256 cost) = _closingCost(id, 0, 1e18, t);
         uint256 req = E.reqSinglePartner(id, 0, 1e18, t, util) +
             E.reqSinglePartner(id, 1, 1e18, t, util);
-        assertGe(req + A / 10_000 + 10, cost, "synthetic: short leg below closing cost");
+        assertGe(req + _slack(id, 0, t, A), cost, "synthetic: short leg below closing cost");
         assertEq(E.reqSinglePartner(id, 1, 1e18, t, util), 0, "synthetic: long leg should be free");
     }
 }

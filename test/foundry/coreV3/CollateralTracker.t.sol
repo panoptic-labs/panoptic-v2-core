@@ -230,11 +230,22 @@ contract RiskEngineHarness is RiskEngineV2 {
         int16 poolUtilization,
         bool underlyingIsToken0
     ) external view returns (uint256) {
+        // the engine now reads size, utilizations and mint tick from the balance entry; keep the old interface
+        // (the mint tick only feeds the unfunded-short accumulator, which this wrapper discards). The block and
+        // timestamp are nonzero so a 100% utilization call is never mistaken for the pool's safe-mode sentinel.
+        uint32 utilPacked = uint32(uint16(poolUtilization)) |
+            (uint32(uint16(poolUtilization)) << 16);
         (uint256 tokensRequired, , ) = _getRequiredCollateralAtTickSinglePosition(
             tokenId,
-            positionSize,
+            PositionBalanceLibrary.storeBalanceData(
+                positionSize,
+                utilPacked,
+                atTick,
+                uint32(block.timestamp),
+                uint40(block.number),
+                false
+            ),
             atTick,
-            poolUtilization,
             underlyingIsToken0
         );
         return tokensRequired;

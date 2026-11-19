@@ -261,7 +261,7 @@ contract RiskEngineProperties is Test {
         uint128 size = 1e9;
         int24 atTick = 0;
 
-        // Only the option side should compute a requirement for credit/loan composites.
+        // No credit/loan composites: a credit leg needs nothing on its own, a loan leg carries its own margin.
         uint256 cs0 = E.reqSinglePartner(tCS, 0, size, atTick, int16(0));
         uint256 cs1 = E.reqSinglePartner(tCS, 1, size, atTick, int16(0));
         assertGt(cs0 + cs1, 0, "cash-secured set");
@@ -269,7 +269,7 @@ contract RiskEngineProperties is Test {
 
         uint256 ol0 = E.reqSinglePartner(tOL, 0, size, atTick, int16(0));
         uint256 ol1 = E.reqSinglePartner(tOL, 1, size, atTick, int16(0));
-        assertTrue((ol0 > 0 && ol1 == 0) || (ol1 > 0 && ol0 == 0), "only option leg returns");
+        assertTrue(ol0 > 0 && ol1 > 0, "no loan composite: both legs return");
     }
 
     // -------- E. Zero-width legs: loan and credit semantics --------

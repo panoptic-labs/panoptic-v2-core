@@ -15,11 +15,14 @@ import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 /// - totalAssets()
 /// - totalSupply()
 /// - getPoolData() (RiskEngineV2)
+/// - interestState(address) (RiskEngineV2, interest shortfall tolerance)
 /* is CollateralTracker */ contract MockCollateralTracker {
     // per user balances
     mapping(address => uint256) internal _assets;
     mapping(address => uint256) internal _interest;
     mapping(address => uint256) internal _shares;
+    // interest-bearing principal; zero means no tolerance, so any uncollected interest sets the shortfall flag
+    mapping(address => int128) internal _netBorrows;
 
     // global accounting
     uint256 internal _totalAssets;
@@ -46,6 +49,10 @@ import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
         _assets[user] = assets_;
         _interest[user] = interest_;
         _shares[user] = shares_;
+    }
+
+    function setNetBorrows(address user, int128 netBorrows_) external {
+        _netBorrows[user] = netBorrows_;
     }
 
     function setGlobal(uint256 totalAssets_, uint256 totalSupply_) external {
@@ -75,6 +82,10 @@ import {CollateralTrackerV2} from "@contracts/CollateralTracker.sol";
 
     function assetsAndInterest(address user) external view returns (uint256, uint256) {
         return (_assets[user], _interest[user]);
+    }
+
+    function interestState(address user) external view returns (int128, int128) {
+        return (0, _netBorrows[user]);
     }
 
     function balanceOf(address user) external view returns (uint256) {

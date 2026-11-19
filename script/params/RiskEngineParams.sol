@@ -28,7 +28,7 @@ library RiskEngineParams {
                 maxSpread: 90_000,
                 bpDecreaseBuffer: 10_750_000,
                 sellerCollateralRatio: 2_000_000,
-                buyerCollateralRatio: 100_000,
+                buyerCollateralRatio: 200_000,
                 maintMarginRate: 1_000_000,
                 loanMarginDivisor: 4,
                 forceExerciseCost: 5_000_000,
@@ -37,7 +37,7 @@ library RiskEngineParams {
                 maxOpenLegs: 26,
                 maxBonus: 2_000_000,
                 notionalFee: 3,
-                premiumFee: 250,
+                premiumFee: 750,
                 protocolSplit: 5_000,
                 builderSplit: 4_000,
                 minRateAtTarget: 0.02 ether / int256(365 days)
